@@ -12,6 +12,12 @@ export interface DepsAddParams {
    * A spec without an exact version takes the newest release at least a day old (D95).
    */
   readonly packages: readonly string[];
+  /**
+   * Licenses acknowledged for the artifact's plugins (D31, WP-16): a change that touches an
+   * artifact with plugins passes their license check, which these acknowledge as
+   * `--accept-license` does.
+   */
+  readonly acceptLicenses?: readonly string[];
   /** Makes retries idempotent: a repeated `requestId` returns the recorded result (H-03). */
   readonly requestId?: string;
 }
@@ -46,6 +52,7 @@ const params: z.ZodType<DepsAddParams> = z
   .object({
     artifact: SourceRef,
     packages: z.array(z.string().min(1)).min(1).readonly(),
+    acceptLicenses: z.array(z.string().min(1).max(256)).readonly().exactOptional(),
     requestId: z.string().min(1).exactOptional(),
   })
   .register(wireRegistry, { id: "DepsAddParams" });

@@ -5,6 +5,7 @@
  */
 import * as z from "zod";
 import { HOST_PROTOCOL_REVISIONS, hostMethods, hostNotifications } from "../src/index.ts";
+import { PLUGIN_MANIFEST_REVISION, pluginManifestRegistry } from "../src/plugin.ts";
 import { wireRegistry } from "../src/wire-registry.ts";
 
 const [hostRevision] = HOST_PROTOCOL_REVISIONS;
@@ -83,5 +84,18 @@ export const bundles = [
           },
         ]),
       ),
+  },
+  {
+    name: "plugin-manifest",
+    title: 'Mostra plugin manifest (the "mostra" key of package.json) and source pack items (D30)',
+    revisions: { "plugin-manifest": PLUGIN_MANIFEST_REVISION },
+    definitions: (target: "draft-2020-12" | "draft-07", uri: (id: string) => string) =>
+      z.toJSONSchema(pluginManifestRegistry, {
+        target,
+        io: "input",
+        uri,
+        metadata: pluginManifestRegistry,
+        override: rejectUnrepresentable,
+      }).schemas as Record<string, Record<string, unknown>>,
   },
 ];

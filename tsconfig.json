@@ -49,6 +49,24 @@
     },
     {
       "path": "packages/themes"
+    },
+    {
+      "path": "packages/contract-embed-engine"
+    },
+    {
+      "path": "packages/contract-exporter"
+    },
+    {
+      "path": "packages/contract-verify-check"
+    },
+    {
+      "path": "packages/contract-anchor-provider"
+    },
+    {
+      "path": "packages/contract-connector"
+    },
+    {
+      "path": "packages/contract-cli-command"
     }
   ]
 }

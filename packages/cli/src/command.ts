@@ -142,6 +142,8 @@ export interface CommandDef {
    * function of its flags, when it runs on someone's behalf (`mcp --embedded`, D148).
    */
   readonly quiet?: boolean | ((flags: CommandContext["flags"]) => boolean);
+  /** The name telemetry records for it, when not its words: `plugin` for a plugin's command. */
+  readonly telemetryName?: string;
   /** Does the command's work. */
   run(context: CommandContext): Promise<CommandOutcome>;
 }

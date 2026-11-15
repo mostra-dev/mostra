@@ -60,6 +60,11 @@ describe("what the CLI's detached processes get", () => {
       "MOSTRA_TEST_CIMD_ORIGIN",
       "MOSTRA_TEST_OIDC_INSECURE",
       "MOSTRA_TEST_GITHUB_BASE",
+      // URLs of the local fake GitHub that pack tests read registries from (WP-16).
+      "MOSTRA_TEST_GITHUB_API",
+      "MOSTRA_TEST_GITHUB_RAW",
+      // JSON of the contract versions a runtime stands in for serves (WP-16).
+      "MOSTRA_TEST_CONTRACT_VERSIONS",
       "MOSTRA_TEST_VERIFY_LOSE_BROWSER",
       "MOSTRA_BUNDLE_MIRROR",
       "MOSTRA_MCP_TOKEN",

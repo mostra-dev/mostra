@@ -233,6 +233,19 @@ export interface ArtifactManifest {
 export const ArtifactManifest: z.ZodType<ArtifactManifest>;
 
 // @public
+export type ArtifactPathCheck = {
+    readonly ok: true;
+    readonly path: string;
+} | {
+    readonly ok: false;
+    readonly reason: "outside";
+} | {
+    readonly ok: false;
+    readonly reason: "unportable";
+    readonly segment: string;
+};
+
+// @public
 export const artifactPauseMethod: MethodDefinition<ArtifactPauseParams, ArtifactPauseResult>;
 
 // @public
@@ -607,6 +620,9 @@ export const CarryOver: z.ZodType<CarryOver>;
 export function checkArgumentFrames(batches: readonly unknown[]): void;
 
 // @public
+export function checkArtifactPath(path: string): ArtifactPathCheck;
+
+// @public
 export function checkRequest(policy: RequestPolicy, request: RequestFacts): Refusal | undefined;
 
 // @public
@@ -708,6 +724,12 @@ export type ConsoleDiagnosticCode = (typeof consoleDiagnosticCodes)[number];
 
 // @public
 export const consoleDiagnosticCodes: readonly ["MOSTRA_CONSOLE_ERROR", "MOSTRA_CONSOLE_WARNING"];
+
+// @public
+export type ContractName = "embed-engine" | "exporter" | "verify-check" | "anchor-provider" | "connector" | "cli-command";
+
+// @public
+export const ContractName: z.ZodType<ContractName>;
 
 // @public
 export const CONTROL_LABEL_MAX = 48;
@@ -847,6 +869,7 @@ export const depsAddMethod: MethodDefinition<DepsAddParams, DepsAddResult>;
 
 // @public
 export interface DepsAddParams {
+    readonly acceptLicenses?: readonly string[];
     readonly artifact: SourceRef;
     readonly packages: readonly string[];
     readonly requestId?: string;
@@ -927,7 +950,7 @@ export const Diagnostic: z.ZodType<Diagnostic>;
 export const DIAGNOSTIC_AREAS: readonly DiagnosticArea[];
 
 // @public
-export type DiagnosticArea = "MANIFEST" | "BUILD" | "TYPE" | "LINT" | "DEP" | "KIT" | "FIELD" | "ACTION" | "LIVE" | "RUNTIME" | "CONSOLE" | "NETWORK" | "A11Y" | "VISUAL" | "SMOKE" | "REGRESSION" | "TERM" | "PUBLISH" | "SUBMIT" | "HOST" | "HOME" | "HYGIENE" | "SECRET" | "SHARE" | "VERIFY" | "TARGET" | "ENV" | "PLATFORM" | "ARTIFACT" | "CLI" | "REMOTE" | "TEAM";
+export type DiagnosticArea = "MANIFEST" | "BUILD" | "TYPE" | "LINT" | "DEP" | "KIT" | "FIELD" | "ACTION" | "LIVE" | "RUNTIME" | "CONSOLE" | "NETWORK" | "A11Y" | "VISUAL" | "SMOKE" | "REGRESSION" | "TERM" | "PUBLISH" | "SUBMIT" | "HOST" | "HOME" | "HYGIENE" | "SECRET" | "SHARE" | "VERIFY" | "TARGET" | "ENV" | "PLATFORM" | "ARTIFACT" | "CLI" | "REMOTE" | "TEAM" | "PLUGIN" | "PACK" | "LICENSE";
 
 // @public
 export const diagnosticCatalog: Readonly<Record<KnownDiagnosticCode, DiagnosticSpec>>;
@@ -1463,6 +1486,7 @@ export function headerValue(headers: readonly (readonly [string, string])[], nam
 // @public
 export interface HomeConfig {
     readonly dependencies?: DependencyPolicy;
+    readonly licenses?: LicensePolicy;
     readonly path?: string;
     readonly ports?: readonly PortName[];
     readonly submission?: SubmissionPolicy;
@@ -1766,7 +1790,58 @@ export interface JsonRpcSuccess {
 export const JsonRpcSuccess: z.ZodType<JsonRpcSuccess>;
 
 // @public
-export type KnownDiagnosticCode = TeamDiagnosticCode | RemoteDiagnosticCode | ShareDiagnosticCode | CliDiagnosticCode | RegressionDiagnosticCode | SmokeDiagnosticCode | A11yDiagnosticCode | NetworkDiagnosticCode | ConsoleDiagnosticCode | TypeDiagnosticCode | VerifyDiagnosticCode | LiveDiagnosticCode | SecretDiagnosticCode | RuntimeDiagnosticCode | FieldDiagnosticCode | SubmitDiagnosticCode | HygieneDiagnosticCode | DepDiagnosticCode | EnvDiagnosticCode | TargetDiagnosticCode | ArtifactDiagnosticCode | PublishDiagnosticCode | ActionDiagnosticCode | BuildDiagnosticCode | ManifestDiagnosticCode | HomeDiagnosticCode | PlatformDiagnosticCode | HostDiagnosticCode;
+export type KnownDiagnosticCode = LicenseDiagnosticCode | PackDiagnosticCode | PluginDiagnosticCode | TeamDiagnosticCode | RemoteDiagnosticCode | ShareDiagnosticCode | CliDiagnosticCode | RegressionDiagnosticCode | SmokeDiagnosticCode | A11yDiagnosticCode | NetworkDiagnosticCode | ConsoleDiagnosticCode | TypeDiagnosticCode | VerifyDiagnosticCode | LiveDiagnosticCode | SecretDiagnosticCode | RuntimeDiagnosticCode | FieldDiagnosticCode | SubmitDiagnosticCode | HygieneDiagnosticCode | DepDiagnosticCode | EnvDiagnosticCode | TargetDiagnosticCode | ArtifactDiagnosticCode | PublishDiagnosticCode | ActionDiagnosticCode | BuildDiagnosticCode | ManifestDiagnosticCode | HomeDiagnosticCode | PlatformDiagnosticCode | HostDiagnosticCode;
+
+// @public
+export type LicenseAcknowledgment = "not-needed" | "accepted" | "host" | "missing";
+
+// @public
+export const LicenseAcknowledgment: z.ZodType<LicenseAcknowledgment>;
+
+// @public
+export type LicenseClass = "osi-permissive" | "osi-copyleft" | "public-domain" | "free" | "source-available" | "proprietary" | "unknown";
+
+// @public
+export const LicenseClass: z.ZodType<LicenseClass>;
+
+// @public
+export type LicenseDiagnosticCode = (typeof licenseDiagnosticCodes)[number];
+
+// @public
+export const licenseDiagnosticCodes: readonly ["MOSTRA_LICENSE_UNACCEPTED", "MOSTRA_LICENSE_UNDECLARED", "MOSTRA_LICENSE_MISMATCH", "MOSTRA_LICENSE_ACCEPT_INVALID"];
+
+// @public
+export interface LicenseDisclosure {
+    readonly acceptedAt?: string;
+    readonly acknowledgment: LicenseAcknowledgment;
+    readonly class: LicenseClass;
+    readonly id: string;
+    readonly packages: readonly LicensedPackage[];
+    readonly summary?: string;
+    readonly url?: string;
+}
+
+// @public
+export const LicenseDisclosure: z.ZodType<LicenseDisclosure>;
+
+// @public
+export interface LicensedPackage {
+    readonly item?: true;
+    readonly license: string;
+    readonly name: string;
+    readonly version?: string;
+}
+
+// @public
+export const LicensedPackage: z.ZodType<LicensedPackage>;
+
+// @public
+export interface LicensePolicy {
+    readonly accept: readonly string[];
+}
+
+// @public
+export const LicensePolicy: z.ZodType<LicensePolicy>;
 
 // @public
 export class LineSplitter {
@@ -2030,6 +2105,51 @@ export interface OwnerLinkInfo {
 export const OwnerLinkInfo: z.ZodType<OwnerLinkInfo>;
 
 // @public
+export const packAddMethod: MethodDefinition<PackAddParams, PackAddResult>;
+
+// @public
+export interface PackAddParams {
+    readonly acceptLicenses?: readonly string[];
+    readonly artifact: SourceRef;
+    readonly environment?: Readonly<Record<string, string>>;
+    readonly overwrite?: boolean;
+    readonly requestId?: string;
+    readonly specs: readonly string[];
+}
+
+// @public
+export interface PackAddResult {
+    readonly files: readonly PackFileChange[];
+    readonly items: readonly PackItemSummary[];
+    readonly licenses: readonly LicenseDisclosure[];
+    readonly lockDigest?: string;
+    readonly notes: readonly Diagnostic[];
+    readonly packages: readonly AddedPackage[];
+}
+
+// @public
+export type PackDiagnosticCode = (typeof packDiagnosticCodes)[number];
+
+// @public
+export const packDiagnosticCodes: readonly ["MOSTRA_PACK_ADDRESS_INVALID", "MOSTRA_PACK_ITEM_NOT_FOUND", "MOSTRA_PACK_ITEM_INVALID", "MOSTRA_PACK_FETCH_FAILED", "MOSTRA_PACK_OFFLINE", "MOSTRA_PACK_TARGET_INVALID", "MOSTRA_PACK_FILE_EXISTS", "MOSTRA_PACK_CSS_UNIMPORTED", "MOSTRA_PACK_NOT_APPLIED"];
+
+// @public
+export interface PackFileChange {
+    readonly action: "created" | "overwritten" | "unchanged" | "updated";
+    readonly path: string;
+}
+
+// @public
+export interface PackItemSummary {
+    readonly address: string;
+    readonly fields?: readonly string[];
+    readonly name: string;
+    readonly requiredBy?: string;
+    readonly source: string;
+    readonly type: string;
+}
+
+// @public
 export function parseParams<P, R>(definition: MethodDefinition<P, R>, params: unknown, docsBase?: string): P;
 
 // @public
@@ -2049,6 +2169,177 @@ export type PlatformDiagnosticCode = (typeof platformDiagnosticCodes)[number];
 
 // @public
 export const platformDiagnosticCodes: readonly ["MOSTRA_PLATFORM_UNSUPPORTED"];
+
+// @public
+export const pluginAddMethod: MethodDefinition<PluginAddParams, PluginAddResult>;
+
+// @public
+export interface PluginAddParams {
+    readonly acceptLicenses?: readonly string[];
+    readonly artifact?: SourceRef;
+    readonly home?: boolean;
+    readonly packages: readonly string[];
+    readonly requestId?: string;
+}
+
+// @public
+export interface PluginAddResult {
+    readonly added: readonly string[];
+    readonly licenses: readonly LicenseDisclosure[];
+    readonly lockDigest: string;
+    readonly plugins: readonly PluginSummary[];
+}
+
+// @public
+export interface PluginCommandInfo {
+    readonly command: string;
+    readonly export: string;
+    readonly file: string;
+    readonly package: string;
+    readonly scope: PluginScope;
+    readonly version: string;
+}
+
+// @public
+export const pluginCommandsMethod: MethodDefinition<PluginCommandsParams, PluginCommandsResult>;
+
+// @public
+export interface PluginCommandsParams {
+    readonly artifact?: SourceRef;
+}
+
+// @public
+export interface PluginCommandsResult {
+    readonly commands: readonly PluginCommandInfo[];
+}
+
+// @public
+export interface PluginContribution {
+    readonly contract: ContractName;
+    readonly id: string;
+}
+
+// @public
+export const PluginContribution: z.ZodType<PluginContribution>;
+
+// @public
+export type PluginDiagnosticCode = (typeof pluginDiagnosticCodes)[number];
+
+// @public
+export const pluginDiagnosticCodes: readonly ["MOSTRA_PLUGIN_MANIFEST_INVALID", "MOSTRA_PLUGIN_MANIFEST_WARNING", "MOSTRA_PLUGIN_NOT_A_PLUGIN", "MOSTRA_PLUGIN_CONTRACT_UNSUPPORTED", "MOSTRA_PLUGIN_CONFLICT", "MOSTRA_PLUGIN_ENTRY_INVALID", "MOSTRA_PLUGIN_SCOPE_INVALID", "MOSTRA_PLUGIN_NOT_INSTALLED", "MOSTRA_PLUGIN_PLATFORM_UNSUPPORTED", "MOSTRA_PLUGIN_EXPORTER_UNKNOWN", "MOSTRA_PLUGIN_FAILED", "MOSTRA_PLUGIN_OPTIONS_INVALID", "MOSTRA_PLUGIN_SHADOWED"];
+
+// @public
+export const pluginExportMethod: MethodDefinition<PluginExportParams, PluginExportResult>;
+
+// @public
+export interface PluginExportParams {
+    readonly artifact: ArtifactRef;
+    readonly exporter: string;
+    readonly options?: Readonly<Record<string, unknown>>;
+    readonly out: string;
+    readonly version?: number | string;
+}
+
+// @public
+export interface PluginExportResult {
+    readonly entry?: string;
+    readonly exporter: {
+        readonly id: string;
+        readonly package: string;
+    };
+    readonly files: readonly string[];
+    readonly findings: readonly PluginFinding[];
+    readonly versionId: string;
+}
+
+// @public
+export interface PluginFinding {
+    readonly code: string;
+    readonly hint?: string;
+    readonly location?: {
+        readonly file: string;
+        readonly line?: number;
+        readonly column?: number;
+    };
+    readonly message: string;
+    readonly severity: "error" | "warning" | "hint";
+}
+
+// @public
+export const pluginListMethod: MethodDefinition<PluginListParams, PluginListResult>;
+
+// @public
+export interface PluginListParams {
+    readonly artifact?: SourceRef;
+    readonly home?: boolean;
+}
+
+// @public
+export interface PluginListResult {
+    readonly licenses: readonly LicenseDisclosure[];
+    readonly plugins: readonly PluginSummary[];
+}
+
+// @public
+export const pluginRemoveMethod: MethodDefinition<PluginRemoveParams, PluginRemoveResult>;
+
+// @public
+export interface PluginRemoveParams {
+    readonly artifact?: SourceRef;
+    readonly home?: boolean;
+    readonly packages: readonly string[];
+    readonly requestId?: string;
+}
+
+// @public
+export interface PluginRemoveResult {
+    readonly lockDigest: string;
+    readonly plugins: readonly PluginSummary[];
+    readonly removed: readonly string[];
+}
+
+// @public
+export type PluginScope = "artifact" | "home";
+
+// @public
+export const PluginScope: z.ZodType<PluginScope>;
+
+// @public
+export interface PluginSummary {
+    readonly contracts: Readonly<Record<string, string>>;
+    readonly contributions: readonly PluginContribution[];
+    readonly description?: string;
+    readonly diagnostics: readonly Diagnostic[];
+    readonly effects: readonly string[];
+    readonly license: string;
+    readonly name: string;
+    readonly package: string;
+    readonly packs: readonly string[];
+    readonly platforms?: readonly string[];
+    readonly scope: PluginScope;
+    readonly status: "ok" | "error";
+    readonly title?: string;
+    readonly version: string;
+}
+
+// @public
+export const PluginSummary: z.ZodType<PluginSummary>;
+
+// @public
+export const pluginValidateMethod: MethodDefinition<PluginValidateParams, PluginValidateResult>;
+
+// @public
+export interface PluginValidateParams {
+    readonly acceptLicenses?: readonly string[];
+    readonly path: string;
+}
+
+// @public
+export interface PluginValidateResult {
+    readonly diagnostics: readonly Diagnostic[];
+    readonly plugin?: PluginSummary;
+    readonly valid: boolean;
+}
 
 // @public
 export interface PollResult {

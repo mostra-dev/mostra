@@ -27,6 +27,13 @@ import { instanceStatusMethod } from "./instance/status.ts";
 import { livePushMethod } from "./live/push.ts";
 import { mostraInitializeMethod } from "./mostra/initialize.ts";
 import { mostraShutdownMethod } from "./mostra/shutdown.ts";
+import { packAddMethod } from "./pack/add.ts";
+import { pluginAddMethod } from "./plugin/add.ts";
+import { pluginCommandsMethod } from "./plugin/commands.ts";
+import { pluginExportMethod } from "./plugin/export.ts";
+import { pluginListMethod } from "./plugin/list.ts";
+import { pluginRemoveMethod } from "./plugin/remove.ts";
+import { pluginValidateMethod } from "./plugin/validate.ts";
 import { portAddressingExternalBaseMethod } from "./port/addressing-external-base.ts";
 import { portDraftsMirrorMethod } from "./port/drafts-mirror.ts";
 import { portIdentityResolveMethod } from "./port/identity-resolve.ts";
@@ -138,6 +145,13 @@ export const hostMethods: readonly AnyMethod[] = [
   rosterRemoveMethod,
   rosterGetMethod,
   resultsListMethod,
+  pluginValidateMethod,
+  pluginAddMethod,
+  pluginListMethod,
+  pluginRemoveMethod,
+  packAddMethod,
+  pluginExportMethod,
+  pluginCommandsMethod,
   // gen:methods
 ];
 

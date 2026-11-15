@@ -21,6 +21,10 @@ Sans Mono, Copyright 2022 The Spline Sans Mono Project Authors
 (https://github.com/SorkinType/SplineSansMono). The woff2 subsets are those of the Fontsource
 packages @fontsource-variable/figtree, jost and spline-sans-mono 5.3.0.
 
+@mostra/protocol's license tables (src/plugin/spdx.generated.ts) are derived from the SPDX License
+List 3.29.0 (https://github.com/spdx/license-list-data), Copyright The Linux Foundation and its
+contributors, made available under the Creative Commons CC0 1.0 Universal dedication.
+
 The Mostra name, wordmark and mark (packages/themes/marks/) are trademarks of the Mostra project.
 The Apache License grants no rights to use them (its section 6); forks are welcome under another
 name (GOVERNANCE.md).

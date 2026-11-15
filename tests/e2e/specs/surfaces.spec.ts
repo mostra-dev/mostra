@@ -22,7 +22,7 @@ import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
 import { type Browser, type BrowserContext, expect, type Page, test } from "@playwright/test";
 import axe from "axe-core";
-import { openInShell, publishOwn, republish } from "../support/client.ts";
+import { openInShell, publishOwn, republish, settled } from "../support/client.ts";
 import { BIN, Client, removeTree, startDaemon } from "../support/mostra.ts";
 
 const OPERATOR = join(
@@ -367,7 +367,8 @@ test.describe("every surface a person meets (UX-01, D171)", () => {
         await shoot(page, "hosted-named");
         // The report dialog.
         await page.locator("[data-mostra-report]").click();
-        await expect(page.locator("[data-mostra-report-dialog]")).toBeVisible();
+        // Photographed opened, not half-way through its fade (#161).
+        await settled(page.locator("[data-mostra-report-dialog]"));
         await shoot(page, "hosted-report");
         await page.keyboard.press("Escape");
         await expect(page.locator("[data-mostra-report-dialog]")).toBeHidden();

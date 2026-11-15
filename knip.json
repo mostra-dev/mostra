@@ -5,6 +5,10 @@
       "entry": [],
       "ignoreDependencies": ["@changesets/changelog-github", "@mostra/tools", "turbo"]
     },
+    "packages/contract-*": {
+      "entry": ["src/index.ts", "src/common.ts"],
+      "project": ["src/**/*.ts", "test/**/*.ts"]
+    },
     "packages/*": {
       "entry": ["src/index.ts", "scripts/*.ts"],
       "project": ["src/**/*.ts", "scripts/**/*.ts", "test/**/*.ts"],
@@ -42,6 +46,8 @@
       "ignoreDependencies": [
         "tailwindcss",
         "pnpm",
+        "@mostra/contract-cli-command",
+        "@mostra/contract-exporter",
         "@mostra/shell",
         "@mostra/verify",
         "@mostra/warm",
@@ -52,7 +58,11 @@
     "packages/cli": {
       "entry": ["src/index.ts", "src/bin.ts", "src/telemetry/flush-main.ts", "scripts/*.ts"],
       "project": ["src/**/*.ts", "scripts/**/*.ts", "test/**/*.ts"],
-      "ignoreDependencies": ["@mostra/runtime"]
+      "ignoreDependencies": [
+        "@mostra/contract-cli-command",
+        "@mostra/contract-exporter",
+        "@mostra/runtime"
+      ]
     },
     "packages/warm": {
       "entry": [],

@@ -1,0 +1,611 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "title": "Mostra plugin manifest (the \"mostra\" key of package.json) and source pack items (D30)",
+  "x-mostra-revisions": {
+    "plugin-manifest": "2026-11-14"
+  },
+  "definitions": {
+    "BundledLicense": {
+      "type": "object",
+      "properties": {
+        "package": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 214
+        },
+        "license": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 512
+        },
+        "class": {
+          "type": "string",
+          "enum": [
+            "osi-permissive",
+            "osi-copyleft",
+            "public-domain",
+            "free",
+            "source-available",
+            "proprietary",
+            "unknown"
+          ]
+        },
+        "summary": {
+          "type": "string",
+          "maxLength": 400
+        },
+        "url": {
+          "type": "string",
+          "format": "uri"
+        }
+      },
+      "required": [
+        "package",
+        "license"
+      ],
+      "additionalProperties": {}
+    },
+    "PackMostraBlock": {
+      "type": "object",
+      "properties": {
+        "base": {
+          "type": "string",
+          "enum": [
+            "base",
+            "radix"
+          ]
+        },
+        "variants": {
+          "type": "object",
+          "propertyNames": {
+            "type": "string",
+            "enum": [
+              "base",
+              "radix"
+            ]
+          },
+          "additionalProperties": {
+            "type": "string",
+            "minLength": 1
+          }
+        },
+        "fields": {
+          "readOnly": true,
+          "type": "array",
+          "items": {
+            "type": "string",
+            "minLength": 1
+          }
+        },
+        "baselines": {
+          "type": "string",
+          "minLength": 1
+        },
+        "license": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 512
+        },
+        "licenseClass": {
+          "type": "string",
+          "enum": [
+            "osi-permissive",
+            "osi-copyleft",
+            "public-domain",
+            "free",
+            "source-available",
+            "proprietary",
+            "unknown"
+          ]
+        }
+      },
+      "additionalProperties": {},
+      "description": "What a Mostra pack adds to a shadcn registry item: its base, variants, fields, baselines and license."
+    },
+    "PluginCommandEntry": {
+      "type": "object",
+      "properties": {
+        "command": {
+          "type": "string",
+          "pattern": "^[a-z][a-z0-9-]{0,31}(?: [a-z][a-z0-9-]{0,31}){0,3}$"
+        },
+        "entry": {
+          "type": "string",
+          "pattern": "^\\.\\/(?!.*(?:^|\\/)\\.\\.?(?:\\/|$))[^\\\\:*?\"<>|\\0]+$"
+        },
+        "export": {
+          "type": "string",
+          "pattern": "^[A-Za-z_$][\\w$]*$"
+        }
+      },
+      "required": [
+        "command",
+        "entry"
+      ],
+      "additionalProperties": {}
+    },
+    "PluginContributes": {
+      "type": "object",
+      "properties": {
+        "embedEngines": {
+          "readOnly": true,
+          "type": "array",
+          "items": {
+            "$ref": "#/definitions/PluginEntry"
+          }
+        },
+        "exporters": {
+          "readOnly": true,
+          "type": "array",
+          "items": {
+            "$ref": "#/definitions/PluginEntry"
+          }
+        },
+        "verifyChecks": {
+          "readOnly": true,
+          "type": "array",
+          "items": {
+            "$ref": "#/definitions/PluginEntry"
+          }
+        },
+        "anchorProviders": {
+          "readOnly": true,
+          "type": "array",
+          "items": {
+            "$ref": "#/definitions/PluginEntry"
+          }
+        },
+        "connectors": {
+          "readOnly": true,
+          "type": "array",
+          "items": {
+            "$ref": "#/definitions/PluginEntry"
+          }
+        },
+        "cliCommands": {
+          "readOnly": true,
+          "type": "array",
+          "items": {
+            "$ref": "#/definitions/PluginCommandEntry"
+          }
+        },
+        "packs": {
+          "readOnly": true,
+          "type": "array",
+          "items": {
+            "$ref": "#/definitions/PluginPackEntry"
+          }
+        }
+      },
+      "additionalProperties": {}
+    },
+    "PluginEntry": {
+      "type": "object",
+      "properties": {
+        "id": {
+          "type": "string",
+          "pattern": "^[a-z0-9][a-z0-9._-]{0,63}$"
+        },
+        "entry": {
+          "type": "string",
+          "pattern": "^\\.\\/(?!.*(?:^|\\/)\\.\\.?(?:\\/|$))[^\\\\:*?\"<>|\\0]+$"
+        },
+        "export": {
+          "type": "string",
+          "pattern": "^[A-Za-z_$][\\w$]*$"
+        }
+      },
+      "required": [
+        "id",
+        "entry"
+      ],
+      "additionalProperties": {}
+    },
+    "PluginExample": {
+      "type": "object",
+      "properties": {
+        "id": {
+          "type": "string",
+          "pattern": "^[a-z0-9][a-z0-9._-]{0,63}$"
+        },
+        "path": {
+          "type": "string",
+          "pattern": "^\\.\\/(?!.*(?:^|\\/)\\.\\.?(?:\\/|$))[^\\\\:*?\"<>|\\0]+$"
+        },
+        "baselines": {
+          "type": "string",
+          "pattern": "^\\.\\/(?!.*(?:^|\\/)\\.\\.?(?:\\/|$))[^\\\\:*?\"<>|\\0]+$"
+        }
+      },
+      "required": [
+        "id",
+        "path"
+      ],
+      "additionalProperties": {}
+    },
+    "PluginManifest": {
+      "type": "object",
+      "properties": {
+        "name": {
+          "type": "string",
+          "pattern": "^[a-z0-9](?:[a-z0-9-]*[a-z0-9])?(?:\\.[a-z0-9](?:[a-z0-9-]*[a-z0-9])?)+\\/[a-z0-9][a-z0-9._-]{0,63}$"
+        },
+        "title": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 80
+        },
+        "description": {
+          "type": "string",
+          "maxLength": 400
+        },
+        "contracts": {
+          "type": "object",
+          "propertyNames": {
+            "type": "string",
+            "enum": [
+              "embed-engine",
+              "exporter",
+              "verify-check",
+              "anchor-provider",
+              "connector",
+              "cli-command"
+            ]
+          },
+          "additionalProperties": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 128
+          }
+        },
+        "contributes": {
+          "$ref": "#/definitions/PluginContributes"
+        },
+        "effects": {
+          "readOnly": true,
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
+        },
+        "license": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 512
+        },
+        "bundledLicenses": {
+          "readOnly": true,
+          "type": "array",
+          "items": {
+            "$ref": "#/definitions/BundledLicense"
+          }
+        },
+        "skills": {
+          "readOnly": true,
+          "type": "array",
+          "items": {
+            "type": "string",
+            "pattern": "^\\.\\/(?!.*(?:^|\\/)\\.\\.?(?:\\/|$))[^\\\\:*?\"<>|\\0]+$"
+          }
+        },
+        "examples": {
+          "readOnly": true,
+          "type": "array",
+          "items": {
+            "$ref": "#/definitions/PluginExample"
+          }
+        },
+        "platforms": {
+          "readOnly": true,
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
+        }
+      },
+      "required": [
+        "name",
+        "contracts",
+        "contributes",
+        "license"
+      ],
+      "additionalProperties": {},
+      "description": "The \"mostra\" key of a Mostra plugin's package.json (D30): its name, contract ranges, contributions, declared effects and licenses."
+    },
+    "PluginPackEntry": {
+      "type": "object",
+      "properties": {
+        "item": {
+          "type": "string",
+          "pattern": "^\\.\\/(?!.*(?:^|\\/)\\.\\.?(?:\\/|$))[^\\\\:*?\"<>|\\0]+$"
+        }
+      },
+      "required": [
+        "item"
+      ],
+      "additionalProperties": {}
+    },
+    "Registry": {
+      "type": "object",
+      "properties": {
+        "name": {
+          "type": "string"
+        },
+        "homepage": {
+          "type": "string"
+        },
+        "include": {
+          "readOnly": true,
+          "type": "array",
+          "items": {
+            "type": "string",
+            "minLength": 1
+          }
+        },
+        "items": {
+          "readOnly": true,
+          "type": "array",
+          "items": {
+            "$ref": "#/definitions/RegistryItem"
+          }
+        }
+      },
+      "additionalProperties": {}
+    },
+    "RegistryFile": {
+      "type": "object",
+      "properties": {
+        "path": {
+          "type": "string",
+          "minLength": 1
+        },
+        "content": {
+          "type": "string"
+        },
+        "type": {
+          "type": "string",
+          "minLength": 1
+        },
+        "target": {
+          "type": "string"
+        }
+      },
+      "required": [
+        "path",
+        "type"
+      ],
+      "additionalProperties": {}
+    },
+    "RegistryItem": {
+      "type": "object",
+      "properties": {
+        "$schema": {
+          "type": "string"
+        },
+        "name": {
+          "type": "string",
+          "minLength": 1
+        },
+        "type": {
+          "type": "string",
+          "minLength": 1
+        },
+        "title": {
+          "type": "string"
+        },
+        "description": {
+          "type": "string"
+        },
+        "author": {
+          "type": "string"
+        },
+        "dependencies": {
+          "readOnly": true,
+          "type": "array",
+          "items": {
+            "type": "string",
+            "minLength": 1
+          }
+        },
+        "devDependencies": {
+          "readOnly": true,
+          "type": "array",
+          "items": {
+            "type": "string",
+            "minLength": 1
+          }
+        },
+        "registryDependencies": {
+          "readOnly": true,
+          "type": "array",
+          "items": {
+            "type": "string",
+            "minLength": 1
+          }
+        },
+        "files": {
+          "readOnly": true,
+          "type": "array",
+          "items": {
+            "$ref": "#/definitions/RegistryFile"
+          }
+        },
+        "tailwind": {
+          "type": "object",
+          "propertyNames": {
+            "type": "string"
+          },
+          "additionalProperties": {}
+        },
+        "cssVars": {
+          "type": "object",
+          "properties": {
+            "theme": {
+              "type": "object",
+              "propertyNames": {
+                "type": "string"
+              },
+              "additionalProperties": {
+                "type": "string"
+              }
+            },
+            "light": {
+              "type": "object",
+              "propertyNames": {
+                "type": "string"
+              },
+              "additionalProperties": {
+                "type": "string"
+              }
+            },
+            "dark": {
+              "type": "object",
+              "propertyNames": {
+                "type": "string"
+              },
+              "additionalProperties": {
+                "type": "string"
+              }
+            }
+          },
+          "additionalProperties": {}
+        },
+        "css": {
+          "type": "object",
+          "propertyNames": {
+            "type": "string"
+          },
+          "additionalProperties": {
+            "$ref": "#/definitions/__shared#/definitions/schema0"
+          }
+        },
+        "envVars": {
+          "type": "object",
+          "propertyNames": {
+            "type": "string"
+          },
+          "additionalProperties": {
+            "type": "string"
+          }
+        },
+        "meta": {
+          "type": "object",
+          "propertyNames": {
+            "type": "string"
+          },
+          "additionalProperties": {}
+        },
+        "docs": {
+          "type": "string"
+        },
+        "categories": {
+          "readOnly": true,
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
+        },
+        "extends": {
+          "type": "string"
+        },
+        "font": {
+          "type": "object",
+          "properties": {
+            "family": {
+              "type": "string"
+            },
+            "provider": {
+              "type": "string"
+            },
+            "import": {
+              "type": "string"
+            },
+            "variable": {
+              "type": "string"
+            },
+            "weight": {
+              "readOnly": true,
+              "type": "array",
+              "items": {
+                "type": "string"
+              }
+            },
+            "subsets": {
+              "readOnly": true,
+              "type": "array",
+              "items": {
+                "type": "string"
+              }
+            },
+            "selector": {
+              "type": "string"
+            },
+            "dependency": {
+              "type": "string"
+            }
+          },
+          "required": [
+            "family",
+            "provider",
+            "import",
+            "variable"
+          ],
+          "additionalProperties": {}
+        },
+        "mostra": {
+          "allOf": [
+            {
+              "$ref": "#/definitions/PackMostraBlock"
+            }
+          ]
+        }
+      },
+      "required": [
+        "name",
+        "type"
+      ],
+      "additionalProperties": {},
+      "description": "A source pack item (D30): shadcn's registry-item.json, which installs unchanged, plus an optional mostra block."
+    },
+    "__shared": {
+      "definitions": {
+        "schema0": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "readOnly": true,
+              "type": "array",
+              "items": {
+                "anyOf": [
+                  {
+                    "type": "string"
+                  },
+                  {
+                    "type": "object",
+                    "propertyNames": {
+                      "type": "string"
+                    },
+                    "additionalProperties": {
+                      "type": "string"
+                    }
+                  }
+                ]
+              }
+            },
+            {
+              "type": "object",
+              "propertyNames": {
+                "type": "string"
+              },
+              "additionalProperties": {
+                "$ref": "#/definitions/__shared#/definitions/schema0"
+              }
+            }
+          ]
+        }
+      }
+    }
+  }
+}

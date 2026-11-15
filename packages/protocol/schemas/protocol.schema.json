@@ -235,6 +235,76 @@
         "$ref": "#/$defs/MostraShutdownResult"
       }
     },
+    "pack/add": {
+      "direction": "client-to-instance",
+      "mutating": true,
+      "params": {
+        "$ref": "#/$defs/PackAddParams"
+      },
+      "result": {
+        "$ref": "#/$defs/PackAddResult"
+      }
+    },
+    "plugin/add": {
+      "direction": "client-to-instance",
+      "mutating": true,
+      "params": {
+        "$ref": "#/$defs/PluginAddParams"
+      },
+      "result": {
+        "$ref": "#/$defs/PluginAddResult"
+      }
+    },
+    "plugin/commands": {
+      "direction": "client-to-instance",
+      "mutating": false,
+      "params": {
+        "$ref": "#/$defs/PluginCommandsParams"
+      },
+      "result": {
+        "$ref": "#/$defs/PluginCommandsResult"
+      }
+    },
+    "plugin/export": {
+      "direction": "client-to-instance",
+      "mutating": false,
+      "params": {
+        "$ref": "#/$defs/PluginExportParams"
+      },
+      "result": {
+        "$ref": "#/$defs/PluginExportResult"
+      }
+    },
+    "plugin/list": {
+      "direction": "client-to-instance",
+      "mutating": false,
+      "params": {
+        "$ref": "#/$defs/PluginListParams"
+      },
+      "result": {
+        "$ref": "#/$defs/PluginListResult"
+      }
+    },
+    "plugin/remove": {
+      "direction": "client-to-instance",
+      "mutating": true,
+      "params": {
+        "$ref": "#/$defs/PluginRemoveParams"
+      },
+      "result": {
+        "$ref": "#/$defs/PluginRemoveResult"
+      }
+    },
+    "plugin/validate": {
+      "direction": "client-to-instance",
+      "mutating": false,
+      "params": {
+        "$ref": "#/$defs/PluginValidateParams"
+      },
+      "result": {
+        "$ref": "#/$defs/PluginValidateResult"
+      }
+    },
     "port/addressing.externalBase": {
       "direction": "instance-to-host",
       "mutating": false,
@@ -1897,6 +1967,18 @@
       "pattern": "^cmt_[0-7][0-9A-HJKMNP-TV-Z]{25}$",
       "description": "Comment ID: \"cmt_\" followed by a 26-character ULID."
     },
+    "ContractName": {
+      "type": "string",
+      "enum": [
+        "embed-engine",
+        "exporter",
+        "verify-check",
+        "anchor-provider",
+        "connector",
+        "cli-command"
+      ],
+      "description": "An extension contract: each is its own @mostra/contract-<name> package (D30)."
+    },
     "ControlsPolicy": {
       "type": "object",
       "properties": {
@@ -2039,6 +2121,15 @@
           "items": {
             "type": "string",
             "minLength": 1
+          }
+        },
+        "acceptLicenses": {
+          "readOnly": true,
+          "type": "array",
+          "items": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 256
           }
         },
         "requestId": {
@@ -3416,9 +3507,12 @@
           "items": {
             "$ref": "#/$defs/SubmitChannel"
           }
+        },
+        "licenses": {
+          "$ref": "#/$defs/LicensePolicy"
         }
       },
-      "description": "Home settings from a spawning host; path is a check against the instance's home (D84), dependencies the dependency policy (D43), submission the home's policy (D102), ports those the host always provides (D105)."
+      "description": "Home settings from a spawning host; path is a check against the instance's home (D84), dependencies the dependency policy (D43), submission the home's policy (D102), ports those the host always provides (D105), licenses those it accepts for every install (D31)."
     },
     "HomeId": {
       "type": "string",
@@ -3899,6 +3993,113 @@
       ],
       "description": "A successful JSON-RPC 2.0 response."
     },
+    "LicenseAcknowledgment": {
+      "type": "string",
+      "enum": [
+        "not-needed",
+        "accepted",
+        "host",
+        "missing"
+      ],
+      "description": "Where a license's acknowledgment stands: not-needed, accepted, host or missing."
+    },
+    "LicenseClass": {
+      "type": "string",
+      "enum": [
+        "osi-permissive",
+        "osi-copyleft",
+        "public-domain",
+        "free",
+        "source-available",
+        "proprietary",
+        "unknown"
+      ],
+      "description": "What a license is (D31): OSI-approved (permissive, copyleft), public-domain, free, source-available, proprietary or unknown; the last three need an acknowledgment."
+    },
+    "LicenseDisclosure": {
+      "type": "object",
+      "properties": {
+        "id": {
+          "type": "string",
+          "minLength": 1
+        },
+        "class": {
+          "$ref": "#/$defs/LicenseClass"
+        },
+        "packages": {
+          "readOnly": true,
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/LicensedPackage"
+          }
+        },
+        "acknowledgment": {
+          "$ref": "#/$defs/LicenseAcknowledgment"
+        },
+        "acceptedAt": {
+          "type": "string",
+          "format": "date-time",
+          "pattern": "^(?:(?:\\d\\d[2468][048]|\\d\\d[13579][26]|\\d\\d0[48]|[02468][048]00|[13579][26]00)-02-29|\\d{4}-(?:(?:0[13578]|1[02])-(?:0[1-9]|[12]\\d|3[01])|(?:0[469]|11)-(?:0[1-9]|[12]\\d|30)|(?:02)-(?:0[1-9]|1\\d|2[0-8])))T(?:(?:[01]\\d|2[0-3]):[0-5]\\d:[0-5]\\d(?:\\.\\d+)?(?:Z))$"
+        },
+        "summary": {
+          "type": "string"
+        },
+        "url": {
+          "type": "string"
+        }
+      },
+      "required": [
+        "id",
+        "class",
+        "packages",
+        "acknowledgment"
+      ],
+      "description": "A license an install brings: its ID and class, the packages under it and where its acknowledgment stands (D31)."
+    },
+    "LicensePolicy": {
+      "type": "object",
+      "properties": {
+        "accept": {
+          "readOnly": true,
+          "maxItems": 256,
+          "type": "array",
+          "items": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 256
+          }
+        }
+      },
+      "required": [
+        "accept"
+      ],
+      "description": "The licenses a home's host accepts for every install (D31): IDs, or * for any. Kept in config.json."
+    },
+    "LicensedPackage": {
+      "type": "object",
+      "properties": {
+        "name": {
+          "type": "string",
+          "minLength": 1
+        },
+        "version": {
+          "type": "string",
+          "minLength": 1
+        },
+        "license": {
+          "type": "string"
+        },
+        "item": {
+          "type": "boolean",
+          "const": true
+        }
+      },
+      "required": [
+        "name",
+        "license"
+      ],
+      "description": "A package under a license (its name, version and declared license), or a source pack item."
+    },
     "LinkId": {
       "type": "string",
       "pattern": "^lnk_[0-7][0-9A-HJKMNP-TV-Z]{25}$",
@@ -4152,6 +4353,679 @@
         "relayMark"
       ],
       "description": "An owner instance's link on its binding session: its link ID, its relay mark and the hosted home's position it committed."
+    },
+    "PackAddParams": {
+      "type": "object",
+      "properties": {
+        "artifact": {
+          "$ref": "#/$defs/SourceRef"
+        },
+        "specs": {
+          "readOnly": true,
+          "minItems": 1,
+          "type": "array",
+          "items": {
+            "type": "string",
+            "minLength": 1
+          }
+        },
+        "overwrite": {
+          "type": "boolean"
+        },
+        "acceptLicenses": {
+          "readOnly": true,
+          "type": "array",
+          "items": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 256
+          }
+        },
+        "environment": {
+          "type": "object",
+          "propertyNames": {
+            "type": "string",
+            "pattern": "^[A-Za-z_][A-Za-z0-9_]*$"
+          },
+          "additionalProperties": {
+            "type": "string"
+          }
+        },
+        "requestId": {
+          "type": "string",
+          "minLength": 1
+        }
+      },
+      "required": [
+        "artifact",
+        "specs"
+      ]
+    },
+    "PackAddResult": {
+      "type": "object",
+      "properties": {
+        "items": {
+          "readOnly": true,
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/PackItemSummary"
+          }
+        },
+        "files": {
+          "readOnly": true,
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/PackFileChange"
+          }
+        },
+        "packages": {
+          "readOnly": true,
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/AddedPackage"
+          }
+        },
+        "licenses": {
+          "readOnly": true,
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/LicenseDisclosure"
+          }
+        },
+        "lockDigest": {
+          "type": "string",
+          "pattern": "^[0-9a-f]{64}$"
+        },
+        "notes": {
+          "readOnly": true,
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/Diagnostic"
+          }
+        }
+      },
+      "required": [
+        "items",
+        "files",
+        "packages",
+        "licenses",
+        "notes"
+      ]
+    },
+    "PackFileChange": {
+      "type": "object",
+      "properties": {
+        "path": {
+          "type": "string",
+          "minLength": 1
+        },
+        "action": {
+          "type": "string",
+          "enum": [
+            "created",
+            "overwritten",
+            "unchanged",
+            "updated"
+          ]
+        }
+      },
+      "required": [
+        "path",
+        "action"
+      ]
+    },
+    "PackItemSummary": {
+      "type": "object",
+      "properties": {
+        "name": {
+          "type": "string"
+        },
+        "type": {
+          "type": "string"
+        },
+        "address": {
+          "type": "string"
+        },
+        "source": {
+          "type": "string"
+        },
+        "requiredBy": {
+          "type": "string"
+        },
+        "fields": {
+          "readOnly": true,
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
+        }
+      },
+      "required": [
+        "name",
+        "type",
+        "address",
+        "source"
+      ]
+    },
+    "PluginAddParams": {
+      "type": "object",
+      "properties": {
+        "artifact": {
+          "$ref": "#/$defs/SourceRef"
+        },
+        "home": {
+          "type": "boolean"
+        },
+        "packages": {
+          "readOnly": true,
+          "minItems": 1,
+          "type": "array",
+          "items": {
+            "type": "string",
+            "minLength": 1
+          }
+        },
+        "acceptLicenses": {
+          "readOnly": true,
+          "type": "array",
+          "items": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 256
+          }
+        },
+        "requestId": {
+          "type": "string",
+          "minLength": 1
+        }
+      },
+      "required": [
+        "packages"
+      ]
+    },
+    "PluginAddResult": {
+      "type": "object",
+      "properties": {
+        "plugins": {
+          "readOnly": true,
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/PluginSummary"
+          }
+        },
+        "added": {
+          "readOnly": true,
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
+        },
+        "licenses": {
+          "readOnly": true,
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/LicenseDisclosure"
+          }
+        },
+        "lockDigest": {
+          "type": "string",
+          "pattern": "^[0-9a-f]{64}$"
+        }
+      },
+      "required": [
+        "plugins",
+        "added",
+        "licenses",
+        "lockDigest"
+      ]
+    },
+    "PluginCommandInfo": {
+      "type": "object",
+      "properties": {
+        "command": {
+          "type": "string",
+          "minLength": 1
+        },
+        "package": {
+          "type": "string",
+          "minLength": 1
+        },
+        "version": {
+          "type": "string",
+          "minLength": 1
+        },
+        "scope": {
+          "$ref": "#/$defs/PluginScope"
+        },
+        "file": {
+          "type": "string",
+          "pattern": "^(?:\\/|[A-Za-z]:[\\\\/]|\\\\\\\\[^\\\\])"
+        },
+        "export": {
+          "type": "string",
+          "minLength": 1
+        }
+      },
+      "required": [
+        "command",
+        "package",
+        "version",
+        "scope",
+        "file",
+        "export"
+      ]
+    },
+    "PluginCommandsParams": {
+      "type": "object",
+      "properties": {
+        "artifact": {
+          "$ref": "#/$defs/SourceRef"
+        }
+      }
+    },
+    "PluginCommandsResult": {
+      "type": "object",
+      "properties": {
+        "commands": {
+          "readOnly": true,
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/PluginCommandInfo"
+          }
+        }
+      },
+      "required": [
+        "commands"
+      ]
+    },
+    "PluginContribution": {
+      "type": "object",
+      "properties": {
+        "contract": {
+          "$ref": "#/$defs/ContractName"
+        },
+        "id": {
+          "type": "string",
+          "minLength": 1
+        }
+      },
+      "required": [
+        "contract",
+        "id"
+      ],
+      "description": "A plugin's contribution: the contract it implements and its ID."
+    },
+    "PluginExportParams": {
+      "type": "object",
+      "properties": {
+        "artifact": {
+          "$ref": "#/$defs/ArtifactRef"
+        },
+        "version": {
+          "anyOf": [
+            {
+              "type": "integer",
+              "minimum": 1,
+              "maximum": 9007199254740991
+            },
+            {
+              "type": "string",
+              "minLength": 1
+            }
+          ]
+        },
+        "exporter": {
+          "type": "string",
+          "pattern": "^[a-z0-9][a-z0-9._-]{0,63}$"
+        },
+        "out": {
+          "type": "string",
+          "minLength": 1
+        },
+        "options": {
+          "type": "object",
+          "propertyNames": {
+            "type": "string"
+          },
+          "additionalProperties": {}
+        }
+      },
+      "required": [
+        "artifact",
+        "exporter",
+        "out"
+      ]
+    },
+    "PluginExportResult": {
+      "type": "object",
+      "properties": {
+        "files": {
+          "readOnly": true,
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
+        },
+        "entry": {
+          "type": "string"
+        },
+        "versionId": {
+          "type": "string"
+        },
+        "exporter": {
+          "type": "object",
+          "properties": {
+            "id": {
+              "type": "string"
+            },
+            "package": {
+              "type": "string"
+            }
+          },
+          "required": [
+            "id",
+            "package"
+          ]
+        },
+        "findings": {
+          "readOnly": true,
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/PluginFinding"
+          }
+        }
+      },
+      "required": [
+        "files",
+        "versionId",
+        "exporter",
+        "findings"
+      ]
+    },
+    "PluginFinding": {
+      "type": "object",
+      "properties": {
+        "code": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 64
+        },
+        "severity": {
+          "type": "string",
+          "enum": [
+            "error",
+            "warning",
+            "hint"
+          ]
+        },
+        "message": {
+          "type": "string"
+        },
+        "hint": {
+          "type": "string"
+        },
+        "location": {
+          "type": "object",
+          "properties": {
+            "file": {
+              "type": "string"
+            },
+            "line": {
+              "type": "integer",
+              "minimum": 1,
+              "maximum": 9007199254740991
+            },
+            "column": {
+              "type": "integer",
+              "minimum": 1,
+              "maximum": 9007199254740991
+            }
+          },
+          "required": [
+            "file"
+          ]
+        }
+      },
+      "required": [
+        "code",
+        "severity",
+        "message"
+      ],
+      "description": "Something a plugin's contribution reported, in the plugin's own code."
+    },
+    "PluginListParams": {
+      "type": "object",
+      "properties": {
+        "artifact": {
+          "$ref": "#/$defs/SourceRef"
+        },
+        "home": {
+          "type": "boolean"
+        }
+      }
+    },
+    "PluginListResult": {
+      "type": "object",
+      "properties": {
+        "plugins": {
+          "readOnly": true,
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/PluginSummary"
+          }
+        },
+        "licenses": {
+          "readOnly": true,
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/LicenseDisclosure"
+          }
+        }
+      },
+      "required": [
+        "plugins",
+        "licenses"
+      ]
+    },
+    "PluginRemoveParams": {
+      "type": "object",
+      "properties": {
+        "artifact": {
+          "$ref": "#/$defs/SourceRef"
+        },
+        "home": {
+          "type": "boolean"
+        },
+        "packages": {
+          "readOnly": true,
+          "minItems": 1,
+          "type": "array",
+          "items": {
+            "type": "string",
+            "minLength": 1
+          }
+        },
+        "requestId": {
+          "type": "string",
+          "minLength": 1
+        }
+      },
+      "required": [
+        "packages"
+      ]
+    },
+    "PluginRemoveResult": {
+      "type": "object",
+      "properties": {
+        "removed": {
+          "readOnly": true,
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
+        },
+        "plugins": {
+          "readOnly": true,
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/PluginSummary"
+          }
+        },
+        "lockDigest": {
+          "type": "string",
+          "pattern": "^[0-9a-f]{64}$"
+        }
+      },
+      "required": [
+        "removed",
+        "plugins",
+        "lockDigest"
+      ]
+    },
+    "PluginScope": {
+      "type": "string",
+      "enum": [
+        "artifact",
+        "home"
+      ],
+      "description": "Where a plugin is installed: one artifact, or the whole home (exporters and CLI commands)."
+    },
+    "PluginSummary": {
+      "type": "object",
+      "properties": {
+        "package": {
+          "type": "string",
+          "minLength": 1
+        },
+        "version": {
+          "type": "string",
+          "minLength": 1
+        },
+        "name": {
+          "type": "string",
+          "minLength": 1
+        },
+        "title": {
+          "type": "string"
+        },
+        "description": {
+          "type": "string"
+        },
+        "scope": {
+          "$ref": "#/$defs/PluginScope"
+        },
+        "contracts": {
+          "type": "object",
+          "propertyNames": {
+            "type": "string"
+          },
+          "additionalProperties": {
+            "type": "string"
+          }
+        },
+        "contributions": {
+          "readOnly": true,
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/PluginContribution"
+          }
+        },
+        "packs": {
+          "readOnly": true,
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
+        },
+        "effects": {
+          "readOnly": true,
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
+        },
+        "license": {
+          "type": "string"
+        },
+        "platforms": {
+          "readOnly": true,
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
+        },
+        "status": {
+          "type": "string",
+          "enum": [
+            "ok",
+            "error"
+          ]
+        },
+        "diagnostics": {
+          "readOnly": true,
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/Diagnostic"
+          }
+        }
+      },
+      "required": [
+        "package",
+        "version",
+        "name",
+        "scope",
+        "contracts",
+        "contributions",
+        "packs",
+        "effects",
+        "license",
+        "status",
+        "diagnostics"
+      ],
+      "description": "A plugin as plugin/* reports it: its package, manifest, scope, contributions, licenses and whether it loads (D30)."
+    },
+    "PluginValidateParams": {
+      "type": "object",
+      "properties": {
+        "path": {
+          "type": "string",
+          "pattern": "^(?:\\/|[A-Za-z]:[\\\\/]|\\\\\\\\[^\\\\])"
+        },
+        "acceptLicenses": {
+          "readOnly": true,
+          "type": "array",
+          "items": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 256
+          }
+        }
+      },
+      "required": [
+        "path"
+      ]
+    },
+    "PluginValidateResult": {
+      "type": "object",
+      "properties": {
+        "valid": {
+          "type": "boolean"
+        },
+        "plugin": {
+          "$ref": "#/$defs/PluginSummary"
+        },
+        "diagnostics": {
+          "readOnly": true,
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/Diagnostic"
+          }
+        }
+      },
+      "required": [
+        "valid",
+        "diagnostics"
+      ]
     },
     "PollResult": {
       "type": "object",

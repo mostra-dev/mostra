@@ -7,7 +7,8 @@
 #   tools/release/npm-setup.sh [package…]           does it, for every package or those named
 #   tools/release/npm-setup.sh --check [package…]   only reports each package's state
 #
-# For each package of the fixed release group (.changeset/config.json):
+# For each package Mostra publishes: the fixed release group (.changeset/config.json) and the
+# extension contracts, versioned on their own (packages/contract-*, D172 item 1):
 #   1. a package that isn't on npm yet gets a placeholder, 0.0.0-placeholder (npm configures
 #      trusted publishing only for a package that exists);
 #   2. its trusted publisher: GitHub Actions, mostra-dev/mostra, workflow release.yml,
@@ -34,11 +35,19 @@ if [ "${1:-}" = "--check" ]; then
   shift
 fi
 
-group=$(node -e 'console.log(require(process.argv[1]).fixed[0].join("\n"))' "$root/.changeset/config.json")
+group=$(node -e '
+  const { readdirSync, readFileSync } = require("node:fs");
+  const { join } = require("node:path");
+  const [config, packages] = process.argv.slice(1);
+  const contracts = readdirSync(packages)
+    .filter((dir) => dir.startsWith("contract-"))
+    .map((dir) => JSON.parse(readFileSync(join(packages, dir, "package.json"), "utf8")).name);
+  console.log([...require(config).fixed[0], ...contracts].join("\n"));
+' "$root/.changeset/config.json" "$root/packages")
 packages=$group
 if [ "$#" -gt 0 ]; then
   for name in "$@"; do
-    printf '%s\n' "$group" | grep -qxF -- "$name" || { echo "$name isn't in the release group: $(printf '%s ' "$group" | tr '\n' ' ')" >&2; exit 2; }
+    printf '%s\n' "$group" | grep -qxF -- "$name" || { echo "$name isn't a package Mostra publishes: $(printf '%s ' "$group" | tr '\n' ' ')" >&2; exit 2; }
   done
   packages=$(printf '%s\n' "$@")
 fi

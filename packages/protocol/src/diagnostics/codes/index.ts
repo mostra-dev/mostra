@@ -16,10 +16,14 @@ import { type FieldDiagnosticCode, fieldDiagnostics } from "./field.ts";
 import { type HomeDiagnosticCode, homeDiagnostics } from "./home.ts";
 import { type HostDiagnosticCode, hostDiagnostics } from "./host.ts";
 import { type HygieneDiagnosticCode, hygieneDiagnostics } from "./hygiene.ts";
+// gen:area-imports
+import { type LicenseDiagnosticCode, licenseDiagnostics } from "./license.ts";
 import { type LiveDiagnosticCode, liveDiagnostics } from "./live.ts";
 import { type ManifestDiagnosticCode, manifestDiagnostics } from "./manifest.ts";
 import { type NetworkDiagnosticCode, networkDiagnostics } from "./network.ts";
+import { type PackDiagnosticCode, packDiagnostics } from "./pack.ts";
 import { type PlatformDiagnosticCode, platformDiagnostics } from "./platform.ts";
+import { type PluginDiagnosticCode, pluginDiagnostics } from "./plugin.ts";
 import { type PublishDiagnosticCode, publishDiagnostics } from "./publish.ts";
 import { type RegressionDiagnosticCode, regressionDiagnostics } from "./regression.ts";
 import { type RemoteDiagnosticCode, remoteDiagnostics } from "./remote.ts";
@@ -29,7 +33,6 @@ import { type ShareDiagnosticCode, shareDiagnostics } from "./share.ts";
 import { type SmokeDiagnosticCode, smokeDiagnostics } from "./smoke.ts";
 import { type SubmitDiagnosticCode, submitDiagnostics } from "./submit.ts";
 import { type TargetDiagnosticCode, targetDiagnostics } from "./target.ts";
-// gen:area-imports
 import { type TeamDiagnosticCode, teamDiagnostics } from "./team.ts";
 import { type TypeDiagnosticCode, typeDiagnostics } from "./type.ts";
 import { type VerifyDiagnosticCode, verifyDiagnostics } from "./verify.ts";
@@ -46,10 +49,14 @@ export { type FieldDiagnosticCode, fieldDiagnosticCodes } from "./field.ts";
 export { type HomeDiagnosticCode, homeDiagnosticCodes } from "./home.ts";
 export { type HostDiagnosticCode, hostDiagnosticCodes } from "./host.ts";
 export { type HygieneDiagnosticCode, hygieneDiagnosticCodes } from "./hygiene.ts";
+// gen:area-exports
+export { type LicenseDiagnosticCode, licenseDiagnosticCodes } from "./license.ts";
 export { type LiveDiagnosticCode, liveDiagnosticCodes } from "./live.ts";
 export { type ManifestDiagnosticCode, manifestDiagnosticCodes } from "./manifest.ts";
 export { type NetworkDiagnosticCode, networkDiagnosticCodes } from "./network.ts";
+export { type PackDiagnosticCode, packDiagnosticCodes } from "./pack.ts";
 export { type PlatformDiagnosticCode, platformDiagnosticCodes } from "./platform.ts";
+export { type PluginDiagnosticCode, pluginDiagnosticCodes } from "./plugin.ts";
 export { type PublishDiagnosticCode, publishDiagnosticCodes } from "./publish.ts";
 export { type RegressionDiagnosticCode, regressionDiagnosticCodes } from "./regression.ts";
 export { type RemoteDiagnosticCode, remoteDiagnosticCodes } from "./remote.ts";
@@ -59,7 +66,6 @@ export { type ShareDiagnosticCode, shareDiagnosticCodes } from "./share.ts";
 export { type SmokeDiagnosticCode, smokeDiagnosticCodes } from "./smoke.ts";
 export { type SubmitDiagnosticCode, submitDiagnosticCodes } from "./submit.ts";
 export { type TargetDiagnosticCode, targetDiagnosticCodes } from "./target.ts";
-// gen:area-exports
 export { type TeamDiagnosticCode, teamDiagnosticCodes } from "./team.ts";
 export { type TypeDiagnosticCode, typeDiagnosticCodes } from "./type.ts";
 export { type VerifyDiagnosticCode, verifyDiagnosticCodes } from "./verify.ts";
@@ -67,6 +73,9 @@ export { type VerifyDiagnosticCode, verifyDiagnosticCodes } from "./verify.ts";
 /** Every code in the catalog. Codes are semver surface and are never removed (AX-03). */
 export type KnownDiagnosticCode =
   // gen:area-codes
+  | LicenseDiagnosticCode
+  | PackDiagnosticCode
+  | PluginDiagnosticCode
   | TeamDiagnosticCode
   | RemoteDiagnosticCode
   | ShareDiagnosticCode
@@ -99,6 +108,9 @@ export type KnownDiagnosticCode =
 /** Every cataloged code with its severity, phase, title, default hint and docs text. */
 export const diagnosticCatalog: Readonly<Record<KnownDiagnosticCode, DiagnosticSpec>> = {
   // gen:area-spreads
+  ...licenseDiagnostics,
+  ...packDiagnostics,
+  ...pluginDiagnostics,
   ...teamDiagnostics,
   ...remoteDiagnostics,
   ...shareDiagnostics,

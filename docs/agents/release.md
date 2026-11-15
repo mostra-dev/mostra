@@ -19,7 +19,12 @@ bundles, their `SHA256SUMS` and attestations, and (once a crate is publishable) 
    on anything npm doesn't answer clearly, and can simply be run again; it ends with "Done: every
    package has its trusted publisher". Each configuration expires unless it publishes within 2
    days, so the release runs right after. `--check` reports the state without changing anything
-   (it reads "unreadable EOTP" where npm wants a second factor).
+   (it reads "unreadable EOTP" where npm wants a second factor). A package new to npm needs the
+   same steps before the release that first carries it, named on the command line: the six
+   extension contracts (WP-16, versioned on their own outside the group) are
+   `tools/release/npm-setup.sh @mostra/contract-anchor-provider @mostra/contract-cli-command
+   @mostra/contract-connector @mostra/contract-embed-engine @mostra/contract-exporter
+   @mostra/contract-verify-check`.
 3. **Open the version pull request.** From the new `origin/main`, on a branch `release/v<version>`:
    `GITHUB_TOKEN=$(gh auth token) pnpm changeset version` (the changelog names each change's pull
    request through GitHub's API), then `node tools/release/versions.ts sync` (the host crate and the

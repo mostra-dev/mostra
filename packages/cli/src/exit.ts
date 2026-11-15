@@ -63,6 +63,11 @@ const BY_AREA: Readonly<Record<DiagnosticArea, ExitCode>> = {
   REMOTE: EXIT.environment,
   // A roster or a team wait the artifact can't take (D168): the artifact's, like a refused submit.
   TEAM: EXIT.failure,
+  // A plugin, a source pack or a license an install brings (D30, D31): the artifact's, like a
+  // package `mostra add` can't add.
+  PLUGIN: EXIT.failure,
+  PACK: EXIT.failure,
+  LICENSE: EXIT.failure,
 };
 
 /** Codes whose exit code isn't their area's. */
@@ -82,6 +87,8 @@ const BY_CODE: Readonly<Record<string, ExitCode>> = {
   MOSTRA_HOME_INTEGRITY: EXIT.failure,
   MOSTRA_HOME_NOT_ALWAYS_ON: EXIT.ok,
   MOSTRA_VERIFY_CRASHED: EXIT.environment,
+  // `--accept-license` given something that isn't a license: the command line.
+  MOSTRA_LICENSE_ACCEPT_INVALID: EXIT.usage,
 };
 
 /** The exit code a diagnostic ends a command with. An unknown area is an environment error. */

@@ -57,11 +57,15 @@ const REMOTE_ACCESS = [
   OPERATOR_RELAY,
 ];
 const REMOTE = [...REMOTE_HOSTING, ...REMOTE_ACCESS];
+// Plugins and source packs (WP-16): real installs from a local registry, plugin children and
+// local registry servers, a group of their own, since `core` has no room for them.
+const EXTENSIONS = ["test/integration/plugins.test.ts", "test/integration/packs.test.ts"];
 export const INTEGRATION_GROUPS: Record<string, { include: string[]; exclude: string[] }> = {
   core: {
     include: ["test/integration/**/*.test.ts"],
-    exclude: [VERIFY_SUITES, DEV, ...FAULTS, ...REMOTE],
+    exclude: [VERIFY_SUITES, DEV, ...FAULTS, ...REMOTE, ...EXTENSIONS],
   },
+  extensions: { include: EXTENSIONS, exclude: [] },
   remote: { include: REMOTE_HOSTING, exclude: [] },
   "remote-access": { include: REMOTE_ACCESS, exclude: [] },
   verify: { include: [VERIFY_SUITES, DEV], exclude: [VERIFY_FAILURES] },
@@ -137,6 +141,7 @@ export const INTEGRATION_GROUPS: Record<string, { include: string[]; exclude: st
     exclude: [],
   },
   "windows-verify-failures": { include: [VERIFY_FAILURES], exclude: [] },
+  "windows-extensions": { include: EXTENSIONS, exclude: [] },
   "windows-clients": { include: [], exclude: [] },
 };
 const group = process.env["MOSTRA_TEST_GROUP"];

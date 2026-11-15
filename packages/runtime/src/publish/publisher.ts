@@ -36,12 +36,14 @@ import { createZstdCompress } from "node:zlib";
 import {
   type ArtifactCreateParams,
   type ArtifactCreateResult,
+  type ArtifactDetail,
   type ArtifactExportParams,
   type ArtifactExportResult,
   ArtifactId,
   type ArtifactImportParams,
   type ArtifactManifest,
   type ArtifactPublishParams,
+  type ArtifactRef,
   type ArtifactVerifyParams,
   BROWSER_PROTOCOL_REVISION,
   createDiagnostic,
@@ -53,9 +55,15 @@ import {
   type SourceRef,
   type SubmissionPolicy,
   type VerifyVerdict,
+  type VersionSummary,
 } from "@mostra/protocol";
 import type { RenderMode } from "../builder/index.ts";
-import { type Dependencies, lockKey, type Resolution } from "../deps/index.ts";
+import {
+  type Dependencies,
+  type DependencyTarget,
+  lockKey,
+  type Resolution,
+} from "../deps/index.ts";
 import { type Faults, noFaults } from "../faults.ts";
 import type { Gate } from "../gate.ts";
 import {
@@ -125,6 +133,13 @@ export interface PublisherOptions {
   readonly gate?: Gate;
 }
 
+/** A version an export reads: its artifact, its summary and its sealed directory. */
+export interface ExportableVersion {
+  readonly detail: ArtifactDetail;
+  readonly summary: VersionSummary;
+  readonly versionDir: string;
+}
+
 /** Publishes and creates artifacts. */
 export interface Publisher {
   /** `artifact/publish`: gated by verify (D41). */
@@ -139,6 +154,25 @@ export interface Publisher {
   exportBundle(params: ArtifactExportParams): Promise<ArtifactExportResult>;
   /** `artifact/import`: makes a bundle a version of this home, with its identity (RM-01). */
   importBundle(params: ArtifactImportParams): Promise<PublishReceipt>;
+  /** A published version, checked whole, as an export reads it (`artifact/export`, `plugin/export`). */
+  exportable(params: {
+    readonly artifact: ArtifactRef;
+    readonly version?: number | string;
+  }): Promise<ExportableVersion>;
+  /** Runs `task` holding the instance's gate shared, as installs do: the home's own plugins. */
+  withHome<T>(task: () => Promise<T>): Promise<T>;
+  /**
+   * Runs `task` for an artifact's source, holding its path's queue (as its publishes and
+   * `deps/add` do) and the instance's gate shared, with the working lockfile's target: what
+   * `plugin/*` and `pack/add` change (WP-16).
+   */
+  withArtifact<T>(
+    ref: SourceRef,
+    task: (artifact: {
+      readonly target: DependencyTarget;
+      readonly source: ResolvedSource;
+    }) => Promise<T>,
+  ): Promise<T>;
 }
 
 const ENTRY_NAMES = ["index.tsx", "index.jsx", "index.mdx"];
@@ -490,6 +524,9 @@ export function createPublisher(options: PublisherOptions): Publisher {
       artifactDir: source.root,
       artifactPath: path,
     });
+    // A lockfile that names plugins passed the plugin gate inside `resolve` (D172 item 5): its
+    // ranges, conflicts and licenses, then its entries, so no version records plugins this release
+    // can't load, or a license nobody acknowledged.
     faults.at("publish:after-dependencies");
 
     // 3. Digests (DATA_MODEL §2).
@@ -658,7 +695,7 @@ export function createPublisher(options: PublisherOptions): Publisher {
           // A manifest or the dependencies that can't be read are the verdict, not a failure of verify.
           if (
             error instanceof RpcError &&
-            /^MOSTRA_(MANIFEST|DEP|ARTIFACT|BUILD)_/.test(error.diagnostic.code)
+            /^MOSTRA_(MANIFEST|DEP|ARTIFACT|BUILD|PLUGIN|LICENSE)_/.test(error.diagnostic.code)
           ) {
             return failedVerdict(path, error.diagnostic);
           }
@@ -881,9 +918,34 @@ export function createPublisher(options: PublisherOptions): Publisher {
     exportBundle: (params) => gated(() => exportBundle(params)),
     importBundle: (params) =>
       gated(() => idempotent(requestKey("artifact/import", params), () => importBundle(params))),
+    exportable: (params) => gated(() => exportable(params)),
+    withHome: (task) => gated(task),
+    withArtifact: (ref, task) =>
+      gated(async () => {
+        const path = pathOf(ref);
+        const source = await resolveSource(path);
+        return queue.run(`path:${source.bindingPath}`, async () => {
+          const manifestId = extractManifest(source.entry, await readEntry(source)).manifest?.id;
+          return task({
+            target: {
+              key: lockKey(
+                manifestId ?? registry.artifactAt(source.bindingPath),
+                source.bindingPath,
+              ),
+              artifactDir: source.root,
+              artifactPath: path,
+            },
+            source,
+          });
+        });
+      }),
   };
 
-  async function exportBundle(params: ArtifactExportParams): Promise<ArtifactExportResult> {
+  /** A published version of an artifact, checked whole: what an export reads. */
+  async function exportable(params: {
+    readonly artifact: ArtifactRef;
+    readonly version?: number | string;
+  }): Promise<ExportableVersion> {
     // `artifact` arrives canonical: the method's handler made it so (canonicalRef).
     const detail = registry.get(params.artifact);
     const wanted = params.version;
@@ -916,6 +978,11 @@ export function createPublisher(options: PublisherOptions): Publisher {
         }),
       );
     }
+    return { detail, summary, versionDir };
+  }
+
+  async function exportBundle(params: ArtifactExportParams): Promise<ArtifactExportResult> {
+    const { detail, summary, versionDir } = await exportable(params);
     const files = await writeBundle({
       versionDir,
       snapshot: registry.store.snapshotPath(detail.id, summary.sourceDigest),
@@ -1007,6 +1074,7 @@ export function createPublisher(options: PublisherOptions): Publisher {
           artifactDir: source.root,
           artifactPath: path,
           packages: params.packages,
+          ...(params.acceptLicenses !== undefined ? { accept: params.acceptLicenses } : {}),
           request: requestKey("deps/add", params),
         });
       });

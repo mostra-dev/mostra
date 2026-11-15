@@ -6,7 +6,14 @@
 import { cpSync, readFileSync, writeFileSync } from "node:fs";
 import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
-import { expect, type FrameLocator, type Page, type TestInfo, test } from "@playwright/test";
+import {
+  expect,
+  type FrameLocator,
+  type Locator,
+  type Page,
+  type TestInfo,
+  test,
+} from "@playwright/test";
 import type { Client } from "./mostra.ts";
 
 /** The e2e suites' own fixture artifacts. */
@@ -183,6 +190,25 @@ async function rendering(page: Page): Promise<string> {
     lines.push(`  ${kind} ${frame.url().split("#")[0]}: ${seen}`);
   }
   return `What the browser renders (#39):\n${lines.join("\n")}`;
+}
+
+/**
+ * Waits until `locator`'s element has opened: visible, and every transition of its own (a
+ * dialog's `@starting-style` fade and scale) finished. A click on an element still moving can land
+ * where it no longer is: on a slow runner Playwright judged a radio of the report dialog stable
+ * while the dialog still sat at its `@starting-style` scale (its 18 px box measured 17.46 px, 0.97 of
+ * it), and the transition moved it before the click arrived (#161).
+ */
+export async function settled(locator: Locator): Promise<void> {
+  await expect(locator).toBeVisible();
+  await locator.evaluate((element) =>
+    // A transition cancelled (the dialog closed) has nothing left to wait for.
+    Promise.all(
+      element
+        .getAnimations({ subtree: true })
+        .map((animation) => animation.finished.catch(() => undefined)),
+    ),
+  );
 }
 
 /** Waits until the shell says every answer is saved. */

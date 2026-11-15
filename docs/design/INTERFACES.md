@@ -491,7 +491,7 @@ What WP-10 fixed (D140 items 13, 16, 17):
 - **One exit-code table** keyed by diagnostic code (`EXIT` and `exitCodeFor` in `@mostra/cli`): each area has a code (`CLI` 2; `HOST`, `HOME`, `ENV`, `PLATFORM` and `SHARE` 3; the others 1), and a few codes differ from their area: `MOSTRA_HOST_TIMEOUT` 4 (`--timeout`, the request limit; `wait --timeout` is the wait's own length and ends with 5; `host` and `dev` run until Ctrl-C or their connection ends, and refuse `--timeout` with `MOSTRA_CLI_USAGE`), the conflicts (`MOSTRA_SUBMIT_ALREADY`, `MOSTRA_SUBMIT_REVISION_MOVED`, `MOSTRA_FIELD_CONFLICT`, `MOSTRA_FIELD_MUTATION_ID_REUSED`, `MOSTRA_HOST_REQUEST_ID_REUSED`) 6, `MOSTRA_HOST_INVALID_PARAMS` 2, `MOSTRA_HOME_INTEGRITY` 1. A test maps every catalog code.
 - **Help** is generated from the command definitions: a summary, usage, arguments, flags, the global flags, `Output:` (the result type and its `mostra docs` topic), exit codes and one example. `mostra <command> --help --json` prints the definition itself (arguments, flags with types and defaults, exit codes); `docs/reference/cli.md` is the same text, checked in CI.
 - **`mostra docs [topic]`** prints the bundled reference by stable slug: `cli`, `telemetry`, each diagnostic code (`mostra docs MOSTRA_DEP_MISSING`), and the Agent Skill as `guide`, `guide/<reference>`, `guide/studio.css` and `guide/examples/<name>` (D162); without a topic the index; an unknown topic is `MOSTRA_CLI_USAGE` with the nearest topics; `--json` gives `{ topic, markdown, url }`.
-- **The command set** is D60's without the commands later packages add with their packages (`review export`, `export`, `mcp`, `plugin`, `term`, `run`, D140 item 13), plus `state get|set|patch`, `daemon restart|uninstall` and `telemetry on|off|status`. WP-13 added `share <artifact> --tailnet | --public [--via cloudflare|funnel] [--ttl <d>] [--scope …] [--viewer <ref>]`, `share stop <shareId|artifact>` and `share list [artifact] [--all]`, clients of `share/*`; `--public` is a Cloudflare quick tunnel unless `--via funnel`, since a Funnel URL names the device and the tailnet (D158 item 4). An unknown command is `MOSTRA_CLI_UNKNOWN_COMMAND`, listing the commands; every `mostra …` a diagnostic's hint or fix names parses under the definitions (a test).
+- **The command set** is D60's without the commands later packages add with their packages (`review export`, `export`, `mcp`, `plugin`, `term`, `run`, D140 item 13), plus `state get|set|patch`, `daemon restart|uninstall` and `telemetry on|off|status`. WP-13 added `share <artifact> --tailnet | --public [--via cloudflare|funnel] [--ttl <d>] [--scope …] [--viewer <ref>]`, `share stop <shareId|artifact>` and `share list [artifact] [--all]`, clients of `share/*`; `--public` is a Cloudflare quick tunnel unless `--via funnel`, since a Funnel URL names the device and the tailnet (D158 item 4). WP-16 added `plugin validate|add|list|remove`, items in `mostra add`, `export --as <exporter>` for plugins' exporters, and plugins' own commands, which the runner tries when a command line names none of Mostra's (§14, D172). An unknown command is `MOSTRA_CLI_UNKNOWN_COMMAND`, listing the commands; every `mostra …` a diagnostic's hint or fix names parses under the definitions (a test).
 - **No prompt** but telemetry's question (D140 item 11), and only on terminals.
 - **Telemetry** (D119, D140 items 1 to 11) lives in `@mostra/cli` alone; `docs/reference/telemetry.md` publishes its events.
 
@@ -550,7 +550,7 @@ interface Diagnostic {
   code: `MOSTRA_${Area}_${string}`;   // codes are semver surface (AX-03)
   // Area: MANIFEST BUILD TYPE LINT DEP KIT FIELD ACTION LIVE RUNTIME CONSOLE NETWORK A11Y VISUAL SMOKE REGRESSION
   //       TERM PUBLISH SUBMIT HOST HOME HYGIENE SECRET SHARE VERIFY TARGET ENV PLATFORM ARTIFACT (D92) CLI (D140)
-  //       REMOTE (D165)
+  //       REMOTE (D165) PLUGIN PACK LICENSE (D172)
   // (ROUND-3 §9's list, extended additively here; this list is the authority)
   severity: "error" | "warning" | "hint";  // error only for definite failures; smoke observations are warnings (D72)
   message: string;                     // what is wrong
@@ -588,7 +588,68 @@ What WP-09 fixed (D138):
 
 ## 14. Extension contracts and the plugin manifest
 
-These are specified in [rounds/ROUND-3.md §6](rounds/ROUND-3.md#6-extensions-ex1-to-ex3) (D65): six contract packages with `define*` blueprints, the `"mostra"` manifest key validated by `mostra plugin validate`, shadcn-compatible packs, loading order, conflict rules and license acknowledgment (D31).
+The shapes are [rounds/ROUND-3.md §6](rounds/ROUND-3.md#6-extensions-ex1-to-ex3) (D65), as WP-16 built them (D172).
+
+**The contracts** (D172 items 1 and 2). Six packages, each with no dependency and its own version outside the release's fixed group. Each exports its `define*` (a checked definition, stamped `contract: { name, version }`), its `is*`, `stampCompatible`, `VERSION`, and its types; `@mostra/protocol/plugin`'s `PLUGIN_CONTRACTS` lists, per contract, its package, the versions this release implements, where it runs and which scopes it allows, and `stampServed(stamp, contract, implemented?)` applies the stamp rule to them: the same contract and line (its major, and at 0.x its minor), whatever the patch, since the manifest's range says which version a plugin needs.
+
+| Package | Definition | Runs | Scopes |
+|---|---|---|---|
+| `@mostra/contract-exporter` | `defineExporter({ id, title?, description?, output: { mediaType, layout: "file" \| "directory", extension? }, options?: JsonSchema, export({ version: { artifactId, versionId, number, title, description?, manifest, registry, server, publishedAt }, files, options }, context) → { files: { path, content: string \| Uint8Array }[], entry?, findings? } })`; `options` are checked against its schema before it runs, and a `file` exporter returns exactly one file, written at `out` | a plugin child | artifact, home |
+| `@mostra/contract-cli-command` | `defineCliCommand({ path: string[] (1 to 4 words), summary, args?, flags?, example?, run({ args, flags, cwd, json }, context) → { result, human?, exit? } })`; `context.call(method, params)` reaches the host protocol | the CLI's process | artifact, home |
+| `@mostra/contract-connector` | `defineConnector({ id, config: JsonSchema, read({ config }, context) → { value, revision? }, subscribe?, write? })`; `liveSource(connector, config, options)` makes a `defineLive` source | the worker | artifact |
+| `@mostra/contract-verify-check` | `defineVerifyCheck({ id, stage?: "source" \| "build", files?: globs, run({ source, build?, manifest }, context) → { findings } })` | `verify` | artifact |
+| `@mostra/contract-embed-engine` | `defineEmbedEngine({ id, sources: string[], capabilities?, mount({ element, source, size, options }, context) → { resize?({ size }), snapshot?(request), seek?({ time }), dispose() } })` | the page | artifact |
+| `@mostra/contract-anchor-provider` | `defineAnchorProvider({ id, kind, matches?({ target, point?, selection? }, context) → boolean, serialize({ target, point?, selection? }, context) → { anchor, label? } \| undefined, resolve({ anchor, root }, context) → { element?, rect?, label? } })` | the shell's overlay | artifact |
+
+A finding (`Finding`) is `{ code (upper-case letters, digits and _), severity: "error" | "warning" | "hint", message, hint?, location? }`, in the contribution's own codes. Every context carries `signal` (a `Cancellation`), `log(message)` and `mostraVersion`.
+
+**The manifest** is the `"mostra"` key of the plugin's `package.json`, revision `PLUGIN_MANIFEST_REVISION` (`2026-11-14`), schema `@mostra/protocol/schemas/plugin-manifest.schema.json`, checked by `checkPluginManifest` (D172 item 3):
+
+```jsonc
+{
+  "name": "dev.acme/pdf",                        // <reverse-DNS namespace>/<name>
+  "title": "PDF export",
+  "description": "Prints a version to PDF.",
+  "contracts": { "exporter": "^0.1.0" },        // a semver range per contract
+  "contributes": {
+    "exporters": [{ "id": "pdf", "entry": "./dist/exporter.js", "export": "default" }],
+    "cliCommands": [{ "command": "pdf preview", "entry": "./dist/preview.js" }],
+    "packs": [{ "item": "./registry/report.json" }]
+  },
+  "effects": ["filesystem"],                     // declared, never enforced
+  "license": "MIT",                              // SPDX expression
+  "bundledLicenses": [{ "package": "engine", "license": "LicenseRef-Engine", "class": "source-available",
+                        "summary": "Free for individuals.", "url": "https://example.com/license" }],
+  "skills": ["./skills/pdf/SKILL.md"],
+  "examples": [{ "id": "report", "path": "./examples/report", "baselines": "./baselines/report" }],
+  "platforms": ["darwin", "linux", "win32"]
+}
+```
+
+**The methods** (host protocol, revision `2026-10-10`, additive):
+
+```text
+plugin/validate  { path, acceptLicenses? }                         → { valid, plugin?: PluginSummary, diagnostics }
+plugin/add       { artifact?: SourceRef, home?: true, packages, acceptLicenses?, requestId? }
+                                                                   → { plugins: PluginSummary[], added, licenses: LicenseDisclosure[], lockDigest }
+plugin/list      { artifact? | home? }                             → { plugins, licenses }
+plugin/remove    { artifact? | home?, packages, requestId? }       → { removed, plugins, lockDigest }
+plugin/export    { artifact: ArtifactRef, version?, exporter, out, options? }
+                                                                   → { files, entry?, versionId, exporter: { id, package }, findings: PluginFinding[] }
+plugin/commands  { artifact?: SourceRef }                          → { commands: { command, package, version, scope, file, export }[] }
+pack/add         { artifact: SourceRef, specs, overwrite?, acceptLicenses?, environment?, requestId? }
+deps/add         { artifact, packages, acceptLicenses?, requestId? }   (WP-16 adds acceptLicenses, for an artifact with plugins)
+                                                                   → { items, files: { path, action: "created" | "updated" | "overwritten" | "unchanged" }[],
+                                                                       packages: AddedPackage[], licenses, lockDigest?, notes: Diagnostic[] }
+```
+
+Exactly one of `artifact` and `home` names a scope (`MOSTRA_PLUGIN_SCOPE_INVALID`). `PluginSummary` is `{ package, version, name, title?, description?, scope, contracts, contributions: { contract, id }[], packs, effects, license, platforms?, status: "ok" | "error", diagnostics }`. `plugin/validate` reads a package's licenses before it loads any entry: one that needs an acknowledgment `acceptLicenses` doesn't give is a `MOSTRA_LICENSE_UNACCEPTED` diagnostic, `valid: false`, and the entries aren't loaded. `pack/add`'s `environment` is the caller's variables for reading the items (`packVariables(componentsJson)` names them: those the artifact's `components.json` uses in a registry's `params` and `headers`, `GH_TOKEN`, `GITHUB_TOKEN`, `REGISTRY_URL` and the proxies), over the instance's; it isn't part of the request a `requestId` records. An item's `source` names where it was read without the query. `LicenseDisclosure` is `{ id, class: LicenseClass, packages: { name, version?, license, item? }[], acknowledgment: "not-needed" | "accepted" | "host" | "missing", acceptedAt?, summary?, url? }`, `acceptedAt` only for an acknowledgment this call made (the lockfile keeps no time, D172 item 6; the supervisor logs `plugins.license_accepted`). `HomeConfig.licenses` is `LicensePolicy` `{ accept: string[] }` (`"*"` for every license, D172 item 9).
+
+**The CLI** (D172 items 4, 10, 11): `mostra plugin validate [dir] [--accept-license <id>…]`, `mostra plugin add <package…> [--artifact <path|id> | --global] [--accept-license <id>…]`, `mostra plugin list [--artifact | --global]`, `mostra plugin remove <package…> [--artifact | --global]`; `mostra add <package|item…> [--artifact] [--overwrite] [--accept-license <id>…]`, where an item is a URL, a local `.json`, `owner/repo/item[#ref]`, `@namespace/item` (a namespace the artifact's `components.json` registers) or `plugin:<package>/<item>`; `mostra export <artifact> --as <exporter> --out <path> [--option name=value…]` (a value is read as JSON when it parses); `mostra add` of npm packages alone takes `--accept-license` too, for an artifact whose plugins they change; and any plugin command as `mostra <its words>`.
+
+**Diagnostics:** the areas `PLUGIN` (`MANIFEST_INVALID`, `MANIFEST_WARNING`, `NOT_A_PLUGIN`, `CONTRACT_UNSUPPORTED`, `CONFLICT`, `ENTRY_INVALID`, `SCOPE_INVALID`, `NOT_INSTALLED`, `PLATFORM_UNSUPPORTED`, `EXPORTER_UNKNOWN`, `FAILED`, `OPTIONS_INVALID`, and `SHADOWED`, a warning), `PACK` (`ADDRESS_INVALID`, `ITEM_NOT_FOUND`, `ITEM_INVALID`, `FETCH_FAILED`, `OFFLINE`, `TARGET_INVALID`, `FILE_EXISTS`, `CSS_UNIMPORTED`, `NOT_APPLIED`) and `LICENSE` (`UNACCEPTED`, `UNDECLARED`, `MISMATCH`, `ACCEPT_INVALID`), each exiting 1 but `MOSTRA_LICENSE_ACCEPT_INVALID` (2).
+
+**Packs** are shadcn registry items (`registry-item.json`), with an optional `mostra` block (`base`, `variants`, `fields`, `baselines`, `license`, `licenseClass`) that shadcn ignores; `RegistryItemSchema` and `parsePackAddress` are in `@mostra/protocol/plugin`. Where their files land and how their CSS joins the artifact is D172 item 10.
 
 ## 15. Export formats
 

@@ -7,8 +7,11 @@
  *   node tools/release/versions.ts rehearse [--version <v>]
  *                                             sets that version (default `next`) in the working
  *                                             tree (CI only)
- *   node tools/release/versions.ts sync       sets the publishable crates to the group's version
- *   node tools/release/versions.ts check      fails when a crate's version isn't the group's
+ *   node tools/release/versions.ts sync       sets the publishable crates to the group's version, and
+ *                                             writes each extension contract's own version into its
+ *                                             `src/version.ts` and `@mostra/protocol`'s table
+ *   node tools/release/versions.ts check      fails when a crate's version isn't the group's, or a
+ *                                             contract's version isn't where its code says it
  *
  * A pull request (or `main` before its version pull request) carries changesets for a version
  * npm doesn't have yet, while its package.json files still name the last release, which npm
@@ -64,8 +67,10 @@ export function current(root: string = ROOT): string {
 }
 
 /** The highest bump the pending changesets ask of the group's packages, if any. */
-export function pendingBump(root: string = ROOT): Bump | undefined {
-  const members = new Set(group(root));
+export function pendingBump(
+  root: string = ROOT,
+  members: ReadonlySet<string> = new Set(group(root)),
+): Bump | undefined {
   let highest: Bump | undefined;
   const dir = join(root, ".changeset");
   for (const name of readdirSync(dir)) {
@@ -169,6 +174,106 @@ function setCrateVersion(root: string, name: string, path: string, version: stri
   );
 }
 
+/**
+ * The extension contracts (D30, D172): `@mostra/contract-*`, each versioned on its own, outside the
+ * fixed group, with the version its pending changesets make.
+ */
+export function contracts(
+  root: string = ROOT,
+): { name: string; path: string; version: string; next: string; contract: string }[] {
+  const out: { name: string; path: string; version: string; next: string; contract: string }[] = [];
+  for (const [name, path] of manifests(root)) {
+    if (!name.startsWith("@mostra/contract-")) continue;
+    const version = (JSON.parse(readFileSync(path, "utf8")) as { version: string }).version;
+    const bump = pendingBump(root, new Set([name]));
+    out.push({
+      name,
+      path,
+      version,
+      next: bump === undefined ? version : bumped(version, bump),
+      contract: name.slice("@mostra/contract-".length),
+    });
+  }
+  return out.sort((a, b) => (a.name < b.name ? -1 : 1));
+}
+
+/** Where a contract's version must also be: its `VERSION`, and the protocol's table. */
+const CONTRACT_VERSION_FILE = "src/version.ts";
+const PROTOCOL_CONTRACTS = join(
+  "packages",
+  "protocol",
+  "src",
+  "plugin",
+  "contract-versions.generated.ts",
+);
+
+/** The text of `@mostra/protocol`'s table of the contract versions this release implements. */
+export function contractTable(versions: readonly { contract: string; version: string }[]): string {
+  const entries = [...versions]
+    .sort((a, b) => (a.contract < b.contract ? -1 : 1))
+    .map(
+      ({ contract, version }) =>
+        `  ${/^[a-z]+$/.test(contract) ? contract : JSON.stringify(contract)}: ${JSON.stringify(version)},`,
+    );
+  return `/**
+ * Written by \`node tools/release/versions.ts sync\` from each \`@mostra/contract-*\` package's
+ * version. Don't edit: the release's version step keeps it equal to the packages.
+ */
+import type { ContractName } from "../plugins.ts";
+
+/** The version of each contract package this release implements. */
+export const CONTRACT_VERSIONS: Readonly<Record<ContractName, string>> = {
+${entries.join("\n")}
+};
+`;
+}
+
+/** Writes each contract's version where its code and the protocol read it. */
+export function applyContracts(
+  root: string = ROOT,
+  versionOf: (contract: { version: string; next: string }) => string = (c) => c.version,
+): void {
+  const all = contracts(root).map((contract) => ({ ...contract, version: versionOf(contract) }));
+  for (const contract of all) {
+    const manifest = JSON.parse(readFileSync(contract.path, "utf8")) as { version: string };
+    if (manifest.version !== contract.version) {
+      manifest.version = contract.version;
+      writeFileSync(contract.path, `${JSON.stringify(manifest, null, 2)}\n`);
+    }
+    const file = join(contract.path, "..", CONTRACT_VERSION_FILE);
+    const text = readFileSync(file, "utf8");
+    writeFileSync(
+      file,
+      text.replace(
+        /(export const VERSION: string = )"[^"]*"/,
+        `$1${JSON.stringify(contract.version)}`,
+      ),
+    );
+  }
+  writeFileSync(join(root, PROTOCOL_CONTRACTS), contractTable(all));
+}
+
+/** The contracts whose version isn't in their `VERSION` or the protocol's table. */
+export function contractProblems(root: string = ROOT): string[] {
+  const all = contracts(root);
+  const problems: string[] = [];
+  for (const contract of all) {
+    const own = /export const VERSION: string = "([^"]*)"/.exec(
+      readFileSync(join(contract.path, "..", CONTRACT_VERSION_FILE), "utf8"),
+    )?.[1];
+    if (own !== contract.version)
+      problems.push(
+        `${contract.name} is at ${contract.version}, its VERSION says ${own ?? "nothing"}: run node tools/release/versions.ts sync.`,
+      );
+  }
+  const table = join(root, PROTOCOL_CONTRACTS);
+  if (all.length > 0 && (!existsSync(table) || readFileSync(table, "utf8") !== contractTable(all)))
+    problems.push(
+      `${PROTOCOL_CONTRACTS} doesn't list the contracts' versions: run node tools/release/versions.ts sync.`,
+    );
+  return problems;
+}
+
 /** Sets every group package, versioned crate and the Skill's CLI pins to `version`. */
 export function apply(version: string, root: string = ROOT): void {
   const members = new Set(group(root));
@@ -266,12 +371,17 @@ if (import.meta.main) {
       process.exit(2);
     }
     apply(version);
+    // Each contract rehearses the version its own pending changesets make.
+    applyContracts(ROOT, (contract) => contract.next);
     console.log(`rehearsing ${version}`);
   } else if (command === "sync") {
     apply(current());
-    console.log(`crates and the Skill at ${current()}`);
+    applyContracts();
+    console.log(
+      `crates and the Skill at ${current()}; the extension contracts at their own versions`,
+    );
   } else if (command === "check") {
-    const problems = [...crateProblems(), ...skillPinProblems()];
+    const problems = [...crateProblems(), ...skillPinProblems(), ...contractProblems()];
     for (const problem of problems) console.error(problem);
     process.exitCode = problems.length > 0 ? 1 : 0;
   } else {

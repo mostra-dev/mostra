@@ -63,6 +63,7 @@ export interface CommandDef {
     run(context: CommandContext): Promise<CommandOutcome>;
     readonly streams?: boolean;
     readonly summary: string;
+    readonly telemetryName?: string;
 }
 
 // @public

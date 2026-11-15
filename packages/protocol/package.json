@@ -31,6 +31,11 @@
       "types": "./dist/operator.d.ts",
       "default": "./dist/operator.js"
     },
+    "./plugin": {
+      "@mostra/source": "./src/plugin.ts",
+      "types": "./dist/plugin.d.ts",
+      "default": "./dist/plugin.js"
+    },
     "./schemas/*": "./schemas/*",
     "./package.json": "./package.json"
   },
@@ -80,7 +85,16 @@
       "ignore": [
         "zod"
       ],
-      "limit": "60 kB"
+      "limit": "66 kB"
+    },
+    {
+      "name": "@mostra/protocol/plugin (D30, zod excluded)",
+      "path": "dist/plugin.js",
+      "import": "*",
+      "ignore": [
+        "zod"
+      ],
+      "limit": "12 kB"
     },
     {
       "name": "@mostra/protocol JSON-RPC core (D83, zod excluded)",
@@ -119,9 +133,10 @@
       "limit": "5 kB"
     }
   ],
-  "mostra": {
+  "mostra-tools": {
     "apiReports": [
-      "./operator"
+      "./operator",
+      "./plugin"
     ]
   }
 }

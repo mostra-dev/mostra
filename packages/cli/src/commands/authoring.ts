@@ -4,7 +4,8 @@
  * and `deps/add` (INTERFACES §6, §15).
  */
 import { randomUUID } from "node:crypto";
-import { resolve } from "node:path";
+import { readFile } from "node:fs/promises";
+import { join, resolve } from "node:path";
 import {
   ARTIFACT_PROGRESS,
   artifactCreateMethod,
@@ -13,10 +14,18 @@ import {
   artifactPublishMethod,
   artifactVerifyMethod,
   depsAddMethod,
+  packAddMethod,
+  pluginExportMethod,
   type SubmissionPolicy,
   type VerifyVerdict,
 } from "@mostra/protocol";
-import { type CommandDef, defineCommand } from "../command.ts";
+import { packVariables, parsePackAddress } from "@mostra/protocol/plugin";
+import {
+  type CommandContext,
+  type CommandDef,
+  type CommandOutcome,
+  defineCommand,
+} from "../command.ts";
 import { EXIT } from "../exit.ts";
 import { usage } from "../parse.ts";
 import { arg, artifactRef, flag, sourceRef } from "./shared.ts";
@@ -209,10 +218,16 @@ export const exportCommand: CommandDef = defineCommand({
     {
       name: "as",
       kind: "string",
-      value: "<class>",
-      choices: ["bundle"],
+      value: "<exporter>",
       default: "bundle",
-      summary: "What to write: `bundle`, the version's builds, manifest, lockfile and source.",
+      summary:
+        "What to write: `bundle`, the version's builds, manifest, lockfile and source; or the ID of an exporter a plugin of the artifact or the home contributes.",
+    },
+    {
+      name: "option",
+      kind: "list",
+      value: "<name=value>",
+      summary: "An option for a plugin's exporter; its value is read as JSON when it parses.",
     },
     {
       name: "out",
@@ -234,6 +249,8 @@ export const exportCommand: CommandDef = defineCommand({
     const out = flag(context, "out");
     if (out === undefined) throw usage('"mostra export" needs --out <path>.');
     const version = flag(context, "version");
+    const as = flag(context, "as") ?? "bundle";
+    if (as !== "bundle") return exportWithPlugin(context, as, out, version);
     const result = await context.call(artifactExportMethod, {
       artifact: artifactRef(arg(context, "artifact"), context.cwd),
       as: "bundle",
@@ -248,6 +265,43 @@ export const exportCommand: CommandDef = defineCommand({
     };
   },
 });
+
+/** `export --as <id>` with an exporter a plugin contributes (`plugin/export`). */
+async function exportWithPlugin(
+  context: CommandContext,
+  exporter: string,
+  out: string,
+  version: string | undefined,
+): Promise<CommandOutcome> {
+  const options: Record<string, unknown> = {};
+  for (const pair of Array.isArray(context.flags["option"]) ? context.flags["option"] : []) {
+    const at = pair.indexOf("=");
+    if (at <= 0) throw usage(`--option ${pair} needs the form name=value.`);
+    const raw = pair.slice(at + 1);
+    let value: unknown = raw;
+    try {
+      value = JSON.parse(raw);
+    } catch {
+      // A plain string.
+    }
+    options[pair.slice(0, at)] = value;
+  }
+  const result = await context.call(pluginExportMethod, {
+    artifact: artifactRef(arg(context, "artifact"), context.cwd),
+    exporter,
+    out: resolve(context.cwd, out),
+    ...(Object.keys(options).length > 0 ? { options } : {}),
+    ...(version !== undefined
+      ? { version: /^\d+$/.test(version) ? Number(version) : version }
+      : {}),
+  });
+  const lines = [
+    `Exported ${result.versionId} with ${result.exporter.id} (${result.exporter.package}):`,
+    ...result.files.map((file) => `  ${file}`),
+    ...result.findings.map((finding) => `${finding.severity} ${finding.code}: ${finding.message}`),
+  ];
+  return { result, human: `${lines.join("\n")}\n` };
+}
 
 /** `mostra run <bundle>`. */
 export const runCommand: CommandDef = defineCommand({
@@ -279,15 +333,16 @@ export const runCommand: CommandDef = defineCommand({
   },
 });
 
-/** `mostra add <package…>`. */
+/** `mostra add <package|item…>`. */
 export const addCommand: CommandDef = defineCommand({
   path: ["add"],
   summary:
-    "Add npm packages to an artifact's lockfile at exact versions, installing them into the home's store.",
+    "Add npm packages to an artifact's lockfile, or copy source-pack items (shadcn registry items) into it.",
   args: [
     {
       name: "package",
-      summary: "npm specs: name, name@version, name@range or name@tag.",
+      summary:
+        "npm specs (name, name@version, name@range, name@tag), or items: a URL, a local .json, owner/repo/item on GitHub, @namespace/item, plugin:<package>/<item>.",
       variadic: true,
     },
   ],
@@ -299,13 +354,25 @@ export const addCommand: CommandDef = defineCommand({
       summary: "The artifact. Default: the one in the current directory.",
     },
     {
+      name: "overwrite",
+      kind: "boolean",
+      summary: "Replace files of the artifact that an item writes with other content.",
+    },
+    {
+      name: "accept-license",
+      kind: "list",
+      value: "<id>",
+      summary:
+        "Acknowledge a license the items' packages bring (LicenseRef-…), recorded in the lockfile.",
+    },
+    {
       name: "request-id",
       kind: "string",
       value: "<id>",
       summary: "Make a retry return the first attempt's result.",
     },
   ],
-  output: { type: "DepsAddResult", topic: "cli" },
+  output: { type: "DepsAddResult | PackAddResult", topic: "cli" },
   exits: [EXIT.failure],
   example: "add recharts@3 --artifact ./dashboard",
   async run(context) {
@@ -313,16 +380,60 @@ export const addCommand: CommandDef = defineCommand({
     if (!Array.isArray(packages) || packages.length === 0)
       throw usage('"mostra add" needs <package…>.');
     const requestId = flag(context, "request-id");
-    const result = await context.call(depsAddMethod, {
-      artifact: sourceRef(flag(context, "artifact") ?? ".", context.cwd),
-      packages: packages as string[],
+    const artifact = sourceRef(flag(context, "artifact") ?? ".", context.cwd);
+    // A local item is named from where the command runs.
+    const specs = (packages as string[]).map((spec) => {
+      const address = parsePackAddress(spec);
+      return address?.kind === "file" ? resolve(context.cwd, address.path) : spec;
+    });
+    if (!specs.some((spec) => parsePackAddress(spec) !== undefined)) {
+      // Only npm packages: `deps/add`, as before packs existed.
+      const accept = context.flags["accept-license"];
+      const result = await context.call(depsAddMethod, {
+        artifact,
+        packages: specs,
+        ...(Array.isArray(accept) && accept.length > 0 ? { acceptLicenses: [...accept] } : {}),
+        ...(requestId !== undefined ? { requestId } : {}),
+      });
+      return {
+        result,
+        human: result.packages
+          .map((added) => `${added.name}@${added.version}${added.warm ? " (warm set)" : ""}\n`)
+          .join(""),
+      };
+    }
+    const accept = context.flags["accept-license"];
+    // The items are read with this shell's variables, not only the daemon's (which may have
+    // started before a token was set): those the artifact's components.json names, GitHub's
+    // tokens, shadcn's registry and the proxies (`packVariables`).
+    const components =
+      "path" in artifact
+        ? await readFile(join(artifact.path, "components.json"), "utf8").catch(() => undefined)
+        : undefined;
+    const environment = Object.fromEntries(
+      packVariables(components).flatMap((name) => {
+        const value = context.env[name];
+        return value !== undefined ? [[name, value]] : [];
+      }),
+    );
+    const result = await context.call(packAddMethod, {
+      artifact,
+      specs,
+      ...(context.flags["overwrite"] === true ? { overwrite: true } : {}),
+      ...(Array.isArray(accept) && accept.length > 0 ? { acceptLicenses: [...accept] } : {}),
+      ...(Object.keys(environment).length > 0 ? { environment } : {}),
       ...(requestId !== undefined ? { requestId } : {}),
     });
-    return {
-      result,
-      human: result.packages
-        .map((added) => `${added.name}@${added.version}${added.warm ? " (warm set)" : ""}\n`)
-        .join(""),
-    };
+    for (const note of result.notes) context.warn(note);
+    const lines = [
+      ...result.items.map(
+        (item) => `${item.name} (${item.type})${item.requiredBy ? `, for ${item.requiredBy}` : ""}`,
+      ),
+      ...result.files.map((file) => `  ${file.action} ${file.path}`),
+      ...result.packages.map(
+        (added) => `${added.name}@${added.version}${added.warm ? " (warm set)" : ""}`,
+      ),
+    ];
+    return { result, human: lines.map((line) => `${line}\n`).join("") };
   },
 });

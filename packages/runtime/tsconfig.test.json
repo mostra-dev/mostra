@@ -15,5 +15,5 @@
       "path": "./tsconfig.src.json"
     }
   ],
-  "exclude": ["test/fixtures/artifacts"]
+  "exclude": ["test/fixtures/artifacts", "test/fixtures/shadcn"]
 }

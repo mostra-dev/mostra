@@ -233,6 +233,76 @@ impl super::Method for MostraShutdown {
     type Params = super::generated::MostraShutdownParams;
     type Result = super::generated::MostraShutdownResult;
 }
+///`pack/add`.
+#[derive(Clone, Copy, Debug)]
+pub struct PackAdd;
+impl super::Method for PackAdd {
+    const NAME: &'static str = "pack/add";
+    const DIRECTION: super::Direction = super::Direction::ClientToInstance;
+    const MUTATING: bool = true;
+    type Params = super::generated::PackAddParams;
+    type Result = super::generated::PackAddResult;
+}
+///`plugin/add`.
+#[derive(Clone, Copy, Debug)]
+pub struct PluginAdd;
+impl super::Method for PluginAdd {
+    const NAME: &'static str = "plugin/add";
+    const DIRECTION: super::Direction = super::Direction::ClientToInstance;
+    const MUTATING: bool = true;
+    type Params = super::generated::PluginAddParams;
+    type Result = super::generated::PluginAddResult;
+}
+///`plugin/commands`.
+#[derive(Clone, Copy, Debug)]
+pub struct PluginCommands;
+impl super::Method for PluginCommands {
+    const NAME: &'static str = "plugin/commands";
+    const DIRECTION: super::Direction = super::Direction::ClientToInstance;
+    const MUTATING: bool = false;
+    type Params = super::generated::PluginCommandsParams;
+    type Result = super::generated::PluginCommandsResult;
+}
+///`plugin/export`.
+#[derive(Clone, Copy, Debug)]
+pub struct PluginExport;
+impl super::Method for PluginExport {
+    const NAME: &'static str = "plugin/export";
+    const DIRECTION: super::Direction = super::Direction::ClientToInstance;
+    const MUTATING: bool = false;
+    type Params = super::generated::PluginExportParams;
+    type Result = super::generated::PluginExportResult;
+}
+///`plugin/list`.
+#[derive(Clone, Copy, Debug)]
+pub struct PluginList;
+impl super::Method for PluginList {
+    const NAME: &'static str = "plugin/list";
+    const DIRECTION: super::Direction = super::Direction::ClientToInstance;
+    const MUTATING: bool = false;
+    type Params = super::generated::PluginListParams;
+    type Result = super::generated::PluginListResult;
+}
+///`plugin/remove`.
+#[derive(Clone, Copy, Debug)]
+pub struct PluginRemove;
+impl super::Method for PluginRemove {
+    const NAME: &'static str = "plugin/remove";
+    const DIRECTION: super::Direction = super::Direction::ClientToInstance;
+    const MUTATING: bool = true;
+    type Params = super::generated::PluginRemoveParams;
+    type Result = super::generated::PluginRemoveResult;
+}
+///`plugin/validate`.
+#[derive(Clone, Copy, Debug)]
+pub struct PluginValidate;
+impl super::Method for PluginValidate {
+    const NAME: &'static str = "plugin/validate";
+    const DIRECTION: super::Direction = super::Direction::ClientToInstance;
+    const MUTATING: bool = false;
+    type Params = super::generated::PluginValidateParams;
+    type Result = super::generated::PluginValidateResult;
+}
 ///`port/addressing.externalBase`.
 #[derive(Clone, Copy, Debug)]
 pub struct PortAddressingExternalBase;
@@ -788,6 +858,41 @@ pub const METHODS: &[super::MethodInfo] = &[
     },
     super::MethodInfo {
         name: "mostra/shutdown",
+        direction: super::Direction::ClientToInstance,
+        mutating: false,
+    },
+    super::MethodInfo {
+        name: "pack/add",
+        direction: super::Direction::ClientToInstance,
+        mutating: true,
+    },
+    super::MethodInfo {
+        name: "plugin/add",
+        direction: super::Direction::ClientToInstance,
+        mutating: true,
+    },
+    super::MethodInfo {
+        name: "plugin/commands",
+        direction: super::Direction::ClientToInstance,
+        mutating: false,
+    },
+    super::MethodInfo {
+        name: "plugin/export",
+        direction: super::Direction::ClientToInstance,
+        mutating: false,
+    },
+    super::MethodInfo {
+        name: "plugin/list",
+        direction: super::Direction::ClientToInstance,
+        mutating: false,
+    },
+    super::MethodInfo {
+        name: "plugin/remove",
+        direction: super::Direction::ClientToInstance,
+        mutating: true,
+    },
+    super::MethodInfo {
+        name: "plugin/validate",
         direction: super::Direction::ClientToInstance,
         mutating: false,
     },

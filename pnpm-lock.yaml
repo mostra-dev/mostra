@@ -573,6 +573,12 @@ importers:
       '@modelcontextprotocol/conformance-next':
         specifier: 'catalog:'
         version: '@modelcontextprotocol/conformance@0.2.0-alpha.12(supports-color@8.1.1)'
+      '@mostra/contract-cli-command':
+        specifier: workspace:*
+        version: link:../contract-cli-command
+      '@mostra/contract-exporter':
+        specifier: workspace:*
+        version: link:../contract-exporter
       '@mostra/runtime':
         specifier: workspace:*
         version: link:../runtime
@@ -613,6 +619,114 @@ importers:
       '@mostra/runtime':
         specifier: workspace:*
         version: link:../runtime
+      '@mostra/tools':
+        specifier: workspace:*
+        version: link:../../tools
+      '@types/node':
+        specifier: 'catalog:'
+        version: 24.19.2
+      tsdown:
+        specifier: 'catalog:'
+        version: 0.23.1(@arethetypeswrong/core@0.18.5)(oxc-resolver@11.24.2)(publint@0.3.25)(typescript@7.0.2)
+      typescript:
+        specifier: 'catalog:'
+        version: 7.0.2
+      vitest:
+        specifier: 'catalog:'
+        version: 5.0.5(@types/node@24.19.2)(@vitest/browser-playwright@5.0.5)(@vitest/ui@5.0.5)(vite@8.3.4(@types/node@24.19.2)(jiti@2.7.0)(yaml@2.9.1))
+
+  packages/contract-anchor-provider:
+    devDependencies:
+      '@mostra/tools':
+        specifier: workspace:*
+        version: link:../../tools
+      '@types/node':
+        specifier: 'catalog:'
+        version: 24.19.2
+      tsdown:
+        specifier: 'catalog:'
+        version: 0.23.1(@arethetypeswrong/core@0.18.5)(oxc-resolver@11.24.2)(publint@0.3.25)(typescript@7.0.2)
+      typescript:
+        specifier: 'catalog:'
+        version: 7.0.2
+      vitest:
+        specifier: 'catalog:'
+        version: 5.0.5(@types/node@24.19.2)(@vitest/browser-playwright@5.0.5)(@vitest/ui@5.0.5)(vite@8.3.4(@types/node@24.19.2)(jiti@2.7.0)(yaml@2.9.1))
+
+  packages/contract-cli-command:
+    devDependencies:
+      '@mostra/tools':
+        specifier: workspace:*
+        version: link:../../tools
+      '@types/node':
+        specifier: 'catalog:'
+        version: 24.19.2
+      tsdown:
+        specifier: 'catalog:'
+        version: 0.23.1(@arethetypeswrong/core@0.18.5)(oxc-resolver@11.24.2)(publint@0.3.25)(typescript@7.0.2)
+      typescript:
+        specifier: 'catalog:'
+        version: 7.0.2
+      vitest:
+        specifier: 'catalog:'
+        version: 5.0.5(@types/node@24.19.2)(@vitest/browser-playwright@5.0.5)(@vitest/ui@5.0.5)(vite@8.3.4(@types/node@24.19.2)(jiti@2.7.0)(yaml@2.9.1))
+
+  packages/contract-connector:
+    devDependencies:
+      '@mostra/tools':
+        specifier: workspace:*
+        version: link:../../tools
+      '@types/node':
+        specifier: 'catalog:'
+        version: 24.19.2
+      tsdown:
+        specifier: 'catalog:'
+        version: 0.23.1(@arethetypeswrong/core@0.18.5)(oxc-resolver@11.24.2)(publint@0.3.25)(typescript@7.0.2)
+      typescript:
+        specifier: 'catalog:'
+        version: 7.0.2
+      vitest:
+        specifier: 'catalog:'
+        version: 5.0.5(@types/node@24.19.2)(@vitest/browser-playwright@5.0.5)(@vitest/ui@5.0.5)(vite@8.3.4(@types/node@24.19.2)(jiti@2.7.0)(yaml@2.9.1))
+
+  packages/contract-embed-engine:
+    devDependencies:
+      '@mostra/tools':
+        specifier: workspace:*
+        version: link:../../tools
+      '@types/node':
+        specifier: 'catalog:'
+        version: 24.19.2
+      tsdown:
+        specifier: 'catalog:'
+        version: 0.23.1(@arethetypeswrong/core@0.18.5)(oxc-resolver@11.24.2)(publint@0.3.25)(typescript@7.0.2)
+      typescript:
+        specifier: 'catalog:'
+        version: 7.0.2
+      vitest:
+        specifier: 'catalog:'
+        version: 5.0.5(@types/node@24.19.2)(@vitest/browser-playwright@5.0.5)(@vitest/ui@5.0.5)(vite@8.3.4(@types/node@24.19.2)(jiti@2.7.0)(yaml@2.9.1))
+
+  packages/contract-exporter:
+    devDependencies:
+      '@mostra/tools':
+        specifier: workspace:*
+        version: link:../../tools
+      '@types/node':
+        specifier: 'catalog:'
+        version: 24.19.2
+      tsdown:
+        specifier: 'catalog:'
+        version: 0.23.1(@arethetypeswrong/core@0.18.5)(oxc-resolver@11.24.2)(publint@0.3.25)(typescript@7.0.2)
+      typescript:
+        specifier: 'catalog:'
+        version: 7.0.2
+      vitest:
+        specifier: 'catalog:'
+        version: 5.0.5(@types/node@24.19.2)(@vitest/browser-playwright@5.0.5)(@vitest/ui@5.0.5)(vite@8.3.4(@types/node@24.19.2)(jiti@2.7.0)(yaml@2.9.1))
+
+  packages/contract-verify-check:
+    devDependencies:
       '@mostra/tools':
         specifier: workspace:*
         version: link:../../tools
@@ -833,6 +947,9 @@ importers:
       typescript:
         specifier: 'catalog:'
         version: 7.0.2
+      undici:
+        specifier: 'catalog:'
+        version: 8.12.3
       vite:
         specifier: 'catalog:'
         version: 8.3.4(@types/node@24.19.2)(jiti@2.7.0)(yaml@2.9.1)
@@ -855,6 +972,12 @@ importers:
       '@modelcontextprotocol/conformance-next':
         specifier: 'catalog:'
         version: '@modelcontextprotocol/conformance@0.2.0-alpha.12(supports-color@8.1.1)'
+      '@mostra/contract-cli-command':
+        specifier: workspace:*
+        version: link:../contract-cli-command
+      '@mostra/contract-exporter':
+        specifier: workspace:*
+        version: link:../contract-exporter
       '@mostra/shell':
         specifier: workspace:*
         version: link:../shell

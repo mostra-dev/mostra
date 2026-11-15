@@ -48,6 +48,12 @@ export interface InstallRun {
   readonly releaseAge: { readonly exempt: readonly string[] } | false;
   /** What the child serves, for `instance/status` and reaping. */
   readonly ownerRef: string;
+  /**
+   * `false` installs without running any lifecycle script (`--config.ignore-scripts=true`), for a
+   * layout whose packages Mostra inspects before anything of them runs (a plugin's licenses,
+   * WP-16); {@link Installer.rebuild} runs them once it may.
+   */
+  readonly scripts?: false;
 }
 
 /** What a run ended with. */
@@ -66,6 +72,16 @@ export interface Installer {
    * resolution reads (D95), so it never sees that one. A store command takes no network flag.
    */
   prune(input: { readonly dir: string; readonly ownerRef: string }): Promise<InstallOutcome>;
+  /**
+   * `pnpm rebuild` in an installed layout: runs the lifecycle scripts an install made with
+   * `scripts: false` skipped, from what the layout holds (it fetches nothing), in the install
+   * child (D95).
+   */
+  rebuild(input: {
+    readonly dir: string;
+    readonly cwd: string;
+    readonly ownerRef: string;
+  }): Promise<InstallOutcome>;
 }
 
 /** Connection failures: the registry can't be reached at all, so Mostra is offline (D95). */
@@ -148,6 +164,7 @@ export function createInstaller(options: InstallerOptions): Installer {
     readonly dir: string;
     readonly cacheDir: string;
     readonly network?: "--offline" | "--prefer-offline";
+    readonly scripts?: false;
   }): string[] => [
     // The install child connects to the supervisor and runs pnpm in its own process group.
     entry,
@@ -167,9 +184,10 @@ export function createInstaller(options: InstallerOptions): Installer {
     "--reporter=ndjson",
     ...(spec.network ? [spec.network] : []),
     "--config.update-notifier=false",
-    // Every on-demand package's lifecycle scripts run, here in the install child (D95).
+    // Every on-demand package's lifecycle scripts run, here in the install child (D95), unless
+    // the run defers them until Mostra has inspected the packages (WP-16).
     "--config.dangerously-allow-all-builds=true",
-    "--config.ignore-scripts=false",
+    `--config.ignore-scripts=${spec.scripts === false ? "true" : "false"}`,
     "--config.auto-install-peers=true",
     "--config.strict-peer-dependencies=false",
     "--config.node-linker=isolated",
@@ -255,11 +273,26 @@ export function createInstaller(options: InstallerOptions): Installer {
           dir: run.dir,
           cacheDir: options.dirs.cache,
           network: run.offline ? "--offline" : "--prefer-offline",
+          ...(run.scripts === false ? { scripts: false as const } : {}),
         }),
         dir: run.dir,
         cwd: run.cwd,
         releaseAge: run.releaseAge,
         ownerRef: run.ownerRef,
+      }),
+    rebuild: (input) =>
+      execute({
+        args: argsFor({
+          command: ["rebuild"],
+          dir: input.dir,
+          cacheDir: options.dirs.cache,
+          // pnpm 10's rebuild refuses `--offline` (VERIFIED_FACTS, WP-16); it reads only the
+          // installed layout, and fetches nothing.
+        }),
+        dir: input.dir,
+        cwd: input.cwd,
+        releaseAge: false,
+        ownerRef: input.ownerRef,
       }),
     prune: (input) =>
       execute({
