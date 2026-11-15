@@ -10,6 +10,7 @@ import { writeFile } from "node:fs/promises";
 import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
 import { createDiagnostic, type Diagnostic } from "@mostra/protocol";
+import { PLUGIN_CONTRACTS } from "@mostra/protocol/plugin";
 import type { Environment, Log } from "../log.ts";
 import { artifactEnvironment, type ProcessManager } from "../processes/index.ts";
 import { runtimeRoot } from "./warm.ts";
@@ -125,15 +126,24 @@ function locatePnpm(): { entry: string; version: string } {
   }
 }
 
-/** The project settings of a run: the release age, and the packages named exactly (D95). */
+/**
+ * The extension contracts' packages, which the release age never holds back (D173): Mostra's own
+ * release pipeline publishes them beside the runtime that runs them, so a plugin built on a
+ * contract released today installs today, wherever in its tree the contract is.
+ */
+export const RELEASE_AGE_EXEMPT: readonly string[] = Object.values(PLUGIN_CONTRACTS).map(
+  (contract) => contract.package,
+);
+
+/**
+ * The project settings of a run: the release age, the packages named exactly and the extension
+ * contracts' packages, which it doesn't hold back (D95, D173).
+ */
 export function workspaceSettings(releaseAge: InstallRun["releaseAge"]): string {
   if (releaseAge === false) return "minimumReleaseAge: 0\n";
-  const lines = [`minimumReleaseAge: ${MINIMUM_RELEASE_AGE_MINUTES}`];
-  if (releaseAge.exempt.length > 0) {
-    lines.push("minimumReleaseAgeExclude:");
-    for (const name of [...new Set(releaseAge.exempt)].sort()) {
-      lines.push(`  - ${JSON.stringify(name)}`);
-    }
+  const lines = [`minimumReleaseAge: ${MINIMUM_RELEASE_AGE_MINUTES}`, "minimumReleaseAgeExclude:"];
+  for (const name of [...new Set([...RELEASE_AGE_EXEMPT, ...releaseAge.exempt])].sort()) {
+    lines.push(`  - ${JSON.stringify(name)}`);
   }
   return `${lines.join("\n")}\n`;
 }
@@ -343,7 +353,7 @@ function diagnose(
     const mature =
       first.code === "ERR_PNPM_FETCH_404"
         ? ""
-        : " Without an exact version, only releases at least a day old match; a release less than a day old installs when named exactly.";
+        : " Without an exact version, only releases at least a day old match: a release less than a day old installs when it is named exactly, and, when it is a dependency of what was named, once it is a day old.";
     return createDiagnostic("MOSTRA_DEP_NOT_FOUND", {
       message: `The registry has no match for ${subject}: ${first.message}.${mature}`,
     });

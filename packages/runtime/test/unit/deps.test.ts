@@ -170,11 +170,23 @@ describe("the lockfile", () => {
 });
 
 describe("the install child's settings and environment", () => {
-  it("applies the one-day release age to resolutions only, exempting exact names", () => {
+  it("applies the one-day release age to resolutions only, exempting exact names and the contracts", () => {
+    const contracts = [
+      "@mostra/contract-anchor-provider",
+      "@mostra/contract-cli-command",
+      "@mostra/contract-connector",
+      "@mostra/contract-embed-engine",
+      "@mostra/contract-exporter",
+      "@mostra/contract-verify-check",
+    ];
+    const list = (names: string[]): string =>
+      names.map((name) => `  - ${JSON.stringify(name)}\n`).join("");
     expect(workspaceSettings(false)).toBe("minimumReleaseAge: 0\n");
-    expect(workspaceSettings({ exempt: [] })).toBe("minimumReleaseAge: 1440\n");
-    expect(workspaceSettings({ exempt: ["b", "@a/x", "b"] })).toBe(
-      'minimumReleaseAge: 1440\nminimumReleaseAgeExclude:\n  - "@a/x"\n  - "b"\n',
+    expect(workspaceSettings({ exempt: [] })).toBe(
+      `minimumReleaseAge: 1440\nminimumReleaseAgeExclude:\n${list(contracts)}`,
+    );
+    expect(workspaceSettings({ exempt: ["b", "@a/x", "b", "@mostra/contract-exporter"] })).toBe(
+      `minimumReleaseAge: 1440\nminimumReleaseAgeExclude:\n${list(["@a/x", ...contracts, "b"])}`,
     );
   });
 
