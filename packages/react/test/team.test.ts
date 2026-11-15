@@ -115,6 +115,27 @@ describe("TeamClient (CO-03, CO-04)", () => {
     expect(sent).toHaveLength(2);
   });
 
+  it("states the whole state on joining again, so a leave the gateway dropped leaves nothing behind (#162)", async () => {
+    const { transport, presence } = fake();
+    const team = new TeamClient({ transport, viewId: "vw_1" });
+    // A hook whose options change unmounts and mounts again: a leave, then a join, at once.
+    const first = team.joinPresence({ cursor: true, selection: true });
+    await vi.advanceTimersByTimeAsync(0);
+    first();
+    team.joinPresence({ cursor: false, selection: false });
+    // The join waits out the client's own throttle.
+    await vi.advanceTimersByTimeAsync(1_000);
+    const requests = presence.map((entry) => entry.request);
+    const leaving = requests.findIndex((request) => request.leave === true);
+    const left = requests[leaving];
+    const joined = requests[leaving + 1];
+    expect(left).toMatchObject({ leave: true });
+    // Were the join to overtake the leave, the gateway would drop the leave as older: the join
+    // itself clears what the view shared.
+    expect(joined).toMatchObject({ cursor: null, selection: null });
+    expect((joined?.seq ?? 0) > (left?.seq ?? Number.POSITIVE_INFINITY)).toBe(true);
+  });
+
   it("waits out the gateway's rate and posts again", async () => {
     const { transport, presence } = fake({ limitedFirst: true });
     const team = new TeamClient({ transport, viewId: "vw_1" });
