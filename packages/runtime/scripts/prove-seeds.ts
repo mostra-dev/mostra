@@ -6831,6 +6831,22 @@ const SEEDS: readonly Seed[] = [
     check: integration("packs.test.ts", "namespace the artifact"),
   },
   {
+    requirement: "EX-01",
+    name: "the release age holds back a contract released today, so no plugin on it installs (D173)",
+    file: "src/deps/installer.ts",
+    from: "  for (const name of [...new Set([...RELEASE_AGE_EXEMPT, ...releaseAge.exempt])].sort()) {",
+    to: "  for (const name of [...new Set([...releaseAge.exempt])].sort()) {",
+    check: integration("plugins.test.ts", "installs an in-range plugin"),
+  },
+  {
+    requirement: "EX-01",
+    name: "a fresh release a dependency names is let through like a contract (D95, D173)",
+    file: "src/deps/installer.ts",
+    from: "  (contract) => contract.package,\n);",
+    to: '  (contract) => contract.package,\n).concat(["mostra-fixture-fresh"]);',
+    check: integration("deps.test.ts", "reports what deps/add can't do"),
+  },
+  {
     requirement: "EX-04",
     name: "a non-OSI license installs without an acknowledgment",
     file: "src/plugins/plugins.ts",

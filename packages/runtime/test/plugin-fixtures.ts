@@ -19,6 +19,9 @@ function contractPackage(name: "exporter" | "cli-command"): FixturePackage {
   return {
     name: `@mostra/contract-${name}`,
     version: manifest.version,
+    // Published now, as a contract is on its release's first day: plugins on it install at
+    // once, whatever the release age (D173).
+    time: new Date().toISOString(),
     manifest: {
       type: "module",
       license: "Apache-2.0",

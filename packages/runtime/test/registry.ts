@@ -238,6 +238,18 @@ export const FIXTURE_PACKAGES: readonly FixturePackage[] = [
     files: { "index.js": 'export const fresh = "FRESH";\n' },
   },
   {
+    // Depends exactly on a release less than a day old, which the release age still holds back
+    // when it is a dependency rather than named (D95): only the contracts are exempt (D173).
+    name: "mostra-fixture-needs-fresh",
+    version: "1.0.0",
+    manifest: {
+      type: "module",
+      main: "index.js",
+      dependencies: { "mostra-fixture-fresh": "1.0.0" },
+    },
+    files: { "index.js": 'export { fresh } from "mostra-fixture-fresh";\n' },
+  },
+  {
     name: "leftpad-x",
     version: "1.0.0",
     manifest: { type: "module", main: "index.js" },

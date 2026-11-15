@@ -348,6 +348,11 @@ describe("on-demand packages (DP-02)", () => {
     const fresh = await add(["mostra-fixture-fresh"]);
     expect(fresh.error?.data.code).toBe("MOSTRA_DEP_NOT_FOUND");
     expect(fresh.error?.data.message).toContain("at least a day old");
+    // A fresh release as a dependency waits its day, and the refusal says so (D95, D173).
+    const indirect = await add(["mostra-fixture-needs-fresh@1.0.0"]);
+    expect(indirect.error?.data.code).toBe("MOSTRA_DEP_NOT_FOUND");
+    expect(indirect.error?.data.message).toContain("mostra-fixture-fresh");
+    expect(indirect.error?.data.message).toContain("when it is a dependency of what was named");
     expect(ok<{ packages: unknown[] }>(await add(["mostra-fixture-fresh@1.0.0"])).packages).toEqual(
       [{ name: "mostra-fixture-fresh", version: "1.0.0", warm: false }],
     );
