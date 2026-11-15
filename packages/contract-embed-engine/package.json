@@ -1,6 +1,6 @@
 {
   "name": "@mostra/contract-embed-engine",
-  "version": "0.0.0",
+  "version": "0.1.0",
   "description": "The contract a Mostra embed engine implements: render terminals, compositions and other content into an artifact's page.",
   "license": "Apache-2.0",
   "author": "The Mostra Authors",

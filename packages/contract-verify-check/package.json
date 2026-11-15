@@ -1,6 +1,6 @@
 {
   "name": "@mostra/contract-verify-check",
-  "version": "0.0.0",
+  "version": "0.1.0",
   "description": "The contract a Mostra verify check implements: report findings about an artifact in verify's verdict.",
   "license": "Apache-2.0",
   "author": "The Mostra Authors",

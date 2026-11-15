@@ -1,6 +1,6 @@
 {
   "name": "@mostra/contract-anchor-provider",
-  "version": "0.0.0",
+  "version": "0.1.0",
   "description": "The contract a Mostra anchor provider implements: anchor review comments to content such as chart data.",
   "license": "Apache-2.0",
   "author": "The Mostra Authors",
