@@ -11,7 +11,7 @@ import {
   rewriteImports,
   withCssBlock,
 } from "../../src/packs/packs.ts";
-import { mayFollow, parseItem } from "../../src/packs/read.ts";
+import { mayFollow, parseItem, withoutTrailingSlashes } from "../../src/packs/read.ts";
 
 const aliases = { components: "components", ui: "components/ui", lib: "lib", hooks: "hooks" };
 
@@ -137,5 +137,16 @@ describe("which redirects a read follows", () => {
       expect(mayFollow(url("https://r.example/a.json"), url(local)), local).toBe(false);
       expect(mayFollow(url("http://127.0.0.1:9/a.json"), url(local)), local).toBe(true);
     }
+  });
+});
+
+describe("trailing slashes", () => {
+  it("go in linear time, however many there are (CodeQL js/polynomial-redos)", () => {
+    expect(withoutTrailingSlashes("https://r.example/r///")).toBe("https://r.example/r");
+    expect(withoutTrailingSlashes("///")).toBe("");
+    const many = `${"/".repeat(200_000)}x${"/".repeat(200_000)}`;
+    const started = performance.now();
+    expect(withoutTrailingSlashes(many)).toBe(`${"/".repeat(200_000)}x`);
+    expect(performance.now() - started).toBeLessThan(1_000);
   });
 });

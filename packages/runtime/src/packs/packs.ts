@@ -47,7 +47,7 @@ import type { RequestKey } from "../ledger/index.ts";
 import type { Environment, Log } from "../log.ts";
 import { shellWord } from "../platform/index.ts";
 import type { ItemLicense, Plugins } from "../plugins/index.ts";
-import { type ReadItem, readComponentsJson, readItems } from "./read.ts";
+import { type ReadItem, readComponentsJson, readItems, withoutTrailingSlashes } from "./read.ts";
 
 /** Options for {@link createPacks}. */
 export interface PacksOptions {
@@ -106,7 +106,7 @@ interface PlannedFile {
 /** An alias of `components.json` as a path inside the artifact (`@/components/ui` → `components/ui`). */
 function aliasPath(value: string | undefined, fallback: string): string {
   if (value === undefined) return fallback;
-  return value.replace(/^@\//, "").replace(/^~\//, "").replace(/\/+$/, "") || fallback;
+  return withoutTrailingSlashes(value.replace(/^@\//, "").replace(/^~\//, "")) || fallback;
 }
 
 /** Where a file of an item goes, as shadcn's `resolveFilePath` places it (shadcn 4.23.0). */
@@ -282,7 +282,7 @@ export function withCssBlock(css: string, item: string, block: string): string {
   const stop = css.indexOf(end);
   if (start !== -1 && stop > start)
     return `${css.slice(0, start)}${text}${css.slice(stop + end.length)}`;
-  return `${css.replace(/\s*$/, "")}${css.trim() === "" ? "" : "\n\n"}${text}\n`;
+  return `${css.trimEnd()}${css.trim() === "" ? "" : "\n\n"}${text}\n`;
 }
 
 /** The stylesheets an entry imports, relative to the root (`import "./styles.css"`). */

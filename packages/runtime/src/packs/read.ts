@@ -105,6 +105,16 @@ interface From {
   readonly url?: string;
 }
 
+/**
+ * `text` without the slashes it ends in. A loop, not `/\/+$/`, which backtracks polynomially on a
+ * string of many slashes (CodeQL js/polynomial-redos), and a registry's URL comes from the caller.
+ */
+export function withoutTrailingSlashes(text: string): string {
+  let end = text.length;
+  while (end > 0 && text[end - 1] === "/") end -= 1;
+  return text.slice(0, end);
+}
+
 /** `inner` is `outer` or inside it (both real paths), by whole segments. */
 function isInside(outer: string, inner: string): boolean {
   const from = relative(outer, inner);
@@ -620,7 +630,7 @@ export async function readItems(
       url = target.href;
     } else {
       const style = context.components?.style ?? DEFAULT_STYLE;
-      const base = (context.env["REGISTRY_URL"] || SHADCN_REGISTRY).replace(/\/+$/, "");
+      const base = withoutTrailingSlashes(context.env["REGISTRY_URL"] || SHADCN_REGISTRY);
       url = `${base}/styles/${encodeURIComponent(style)}/${encodeURIComponent(address.name)}.json`;
     }
     const body = await readUrl(url, context, headers);
