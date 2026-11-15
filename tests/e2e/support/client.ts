@@ -76,7 +76,7 @@ export async function linkFor(
 }
 
 /**
- * A shell page's own load, as a person loads it (#132). On Windows, Chromium picks each
+ * A page's own load, the shell's or a server's own page, as a person loads it (#132). On Windows, Chromium picks each
  * connection's local port at random (`TcpPortRandomizationWin`, D157), and a pick that collides
  * with a connection still in TIME_WAIT fails the load at once with `net::ERR_NO_BUFFER_SPACE`
  * before any byte reaches Mostra; D157 recovers such a failure for the frame, and a person
@@ -91,7 +91,7 @@ export async function gotoShell(page: Page, url: string): Promise<void> {
     if (!String((error as Error).message).includes("net::ERR_NO_BUFFER_SPACE")) throw error;
     test.info().annotations.push({
       type: "issue",
-      description: `#132: the shell page's load failed with net::ERR_NO_BUFFER_SPACE and was loaded again once (${new Date().toISOString()})`,
+      description: `#132: the page's load failed with net::ERR_NO_BUFFER_SPACE and was loaded again once (${new Date().toISOString()})`,
     });
     await page.goto(url);
   }
