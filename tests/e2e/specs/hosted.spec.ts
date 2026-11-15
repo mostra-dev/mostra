@@ -16,7 +16,7 @@ import { mkdirSync, writeFileSync } from "node:fs";
 import { createServer } from "node:net";
 import { join } from "node:path";
 import { type Browser, expect, type Page, test } from "@playwright/test";
-import { openInShell, publishOwn, saved, viewerName } from "../support/client.ts";
+import { openInShell, publishOwn, saved, settled, viewerName } from "../support/client.ts";
 import { BIN, Client, removeTree, startDaemon } from "../support/mostra.ts";
 
 function freePort(): Promise<number> {
@@ -207,6 +207,8 @@ test.describe("a hosted link (RM-02, §18.4)", () => {
 
     // The report control reaches the server (abuse.report, §18.4).
     await page.locator("[data-mostra-report]").click();
+    // Its choices are clicked once the dialog stopped moving (#161).
+    await settled(page.locator("[data-mostra-report-dialog]"));
     await page.locator("input[name=mostra-report-reason][value=spam]").check();
     await page.locator("[data-mostra-report-send]").click();
     await expect(page.locator("[data-mostra-report-outcome]")).toHaveAttribute(
