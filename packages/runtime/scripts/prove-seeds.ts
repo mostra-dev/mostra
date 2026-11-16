@@ -3795,6 +3795,73 @@ const SEEDS: readonly Seed[] = [
     to: "      if (current.length === expected.length) continue;",
     check: integration("publish-faults.test.ts", "completes the creation"),
   },
+  // MT-04 (D174 item 5): the walkthrough names only what the release has. Each seed writes
+  // something the CLI's help, the protocol, the bundled reference, the MCP server or
+  // `@mostra/react` lacks; the Skill's checks in the CLI catch it.
+  ...(
+    [
+      [
+        "a command the CLI lacks",
+        "mostra roster add <dir> <your-person>",
+        "mostra roster invite <dir> <your-person>",
+        "shows only commands",
+      ],
+      [
+        "a flag value outside its choices",
+        "mostra verify <dir> --screenshots always",
+        "mostra verify <dir> --screenshots every-time",
+        "shows only commands",
+      ],
+      ["a flag no command takes", "unless `--ttl` says", "unless `--expires` says", "names only"],
+      [
+        "a wait condition mostra wait refuses",
+        "--until submitted:all --timeout 2m",
+        "--until submitted:everyone --timeout 2m",
+        "names only",
+      ],
+      [
+        "a tool the MCP server lacks",
+        "call `artifact_open` once",
+        "call `artifact_share` once",
+        "names only",
+      ],
+      ["a hook @mostra/react lacks", "(`useRespondents`)", "(`useRespondent`)", "names only"],
+      [
+        "a docs topic the reference lacks",
+        "or `mostra docs guide`.",
+        "or `mostra docs guides`.",
+        "names only",
+      ],
+    ] as const
+  ).map(
+    ([name, from, to, test]): Seed => ({
+      requirement: "MT-04",
+      name: `the walkthrough names ${name}`,
+      file: "../../skills/mostra/references/walkthrough.md",
+      from,
+      to,
+      check: ["--project", "unit", "test/unit/skill.test.ts", "-t", test],
+      cwd: "../cli",
+    }),
+  ),
+  {
+    requirement: "MT-04",
+    name: "SKILL.md's references table loses the walkthrough",
+    file: "../../skills/mostra/SKILL.md",
+    from: "| [references/walkthrough.md](references/walkthrough.md) |",
+    to: "| references/walkthrough.md |",
+    check: ["--project", "unit", "test/unit/skill.test.ts", "-t", "resolves every relative link"],
+    cwd: "../cli",
+  },
+  {
+    requirement: "MT-04",
+    name: "mostra docs serves no guide/walkthrough",
+    file: "../mcp/src/docs.ts",
+    from: '      .filter((entry) => entry.endsWith(".md"))',
+    to: '      .filter((entry) => entry.endsWith(".md") && entry !== "walkthrough.md")',
+    check: integration("contract.test.ts", "docs"),
+    cwd: "../cli",
+  },
   {
     requirement: "review-5",
     name: "imports from outside the artifact are built",
