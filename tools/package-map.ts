@@ -95,7 +95,9 @@ export const PACKAGE_MAP: readonly PackageRule[] = [
     dir: "packages/runtime",
     audience: "runtime bundle",
     environment: "node",
-    workspace: ["@mostra/protocol", "@mostra/mcp", "@mostra/themes"],
+    // `@mostra/plugin-mcp-app` is carried, never imported: its code runs only in plugin children
+    // (RT-02, D175 item 3).
+    workspace: ["@mostra/protocol", "@mostra/mcp", "@mostra/themes", "@mostra/plugin-mcp-app"],
     external: "any",
     published: true,
   },

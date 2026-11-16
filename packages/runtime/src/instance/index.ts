@@ -94,6 +94,7 @@ import { createPacks, type Packs, packMethods } from "../packs/index.ts";
 import { helperPath, type LaunchPipe, realPath } from "../platform/index.ts";
 import {
   createPlugins,
+  locateBundledPlugins,
   type Plugins,
   pluginMethods,
   testContractVersions,
@@ -360,6 +361,8 @@ async function assemble(home: OwnedHome, options: StartInstanceOptions): Promise
       env: environment,
       policy: () => readHomeSettings(home.path).licenses,
       runtimeVersion: runtimeVersion(),
+      // The first-party plugins every home has (D175 item 3), found, never imported.
+      bundled: locateBundledPlugins(environment),
       // Tests stand in a runtime that serves other contract versions (plugins.test.ts).
       ...(environment["MOSTRA_TEST_CONTRACT_VERSIONS"]
         ? { implemented: testContractVersions(environment["MOSTRA_TEST_CONTRACT_VERSIONS"]) }
@@ -943,6 +946,8 @@ async function assemble(home: OwnedHome, options: StartInstanceOptions): Promise
         publisher: getPublisher,
         log,
         dependenciesChanged: (artifact) => dev.dependenciesChanged(artifact),
+        versionOwner: (versionId) => registry.version(versionId)?.artifactId,
+        cacheDir: join(home.path, "cache", "mcp-app"),
       }),
       ...packMethods({
         packs: getPacks,

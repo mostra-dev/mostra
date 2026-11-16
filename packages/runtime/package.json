@@ -47,6 +47,7 @@
     "@hono/node-server": "catalog:",
     "@mdx-js/mdx": "catalog:",
     "@mostra/mcp": "workspace:*",
+    "@mostra/plugin-mcp-app": "workspace:*",
     "@mostra/protocol": "workspace:*",
     "@mostra/themes": "workspace:*",
     "@tailwindcss/vite": "catalog:",

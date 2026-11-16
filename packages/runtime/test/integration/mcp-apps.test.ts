@@ -4,10 +4,13 @@
  * browser-protocol routes a browser page does (`app/request`), behind the same session, link and
  * scope checks; a browser can never present an app session, nor an inline page a cookie.
  */
+import { readdirSync, readFileSync } from "node:fs";
+import { join } from "node:path";
 import { BROWSER_PROTOCOL_REVISION, linkSecret, MutationId, serializeAll } from "@mostra/protocol";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
 import { Browser, openLink } from "../browser-client.ts";
 import { GatewayHome, ok, type Receipt, refused } from "../gateway-home.ts";
+import { tempDir } from "../support.ts";
 
 interface AppView {
   readonly artifactId: string;
@@ -238,5 +241,82 @@ describe("the app channel (D175 item 4, MC-02)", () => {
       { route: "events/poll", view: opened.viewId },
     );
     expect(asApp.status).toBe(401);
+  });
+});
+
+describe("the MCP App every home has (D175 items 2, 3, MC-02)", () => {
+  const gateway = new GatewayHome();
+  let actions: Receipt & { dir: string };
+
+  beforeAll(async () => {
+    await gateway.start();
+    actions = await gateway.publish("actions");
+  }, 240_000);
+
+  afterAll(async () => {
+    await gateway.stop();
+  });
+
+  it("lists the bundled exporter for the home, and refuses to remove it", async () => {
+    const listed = ok<{ plugins: { package: string; scope: string; contributions: unknown[] }[] }>(
+      await gateway.client.call("plugin/list", { home: true }),
+    );
+    const bundled = listed.plugins.find((plugin) => plugin.package === "@mostra/plugin-mcp-app");
+    expect(bundled?.scope).toBe("bundled");
+    expect(bundled?.contributions).toEqual([{ contract: "exporter", id: "mcp-app" }]);
+    expect(
+      refused(
+        await gateway.client.call("plugin/remove", {
+          home: true,
+          packages: ["@mostra/plugin-mcp-app"],
+        }),
+      ),
+    ).toBe("MOSTRA_PLUGIN_NOT_INSTALLED");
+  });
+
+  it("exports a version as an MCP App with nothing installed (plugin/export)", async () => {
+    const out = join(tempDir("mcp-app-export"), "app");
+    const exported = ok<{ files: string[]; entry?: string; exporter: { package: string } }>(
+      await gateway.client.call(
+        "plugin/export",
+        { artifact: { artifactId: actions.artifactId }, exporter: "mcp-app", out },
+        120_000,
+      ),
+    );
+    expect(exported.exporter.package).toBe("@mostra/plugin-mcp-app");
+    expect(exported.entry).toBe(join(out, "index.html"));
+    const html = readFileSync(join(out, "index.html"), "utf8");
+    expect(html).toContain('<meta name="mostra-target" content="mcp-app" />');
+    expect(html).toContain(`<meta name="mostra-version" content="${actions.versionId}" />`);
+    // The version's server code never reaches an export (D172 item 11).
+    expect(html).not.toContain("execFileSync");
+    const description = JSON.parse(readFileSync(join(out, "mcp-app.json"), "utf8")) as {
+      uri: string;
+      mimeType: string;
+    };
+    expect(description.uri).toBe(`ui://mostra/view/${actions.versionId}`);
+    expect(description.mimeType).toBe("text/html;profile=mcp-app");
+  });
+
+  it("answers a version's MCP App (app/page), made once and kept", async () => {
+    const first = ok<{ artifactId: string; uri: string; html: string; meta: unknown }>(
+      await gateway.client.call("app/page", { versionId: actions.versionId }, 120_000),
+    );
+    expect(first.artifactId).toBe(actions.artifactId);
+    expect(first.uri).toBe(`ui://mostra/view/${actions.versionId}`);
+    expect(first.html.startsWith("<!doctype html>")).toBe(true);
+    const cache = join(gateway.home.home, "cache", "mcp-app", actions.versionId);
+    expect(readdirSync(cache)).toHaveLength(1);
+    const started = Date.now();
+    const again = ok<{ html: string }>(
+      await gateway.client.call("app/page", { versionId: actions.versionId }),
+    );
+    expect(again.html).toBe(first.html);
+    expect(Date.now() - started).toBeLessThan(5_000);
+    expect(
+      refused(
+        await gateway.client.call("app/page", { versionId: "ver_ABCDEFGHJKMNPQRSTVWXYZ0123" }),
+      ),
+    ).toBe("MOSTRA_ARTIFACT_VERSION_NOT_FOUND");
   });
 });

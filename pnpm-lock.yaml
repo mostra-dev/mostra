@@ -514,6 +514,9 @@ importers:
       '@mostra/cli':
         specifier: workspace:*
         version: link:../cli
+      '@mostra/plugin-mcp-app':
+        specifier: workspace:*
+        version: link:../../plugins/mcp-app
       '@mostra/protocol':
         specifier: workspace:*
         version: link:../protocol
@@ -905,6 +908,9 @@ importers:
       '@mostra/mcp':
         specifier: workspace:*
         version: link:../mcp
+      '@mostra/plugin-mcp-app':
+        specifier: workspace:*
+        version: link:../../plugins/mcp-app
       '@mostra/protocol':
         specifier: workspace:*
         version: link:../protocol

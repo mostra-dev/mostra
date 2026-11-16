@@ -119,6 +119,8 @@ const out = resolve(values.out as string);
 /** Every Mostra package a bundle carries; each must be at the release's version (one version). */
 const MOSTRA_PACKAGES = [
   "@mostra/cli",
+  // The first-party plugin every home has (D175 item 3), run only in plugin children.
+  "@mostra/plugin-mcp-app",
   "@mostra/protocol",
   "@mostra/react",
   "@mostra/runtime",
@@ -131,7 +133,16 @@ const MOSTRA_PACKAGES = [
 
 /** Where each Mostra package lives in the workspace. */
 const DIRS: Record<string, string> = Object.fromEntries(
-  MOSTRA_PACKAGES.map((name) => [name, `packages/${name.slice("@mostra/".length)}`]),
+  MOSTRA_PACKAGES.map((name) => {
+    const short = name.slice("@mostra/".length);
+    // First-party plugins live in plugins/ (REPO_STANDARDS §2), without their prefix.
+    return [
+      name,
+      short.startsWith("plugin-")
+        ? `plugins/${short.slice("plugin-".length)}`
+        : `packages/${short}`,
+    ];
+  }),
 );
 
 function step(message: string): void {

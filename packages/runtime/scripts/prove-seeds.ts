@@ -6980,8 +6980,8 @@ const SEEDS: readonly Seed[] = [
     requirement: "EX-01",
     name: "an export writes a file where another of its files needs a directory",
     file: "src/plugins/methods.ts",
-    from: '          if (seen.has(segments.slice(0, length).join("/"))) {',
-    to: "          if (false) {",
+    from: '        if (seen.has(segments.slice(0, length).join("/"))) {',
+    to: "        if (false) {",
     check: integration("plugins.test.ts", "installs an in-range plugin"),
   },
   {

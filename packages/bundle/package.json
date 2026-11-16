@@ -13,6 +13,7 @@
   },
   "dependencies": {
     "@mostra/cli": "workspace:*",
+    "@mostra/plugin-mcp-app": "workspace:*",
     "@mostra/protocol": "workspace:*",
     "@mostra/runtime": "workspace:*",
     "@mostra/sdk": "workspace:*",

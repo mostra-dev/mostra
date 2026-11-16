@@ -48,6 +48,7 @@
         "pnpm",
         "@mostra/contract-cli-command",
         "@mostra/contract-exporter",
+        "@mostra/plugin-mcp-app",
         "@mostra/shell",
         "@mostra/verify",
         "@mostra/warm",
@@ -74,6 +75,7 @@
       "project": ["scripts/**/*.ts"],
       "ignoreDependencies": [
         "@mostra/cli",
+        "@mostra/plugin-mcp-app",
         "@mostra/runtime",
         "@mostra/shell",
         "@mostra/verify",
