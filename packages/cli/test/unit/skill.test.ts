@@ -9,11 +9,21 @@
 import { readdirSync, readFileSync } from "node:fs";
 import { dirname, join, relative, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
+import { createTools } from "@mostra/mcp";
 import { describe, expect, it } from "vitest";
 import { parse as parseYaml } from "yaml";
 import { commandName } from "../../src/command.ts";
 import { COMMANDS } from "../../src/commands/index.ts";
-import { filled, parsesAsShown, shownCommands, words } from "../commands.ts";
+import { docsIndex } from "../../src/docs.ts";
+import {
+  filled,
+  flagProblems,
+  parsesAsShown,
+  prose,
+  shownCommands,
+  shownProblem,
+  words,
+} from "../commands.ts";
 
 const REPO = fileURLToPath(new URL("../../../../", import.meta.url));
 const SKILL = join(REPO, "skills", "mostra");
@@ -71,6 +81,40 @@ function exportedValues(report: string): string[] {
     names.add(match[1] as string);
   return [...names].sort();
 }
+
+/** Every value `@mostra/react` (its subpaths too) and `@mostra/server` export to authors. */
+function authorExports(): string[] {
+  const react = exportedValues(readFileSync(join(REPO, "packages/react/etc/react.api.md"), "utf8"));
+  const server = exportedValues(
+    readFileSync(join(REPO, "packages/server/etc/server.api.md"), "utf8"),
+  );
+  const subpaths = ["form.ts", "router.ts"].flatMap((file) =>
+    [
+      ...readFileSync(join(REPO, "packages/react/src", file), "utf8").matchAll(
+        /^export (?:async )?function (\w+)/gm,
+      ),
+    ].map((match) => match[1] as string),
+  );
+  return [...new Set([...react, ...server, ...subpaths])];
+}
+
+/**
+ * Hooks the Skill names that aren't Mostra's, with whose they are. Any other `use…` name must be
+ * one `@mostra/react` exports, so a misspelt or renamed hook (`useRespondent`) can't stand in the
+ * text. Several are named as what not to write, so they are only listed, never imported.
+ */
+const OTHER_HOOKS: Readonly<Record<string, string>> = {
+  useState: "React's",
+  useParams: "React Router's",
+  useTable: "TanStack Table 9's",
+  useLegacyTable: "TanStack Table 9's, for code written for version 8",
+  useReactTable: "TanStack Table 8's, named as what not to write",
+  useReducedMotion: "Motion's",
+  useFieldArray: "react-hook-form's",
+};
+
+/** The names of Mostra's MCP tools this release serves (D164). */
+const TOOLS = new Set(createTools(async () => undefined).map((tool) => tool.name));
 
 /**
  * Exports the generated entry and the runtime use, never artifact code, with why. Anything else a
@@ -161,9 +205,17 @@ describe("the Agent Skill (AX-06)", () => {
       }
     }
     expect(broken).toEqual([]);
+    // Every reference has its own row in the references table, where an agent looks for it; a
+    // link elsewhere in SKILL.md doesn't stand in for it.
     const skill = read("SKILL.md");
     for (const reference of readdirSync(join(SKILL, "references")))
-      expect(skill, reference).toContain(`(references/${reference})`);
+      expect(skill, reference).toContain(`| [references/${reference}](references/${reference}) |`);
+    // The walkthrough is a task too (D174 item 3): the task table points at it.
+    const tasks = skill.slice(
+      skill.indexOf("## What a page can do"),
+      skill.indexOf("\n## ", skill.indexOf("## What a page can do") + 1),
+    );
+    expect(tasks).toContain("(references/walkthrough.md)");
   });
 
   it("shows only commands that exist, with flags they take", () => {
@@ -175,21 +227,42 @@ describe("the Agent Skill (AX-06)", () => {
     expect(failing).toEqual([]);
   });
 
+  // D174 item 5: every command, flag, hook and tool the Skill names exists in the release it
+  // ships with. The commands parse (above); this holds the rest to what the CLI's help, the
+  // protocol, the bundled reference, the MCP server and `@mostra/react` have.
+  it("names only flags, wait conditions, docs topics, tools and hooks this release has", () => {
+    const topics = new Set(docsIndex().map((topic) => topic.topic));
+    const mostra = new Set(authorExports());
+    const problems = MARKDOWN.flatMap((file) => {
+      const text = read(file);
+      const shown = shownCommands(text).flatMap((command) => shownProblem(command, topics) ?? []);
+      const tools = [
+        ...prose(text).matchAll(/\b(?:artifact|state|live|docs)_[a-z]+(?:_[a-z]+)*\b/g),
+      ]
+        .map((match) => match[0])
+        .filter((name) => !TOOLS.has(name))
+        .map((name) => `${name} isn't one of Mostra's MCP tools`);
+      const hooks = [...text.matchAll(/\buse[A-Z][A-Za-z0-9]*\b/g)]
+        .map((match) => match[0])
+        .filter((name) => !mostra.has(name) && !(name in OTHER_HOOKS))
+        .map((name) => `${name} isn't a hook @mostra/react exports`);
+      return [...flagProblems(text), ...shown, ...tools, ...hooks].map(
+        (problem) => `${file}: ${problem}`,
+      );
+    });
+    expect(problems).toEqual([]);
+    // The walkthrough names its commands and tools (D174): a reference that named none would
+    // pass this test by saying nothing.
+    const walkthrough = read("references/walkthrough.md");
+    expect(shownCommands(walkthrough).length).toBeGreaterThan(10);
+    expect(prose(walkthrough)).toMatch(/\bartifact_open\b/);
+    // A listed hook that no file names any more is stale.
+    for (const name of Object.keys(OTHER_HOOKS))
+      expect(ALL_TEXT, name).toMatch(new RegExp(`\\b${name}\\b`));
+  });
+
   it("documents every author-facing export of @mostra/react and @mostra/server", () => {
-    const react = exportedValues(
-      readFileSync(join(REPO, "packages/react/etc/react.api.md"), "utf8"),
-    );
-    const server = exportedValues(
-      readFileSync(join(REPO, "packages/server/etc/server.api.md"), "utf8"),
-    );
-    const subpaths = ["form.ts", "router.ts"].flatMap((file) =>
-      [
-        ...readFileSync(join(REPO, "packages/react/src", file), "utf8").matchAll(
-          /^export (?:async )?function (\w+)/gm,
-        ),
-      ].map((match) => match[1] as string),
-    );
-    const exported = [...new Set([...react, ...server, ...subpaths])];
+    const exported = authorExports();
     expect(exported).toEqual(
       expect.arrayContaining(["useField", "useAction", "secret", "useForm"]),
     );
@@ -225,5 +298,39 @@ describe("the Agent Skill (AX-06)", () => {
       const css = join(SKILL, "assets", "examples", example, "styles.css");
       expect(readFileSync(css, "utf8"), relative(SKILL, css)).toBe(studio);
     }
+  });
+});
+
+// The name checks themselves: what they catch and what they let stand (MT-04).
+describe("the Skill's name checks", () => {
+  it("judge only what a text writes out, and catch what the release lacks", () => {
+    const topics = new Set(["guide", "guide/walkthrough"]);
+    for (const command of [
+      "docs guide",
+      "docs --json guide",
+      "docs --home /h guide",
+      "docs <topic>",
+      "wait x --until submitted:all",
+      "wait <dir> --until submitted:<N>",
+      "wait x --until=signal:go",
+    ])
+      expect(shownProblem(command, topics), command).toBeUndefined();
+    for (const command of [
+      "docs guides",
+      "docs --home /h guides",
+      "wait <dir> --until submitted:everyone",
+      "wait x --until=sumbitted",
+    ])
+      expect(shownProblem(command, topics), command).toBeDefined();
+    expect(
+      flagProblems(
+        "`--browser` `--ttl 24h` `--screenshots always` `--after <cursor>` `--until submitted:2`",
+      ),
+    ).toEqual([]);
+    expect(
+      flagProblems("`--ttl soon` `--format xml` `--nope` `--browser now` `--until everyone`"),
+    ).toHaveLength(5);
+    // A flag inside a fenced block is the block's business (it shows a full command).
+    expect(flagProblems("```sh\nmostra verify x --nope\n```")).toEqual([]);
   });
 });

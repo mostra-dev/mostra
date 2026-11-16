@@ -3916,6 +3916,82 @@ const SEEDS: readonly Seed[] = [
     to: "      if (current.length === expected.length) continue;",
     check: integration("publish-faults.test.ts", "completes the creation"),
   },
+  // MT-04 (D174 item 5): the walkthrough names only what the release has. Each seed writes
+  // something the CLI's help, the protocol, the bundled reference, the MCP server or
+  // `@mostra/react` lacks; the Skill's checks in the CLI catch it.
+  ...(
+    [
+      [
+        "a command the CLI lacks",
+        "mostra roster add <dir> <your-person>",
+        "mostra roster invite <dir> <your-person>",
+        "shows only commands",
+      ],
+      [
+        "a flag value outside its choices",
+        "mostra verify <dir> --screenshots always",
+        "mostra verify <dir> --screenshots every-time",
+        "shows only commands",
+      ],
+      ["a flag no command takes", "unless `--ttl` says", "unless `--expires` says", "names only"],
+      [
+        "a wait condition mostra wait refuses",
+        "--until submitted:all --timeout 2m",
+        "--until submitted:everyone --timeout 2m",
+        "names only",
+      ],
+      [
+        "a tool the MCP server lacks",
+        "call `artifact_open` once",
+        "call `artifact_share` once",
+        "names only",
+      ],
+      ["a hook @mostra/react lacks", "(`useRespondents`)", "(`useRespondent`)", "names only"],
+      [
+        "a docs topic the reference lacks",
+        "or `mostra docs guide`.",
+        "or `mostra docs guides`.",
+        "names only",
+      ],
+    ] as const
+  ).map(
+    ([name, from, to, test]): Seed => ({
+      requirement: "MT-04",
+      name: `the walkthrough names ${name}`,
+      file: "../../skills/mostra/references/walkthrough.md",
+      from,
+      to,
+      check: ["--project", "unit", "test/unit/skill.test.ts", "-t", test],
+      cwd: "../cli",
+    }),
+  ),
+  {
+    requirement: "MT-04",
+    name: "SKILL.md's references table loses the walkthrough",
+    file: "../../skills/mostra/SKILL.md",
+    from: "| [references/walkthrough.md](references/walkthrough.md) |",
+    to: "| references/walkthrough.md |",
+    check: ["--project", "unit", "test/unit/skill.test.ts", "-t", "resolves every relative link"],
+    cwd: "../cli",
+  },
+  {
+    requirement: "MT-04",
+    name: "SKILL.md's task table loses the walkthrough",
+    file: "../../skills/mostra/SKILL.md",
+    from: '| Show what Mostra can do ("Should I use Mostra?") | one live page for the person\'s own work, published, answered and grown with them | [walkthrough.md](references/walkthrough.md) |\n',
+    to: "",
+    check: ["--project", "unit", "test/unit/skill.test.ts", "-t", "resolves every relative link"],
+    cwd: "../cli",
+  },
+  {
+    requirement: "MT-04",
+    name: "mostra docs serves no guide/walkthrough",
+    file: "../mcp/src/docs.ts",
+    from: '      .filter((entry) => entry.endsWith(".md"))',
+    to: '      .filter((entry) => entry.endsWith(".md") && entry !== "walkthrough.md")',
+    check: integration("contract.test.ts", "docs"),
+    cwd: "../cli",
+  },
   {
     requirement: "review-5",
     name: "imports from outside the artifact are built",
@@ -4614,6 +4690,25 @@ const SEEDS: readonly Seed[] = [
     from: '        channel: "shell",',
     to: '        channel: "artifact",',
     check: e2e("a field saves as the viewer types"),
+    e2e: true,
+  },
+  // #182: on a phone the trusted Submit stays whole and on the screen beside a long Choose.
+  {
+    requirement: "SH-02",
+    name: "#182: a long Choose pushes the trusted Submit off a phone's bar",
+    file: "../shell/src/shell.css",
+    from: "  .mostra-actionbar[data-mostra-dock] .mostra-trusted .mostra-button {\n    flex: 0 1 auto;\n    min-inline-size: 0;\n  }",
+    to: "  .mostra-actionbar[data-mostra-dock] .mostra-trusted .mostra-button {\n    flex: none;\n  }",
+    check: e2e("a long Choose label leaves the Submit on the screen"),
+    e2e: true,
+  },
+  {
+    requirement: "SH-02",
+    name: "#182: a control's words take the point that is the trusted Submit's",
+    file: "../shell/src/shell.css",
+    from: "  text-overflow: ellipsis;\n  pointer-events: none;\n}",
+    to: "  text-overflow: ellipsis;\n}",
+    check: e2e("synthetic clicks, overlays"),
     e2e: true,
   },
   {

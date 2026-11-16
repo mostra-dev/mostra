@@ -736,6 +736,17 @@ describe("every command, with --json and no terminal", () => {
     expect((example.result as { markdown: string }).markdown).toContain(
       readFileSync(join(skill, "assets", "examples", "inbox", "actions.ts"), "utf8"),
     );
+    // The showcase walkthrough is a reference like the others (D174 item 3), served from the
+    // references folder with no entry of its own (MT-04 settled D174 item 7 so), with the note
+    // on how its links read through the CLI.
+    const walkthrough = await run(["docs", "guide/walkthrough"], { code: 0, ok: true });
+    const shown = walkthrough.result as { topic: string; markdown: string; url: string };
+    expect(shown.topic).toBe("guide/walkthrough");
+    expect(shown.url).toMatch(/\/guide\/walkthrough$/);
+    expect(shown.markdown).toContain("mostra docs guide/<name>");
+    expect(shown.markdown).toContain(
+      readFileSync(join(skill, "references", "walkthrough.md"), "utf8").split("\n")[0] as string,
+    );
   });
 
   it("telemetry status, on and off answer without an instance", async () => {
