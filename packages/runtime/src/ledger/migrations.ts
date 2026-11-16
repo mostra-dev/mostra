@@ -932,4 +932,17 @@ export const MIGRATIONS: readonly Migration[] = [
       db.exec("CREATE INDEX view_token ON view (token_id, opened_at)");
     },
   },
+  {
+    version: 18,
+    name: "the app channel",
+    up(db) {
+      // An inline page in an MCP Apps host acts through an app session (D175 item 4), sent only
+      // in its `app/request` calls: never a cookie, a frame header or a hosted shell's header.
+      db.widenCheck(
+        "session",
+        "CHECK (mode IN ('cookie', 'worker', 'header'))",
+        "CHECK (mode IN ('cookie', 'worker', 'header', 'app'))",
+      );
+    },
+  },
 ];

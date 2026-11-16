@@ -59,7 +59,12 @@ const REMOTE_ACCESS = [
 const REMOTE = [...REMOTE_HOSTING, ...REMOTE_ACCESS];
 // Plugins and source packs (WP-16): real installs from a local registry, plugin children and
 // local registry servers, a group of their own, since `core` has no room for them.
-const EXTENSIONS = ["test/integration/plugins.test.ts", "test/integration/packs.test.ts"];
+const EXTENSIONS = [
+  "test/integration/plugins.test.ts",
+  "test/integration/packs.test.ts",
+  // WP-17: the app channel and the MCP App exporter, a bundled plugin (D175).
+  "test/integration/mcp-apps.test.ts",
+];
 export const INTEGRATION_GROUPS: Record<string, { include: string[]; exclude: string[] }> = {
   core: {
     include: ["test/integration/**/*.test.ts"],

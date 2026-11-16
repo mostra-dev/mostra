@@ -220,7 +220,12 @@ interface TokenRow {
 }
 
 /** How a session authenticates (DATA_MODEL §3 `session.mode`). */
-export type SessionMode = "cookie" | "worker" | "header";
+/**
+ * How a session authenticates: a cookie, a worker-mode frame's header (D70), a hosted shell's
+ * header (D165 item 8), or an inline page's app session, sent only in its `app/request` calls
+ * (D175 item 4).
+ */
+export type SessionMode = "cookie" | "worker" | "header" | "app";
 
 interface SessionRow {
   id: string;
@@ -588,7 +593,8 @@ export class Capabilities {
    * holds, every token is refused, a right one too, and the limit is checked here, at the moment
    * of the check, so concurrent guesses can't slip past it. An unknown secret, or one for another
    * artifact, is `MOSTRA_HYGIENE_TOKEN_INVALID`; a revoked or expired one, or one minted for
-   * another shell address, `_TOKEN_REVOKED`. Unknown secrets count towards the limit.
+   * another shell address, `_TOKEN_REVOKED`. Unknown secrets count towards the limit. `shellOrigin`
+   * `"*"` accepts a link minted at any of the home's addresses: the app channel's (D175 item 4).
    */
   presentToken(
     secret: unknown,
@@ -620,7 +626,9 @@ export class Capabilities {
         row.revoked_at !== null ? "This link was revoked." : "This link has expired.",
       );
     }
-    if (row.shell_origin !== (shellOrigin ?? this.#shellOrigin())) {
+    // A link works only at the address it was minted for (D97 item 10); the app channel has no
+    // address of its own (`*`), so a link of any of the home's addresses opens there (D175).
+    if (shellOrigin !== "*" && row.shell_origin !== (shellOrigin ?? this.#shellOrigin())) {
       return refusal(
         "MOSTRA_HYGIENE_TOKEN_REVOKED",
         `This link was made for ${row.shell_origin}, not this address.`,

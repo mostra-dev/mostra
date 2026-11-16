@@ -4,6 +4,9 @@
  */
 import type { AnyMethod, AnyNotification } from "../method.ts";
 import { ARTIFACT_PROGRESS, ArtifactProgressParams } from "../verify.ts";
+import { appOpenMethod } from "./app/open.ts";
+import { appPageMethod } from "./app/page.ts";
+import { appRequestMethod } from "./app/request.ts";
 import { artifactCreateMethod } from "./artifact/create.ts";
 import { artifactExportMethod } from "./artifact/export.ts";
 import { artifactGetMethod } from "./artifact/get.ts";
@@ -20,6 +23,7 @@ import { eventsReadMethod } from "./events/read.ts";
 import { EVENTS_NOTIFY, EventsNotifyParams, eventsSubscribeMethod } from "./events/subscribe.ts";
 import { eventsUnsubscribeMethod } from "./events/unsubscribe.ts";
 import { gcRunMethod } from "./gc/run.ts";
+import { hostedPageMethod } from "./hosted/page.ts";
 import { hostedPushMethod } from "./hosted/push.ts";
 import { hostedSubmissionMethod } from "./hosted/submission.ts";
 import { instanceCheckMethod } from "./instance/check.ts";
@@ -152,6 +156,10 @@ export const hostMethods: readonly AnyMethod[] = [
   packAddMethod,
   pluginExportMethod,
   pluginCommandsMethod,
+  appOpenMethod,
+  appRequestMethod,
+  appPageMethod,
+  hostedPageMethod,
   // gen:methods
 ];
 

@@ -359,7 +359,8 @@ export function createPlugins(options: PluginsOptions): Plugins {
         );
       }
     }
-    if (!manifestScopes(manifest).includes(plugin.scope)) {
+    // A bundled plugin is the home's (D175 item 3): it may contribute exporters and commands only.
+    if (!manifestScopes(manifest).includes(plugin.scope === "bundled" ? "home" : plugin.scope)) {
       found.push(
         createDiagnostic("MOSTRA_PLUGIN_SCOPE_INVALID", {
           message: `${plugin.name} contributes more than exporters and CLI commands, so it is installed for an artifact, not for the home.`,
