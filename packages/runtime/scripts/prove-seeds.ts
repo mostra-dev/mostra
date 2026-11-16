@@ -6,10 +6,11 @@
  *
  *   node packages/runtime/scripts/prove-seeds.ts [--only RT-09]
  *
- * It edits source files in place and restores them in `finally`, also on Ctrl-C. Don't run it
- * with uncommitted edits to the seeded files.
+ * It edits source files in place and restores them in `finally`, also on Ctrl-C, SIGTERM and
+ * SIGHUP (not SIGKILL). Don't run it with uncommitted edits to the seeded files, and don't stage
+ * or commit while it runs: the seeded file is the product's own until it is restored.
  */
-import { execFileSync, spawnSync } from "node:child_process";
+import { type ChildProcess, spawn } from "node:child_process";
 import { existsSync, readFileSync, writeFileSync } from "node:fs";
 import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
@@ -7126,7 +7127,51 @@ if (values.anchors) {
 
 const WINDOWS_HOST = process.platform === "win32";
 
-function build(seed?: Seed): void {
+/** The command running now, which a signal stops before the seeded file is restored. */
+let current: ChildProcess | undefined;
+
+/**
+ * Runs a command without blocking this process, so a signal reaches its handler at once (a
+ * synchronous child would hold it until the child ended, with the seed still planted).
+ */
+function run(
+  command: string,
+  args: readonly string[],
+  options: { readonly cwd: string; readonly shell?: boolean; readonly capture?: boolean },
+): Promise<{ readonly status: number | null; readonly text: string }> {
+  return new Promise((resolve, reject) => {
+    const child = spawn(command, args, {
+      cwd: options.cwd,
+      shell: options.shell ?? false,
+      stdio: options.capture ? ["ignore", "pipe", "pipe"] : "ignore",
+    });
+    current = child;
+    let text = "";
+    child.stdout?.setEncoding("utf8").on("data", (chunk: string) => {
+      text += chunk;
+    });
+    child.stderr?.setEncoding("utf8").on("data", (chunk: string) => {
+      text += chunk;
+    });
+    child.on("error", reject);
+    child.on("close", (status) => {
+      if (current === child) current = undefined;
+      resolve({ status, text });
+    });
+  });
+}
+
+/** Runs a command that must succeed. */
+async function exec(
+  command: string,
+  args: readonly string[],
+  options: { readonly cwd: string; readonly shell?: boolean },
+): Promise<void> {
+  const { status } = await run(command, args, options);
+  if (status !== 0) throw new Error(`${command} ${args.join(" ")} exited ${status}.`);
+}
+
+async function build(seed?: Seed): Promise<void> {
   // pnpm is a `.cmd` on Windows, which only a shell runs.
   const shell = WINDOWS_HOST;
   if (seed?.platform === "win32") {
@@ -7136,14 +7181,13 @@ function build(seed?: Seed): void {
       // ("Access is denied", seen in WP-W2's seed runs), so a failed build is tried twice more.
       for (let attempt = 1; ; attempt++) {
         try {
-          execFileSync("cargo", ["build", "-p", "mostra-win", "--release", "--locked"], {
+          await exec("cargo", ["build", "-p", "mostra-win", "--release", "--locked"], {
             cwd: root,
-            stdio: ["ignore", "ignore", "inherit"],
           });
           break;
         } catch (error) {
           if (attempt === 3) throw error;
-          Atomics.wait(new Int32Array(new SharedArrayBuffer(4)), 0, 0, 5000);
+          await new Promise((resolve) => setTimeout(resolve, 5000));
         }
       }
     }
@@ -7151,6 +7195,7 @@ function build(seed?: Seed): void {
     for (const name of [
       "@mostra/protocol",
       "@mostra/themes",
+      "@mostra/plugin-mcp-app",
       "@mostra/server",
       "@mostra/worker",
       "@mostra/react",
@@ -7161,13 +7206,14 @@ function build(seed?: Seed): void {
       "@mostra/mcp",
       "@mostra/cli",
     ]) {
-      execFileSync("pnpm", ["--filter", name, "build"], { cwd: root, stdio: "ignore", shell });
+      await exec("pnpm", ["--filter", name, "build"], { cwd: root, shell });
     }
     return;
   }
   for (const name of [
     "@mostra/protocol",
     "@mostra/themes",
+    "@mostra/plugin-mcp-app",
     "@mostra/server",
     "@mostra/worker",
     "@mostra/react",
@@ -7179,7 +7225,7 @@ function build(seed?: Seed): void {
     "@mostra/cli",
     "create-mostra",
   ]) {
-    execFileSync("pnpm", ["--filter", name, "build"], { cwd: root, stdio: "ignore", shell });
+    await exec("pnpm", ["--filter", name, "build"], { cwd: root, shell });
   }
 }
 
@@ -7190,22 +7236,22 @@ function quoteForShell(argument: string): string {
     : argument;
 }
 
-function check(seed: Seed): { ok: boolean; summary: string } {
+async function check(seed: Seed): Promise<{ ok: boolean; summary: string }> {
   const result = seed.e2e
-    ? spawnSync("npx", ["playwright", "test", ...seed.check], {
+    ? await run("npx", ["playwright", "test", ...seed.check], {
         cwd: join(root, "tests", "e2e"),
-        encoding: "utf8",
+        capture: true,
       })
     : // Through pnpm, as `pnpm check` runs a suite: its `vitest` shim puts pnpm's hoisted
       // packages on NODE_PATH, which a supervisor started from a checkout needs to load
       // oxc-parser's native binding (found in WP-W2: VR-08's dev seeds came back red when vitest
       // ran without it). pnpm is a `.cmd` on Windows, which only a shell runs.
-      spawnSync("pnpm", ["exec", "vitest", "run", ...seed.check.map(quoteForShell)], {
+      await run("pnpm", ["exec", "vitest", "run", ...seed.check.map(quoteForShell)], {
         cwd: join(runtime, seed.cwd ?? "."),
-        encoding: "utf8",
         shell: WINDOWS_HOST,
+        capture: true,
       });
-  const text = stripVTControlCharacters(`${result.stdout}${result.stderr}`);
+  const text = stripVTControlCharacters(result.text);
   const summary =
     text
       .split("\n")
@@ -7215,10 +7261,19 @@ function check(seed: Seed): { ok: boolean; summary: string } {
 }
 
 let restore: (() => void) | undefined;
-process.on("SIGINT", () => {
-  restore?.();
-  process.exit(130);
-});
+// Ctrl-C, a closed terminal and a deadline or a CI cancel (SIGTERM) all restore the seeded file
+// before the process ends: a seed left planted would be committed as the product (WP-17).
+for (const [signal, code] of [
+  ["SIGINT", 130],
+  ["SIGTERM", 143],
+  ["SIGHUP", 129],
+] as const) {
+  process.on(signal, () => {
+    current?.kill("SIGTERM");
+    restore?.();
+    process.exit(code);
+  });
+}
 
 let missed = 0;
 for (const seed of SEEDS) {
@@ -7250,14 +7305,14 @@ for (const seed of SEEDS) {
     for (const { path, edit } of originals) {
       writeFileSync(path, readFileSync(path, "utf8").replace(edit.from, edit.to));
     }
-    build(seed);
-    red = check(seed);
+    await build(seed);
+    red = await check(seed);
   } finally {
     restore();
     restore = undefined;
   }
-  build(seed);
-  const green = check(seed);
+  await build(seed);
+  const green = await check(seed);
   if (red.ok || !green.ok) missed++;
   console.log(
     `${seed.requirement} | ${seed.name} | seeded: ${red.ok ? "GREEN (missed)" : "red"} (${red.summary}) | restored: ${green.ok ? "green" : "RED"} (${green.summary})`,
