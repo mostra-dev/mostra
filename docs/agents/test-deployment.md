@@ -1,70 +1,55 @@
-# Run the test deployment
+# The test deployment, and checking a candidate against a deployed server
 
-The project's test deployment is a real `mostra-runtime server` on the public internet, for the external checks a package can't run on one machine: a chat host's connector, a hosted page opened from a phone, the owner's `wait` against a deployed server. WP-30 stood it up (D167 item 20). This playbook refreshes it with a candidate, runs a check on it, and retires it.
+WP-30 stood up a test deployment of `mostra-runtime server` on the public internet (D167 item 20), for the external checks a package can't run on one machine: a chat host's connector, a hosted page opened from a phone, the owner's `wait` against a deployed server. **It was retired on 2026-11-15**, when the hosted service took its names. This playbook says how a package checks its candidate now, and how to stand a test deployment up again should one be needed.
 
-## What it is
+## Check a candidate on the hosted service
+
+The names the test deployment used now serve the hosted service:
 
 | | |
 |---|---|
 | API origin | `https://api.mostradev.com` (the binding, version files, OAuth, `/mcp`) |
-| User-content domain | `mostrausercontent.com` and `*.mostrausercontent.com` (the hosted shell and every route's label) |
-| Server | the maintainer's machine running Docker, reached as a Docker context; its name and address are in `~/.mostra-deploy/test.json` |
-| Front | Caddy with the Cloudflare DNS module (a wildcard certificate by DNS-01), as `docs/reference/self-hosting.md` shows |
-| DNS | three address records, DNS only (no proxy), made by `tools/deploy/test/dns.py` and commented "WP-30 test deployment" |
-| Sign-in | GitHub, through an OAuth app Mirza owns, callback `https://api.mostradev.com/signin/github/callback` |
-| Owner instance | a runtime bundle on Mirza's Mac, on the internal disk, signed in with `mostra login https://api.mostradev.com --default` |
+| User-content domain | `mostrausercontent.com` and `*.mostrausercontent.com` |
+| Sign-in | GitHub and Google |
 
-The repository holds the shape (`tools/deploy/test/`): `compose.yaml`, `Caddyfile`, `caddy/Dockerfile`, `server.template.json` and `dns.py`. The secrets and the deployment's own facts stay on Mirza's machine, never in the repository, a log or a commit:
-
-```text
-~/.mostra-deploy/cloudflare-token       DNS edit on both zones (it can't make tunnels)
-~/.mostra-deploy/github-client-id       the OAuth app's client ID
-~/.mostra-deploy/github-client-secret   its secret
-~/.mostra-deploy/test.json              { address, zones, dockerContext }
-```
-
-All four are mode 0600. On the server, the configuration volume (`mostra-wp30-config`) holds `server.json` (0444) and the GitHub secret (`github`, 0400), owned by UID 10001, the image's user; the Caddy volume (`mostra-wp30-caddy-config`) holds the `Caddyfile` and the Cloudflare token (`cloudflare`, 0400). The compose project is `mostra-wp30`.
-
-## Refresh it with a candidate
-
-Every package that changes the server, the relay, the hosted shell or the MCP surface refreshes the deployment with its candidate before its external checks.
-
-1. Take the candidate's Linux bundle from its pull request's CI run: `gh run download <run> -n bundle-linux-x64 -D /Volumes/Active/<scratch>` (retry on a dropped connection). Its `.json` record pins its size and SHA-256.
-2. Build the image on the server, which runs linux/amd64:
-
-   ```sh
-   DOCKER_CONTEXT=<context> node packages/bundle/scripts/image.ts --version <version> \
-     --bundles <scratch> --platforms linux/amd64 --repository localhost/mostra-server --load
-   DOCKER_CONTEXT=<context> docker tag localhost/mostra-server:<version> mostra-server:<package>-<commit>
-   ```
-
-3. Start it: `MOSTRA_SERVER_IMAGE=mostra-server:<package>-<commit> docker --context <context> compose -f tools/deploy/test/compose.yaml up -d`. Hosted homes live in the `data` volume and survive the swap.
-4. When `server.json` changes, render it from `server.template.json` with the client ID from `~/.mostra-deploy/github-client-id`, copy it into the configuration volume with a throwaway container, and restart the server.
-5. Check it from outside, each answer as shown:
+1. **A released server** needs nothing: sign in with `mostra login https://api.mostradev.com` and run the check.
+2. **A candidate** (a package that changes the server, the relay, the hosted shell or the MCP surface): ask Mirza for a check of the candidate's server image, built from its pull request's CI run (`packages/bundle/scripts/image.ts`). A candidate never runs where people's pages live. Until the hosted service opens to everyone, these names serve only the project's own pages, so Mirza may run the candidate on them and put the release back afterwards; from then on he runs it on a deployment of its own, with names of its own, and gives the package those names. Use the names he gives in the steps below.
+3. Check it from outside, each answer as shown (with the names of step 2 where they differ):
    - `curl -s https://api.mostradev.com/health` gives `{"status":"ok",…}`;
    - `/.well-known/oauth-authorization-server` names the issuer and `S256` only;
    - `POST /mcp` without a token gives 401 with `WWW-Authenticate: Bearer resource_metadata="…/mcp"`;
    - a hosted page gives 200 with `origin-agent-cluster: ?1`, the shell's CSP and `x-robots-tag: noindex`;
    - `mostra status` on the owner says `connected`.
+4. Run the external check, and record it in the progress report as external evidence:
+   - **claude.ai** (Mirza signs in): Settings, Connectors, **Add custom connector**, URL `https://api.mostradev.com/mcp`, sign in, **Continue** on Mostra's consent page. In a new chat, ask the agent to make, publish and share a page, open its link and answer. The owner's `mostra wait <artifact> --until submitted` and `mostra results` show the answer; record the submission ID.
+   - **ChatGPT**: write tools on a custom MCP server need a Business or Enterprise workspace (VERIFIED_FACTS, WP-30); Mirza arranges one before the check (M60).
 
-## Run an external check
+Hosted pages there follow the hosted service's own policies (link lifetimes, quotas). A check that needs a server with none of them uses a test deployment of its own (below).
 
-- **claude.ai** (Mirza signs in): Settings, Connectors, **Add custom connector**, URL `https://api.mostradev.com/mcp`, sign in with GitHub, **Continue** on Mostra's consent page. In a new chat, ask the agent to make, publish and share a page, open its link and answer. The owner's `mostra wait <artifact> --until submitted` and `mostra results` show the answer; record the submission ID in the progress report as external evidence.
-- **ChatGPT**: write tools on a custom MCP server need a Business or Enterprise workspace (VERIFIED_FACTS, WP-30); Mirza arranges one before the check (M60).
-- **Load** (RM-08): `node packages/runtime/scripts/load-anonymous.ts run --link <hosted link> --minutes 30 --out <file>` with the owner stopped, then `verify` once it returns.
-- **Backups**: a Litestream 0.5.18 container on the data volume replicates a hosted home's ledger; restore it into a scratch volume and compare its submissions with the live ledger, then remove the container and its volume.
+## Stand a test deployment up again
 
-The owner instance runs from a bundle on the internal disk (`~/.mostra-wp30/`): an external disk that drops off ends a daemon mid-run. Start it always-on (`mostra-runtime daemon --always-on`) for checks that wait.
+The shape is still in `tools/deploy/test/`: `compose.yaml`, `Caddyfile`, `caddy/Dockerfile`, `server.template.json` and `dns.py`, as `docs/reference/self-hosting.md` shows. A new one takes names of its own (a user-content domain that serves nothing else, and an API host off it), never the hosted service's, and its own GitHub OAuth app.
+
+1. Its facts and secrets stay on the maintainer's machine, mode 0600, never in the repository, a log or a commit: a DNS token able to edit the zone's records, the OAuth app's client ID and secret, and `{ address, zones, dockerContext }`.
+2. Build the candidate's image on the server from its pull request's Linux bundle:
+
+   ```sh
+   DOCKER_CONTEXT=<context> node packages/bundle/scripts/image.ts --version <version> \
+     --bundles <scratch> --platforms linux/amd64 --repository localhost/mostra-server --load
+   ```
+
+3. Render `server.json` from `server.template.json`, copy it and the OAuth secret into the configuration volume (owned by UID 10001), start the compose project, and create its three DNS records with `dns.py`.
+4. Run the checks of step 3 above against its names.
 
 ## Retire it
 
-The deployment stays while a package needs a check against a deployed server: WP-17 repeats MC-04 inline through it (D125), and ChatGPT's check waits for a workspace (M60). It is retired when a production deployment takes these names, or when Mirza says so, whichever comes first; the session that does it records it in its progress report.
+1. `tools/deploy/test/dns.py --remove` deletes the records it made; any other record is left alone.
+2. `docker --context <context> compose -p <project> down -v`, then remove its configuration volumes and its images.
+3. On the owner: `mostra logout <server> --forget`, stop its daemon, and remove its home.
+4. Remove the chat hosts' connectors to it and delete its OAuth app.
 
-1. `tools/deploy/test/dns.py --remove` deletes the three records it made; any other record is left alone.
-2. `docker --context <context> compose -p mostra-wp30 down -v`, then remove the two configuration volumes and the images tagged `mostra-server:*` and `mostra-wp30-caddy:*`. The data volume holds only test homes.
-3. On the owner: `mostra logout https://api.mostradev.com --forget`, stop its daemon, and remove `~/.mostra-wp30/`.
-4. Mirza removes the claude.ai connector and changes or deletes the GitHub OAuth app; the four files in `~/.mostra-deploy/` go once nothing uses them.
+**The 2026-11-15 retirement** did all four for WP-30's deployment: its three DNS records, its compose project, four volumes and seven images, the owner instance's link and home, the claude.ai connector and its GitHub OAuth app are gone, and each was checked gone. Its test homes held test data only and were not migrated.
 
 ## Done when
 
-The deployment answers every check in step 5 of the refresh with the candidate's version, the external check's evidence is in the progress report, and nothing secret is in the repository (`git grep` for the token, the client secret and the address finds nothing).
+The check's evidence is in the progress report, and nothing secret is in the repository (`git grep` for the token, the client secret and the address finds nothing).
