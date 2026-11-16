@@ -1,5 +1,15 @@
 # @mostra/runtime
 
+## 0.15.2
+
+### Patch Changes
+
+- [#177](https://github.com/mostra-dev/mostra/pull/177) [`959ca42`](https://github.com/mostra-dev/mostra/commit/959ca427e02d4871564280fa7d1be748f0ac251c) Thanks [@dev-mirzabicer](https://github.com/dev-mirzabicer)! - `MOSTRA_LICENSE_UNACCEPTED` reads "a license that needs an acknowledgment" when one license is missing (it read "a license that need").
+- Updated dependencies []:
+  - @mostra/mcp@0.15.2
+  - @mostra/protocol@0.15.2
+  - @mostra/themes@0.15.2
+
 ## 0.15.1
 
 ### Patch Changes
