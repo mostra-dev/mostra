@@ -75,6 +75,97 @@ export type AnyMethod = MethodDefinition<unknown, unknown>;
 export type AnyNotification = NotificationDefinition<unknown>;
 
 // @public
+export const APP_PAGE_MAX_CHARS: number;
+
+// @public
+export const APP_ROUTES: readonly ["fields", "submit", "signal", "call", "runs", "runs/attach", "runs/cancel", "live", "respondents", "events/poll"];
+
+// @public
+export const APP_TOOLS: {
+    readonly open: "app_open";
+    readonly fields: "app_fields";
+    readonly submit: "app_submit";
+    readonly signal: "app_signal";
+    readonly call: "app_call";
+    readonly run: "app_run";
+    readonly runStatus: "app_run_status";
+    readonly runCancel: "app_run_cancel";
+    readonly live: "app_live";
+    readonly respondents: "app_respondents";
+    readonly events: "app_events";
+};
+
+// @public
+export const appOpenMethod: MethodDefinition<AppOpenParams, AppOpenResult>;
+
+// @public
+export interface AppOpenParams {
+    readonly artifactId: string;
+    readonly token: string;
+    readonly version?: number;
+}
+
+// @public
+export interface AppOpenResult extends ViewContext {
+    readonly follow: boolean;
+    readonly paused?: {
+        readonly by: "owner" | "operator";
+        readonly reason?: string;
+    };
+    readonly pinned: boolean;
+    readonly scopes: readonly string[];
+    readonly serverParked?: true;
+    readonly session: string;
+    readonly viewer: Viewer;
+}
+
+// @public
+export const appPageMethod: MethodDefinition<AppPageParams, AppPageResult>;
+
+// @public
+export interface AppPageParams {
+    readonly versionId: string;
+}
+
+// @public
+export interface AppPageResult {
+    readonly artifactId: string;
+    readonly html: string;
+    readonly meta: McpAppResourceMeta;
+    readonly uri: string;
+}
+
+// @public
+export const appRequestMethod: MethodDefinition<AppRequestParams, AppRequestResult>;
+
+// @public
+export interface AppRequestParams {
+    readonly artifactId: string;
+    readonly body?: Readonly<Record<string, unknown>>;
+    readonly cursor?: string;
+    readonly fnId?: string;
+    readonly revision?: string;
+    readonly route: AppRoute;
+    readonly runId?: string;
+    readonly session: string;
+    readonly view?: string;
+    readonly wait?: number;
+}
+
+// @public
+export interface AppRequestResult {
+    readonly body?: unknown;
+    readonly lines?: readonly unknown[];
+    readonly status: number;
+}
+
+// @public
+export type AppRoute = (typeof APP_ROUTES)[number];
+
+// @public
+export type AppToolName = (typeof APP_TOOLS)[keyof typeof APP_TOOLS];
+
+// @public
 export type AreaCatalog<C extends `MOSTRA_${DiagnosticArea}_${string}`> = { readonly [K in C]: DiagnosticSpec; };
 
 // @public
@@ -386,6 +477,7 @@ export interface BridgeMessage<P, R> {
 
 // @public
 export interface BridgeOptions {
+    readonly messages?: readonly AnyBridgeMessage[];
     readonly onNotification?: (message: AnyBridgeMessage, params: unknown) => void;
     readonly onRejected?: (reason: BridgeRejection, event: BridgeEvent) => void;
     readonly onRequest?: (message: AnyBridgeMessage, params: unknown) => unknown;
@@ -1547,6 +1639,21 @@ export interface HostedChrome {
 }
 
 // @public
+export const hostedPageMethod: MethodDefinition<HostedPageParams, HostedPageResult>;
+
+// @public
+export interface HostedPageParams {
+    readonly html: string;
+    readonly meta: McpAppResourceMeta;
+    readonly versionId: string;
+}
+
+// @public
+export interface HostedPageResult {
+    readonly sha256: string;
+}
+
+// @public
 export const hostedPushMethod: MethodDefinition<HostedPushParams, HostedPushResult>;
 
 // @public
@@ -1857,6 +1964,9 @@ export type LinkId = Id<"lnk">;
 export const LinkId: GeneratedIdKind<"lnk">;
 
 // @public
+export function linkSecret(url: string): string | undefined;
+
+// @public
 export type ListingEntry = readonly [path: string, executable: boolean, sha256: string, size: number];
 
 // @public
@@ -1960,7 +2070,133 @@ export function manifestProblem(manifest: ArtifactManifest): {
 export const MAX_LINE_LENGTH: number;
 
 // @public
+export const MCP_APP_HANDOFF = "__mostraMcpApp";
+
+// @public
+export const MCP_APP_LOADER_URI = "ui://mostra/app";
+
+// @public
+export const MCP_APP_MIME_TYPE = "text/html;profile=mcp-app";
+
+// @public
+export const MCP_APPS_EXTENSION = "io.modelcontextprotocol/ui";
+
+// @public
+export const MCP_APPS_MESSAGES: readonly AnyBridgeMessage[];
+
+// @public
 export const MCP_APPS_PROTOCOL_VERSION = "2026-01-26";
+
+// @public
+export interface McpAppHandles {
+    readonly artifactId: string;
+    readonly url: string;
+    readonly version: number;
+    readonly versionId: string;
+}
+
+// @public
+export const McpAppHandles: z.ZodType<McpAppHandles>;
+
+// @public
+export interface McpAppHandoff {
+    claim(): readonly {
+        readonly data: unknown;
+        readonly origin: string;
+        readonly source: unknown;
+    }[];
+    readonly initialize: UiInitializeResult;
+    readonly toolInput?: Readonly<Record<string, unknown>>;
+    readonly toolResult?: McpCallToolResult;
+}
+
+// @public
+export interface McpAppResourceMeta {
+    readonly csp?: {
+        readonly connectDomains?: readonly string[];
+        readonly resourceDomains?: readonly string[];
+        readonly frameDomains?: readonly string[];
+        readonly baseUriDomains?: readonly string[];
+    };
+    readonly prefersBorder?: boolean;
+}
+
+// @public
+export const McpAppResourceMeta: z.ZodType<McpAppResourceMeta>;
+
+// @public
+export function mcpAppUri(versionId: string): string;
+
+// @public
+export interface McpCallToolResult {
+    readonly [key: string]: unknown;
+    readonly content?: readonly {
+        readonly type: string;
+        readonly [key: string]: unknown;
+    }[];
+    readonly isError?: boolean;
+    readonly _meta?: Readonly<Record<string, unknown>>;
+    readonly structuredContent?: Readonly<Record<string, unknown>>;
+}
+
+// @public
+export const mcpHostContextChanged: BridgeMessage<BridgeHostContext, undefined>;
+
+// @public
+export const mcpLogMessage: BridgeMessage<{
+    readonly level: string;
+    readonly data: unknown;
+    readonly logger?: string;
+}, undefined>;
+
+// @public
+export interface McpResourceContents {
+    readonly [key: string]: unknown;
+    readonly blob?: string;
+    readonly _meta?: Readonly<Record<string, unknown>>;
+    readonly mimeType?: string;
+    readonly text?: string;
+    readonly uri: string;
+}
+
+// @public
+export const mcpResourcesRead: BridgeMessage<{
+    readonly uri: string;
+}, {
+    readonly contents: readonly McpResourceContents[];
+}>;
+
+// @public
+export const mcpResourceTeardown: BridgeMessage<{
+    readonly reason?: string;
+}, Readonly<Record<string, unknown>>>;
+
+// @public
+export const mcpToolCancelled: BridgeMessage<{
+    readonly reason?: string;
+}, undefined>;
+
+// @public
+export const mcpToolInput: BridgeMessage<{
+    readonly arguments?: Readonly<Record<string, unknown>>;
+}, undefined>;
+
+// @public
+export const mcpToolInputPartial: BridgeMessage<{
+    readonly arguments?: Readonly<Record<string, unknown>>;
+}, undefined>;
+
+// @public
+export const mcpToolResult: BridgeMessage<McpCallToolResult, undefined>;
+
+// @public
+export const mcpToolsCall: BridgeMessage<{
+    readonly name: string;
+    readonly arguments?: Readonly<Record<string, unknown>>;
+}, McpCallToolResult>;
+
+// @public
+export const mcpUiInitialize: BridgeMessage<UiInitializeParams, UiInitializeResult>;
 
 // @public
 export interface MethodDefinition<Params, Result> {
@@ -2299,7 +2535,7 @@ export interface PluginRemoveResult {
 }
 
 // @public
-export type PluginScope = "artifact" | "home";
+export type PluginScope = "artifact" | "home" | "bundled";
 
 // @public
 export const PluginScope: z.ZodType<PluginScope>;
@@ -4169,6 +4405,9 @@ export const VersionId: VersionIdKind;
 export interface VersionIdKind extends IdKind<"ver"> {
     fromSha256(digest: Uint8Array): VersionId;
 }
+
+// @public
+export function versionOfMcpAppUri(uri: string): string | undefined;
 
 // @public
 export interface VersionPush {

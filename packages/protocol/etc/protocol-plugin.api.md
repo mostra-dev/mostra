@@ -255,7 +255,7 @@ export interface PluginPackEntry {
 }
 
 // @public
-export type PluginScope = "artifact" | "home";
+export type PluginScope = "artifact" | "home" | "bundled";
 
 // @public
 export const PluginScope: z.ZodType<PluginScope>;

@@ -188,6 +188,17 @@ export const PACKAGE_MAP: readonly PackageRule[] = [
     published: true,
   },
   {
+    // The first first-party plugin (D175 items 2, 3): the MCP App exporter, on the exporter
+    // contract, run only in a plugin child; the runtime bundle carries it for every home.
+    name: "@mostra/plugin-mcp-app",
+    dir: "plugins/mcp-app",
+    audience: "every home (bundled), and anyone exporting an MCP App",
+    environment: "node",
+    workspace: ["@mostra/contract-exporter", "@mostra/protocol", "@mostra/themes"],
+    external: ["rolldown"],
+    published: true,
+  },
+  {
     name: "@mostra/cli",
     dir: "packages/cli",
     audience: "agents, people",

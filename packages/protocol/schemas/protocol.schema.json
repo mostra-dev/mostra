@@ -5,6 +5,36 @@
     "host-protocol": "2026-10-10"
   },
   "x-mostra-methods": {
+    "app/open": {
+      "direction": "client-to-instance",
+      "mutating": true,
+      "params": {
+        "$ref": "#/$defs/AppOpenParams"
+      },
+      "result": {
+        "$ref": "#/$defs/AppOpenResult"
+      }
+    },
+    "app/page": {
+      "direction": "client-to-instance",
+      "mutating": false,
+      "params": {
+        "$ref": "#/$defs/AppPageParams"
+      },
+      "result": {
+        "$ref": "#/$defs/AppPageResult"
+      }
+    },
+    "app/request": {
+      "direction": "client-to-instance",
+      "mutating": true,
+      "params": {
+        "$ref": "#/$defs/AppRequestParams"
+      },
+      "result": {
+        "$ref": "#/$defs/AppRequestResult"
+      }
+    },
     "artifact/create": {
       "direction": "client-to-instance",
       "mutating": true,
@@ -163,6 +193,16 @@
       },
       "result": {
         "$ref": "#/$defs/GcRunResult"
+      }
+    },
+    "hosted/page": {
+      "direction": "client-to-instance",
+      "mutating": true,
+      "params": {
+        "$ref": "#/$defs/HostedPageParams"
+      },
+      "result": {
+        "$ref": "#/$defs/HostedPageResult"
       }
     },
     "hosted/push": {
@@ -811,6 +851,310 @@
         "warm"
       ],
       "description": "A package deps/add settled: its name, exact version and whether it is warm."
+    },
+    "AppOpenParams": {
+      "type": "object",
+      "properties": {
+        "artifactId": {
+          "$ref": "#/$defs/ArtifactId"
+        },
+        "token": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 256
+        },
+        "version": {
+          "type": "integer",
+          "minimum": 1,
+          "maximum": 9007199254740991
+        }
+      },
+      "required": [
+        "artifactId",
+        "token"
+      ]
+    },
+    "AppOpenResult": {
+      "type": "object",
+      "properties": {
+        "artifactId": {
+          "$ref": "#/$defs/ArtifactId"
+        },
+        "viewId": {
+          "$ref": "#/$defs/ViewId"
+        },
+        "version": {
+          "$ref": "#/$defs/VersionRef"
+        },
+        "latest": {
+          "$ref": "#/$defs/VersionRef"
+        },
+        "policy": {
+          "$ref": "#/$defs/SubmissionPolicy"
+        },
+        "submitChannels": {
+          "readOnly": true,
+          "minItems": 1,
+          "maxItems": 2,
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/SubmitChannel"
+          }
+        },
+        "controls": {
+          "readOnly": true,
+          "maxItems": 32,
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/TrustedControl"
+          }
+        },
+        "target": {
+          "type": "string",
+          "enum": [
+            "live",
+            "static",
+            "mcp-app",
+            "verify"
+          ]
+        },
+        "session": {
+          "type": "string",
+          "minLength": 26,
+          "maxLength": 26
+        },
+        "scopes": {
+          "readOnly": true,
+          "maxItems": 256,
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
+        },
+        "viewer": {
+          "$ref": "#/$defs/Viewer"
+        },
+        "follow": {
+          "type": "boolean"
+        },
+        "pinned": {
+          "type": "boolean"
+        },
+        "serverParked": {
+          "type": "boolean",
+          "const": true
+        },
+        "paused": {
+          "type": "object",
+          "properties": {
+            "by": {
+              "type": "string",
+              "enum": [
+                "owner",
+                "operator"
+              ]
+            },
+            "reason": {
+              "type": "string",
+              "maxLength": 500
+            }
+          },
+          "required": [
+            "by"
+          ]
+        }
+      },
+      "required": [
+        "artifactId",
+        "viewId",
+        "version",
+        "latest",
+        "policy",
+        "submitChannels",
+        "controls",
+        "target",
+        "session",
+        "scopes",
+        "viewer",
+        "follow",
+        "pinned"
+      ],
+      "description": "An inline page's view (target mcp-app) and the app session it acts through."
+    },
+    "AppPageParams": {
+      "type": "object",
+      "properties": {
+        "versionId": {
+          "$ref": "#/$defs/VersionId"
+        }
+      },
+      "required": [
+        "versionId"
+      ]
+    },
+    "AppPageResult": {
+      "type": "object",
+      "properties": {
+        "artifactId": {
+          "$ref": "#/$defs/ArtifactId"
+        },
+        "uri": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 128
+        },
+        "html": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 16777216
+        },
+        "meta": {
+          "type": "object",
+          "properties": {
+            "csp": {
+              "type": "object",
+              "properties": {
+                "connectDomains": {
+                  "readOnly": true,
+                  "maxItems": 64,
+                  "type": "array",
+                  "items": {
+                    "type": "string",
+                    "minLength": 1,
+                    "maxLength": 512
+                  }
+                },
+                "resourceDomains": {
+                  "readOnly": true,
+                  "maxItems": 64,
+                  "type": "array",
+                  "items": {
+                    "type": "string",
+                    "minLength": 1,
+                    "maxLength": 512
+                  }
+                },
+                "frameDomains": {
+                  "readOnly": true,
+                  "maxItems": 64,
+                  "type": "array",
+                  "items": {
+                    "type": "string",
+                    "minLength": 1,
+                    "maxLength": 512
+                  }
+                },
+                "baseUriDomains": {
+                  "readOnly": true,
+                  "maxItems": 64,
+                  "type": "array",
+                  "items": {
+                    "type": "string",
+                    "minLength": 1,
+                    "maxLength": 512
+                  }
+                }
+              },
+              "additionalProperties": {}
+            },
+            "prefersBorder": {
+              "type": "boolean"
+            }
+          },
+          "additionalProperties": {}
+        }
+      },
+      "required": [
+        "artifactId",
+        "uri",
+        "html",
+        "meta"
+      ]
+    },
+    "AppRequestParams": {
+      "type": "object",
+      "properties": {
+        "artifactId": {
+          "$ref": "#/$defs/ArtifactId"
+        },
+        "session": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 64
+        },
+        "route": {
+          "type": "string",
+          "enum": [
+            "fields",
+            "submit",
+            "signal",
+            "call",
+            "runs",
+            "runs/attach",
+            "runs/cancel",
+            "live",
+            "respondents",
+            "events/poll"
+          ]
+        },
+        "body": {
+          "type": "object",
+          "propertyNames": {
+            "type": "string"
+          },
+          "additionalProperties": {}
+        },
+        "fnId": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 1024
+        },
+        "runId": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 64
+        },
+        "view": {
+          "$ref": "#/$defs/ViewId"
+        },
+        "cursor": {
+          "type": "string",
+          "pattern": "^[0-9]{1,20}$"
+        },
+        "wait": {
+          "type": "number",
+          "minimum": 0,
+          "maximum": 25
+        },
+        "revision": {
+          "type": "string",
+          "pattern": "^\\d{4}-\\d{2}-\\d{2}$"
+        }
+      },
+      "required": [
+        "artifactId",
+        "session",
+        "route"
+      ]
+    },
+    "AppRequestResult": {
+      "type": "object",
+      "properties": {
+        "status": {
+          "type": "integer",
+          "minimum": 100,
+          "maximum": 599
+        },
+        "body": {},
+        "lines": {
+          "readOnly": true,
+          "type": "array",
+          "items": {}
+        }
+      },
+      "required": [
+        "status"
+      ]
     },
     "ArtifactCreateParams": {
       "type": "object",
@@ -3519,6 +3863,91 @@
       "pattern": "^hom_[0-7][0-9A-HJKMNP-TV-Z]{25}$",
       "description": "Hosted home ID: \"hom_\" followed by a 26-character ULID."
     },
+    "HostedPageParams": {
+      "type": "object",
+      "properties": {
+        "versionId": {
+          "$ref": "#/$defs/VersionId"
+        },
+        "html": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 16777216
+        },
+        "meta": {
+          "type": "object",
+          "properties": {
+            "csp": {
+              "type": "object",
+              "properties": {
+                "connectDomains": {
+                  "readOnly": true,
+                  "maxItems": 64,
+                  "type": "array",
+                  "items": {
+                    "type": "string",
+                    "minLength": 1,
+                    "maxLength": 512
+                  }
+                },
+                "resourceDomains": {
+                  "readOnly": true,
+                  "maxItems": 64,
+                  "type": "array",
+                  "items": {
+                    "type": "string",
+                    "minLength": 1,
+                    "maxLength": 512
+                  }
+                },
+                "frameDomains": {
+                  "readOnly": true,
+                  "maxItems": 64,
+                  "type": "array",
+                  "items": {
+                    "type": "string",
+                    "minLength": 1,
+                    "maxLength": 512
+                  }
+                },
+                "baseUriDomains": {
+                  "readOnly": true,
+                  "maxItems": 64,
+                  "type": "array",
+                  "items": {
+                    "type": "string",
+                    "minLength": 1,
+                    "maxLength": 512
+                  }
+                }
+              },
+              "additionalProperties": {}
+            },
+            "prefersBorder": {
+              "type": "boolean"
+            }
+          },
+          "additionalProperties": {}
+        }
+      },
+      "required": [
+        "versionId",
+        "html",
+        "meta"
+      ]
+    },
+    "HostedPageResult": {
+      "type": "object",
+      "properties": {
+        "sha256": {
+          "type": "string",
+          "pattern": "^[0-9a-f]{64}$"
+        }
+      },
+      "required": [
+        "sha256"
+      ]
+    },
     "HostedPushParams": {
       "type": "object",
       "properties": {
@@ -4886,9 +5315,10 @@
       "type": "string",
       "enum": [
         "artifact",
-        "home"
+        "home",
+        "bundled"
       ],
-      "description": "Where a plugin is installed: one artifact, or the whole home (exporters and CLI commands)."
+      "description": "Where a plugin is installed: one artifact, the whole home (exporters and CLI commands), or the runtime itself (bundled)."
     },
     "PluginSummary": {
       "type": "object",

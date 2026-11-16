@@ -84,6 +84,8 @@ catalog:
   remark-frontmatter: 5.0.0
   remark-gfm: 4.0.1
   '@tailwindcss/vite': 4.3.3
+  # The MCP App exporter's re-bundling (D175 item 2): the version Vite pins, one native binary
+  rolldown: 1.2.14
 
   # The warm set artifacts resolve (@mostra/warm, D91; ROUND-3 §1.2, D72; VERIFIED_FACTS, WP-04)
   react: 19.3.1

@@ -115,6 +115,12 @@ export interface FooterLink {
 }
 
 // @public
+export const HOST_TOKENS: Readonly<Record<string, readonly string[]>>;
+
+// @public
+export function hostTokenValues(variables: Readonly<Record<string, unknown>>): Readonly<Record<string, string>>;
+
+// @public
 export function html(strings: TemplateStringsArray, ...values: readonly HtmlValue[]): SafeHtml;
 
 // @public

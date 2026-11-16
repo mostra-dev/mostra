@@ -75,8 +75,11 @@ export const McpAppResourceMeta: z.ZodType<McpAppResourceMeta> = z.looseObject({
  * the link the page acts through (its secret in the URL's fragment) and the version it shows.
  */
 export interface McpAppHandles {
+  /** The artifact the page shows. */
   readonly artifactId: string;
+  /** The version the page shows, whose MCP App the loader reads (`ui://mostra/view/<id>`). */
   readonly versionId: string;
+  /** Its number, for people. */
   readonly version: number;
   /** The capability link (`…#t=<secret>`), the same the model hands the person. */
   readonly url: string;
@@ -165,10 +168,15 @@ export const mcpUiInitialize: BridgeMessage<UiInitializeParams, UiInitializeResu
 
 /** A tool's result (MCP's `CallToolResult`), as a host passes it on. */
 export interface McpCallToolResult {
+  /** What the model reads: text, images, resource links. */
   readonly content?: readonly { readonly type: string; readonly [key: string]: unknown }[];
+  /** Data for the page (and, in some hosts, the model). */
   readonly structuredContent?: Readonly<Record<string, unknown>>;
+  /** Whether the tool failed; its `content` then says why. */
   readonly isError?: boolean;
+  /** Metadata for the host and the page, never the model. */
   readonly _meta?: Readonly<Record<string, unknown>>;
+  /** Fields later MCP revisions add, kept. */
   readonly [key: string]: unknown;
 }
 
@@ -199,11 +207,17 @@ export const mcpToolsCall: BridgeMessage<
 
 /** One resource's contents, as `resources/read` answers it. */
 export interface McpResourceContents {
+  /** The resource read. */
   readonly uri: string;
+  /** Its media type: `text/html;profile=mcp-app` for an MCP App. */
   readonly mimeType?: string;
+  /** Its content as text, or … */
   readonly text?: string;
+  /** … as base64 bytes. */
   readonly blob?: string;
+  /** Its metadata: `ui` for an MCP App (the origins it declares). */
   readonly _meta?: Readonly<Record<string, unknown>>;
+  /** Fields later MCP revisions add, kept. */
   readonly [key: string]: unknown;
 }
 
@@ -338,8 +352,9 @@ export const MCP_APP_HANDOFF = "__mostraMcpApp";
 export interface McpAppHandoff {
   /** The host's answer to the loader's `ui/initialize`. */
   readonly initialize: UiInitializeResult;
-  /** The tool call's arguments and result, as the host sent them. */
+  /** The arguments of the tool call the page was shown for, as the host sent them. */
   readonly toolInput?: Readonly<Record<string, unknown>>;
+  /** That call's result, as the host sent it. */
   readonly toolResult?: McpCallToolResult;
   /**
    * Takes over the host connection: the loader stops reading the window's messages and returns

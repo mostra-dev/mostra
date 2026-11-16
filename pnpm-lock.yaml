@@ -413,6 +413,9 @@ catalogs:
     remark-gfm:
       specifier: 4.0.1
       version: 4.0.1
+    rolldown:
+      specifier: 1.2.14
+      version: 1.2.14
     semver:
       specifier: 7.8.5
       version: 7.8.5
@@ -1321,6 +1324,37 @@ importers:
       '@mostra/server':
         specifier: workspace:*
         version: link:../server
+    devDependencies:
+      '@mostra/tools':
+        specifier: workspace:*
+        version: link:../../tools
+      '@types/node':
+        specifier: 'catalog:'
+        version: 24.19.2
+      tsdown:
+        specifier: 'catalog:'
+        version: 0.23.1(@arethetypeswrong/core@0.18.5)(oxc-resolver@11.24.2)(publint@0.3.25)(typescript@7.0.2)
+      typescript:
+        specifier: 'catalog:'
+        version: 7.0.2
+      vitest:
+        specifier: 'catalog:'
+        version: 5.0.5(@types/node@24.19.2)(@vitest/browser-playwright@5.0.5)(@vitest/ui@5.0.5)(vite@8.3.4(@types/node@24.19.2)(jiti@2.7.0)(yaml@2.9.1))
+
+  plugins/mcp-app:
+    dependencies:
+      '@mostra/contract-exporter':
+        specifier: workspace:*
+        version: link:../../packages/contract-exporter
+      '@mostra/protocol':
+        specifier: workspace:*
+        version: link:../../packages/protocol
+      '@mostra/themes':
+        specifier: workspace:*
+        version: link:../../packages/themes
+      rolldown:
+        specifier: 'catalog:'
+        version: 1.2.14
     devDependencies:
       '@mostra/tools':
         specifier: workspace:*
