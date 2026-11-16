@@ -39,6 +39,11 @@ export interface OAuthClient {
   readonly redirectUris: readonly string[];
   /** Whether the name was stated by the client itself, never checked (all but first-party). */
   readonly unverified: boolean;
+  /**
+   * A metadata-document client the server's operator vouches for (`operatorClients`, MT-05): named
+   * as the operator names it, as the server's own.
+   */
+  readonly operator?: true;
 }
 
 /** A refusal of a client, as an OAuth error. */
@@ -188,6 +193,11 @@ export interface ClientsOptions {
    * is a first-party public client, `<origin>/_mostra/signin`.
    */
   readonly isShellOrigin: (origin: string) => boolean;
+  /**
+   * The metadata-document clients the operator vouches for (`operatorClients`, MT-05): each is
+   * still fetched and checked as any other, then named as the operator names it.
+   */
+  readonly operatorClients?: readonly { readonly clientId: string; readonly name: string }[];
 }
 
 /** The authorization server's clients. */
@@ -222,6 +232,9 @@ export function createClients(options: ClientsOptions): Clients {
   const { directory, log } = options;
   const now = options.now ?? (() => Date.now());
   const fetched = new Map<string, { client: OAuthClient; until: number }>();
+  const vouched = new Map(
+    (options.operatorClients ?? []).map((client) => [client.clientId, client.name] as const),
+  );
   // Tests serve a metadata document from loopback over http; only that exact origin, by name.
   const testOrigin = options.env["MOSTRA_TEST_CIMD_ORIGIN"];
 
@@ -419,7 +432,14 @@ export function createClients(options: ClientsOptions): Clients {
         };
       }
       const url = metadataClientId(clientId);
-      if (url) return fromDocument(url);
+      if (url) {
+        const found = await fromDocument(url);
+        // The operator's word on whose client this is, over the name the document gives itself.
+        const name = "error" in found ? undefined : vouched.get(found.id);
+        return name === undefined
+          ? found
+          : { ...(found as OAuthClient), name, unverified: false, operator: true };
+      }
       const row = directory.read((db) =>
         db.get<{ metadata_json: string }>(
           "SELECT metadata_json FROM oauth_client WHERE id = ? AND kind = 'registered'",

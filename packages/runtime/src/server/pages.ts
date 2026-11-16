@@ -52,6 +52,7 @@ export const API_PAGE_WORDS = {
   asksToUse: (client: SafeHtml, who: string): SafeHtml =>
     html`${client} asks to use Mostra as <strong>${who}</strong>.`,
   unverifiedName: "a name the app gives itself, not checked",
+  operatorClient: "this server's own app",
   grants: ["Read, create and change your hosted pages", "Read their answers"],
   sendsBackTo: (host: string): SafeHtml => html`It will send you back to <strong>${host}</strong>.`,
   loopback: "That is a program on your own computer: continue only if you started this there.",
@@ -89,7 +90,7 @@ export interface ApiPages {
   allow(
     request: PageRequest,
     form: ConsentForm,
-    client: { readonly name: string; readonly unverified: boolean },
+    client: { readonly name: string; readonly unverified: boolean; readonly operator?: true },
     who: string,
     redirectHost: string,
     loopback: boolean,
@@ -177,9 +178,11 @@ export function createApiPages(server: ServerPages, name: string | null): ApiPag
       });
     },
     allow(request, form, client, who, redirectHost, loopback) {
-      const clientName = client.unverified
-        ? html`<strong>${client.name}</strong> <span class="m-hint">(${W.unverifiedName})</span>`
-        : html`<strong>${client.name}</strong>`;
+      const clientName = client.operator
+        ? html`<strong>${client.name}</strong> <span class="m-hint">(${W.operatorClient})</span>`
+        : client.unverified
+          ? html`<strong>${client.name}</strong> <span class="m-hint">(${W.unverifiedName})</span>`
+          : html`<strong>${client.name}</strong>`;
       return pages.render({
         kind: "task",
         title: W.allowTitle(client.name),

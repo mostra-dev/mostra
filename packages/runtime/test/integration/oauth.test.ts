@@ -4,8 +4,10 @@
  * Metadata Documents (fetched only from a public address, with no redirect), the authorization
  * code flow with PKCE S256 through a provider sign-in and the server's own consent, `iss` in every
  * answer, resource indicators with an audience check, and rotating refresh tokens whose reuse
- * revokes the grant. A real `mostra-runtime server` with the development provider; a browser is
- * played with plain requests and a cookie jar for the API origin.
+ * revokes the grant. A metadata-document client the operator vouches for (`operatorClients`,
+ * MT-05) is named on the consent page as the server's own, and still asked once per account. A
+ * real `mostra-runtime server` with the development provider; a browser is played with plain
+ * requests and a cookie jar for the API origin.
  */
 import { randomBytes } from "node:crypto";
 import { createServer, type Server } from "node:http";
@@ -51,7 +53,14 @@ describe("the authorization server for MCP clients (MC-04)", () => {
     server = await startServer({
       data: tempDir("oauth-data"),
       port,
-      config: testConfig(port),
+      config: testConfig(port, {
+        operatorClients: [
+          {
+            clientId: `${documentsOrigin.replace("http:", "https:")}/account.json`,
+            name: "Example Cloud account",
+          },
+        ],
+      }),
       env: { MOSTRA_TEST_CIMD_ORIGIN: documentsOrigin, MOSTRA_TEST_ROTATION_GRACE_MS: "1500" },
     });
     expect(server.status.status, server.stderr()).toBe("started");
@@ -456,6 +465,76 @@ describe("the authorization server for MCP clients (MC-04)", () => {
     expect(named.status).toBe(400);
     expect(named.body).toContain("non-public address");
     expect(asked.length).toBe(count);
+  }, 60_000);
+
+  it("names an operator's own client as the server's own, and still asks its consent once per account", async () => {
+    const own = `${documentsOrigin.replace("http:", "https:")}/account.json`;
+    const other = `${documentsOrigin.replace("http:", "https:")}/stranger.json`;
+    served.set("/account.json", {
+      status: 200,
+      body: {
+        client_id: own,
+        // The name a document gives itself is never the one shown for a vouched client.
+        client_name: "Whatever the document says",
+        redirect_uris: ["https://account.example/signin/done"],
+      },
+    });
+    served.set("/stranger.json", {
+      status: 200,
+      body: {
+        client_id: other,
+        client_name: "Example Cloud account",
+        redirect_uris: ["https://stranger.example/cb"],
+      },
+    });
+    const { challenge } = pkce();
+    const who = browser();
+    const first = await who.ask(
+      "GET",
+      authorizeUrl(own, "https://account.example/signin/done", challenge),
+    );
+    const back = await signIn(who, first, "Hedy");
+    const consent = await who.ask("GET", `${back.pathname}${back.search}`);
+    expect(consent.status, consent.body).toBe(200);
+    expect(consent.body).toContain("Allow Example Cloud account?");
+    expect(consent.body).toContain(
+      '<strong>Example Cloud account</strong> <span class="m-hint">(this server&#39;s own app)</span>',
+    );
+    expect(consent.body).not.toContain("not checked");
+    expect(consent.body).not.toContain("Whatever the document says");
+    expect(consent.body).toContain("account.example");
+    // Approved once, the next sign-in of this account goes straight back with a code.
+    const answer = await approve(who, consent);
+    expect(answer.origin + answer.pathname).toBe("https://account.example/signin/done");
+    expect(answer.searchParams.get("code")).toBeTruthy();
+    const again = await who.ask(
+      "GET",
+      authorizeUrl(own, "https://account.example/signin/done", challenge),
+    );
+    expect(again.status).toBe(303);
+    expect(located(again).searchParams.get("code")).toBeTruthy();
+
+    // Another account is asked for itself: the operator's word names the client, never consents.
+    const second = browser();
+    const theirs = await second.ask(
+      "GET",
+      authorizeUrl(own, "https://account.example/signin/done", challenge),
+    );
+    const theirBack = await signIn(second, theirs, "Grace");
+    const theirConsent = await second.ask("GET", `${theirBack.pathname}${theirBack.search}`);
+    expect(theirConsent.status).toBe(200);
+    expect(theirConsent.body).toContain("this server&#39;s own app");
+
+    // Any other metadata-document client is as before, even one naming itself as the operator's.
+    const stranger = await who.ask(
+      "GET",
+      authorizeUrl(other, "https://stranger.example/cb", challenge),
+    );
+    expect(stranger.status, stranger.body).toBe(200);
+    expect(stranger.body).toContain(
+      '<strong>Example Cloud account</strong> <span class="m-hint">(a name the app gives itself, not checked)</span>',
+    );
+    expect(stranger.body).not.toContain("this server&#39;s own app");
   }, 60_000);
 
   // Last: it spends this address's registrations for the minute.

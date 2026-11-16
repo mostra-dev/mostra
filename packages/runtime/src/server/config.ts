@@ -108,6 +108,39 @@ export function verifierLabel(label: unknown): string | undefined {
   return label;
 }
 
+/**
+ * A Client ID Metadata Document client the server's operator vouches for (MT-05): the consent page
+ * names it by `name`, as the server's own, never "unverified". Its redirect URIs still come from its
+ * document, and consent is still asked once per account.
+ */
+export interface OperatorClient {
+  /** The client's ID: its metadata document's `https:` URL, exactly as the client sends it. */
+  readonly clientId: string;
+  /** What the consent page calls it. */
+  readonly name: string;
+}
+
+/**
+ * A client ID that names a metadata document (`https:` with a path and no fragment), written as
+ * the URL normalizes it, since a client's `client_id` is compared with it exactly.
+ */
+const MetadataClientId: z.ZodType<string> = z.string().refine(
+  (value) => {
+    try {
+      const url = new URL(value);
+      return (
+        url.href === value &&
+        url.protocol === "https:" &&
+        url.pathname.length > 1 &&
+        url.hash === ""
+      );
+    } catch {
+      return false;
+    }
+  },
+  { message: "must be a metadata document's https: URL with a path, written in its normal form" },
+);
+
 /** Claim names that would reach an object's prototype rather than a key of its own. */
 const RESERVED_CLAIMS = new Set(["__proto__", "constructor", "prototype"]);
 
@@ -140,6 +173,8 @@ export interface RemoteServerConfig {
   readonly framing?: { readonly frameAncestors: "'none'" } | undefined;
   readonly operator?: string | undefined;
   readonly chatHosts?: Record<string, unknown> | undefined;
+  /** The operator's own clients, named as the server's own on the consent page (MT-05). */
+  readonly operatorClients?: OperatorClient[] | undefined;
   /** How the server's own pages look and name themselves (D171). */
   readonly appearance?: AppearanceConfig | undefined;
 }
@@ -206,6 +241,11 @@ const Config: z.ZodType<RemoteServerConfig> & { readonly shape: Record<string, u
     framing: z.strictObject({ frameAncestors: z.literal("'none'") }).optional(),
     operator: z.string().optional(),
     chatHosts: z.record(z.string(), z.unknown()).optional(),
+    operatorClients: z
+      .array(z.strictObject({ clientId: MetadataClientId, name: PageName }))
+      .min(1)
+      .max(16)
+      .optional(),
     appearance: z
       .strictObject({
         theme: z.enum(["studio", "mostra"]).optional(),
@@ -321,6 +361,13 @@ export function readServerConfig(file: string | undefined, env: Environment): Re
   }
   if (new Set(domains).size !== domains.length) {
     throw invalid("The configuration key `domains` names one domain twice.");
+  }
+  const clients = (config.operatorClients ?? []).map((client) => client.clientId);
+  const twice = clients.findIndex((client, index) => clients.indexOf(client) !== index);
+  if (twice >= 0) {
+    throw invalid(
+      `The configuration key \`operatorClients.${twice}.clientId\` names a client an earlier entry names.`,
+    );
   }
   return config;
 }

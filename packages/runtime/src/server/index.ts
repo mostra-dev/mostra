@@ -376,6 +376,7 @@ export async function startServer(options: ServerOptions): Promise<RemoteServer>
     directory: data.directory,
     log,
     env: options.env,
+    ...(config.operatorClients !== undefined ? { operatorClients: config.operatorClients } : {}),
     isShellOrigin: (origin) => {
       if (!origin.startsWith(`${scheme}://`)) return false;
       const host = origin.slice(scheme.length + 3);
