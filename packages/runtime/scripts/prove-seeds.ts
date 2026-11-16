@@ -59,6 +59,127 @@ const unit = (file: string, ...filter: string[]): string[] => [
 const e2e = (...grep: string[]): string[] => (grep.length > 0 ? ["-g", grep.join("|")] : []);
 
 const SEEDS: readonly Seed[] = [
+  // MT-05: who signs in, and what an idle home writes. Each request's check goes red on a violation
+  // planted where it is enforced (`--only MT-05`, `--name "12:"` for one request).
+  {
+    requirement: "MT-05",
+    name: "11: an operator's own client is named as it names itself, unverified",
+    file: "src/server/oauth-clients.ts",
+    from: `        const name = "error" in found ? undefined : vouched.get(found.id);`,
+    to: `        const name = "error" in found ? undefined : vouched.get("");`,
+    check: integration("oauth.test.ts", "operator's own client"),
+  },
+  {
+    requirement: "MT-05",
+    name: "11: an operator's own client skips the consent of an account that never gave it",
+    file: "src/server/authorize.ts",
+    from: "        : !auth.consented(signed.accountId, client.id);",
+    to: "        : client.operator !== true && !auth.consented(signed.accountId, client.id);",
+    check: integration("oauth.test.ts", "operator's own client"),
+  },
+  {
+    requirement: "MT-05",
+    name: "11: a client ID that isn't written as its URL normalizes it is taken",
+    file: "src/server/config.ts",
+    from: `        url.href === value && url.protocol === "https:" && url.pathname.length > 1 && url.hash === ""`,
+    to: `        url.protocol === "https:" && url.pathname.length > 1 && url.hash === ""`,
+    check: unit("server-config.test.ts", "operator's own clients"),
+  },
+  {
+    requirement: "MT-05",
+    name: "11: one client named by two entries is taken",
+    file: "src/server/config.ts",
+    from: "  if (twice >= 0) {",
+    to: "  if (twice >= clients.length) {",
+    check: unit("server-config.test.ts", "operator's own clients"),
+  },
+  {
+    requirement: "MT-05",
+    name: "12: GitHub sign-in asks for no scope",
+    file: "src/server/providers.ts",
+    from: `      url.searchParams.set("scope", GITHUB_SCOPE);`,
+    to: `      url.searchParams.set("scope", "");`,
+    check: integration("signin-facts.test.ts", "verified primary address"),
+  },
+  {
+    requirement: "MT-05",
+    name: "12: the first verified address is taken, primary or not",
+    file: "src/server/providers.ts",
+    from: "        entry?.primary === true &&\n",
+    to: "",
+    check: integration("signin-facts.test.ts", "verified primary address"),
+  },
+  {
+    requirement: "MT-05",
+    name: "12: a primary address GitHub never verified is taken as verified",
+    file: "src/server/providers.ts",
+    from: "        entry.verified === true &&\n",
+    to: "",
+    check: integration("signin-facts.test.ts", "verified primary address"),
+  },
+  {
+    requirement: "MT-05",
+    name: "12: the address list is asked for though the person declined its scope",
+    file: "src/server/providers.ts",
+    from: "      const primary = grantsAddresses(token.scope)",
+    to: "      const primary = grantsAddresses(undefined)",
+    check: integration("signin-facts.test.ts", "scope was declined"),
+  },
+  {
+    requirement: "MT-05",
+    name: "12: an address list that fails fails the sign-in",
+    file: "src/server/providers.ts",
+    from: `    if (!answer.ok) {
+      log.warn("signin.github_emails_unavailable", { provider, status: answer.status });
+      return undefined;
+    }`,
+    to: `    if (!answer.ok) {
+      throw new Error("GitHub's address list failed.");
+    }`,
+    also: [
+      {
+        file: "src/server/providers.ts",
+        from: `  } catch (error) {
+    log.warn("signin.github_emails_unavailable", {`,
+        to: `  } catch (error) {
+    if ((error as Error).message.startsWith("GitHub's")) throw error;
+    log.warn("signin.github_emails_unavailable", {`,
+      },
+    ],
+    check: integration("signin-facts.test.ts", "scope was declined"),
+  },
+  {
+    requirement: "MT-05",
+    name: "12: an address list that never answers holds the sign-in past its bound",
+    file: "src/server/providers.ts",
+    from: "      signal: AbortSignal.timeout(GITHUB_EMAILS_TIMEOUT_MS),\n",
+    to: "",
+    check: integration("signin-facts.test.ts", "scope was declined"),
+  },
+  {
+    requirement: "MT-05",
+    name: "13: an open home writes its marks at every tick, moved or not",
+    file: "src/server/data.ts",
+    from: `        recordCursor(id, entry.ledger, entry.incarnation?.() ?? "", "changed");`,
+    to: `        recordCursor(id, entry.ledger, entry.incarnation?.() ?? "");`,
+    check: integration("idle-marks.test.ts", "no transaction"),
+  },
+  {
+    requirement: "MT-05",
+    name: "13: a tick leaves an incarnation the home took while open unwritten",
+    file: "src/server/data.ts",
+    from: "        row.incarnation === incarnation &&\n",
+    to: "",
+    check: unit("data-marks.test.ts", "new incarnation"),
+  },
+  {
+    requirement: "MT-05",
+    name: "13: a tick leaves a moved head unwritten",
+    file: "src/server/data.ts",
+    from: "        row.high_cursor === head &&\n",
+    to: "",
+    check: unit("data-marks.test.ts", "head moves"),
+  },
   // MT-03: the operator ports as specified, and what sign-in and metering lack. Each item's check
   // goes red on a violation planted where it is enforced (`--only MT-03`, `--name "1:"` for one).
   // UX-01 (D171): the server's own pages keep their rules through the design pass.
