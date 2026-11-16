@@ -232,6 +232,7 @@ describe("the Agent Skill (AX-06)", () => {
   // protocol, the bundled reference, the MCP server and `@mostra/react` have.
   it("names only flags, wait conditions, docs topics, tools and hooks this release has", () => {
     const topics = new Set(docsIndex().map((topic) => topic.topic));
+    const mostra = new Set(authorExports());
     const problems = MARKDOWN.flatMap((file) => {
       const text = read(file);
       const shown = shownCommands(text).flatMap((command) => shownProblem(command, topics) ?? []);
@@ -241,7 +242,6 @@ describe("the Agent Skill (AX-06)", () => {
         .map((match) => match[0])
         .filter((name) => !TOOLS.has(name))
         .map((name) => `${name} isn't one of Mostra's MCP tools`);
-      const mostra = new Set(authorExports());
       const hooks = [...text.matchAll(/\buse[A-Z][A-Za-z0-9]*\b/g)]
         .map((match) => match[0])
         .filter((name) => !mostra.has(name) && !(name in OTHER_HOOKS))
@@ -298,5 +298,39 @@ describe("the Agent Skill (AX-06)", () => {
       const css = join(SKILL, "assets", "examples", example, "styles.css");
       expect(readFileSync(css, "utf8"), relative(SKILL, css)).toBe(studio);
     }
+  });
+});
+
+// The name checks themselves: what they catch and what they let stand (MT-04).
+describe("the Skill's name checks", () => {
+  it("judge only what a text writes out, and catch what the release lacks", () => {
+    const topics = new Set(["guide", "guide/walkthrough"]);
+    for (const command of [
+      "docs guide",
+      "docs --json guide",
+      "docs --home /h guide",
+      "docs <topic>",
+      "wait x --until submitted:all",
+      "wait <dir> --until submitted:<N>",
+      "wait x --until=signal:go",
+    ])
+      expect(shownProblem(command, topics), command).toBeUndefined();
+    for (const command of [
+      "docs guides",
+      "docs --home /h guides",
+      "wait <dir> --until submitted:everyone",
+      "wait x --until=sumbitted",
+    ])
+      expect(shownProblem(command, topics), command).toBeDefined();
+    expect(
+      flagProblems(
+        "`--browser` `--ttl 24h` `--screenshots always` `--after <cursor>` `--until submitted:2`",
+      ),
+    ).toEqual([]);
+    expect(
+      flagProblems("`--ttl soon` `--format xml` `--nope` `--browser now` `--until everyone`"),
+    ).toHaveLength(5);
+    // A flag inside a fenced block is the block's business (it shows a full command).
+    expect(flagProblems("```sh\nmostra verify x --nope\n```")).toEqual([]);
   });
 });

@@ -180,13 +180,20 @@ export function shownProblem(command: string, topics: ReadonlySet<string>): stri
     const problem = valueProblem("until", [], until);
     if (problem !== undefined) return `mostra ${command}: ${problem}`;
   }
-  const topic = shown[0] === "docs" ? shown[1] : undefined;
-  if (
-    commandName(parsed.command) === "docs" &&
-    written(topic) &&
-    !topic.startsWith("-") &&
-    !topics.has(topic)
-  )
+  // `docs`' one argument, past any flag (and its value) written before it (`docs --json guide`).
+  let topic: string | undefined;
+  for (let index = 1; shown[0] === "docs" && index < shown.length; index += 1) {
+    const word = shown[index] as string;
+    if (!word.startsWith("-")) {
+      topic = word;
+      break;
+    }
+    const takesValue = FLAGS_BY_NAME.get(word.replace(/^--/, ""))?.some(
+      (def) => def.kind !== "boolean",
+    );
+    if (takesValue && !word.includes("=")) index += 1;
+  }
+  if (commandName(parsed.command) === "docs" && written(topic) && !topics.has(topic))
     return `mostra ${command}: "${topic}" isn't a topic of mostra docs`;
   return undefined;
 }
