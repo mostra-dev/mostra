@@ -1,6 +1,6 @@
 # MT-04 progress: a showcase walkthrough any agent can run
 
-**Status:** Candidate, waiting for Mirza's acceptance and the independent review (D80, D172 item 0). A maintenance unit beside the packages from WP-17 on ([specification](../design/work-packages/MT-04.md), D174). It owns no requirement of its own (D152); its evidence is one row per item of its scope, each closed through the real public interface, and the checks it adds extend AX-06's row (the Skill), which stays with WP-14.
+**Status:** Accepted by Mirza on 2026-11-16 ("Prose: Looks good!"; the independent review "Not needed since this is a prose-heavy WP"). A maintenance unit beside the packages from WP-17 on ([specification](../design/work-packages/MT-04.md), D174). It owns no requirement of its own (D152); its evidence is one row per item of its scope, each closed through the real public interface, and the checks it adds extend AX-06's row (the Skill), which stays with WP-14.
 
 ## Baseline
 
@@ -16,7 +16,7 @@
 
 ## Decisions
 
-- **2026-11-16T09:14Z**: Mirza delegated every question of the unit's first set: the reference's sections, its named scenarios, the hosted server in the text, the site's copy, the real runs, the button and the checkout ("I trust you to make the most robust … decision"). At 10:49Z he chose a Claude Sonnet pilot in place of the blocked GPT one, and left #183 to a later package.
+- **2026-11-16T09:14Z**: Mirza delegated every question of the unit's first set: the reference's sections, its named scenarios, the hosted server in the text, the site's copy, the real runs, the button and the checkout ("I trust you to make the most robust … decision"). At 10:49Z he chose a Claude Sonnet pilot in place of the blocked GPT one, and left #183 to a later package. At 13:28Z he accepted the unit's prose (D149), waived the independent review for a unit mostly of prose (D172 item 0), and agreed to fix #182 now, apart from this unit.
 - **D174 item 7's deferred details, settled:**
   1. **Sections and order:** an opening paragraph, then "The rules" (D174 items 4 and 5, first because they bound every step), then seven numbered steps, each ending on a *Done when*: 1. Get Mostra running (the three ways in), 2. Learn what the person does, 3. Build the page, 4. Verify and look, 5. Publish and hand out the links, 6. Wait, read and keep building, 7. Let the person decide.
   2. **Scenarios by name:** five, in a table that maps each to the page's live number, its two people's answers, its choice and its button: D174's three (a team's weekly numbers, a client's report, a launch checklist), and a design between two options and a small panel's scores. The agent otherwise uses the person's own words.
@@ -40,7 +40,8 @@
 | `c708430` | `references/walkthrough.md`, the two `SKILL.md` rows, `server.md`'s `viewer()` line, the changeset |
 | `377a478` | The check: flags, conditions, topics, tools and hooks the release has; `docs guide/walkthrough` through the built CLI; MT-04's seeds |
 | `08d3c50` | Each reference has its own row in `SKILL.md`, and the task table names the walkthrough (a seed first went green) |
-| (this) | The real runs' lessons in the reference (the hosted links, short choice labels); this report and its evidence |
+| `beaf748` | The real runs' lessons in the reference (the hosted links, short choice labels); this report and its evidence |
+| `dbf255e` | The session's own review: the name checks' own cases, and a `docs` topic found past its flags |
 
 ## Evidence
 
@@ -55,7 +56,7 @@ MT-04 owns no requirement (D152). Its checks extend AX-06's row, which stays wit
 | 5. The site's copy | validated | A [site-ready copy](#the-sites-copy), held to the command check's helpers | `node --conditions=@mostra/source temp/mt04/check-site.ts` | 15 commands, all parse; no flag, condition or topic problem |
 | 6. The hosted path | verified (external) | Against the staging server (`https://api.mostradev.com`, server 0.14.0) from the clean home: `login` by the device grant (Mirza approved with GitHub), `share --cloud --respondent` for two people, `roster add --name` for each, two people answering their hosted links in two browsers (sender line, "Never enter passwords", roster names, presence, the pushed number), the button run on the owner through the relay, "Your answer was sent.", `wait --until submitted:all` woken on the owner, `results --all` with both hosted answers and the run, version 2 pushed and offered on the hosted page. And the local way's second device: `share --public --viewer` through a real Cloudflare quick tunnel opened as the same roster person | the transcript's "The hosted way" and "The public tunnel" | as described ([hosted page](evidence/mt-04/hosted-ada.png), [phone](evidence/mt-04/hosted-sam-phone.png), [version 2](evidence/mt-04/hosted-version-2.png)); one finding, #184 |
 | 7. D174 item 7's details | verified | Settled and recorded ([Decisions](#decisions)) | this report | recorded |
-| 8. The prose (D149) | unverified | Accepted with the unit's agent-facing prose | Mirza's review | waiting for Mirza |
+| 8. The prose (D149) | verified | Accepted with the unit's agent-facing prose | Mirza's review | accepted, 2026-11-16 ("Looks good!") |
 
 ## The site's copy
 
@@ -110,8 +111,14 @@ With none of these, say in two sentences what Mostra is, give the person this pa
 - **Files beyond the specification's list:** one line of `references/server.md` (`viewer()` can be `undefined`, found by the real run), the test helpers in `packages/cli/test/commands.ts`, the CLI's contract test, the seeds in `packages/runtime/scripts/prove-seeds.ts`, a changeset, and the evidence files. None is a file WP-17 owns.
 - **The check covers the whole Skill,** not only the walkthrough: it costs nothing more and keeps every reference true as the CLI changes.
 
-## Agent-facing prose for review (D149)
+## Reviews
 
+- **The session's own review** of its diff found two weak spots in the check's helpers, both fixed with cases that hold them (`dbf255e`): a `docs` topic written after a flag (`docs --json guide`) went unchecked, and the helpers' own behavior had no test of its own.
+- **Independent model review** (D80, D172 item 0): waived by Mirza for this unit, mostly of prose (2026-11-16T13:28Z). The prompt written for it stays in the session's notes.
+
+## Agent-facing prose (D149)
+
+Accepted by Mirza on 2026-11-16:
 - `skills/mostra/references/walkthrough.md` (new).
 - `skills/mostra/SKILL.md`: the task table's row and the references table's row.
 - `skills/mostra/references/server.md`: `viewer()`'s row.
