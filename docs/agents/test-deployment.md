@@ -13,8 +13,8 @@ The names the test deployment used now serve the hosted service:
 | Sign-in | GitHub and Google |
 
 1. **A released server** needs nothing: sign in with `mostra login https://api.mostradev.com` and run the check.
-2. **A candidate** (a package that changes the server, the relay, the hosted shell or the MCP surface): ask Mirza to run the candidate's server image there before the check. The hosted service builds on the published image and takes another image as its base, so a candidate's image from its pull request's CI run (`packages/bundle/scripts/image.ts`) can be run there and put back afterwards.
-3. Check it from outside, each answer as shown:
+2. **A candidate** (a package that changes the server, the relay, the hosted shell or the MCP surface): ask Mirza for a check of the candidate's server image, built from its pull request's CI run (`packages/bundle/scripts/image.ts`). A candidate never runs where people's pages live. Until the hosted service opens to everyone, these names serve only the project's own pages, so Mirza may run the candidate on them and put the release back afterwards; from then on he runs it on a deployment of its own, with names of its own, and gives the package those names. Use the names he gives in the steps below.
+3. Check it from outside, each answer as shown (with the names of step 2 where they differ):
    - `curl -s https://api.mostradev.com/health` gives `{"status":"ok",…}`;
    - `/.well-known/oauth-authorization-server` names the issuer and `S256` only;
    - `POST /mcp` without a token gives 401 with `WWW-Authenticate: Bearer resource_metadata="…/mcp"`;
