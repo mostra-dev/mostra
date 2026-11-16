@@ -278,8 +278,10 @@ instance_link(id PK (lnk_), account_id FK, home_id FK, name, is_default, relay_h
                                                                -- relay_high: the highest relay sequence it accepted
 home_cursor(home_id PK FK, incarnation, high_cursor, relay_high, updated_at)
                                                                -- the highest cursor and relay sequence the server saw each
-                                                               -- home reach, written when the home closes and at least every
-                                                               -- 10 s while it is open; a home opened below it was restored.
+                                                               -- home reach, written when the home opens and closes, and
+                                                               -- within 10 s of a mark moving while it is open (a tick that
+                                                               -- finds the row holding them writes nothing, D176, so an idle
+                                                               -- home writes nothing); a home opened below it was restored.
                                                                -- It shares the data directory, so a whole-directory restore
                                                                -- rolls it back too: the owner instance is the witness that
                                                                -- catches that case (§7.2, INTERFACES §18.2)
