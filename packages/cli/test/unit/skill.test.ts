@@ -205,9 +205,17 @@ describe("the Agent Skill (AX-06)", () => {
       }
     }
     expect(broken).toEqual([]);
+    // Every reference has its own row in the references table, where an agent looks for it; a
+    // link elsewhere in SKILL.md doesn't stand in for it.
     const skill = read("SKILL.md");
     for (const reference of readdirSync(join(SKILL, "references")))
-      expect(skill, reference).toContain(`(references/${reference})`);
+      expect(skill, reference).toContain(`| [references/${reference}](references/${reference}) |`);
+    // The walkthrough is a task too (D174 item 3): the task table points at it.
+    const tasks = skill.slice(
+      skill.indexOf("## What a page can do"),
+      skill.indexOf("\n## ", skill.indexOf("## What a page can do") + 1),
+    );
+    expect(tasks).toContain("(references/walkthrough.md)");
   });
 
   it("shows only commands that exist, with flags they take", () => {

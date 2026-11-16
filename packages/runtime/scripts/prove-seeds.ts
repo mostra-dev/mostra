@@ -3855,6 +3855,15 @@ const SEEDS: readonly Seed[] = [
   },
   {
     requirement: "MT-04",
+    name: "SKILL.md's task table loses the walkthrough",
+    file: "../../skills/mostra/SKILL.md",
+    from: '| Show what Mostra can do ("Should I use Mostra?") | one live page for the person\'s own work, published, answered and grown with them | [walkthrough.md](references/walkthrough.md) |\n',
+    to: "",
+    check: ["--project", "unit", "test/unit/skill.test.ts", "-t", "resolves every relative link"],
+    cwd: "../cli",
+  },
+  {
+    requirement: "MT-04",
     name: "mostra docs serves no guide/walkthrough",
     file: "../mcp/src/docs.ts",
     from: '      .filter((entry) => entry.endsWith(".md"))',
