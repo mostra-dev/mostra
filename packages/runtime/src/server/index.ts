@@ -284,6 +284,9 @@ export async function startServer(options: ServerOptions): Promise<RemoteServer>
     ...(config.ledger?.walAutocheckpoint !== undefined
       ? { walAutocheckpoint: config.ledger.walAutocheckpoint }
       : {}),
+    ...(Number(options.env["MOSTRA_TEST_CURSOR_MARK_MS"]) > 0
+      ? { markIntervalMs: Number(options.env["MOSTRA_TEST_CURSOR_MARK_MS"]) }
+      : {}),
   });
   const handle = createHandle({
     apiOrigin: config.apiOrigin,
