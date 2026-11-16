@@ -4495,6 +4495,25 @@ const SEEDS: readonly Seed[] = [
     check: e2e("a field saves as the viewer types"),
     e2e: true,
   },
+  // #182: on a phone the trusted Submit stays whole and on the screen beside a long Choose.
+  {
+    requirement: "SH-02",
+    name: "#182: a long Choose pushes the trusted Submit off a phone's bar",
+    file: "../shell/src/shell.css",
+    from: "  .mostra-actionbar[data-mostra-dock] .mostra-trusted .mostra-button {\n    flex: 0 1 auto;\n    min-inline-size: 0;\n  }",
+    to: "  .mostra-actionbar[data-mostra-dock] .mostra-trusted .mostra-button {\n    flex: none;\n  }",
+    check: e2e("a long Choose label leaves the Submit on the screen"),
+    e2e: true,
+  },
+  {
+    requirement: "SH-02",
+    name: "#182: a control's words take the point that is the trusted Submit's",
+    file: "../shell/src/shell.css",
+    from: "  text-overflow: ellipsis;\n  pointer-events: none;\n}",
+    to: "  text-overflow: ellipsis;\n}",
+    check: e2e("synthetic clicks, overlays"),
+    e2e: true,
+  },
   {
     requirement: "VR-04",
     name: "the shell never sees a newer version",
