@@ -81,8 +81,8 @@ const SEEDS: readonly Seed[] = [
     requirement: "MT-05",
     name: "11: a client ID that isn't written as its URL normalizes it is taken",
     file: "src/server/config.ts",
-    from: `        url.href === value && url.protocol === "https:" && url.pathname.length > 1 && url.hash === ""`,
-    to: `        url.protocol === "https:" && url.pathname.length > 1 && url.hash === ""`,
+    from: "        url.href === value &&\n",
+    to: "",
     check: unit("server-config.test.ts", "operator's own clients"),
   },
   {
