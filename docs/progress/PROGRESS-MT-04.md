@@ -97,6 +97,15 @@ With none of these, say in two sentences what Mostra is, give the person this pa
 6. **Let them decide:** what they just did that a chat reply can't, two or three places in their own work where a page like this fits, and that there's nothing more to set up. If they want one, build it now. If not, stop there.
 ````
 
+## Candidate checks
+
+- **`pnpm check`** on `f27eafa` in this checkout (80 min, while WP-17's session ran its own suites on the same Mac; load averages 17 to 21): every job passed but `e2e` and `rust`.
+  - `rust`: two `mostra-host::bundle` cases failed in their bundle's setup (`MOSTRA_ENV_BUNDLE_DOWNLOAD_FAILED`) with `TMPDIR` on the external `Active` volume, which is mounted `noowners` (#106's class). With the system's own `TMPDIR`, `pnpm check --job rust` passed (31 s).
+  - `e2e`: three timeouts at 30 s (Firefox's `actions.spec.ts:60` and `client.spec.ts:421`, Chromium's `surfaces.spec.ts:251`). Alone (`pnpm check --job e2e`, 24.6 min), 221 passed and one other failed (Firefox's `controls.spec.ts:538`). Each of the four then passed when run on its own. None is in code this unit changes. The class MT-02, WP-30, MT-03 and WP-16 recorded under load.
+- **CI** on #181: every job the plan listed green on `dbf255e` (49 checks).
+- **The seeds:** all ten of MT-04 red when planted and green when restored (`prove-seeds.ts --only MT-04`); `prove-seeds.ts --anchors` plants all of them.
+- **The generators:** `python3 tools/design/evidence_matrix.py --check` and `python3 tools/design/wp_specs.py --check` pass.
+
 ## Untested boundaries
 
 - **The chat-app way in a real chat host.** The tool sequence ran through the released local `mostra mcp` over stdio, not through a chat app's connector to the remote server. WP-30 proved that route with claude.ai on the retired test deployment, and WP-17 checks its candidate on staging.
