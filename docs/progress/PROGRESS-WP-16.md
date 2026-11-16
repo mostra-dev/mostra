@@ -124,6 +124,7 @@ Also from outside, after each release: every package of the release group at its
 | #164 | Open, no milestone | Filed: `mostra dev`'s package reload once missed its 20 s poll on Linux |
 | #174 | Open, no milestone | Filed: the frame-reload cases count exactly one reload, and a slow Windows runner took two (D157 allows three) |
 | #175 | Open, no milestone | Filed: Windows Firefox didn't show the hosted interstitial within 5 s |
+| #178 | Open, no milestone | Filed from this closeout's own run: RM-08's burst took a 2.3 s p95 on a slow Windows x64 runner against D165 item 13's 0.5 s target, which WP-29's per-platform budgets (D166 item 21) may answer |
 | #95, #139, #152 | Open | Their occurrences in this package's runs recorded on each (#139 stays on WP-17's milestone, #152 on WP-20's) |
 
 Two fixes landed for flakes this package's release met, each with its reasoning: UX-01's suite loads its pages through `gotoShell` (#165, Chromium's `ERR_NO_BUFFER_SPACE` on Windows), and verify's network case accepts a render again caused by that collision and no other (#166, its `wp31-132` seed still red when planted). The `WP-16` milestone had no issue.
