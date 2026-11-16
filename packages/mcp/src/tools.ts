@@ -10,6 +10,7 @@ import type { CallToolResult, ToolAnnotations } from "@modelcontextprotocol/serv
 import {
   type ArtifactRef,
   artifactCreateMethod,
+  artifactGetMethod,
   artifactListMethod,
   artifactPublishMethod,
   artifactVerifyMethod,
@@ -18,6 +19,7 @@ import {
   type Diagnostic,
   Duration,
   livePushMethod,
+  MCP_APP_LOADER_URI,
   MutationId,
   RpcError,
   resultsGetMethod,
@@ -30,6 +32,7 @@ import {
   waitMethod,
 } from "@mostra/protocol";
 import * as z from "zod";
+import { APP_ONLY_META, createAppTools } from "./app.ts";
 import { planPatch } from "./patch.ts";
 import type { McpServerOptions } from "./ports.ts";
 import { errorResult, jsonResult, textResult } from "./results.ts";
@@ -64,6 +67,14 @@ export interface ToolDefinition<Input> {
   readonly input: z.ZodType<Input>;
   /** Hints for the client: whether it reads only, changes or destroys anything. */
   readonly annotations: ToolAnnotations;
+  /** Its `_meta` in `tools/list`: an MCP App's `ui` (D175 item 5). */
+  readonly meta?: Readonly<Record<string, unknown>>;
+  /**
+   * Its part in MCP Apps: `render`, a tool whose result a host shows as a page (its `_meta.ui`
+   * is left out for a client without MCP Apps); `app`, a tool only a page calls (not listed to
+   * such a client at all).
+   */
+  readonly ui?: "render" | "app";
   /** Does the tool's work; a throw becomes an `isError` result with its diagnostic. */
   run(args: Input, call: ToolCall): Promise<CallToolResult>;
 }
@@ -553,6 +564,10 @@ export function createTools(
         idempotentHint: false,
         openWorldHint: false,
       },
+      // A host with MCP Apps shows the page inline (D175 item 1): the loader, which reads the
+      // version's own page; the flat key is the one hosts read before the nested one.
+      meta: { ui: { resourceUri: MCP_APP_LOADER_URI }, "ui/resourceUri": MCP_APP_LOADER_URI },
+      ui: "render",
       async run(args, { options }) {
         const artifact = artifactRef(args.artifact, options);
         const fresh =
@@ -576,10 +591,40 @@ export function createTools(
               ...(args.ttl !== undefined ? { ttl: args.ttl } : {}),
             })
           : await options.instance.call(viewDefaultMethod, { artifact });
-        if (args.open !== true) return jsonResult(link);
-        if (options.browser === undefined) return jsonResult({ ...link, opened: false });
+        // The page's handles (D175 item 1): the version the link opens, and the link. Without
+        // them the model still gets its link, and an inline page offers the full one.
+        const detail = await options.instance
+          .call(artifactGetMethod, { artifact })
+          .catch(() => undefined);
+        const shown =
+          detail === undefined
+            ? undefined
+            : args.version === undefined
+              ? detail.versions[0]
+              : detail.versions.find((version) =>
+                  typeof args.version === "number"
+                    ? version.number === args.version
+                    : version.id === args.version,
+                );
+        const page = (value: unknown): CallToolResult => {
+          const result = jsonResult(value);
+          if (detail === undefined || shown === undefined) return result;
+          return {
+            ...result,
+            structuredContent: {
+              mostra: {
+                artifactId: detail.id,
+                versionId: shown.id,
+                version: shown.number,
+                url: link.url,
+              },
+            },
+          };
+        };
+        if (args.open !== true) return page(link);
+        if (options.browser === undefined) return page({ ...link, opened: false });
         const launch = await options.instance.call(viewLaunchMethod, { tokenId: link.tokenId });
-        return jsonResult({ ...link, opened: await options.browser.open(launch.url) });
+        return page({ ...link, opened: await options.browser.open(launch.url) });
       },
     }),
     defineTool({
@@ -752,8 +797,29 @@ export function createTools(
         return jsonResult({ hits: searchDocs(options.docs, args.query as string) });
       },
     }),
+    // The app-only tools last: no model sees them (D175 item 5).
+    ...APP_TOOL_DEFINITIONS,
   ];
 }
+
+/** The app-only tools as tool definitions, their inputs registered in the wire bundle once. */
+const APP_TOOL_DEFINITIONS: readonly ToolDefinition<unknown>[] = createAppTools(input).map((tool) =>
+  defineTool<Record<string, unknown>>({
+    name: tool.name,
+    title: tool.title,
+    description: tool.description,
+    input: tool.input as unknown as z.ZodType<Record<string, unknown>>,
+    annotations: {
+      readOnlyHint: false,
+      destructiveHint: false,
+      idempotentHint: false,
+      openWorldHint: false,
+    },
+    meta: APP_ONLY_META,
+    ui: "app",
+    run: (args, { options }) => tool.run(args, options),
+  }),
+);
 
 const ENTRIES = new Set(["index.tsx", "index.jsx", "index.mdx"]);
 const MANIFEST_ID = /\bid\s*:\s*["'`]?(art_[0-9A-HJKMNP-TV-Z]{26})\b/;

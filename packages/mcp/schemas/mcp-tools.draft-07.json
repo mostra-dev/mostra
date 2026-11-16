@@ -3,6 +3,395 @@
   "title": "Mostra's MCP tools: the input schema of each tool",
   "x-mostra-revisions": {},
   "definitions": {
+    "AppCallInput": {
+      "type": "object",
+      "properties": {
+        "artifactId": {
+          "type": "string",
+          "pattern": "^art_[0-9A-HJKMNP-TV-Z]{26}$",
+          "description": "The artifact the page shows (art_…)."
+        },
+        "session": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 64,
+          "description": "The page's app session, as app_open answered it."
+        },
+        "revision": {
+          "description": "The browser protocol's revision the page speaks; the newest the gateway serves when left out.",
+          "type": "string",
+          "pattern": "^[0-9]{4}-[0-9]{2}-[0-9]{2}$"
+        },
+        "fnId": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 1024,
+          "description": "The function's ID."
+        },
+        "body": {
+          "type": "object",
+          "propertyNames": {
+            "type": "string"
+          },
+          "additionalProperties": {},
+          "description": "The browser protocol's request body for this route (INTERFACES §4)."
+        }
+      },
+      "required": [
+        "artifactId",
+        "session",
+        "fnId",
+        "body"
+      ]
+    },
+    "AppEventsInput": {
+      "type": "object",
+      "properties": {
+        "artifactId": {
+          "type": "string",
+          "pattern": "^art_[0-9A-HJKMNP-TV-Z]{26}$",
+          "description": "The artifact the page shows (art_…)."
+        },
+        "session": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 64,
+          "description": "The page's app session, as app_open answered it."
+        },
+        "revision": {
+          "description": "The browser protocol's revision the page speaks; the newest the gateway serves when left out.",
+          "type": "string",
+          "pattern": "^[0-9]{4}-[0-9]{2}-[0-9]{2}$"
+        },
+        "view": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 64,
+          "description": "The page's view (vw_…)."
+        },
+        "cursor": {
+          "description": "The last cursor the page read.",
+          "type": "string",
+          "pattern": "^[0-9]{1,20}$"
+        },
+        "wait": {
+          "description": "How long to wait for an event, in seconds (0 to 25).",
+          "type": "number",
+          "minimum": 0,
+          "maximum": 25
+        }
+      },
+      "required": [
+        "artifactId",
+        "session",
+        "view"
+      ]
+    },
+    "AppFieldsInput": {
+      "type": "object",
+      "properties": {
+        "artifactId": {
+          "type": "string",
+          "pattern": "^art_[0-9A-HJKMNP-TV-Z]{26}$",
+          "description": "The artifact the page shows (art_…)."
+        },
+        "session": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 64,
+          "description": "The page's app session, as app_open answered it."
+        },
+        "revision": {
+          "description": "The browser protocol's revision the page speaks; the newest the gateway serves when left out.",
+          "type": "string",
+          "pattern": "^[0-9]{4}-[0-9]{2}-[0-9]{2}$"
+        },
+        "body": {
+          "type": "object",
+          "propertyNames": {
+            "type": "string"
+          },
+          "additionalProperties": {},
+          "description": "The browser protocol's request body for this route (INTERFACES §4)."
+        }
+      },
+      "required": [
+        "artifactId",
+        "session",
+        "body"
+      ]
+    },
+    "AppLiveInput": {
+      "type": "object",
+      "properties": {
+        "artifactId": {
+          "type": "string",
+          "pattern": "^art_[0-9A-HJKMNP-TV-Z]{26}$",
+          "description": "The artifact the page shows (art_…)."
+        },
+        "session": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 64,
+          "description": "The page's app session, as app_open answered it."
+        },
+        "revision": {
+          "description": "The browser protocol's revision the page speaks; the newest the gateway serves when left out.",
+          "type": "string",
+          "pattern": "^[0-9]{4}-[0-9]{2}-[0-9]{2}$"
+        },
+        "body": {
+          "type": "object",
+          "propertyNames": {
+            "type": "string"
+          },
+          "additionalProperties": {},
+          "description": "The browser protocol's request body for this route (INTERFACES §4)."
+        }
+      },
+      "required": [
+        "artifactId",
+        "session",
+        "body"
+      ]
+    },
+    "AppOpenInput": {
+      "type": "object",
+      "properties": {
+        "artifactId": {
+          "type": "string",
+          "pattern": "^art_[0-9A-HJKMNP-TV-Z]{26}$",
+          "description": "The artifact the page shows (art_…)."
+        },
+        "url": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 4096,
+          "description": "The link the page acts through: artifact_open's structuredContent.mostra.url."
+        },
+        "version": {
+          "description": "The version to open, by number.",
+          "type": "integer",
+          "minimum": 1,
+          "maximum": 9007199254740991
+        }
+      },
+      "required": [
+        "artifactId",
+        "url"
+      ]
+    },
+    "AppRespondentsInput": {
+      "type": "object",
+      "properties": {
+        "artifactId": {
+          "type": "string",
+          "pattern": "^art_[0-9A-HJKMNP-TV-Z]{26}$",
+          "description": "The artifact the page shows (art_…)."
+        },
+        "session": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 64,
+          "description": "The page's app session, as app_open answered it."
+        },
+        "revision": {
+          "description": "The browser protocol's revision the page speaks; the newest the gateway serves when left out.",
+          "type": "string",
+          "pattern": "^[0-9]{4}-[0-9]{2}-[0-9]{2}$"
+        },
+        "body": {
+          "type": "object",
+          "propertyNames": {
+            "type": "string"
+          },
+          "additionalProperties": {},
+          "description": "The browser protocol's request body for this route (INTERFACES §4)."
+        }
+      },
+      "required": [
+        "artifactId",
+        "session",
+        "body"
+      ]
+    },
+    "AppRunCancelInput": {
+      "type": "object",
+      "properties": {
+        "artifactId": {
+          "type": "string",
+          "pattern": "^art_[0-9A-HJKMNP-TV-Z]{26}$",
+          "description": "The artifact the page shows (art_…)."
+        },
+        "session": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 64,
+          "description": "The page's app session, as app_open answered it."
+        },
+        "revision": {
+          "description": "The browser protocol's revision the page speaks; the newest the gateway serves when left out.",
+          "type": "string",
+          "pattern": "^[0-9]{4}-[0-9]{2}-[0-9]{2}$"
+        },
+        "runId": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 64,
+          "description": "The run (run_…)."
+        },
+        "body": {
+          "type": "object",
+          "propertyNames": {
+            "type": "string"
+          },
+          "additionalProperties": {},
+          "description": "The browser protocol's request body for this route (INTERFACES §4)."
+        }
+      },
+      "required": [
+        "artifactId",
+        "session",
+        "runId",
+        "body"
+      ]
+    },
+    "AppRunInput": {
+      "type": "object",
+      "properties": {
+        "artifactId": {
+          "type": "string",
+          "pattern": "^art_[0-9A-HJKMNP-TV-Z]{26}$",
+          "description": "The artifact the page shows (art_…)."
+        },
+        "session": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 64,
+          "description": "The page's app session, as app_open answered it."
+        },
+        "revision": {
+          "description": "The browser protocol's revision the page speaks; the newest the gateway serves when left out.",
+          "type": "string",
+          "pattern": "^[0-9]{4}-[0-9]{2}-[0-9]{2}$"
+        },
+        "body": {
+          "type": "object",
+          "propertyNames": {
+            "type": "string"
+          },
+          "additionalProperties": {},
+          "description": "The browser protocol's request body for this route (INTERFACES §4)."
+        }
+      },
+      "required": [
+        "artifactId",
+        "session",
+        "body"
+      ]
+    },
+    "AppRunStatusInput": {
+      "type": "object",
+      "properties": {
+        "artifactId": {
+          "type": "string",
+          "pattern": "^art_[0-9A-HJKMNP-TV-Z]{26}$",
+          "description": "The artifact the page shows (art_…)."
+        },
+        "session": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 64,
+          "description": "The page's app session, as app_open answered it."
+        },
+        "revision": {
+          "description": "The browser protocol's revision the page speaks; the newest the gateway serves when left out.",
+          "type": "string",
+          "pattern": "^[0-9]{4}-[0-9]{2}-[0-9]{2}$"
+        },
+        "body": {
+          "type": "object",
+          "propertyNames": {
+            "type": "string"
+          },
+          "additionalProperties": {},
+          "description": "The browser protocol's request body for this route (INTERFACES §4)."
+        }
+      },
+      "required": [
+        "artifactId",
+        "session",
+        "body"
+      ]
+    },
+    "AppSignalInput": {
+      "type": "object",
+      "properties": {
+        "artifactId": {
+          "type": "string",
+          "pattern": "^art_[0-9A-HJKMNP-TV-Z]{26}$",
+          "description": "The artifact the page shows (art_…)."
+        },
+        "session": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 64,
+          "description": "The page's app session, as app_open answered it."
+        },
+        "revision": {
+          "description": "The browser protocol's revision the page speaks; the newest the gateway serves when left out.",
+          "type": "string",
+          "pattern": "^[0-9]{4}-[0-9]{2}-[0-9]{2}$"
+        },
+        "body": {
+          "type": "object",
+          "propertyNames": {
+            "type": "string"
+          },
+          "additionalProperties": {},
+          "description": "The browser protocol's request body for this route (INTERFACES §4)."
+        }
+      },
+      "required": [
+        "artifactId",
+        "session",
+        "body"
+      ]
+    },
+    "AppSubmitInput": {
+      "type": "object",
+      "properties": {
+        "artifactId": {
+          "type": "string",
+          "pattern": "^art_[0-9A-HJKMNP-TV-Z]{26}$",
+          "description": "The artifact the page shows (art_…)."
+        },
+        "session": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 64,
+          "description": "The page's app session, as app_open answered it."
+        },
+        "revision": {
+          "description": "The browser protocol's revision the page speaks; the newest the gateway serves when left out.",
+          "type": "string",
+          "pattern": "^[0-9]{4}-[0-9]{2}-[0-9]{2}$"
+        },
+        "body": {
+          "type": "object",
+          "propertyNames": {
+            "type": "string"
+          },
+          "additionalProperties": {},
+          "description": "The browser protocol's request body for this route (INTERFACES §4)."
+        }
+      },
+      "required": [
+        "artifactId",
+        "session",
+        "body"
+      ]
+    },
     "ArtifactCreateInput": {
       "type": "object",
       "properties": {

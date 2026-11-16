@@ -68,6 +68,14 @@ describe("the MCP server", () => {
     for (const tool of tools) {
       if (unhandled.has(tool.name)) continue;
       const required = tool.inputSchema.required ?? [];
+      // A page's own tools name its artifact by ID, and its session past app_open (D175 item 5).
+      const handles = tool.name.startsWith("app_")
+        ? ["artifactId", ...(tool.name === "app_open" ? ["url"] : ["session"])]
+        : undefined;
+      if (handles !== undefined) {
+        for (const name of handles) expect(required, tool.name).toContain(name);
+        continue;
+      }
       expect(
         required.some((name) => name === "artifact" || name === "dir"),
         tool.name,
@@ -87,11 +95,33 @@ describe("the MCP server", () => {
       { artifact: { artifactId: "art_01JB8Z3QF6S7W3N8D5K2C4V9XG" }, format: "md" },
     ]);
   });
-  it("lists thirteen tools with short names, descriptions and input schemas, on both eras", async () => {
+  it("lists thirteen tools for the model, then the page's own, with short names, descriptions and input schemas, on both eras", async () => {
     for (const era of ["modern", "legacy"] as const) {
       const client = await connect(base().options, era);
       const { tools } = await client.listTools();
-      expect(tools.map((tool) => tool.name)).toEqual([
+      // What a host shows its model: every tool but those only a page calls (D175 item 5).
+      const forModel = tools.filter(
+        (tool) =>
+          !(
+            (tool._meta as { ui?: { visibility?: string[] } } | undefined)?.ui?.visibility ?? [
+              "model",
+            ]
+          ).every((who) => who === "app"),
+      );
+      expect(tools.slice(forModel.length).map((tool) => tool.name)).toEqual([
+        "app_open",
+        "app_fields",
+        "app_submit",
+        "app_signal",
+        "app_call",
+        "app_run",
+        "app_run_status",
+        "app_run_cancel",
+        "app_live",
+        "app_respondents",
+        "app_events",
+      ]);
+      expect(forModel.map((tool) => tool.name)).toEqual([
         "artifact_create",
         "artifact_write",
         "artifact_patch",
@@ -338,8 +368,14 @@ describe("the MCP server", () => {
         viewer: { ref: "ada@example.com", name: "Ada" },
       },
     });
-    expect(instance.calls.map((call) => call.method)).toEqual(["view/default", "view/url"]);
-    expect(instance.calls[1]?.params).toMatchObject({
+    // Each link, then the version it opens, for an inline page (D175 item 1).
+    expect(instance.calls.map((call) => call.method)).toEqual([
+      "view/default",
+      "artifact/get",
+      "view/url",
+      "artifact/get",
+    ]);
+    expect(instance.calls[2]?.params).toMatchObject({
       viewer: { ref: "ada@example.com", name: "Ada" },
     });
   });

@@ -155,6 +155,7 @@ export interface McpInstance {
 
 // @public
 export interface McpServerOptions {
+    readonly apps?: boolean;
     readonly browser?: McpBrowser;
     readonly docs: McpDocs;
     readonly instance: McpInstance;
@@ -257,9 +258,11 @@ export interface ToolDefinition<Input> {
     readonly annotations: ToolAnnotations;
     readonly description: string;
     readonly input: z.ZodType<Input>;
+    readonly meta?: Readonly<Record<string, unknown>>;
     readonly name: string;
     run(args: Input, call: ToolCall): Promise<CallToolResult>;
     readonly title: string;
+    readonly ui?: "render" | "app";
 }
 
 // @public

@@ -107,6 +107,12 @@ export interface McpServerOptions {
   /** The server's version, as `serverInfo` reports it (the release's). */
   readonly version: string;
   /**
+   * Whether the server offers MCP Apps (D175 items 1, 5): the app-only tools, the pages and
+   * `artifact_open`'s `_meta.ui`. Default `true`; a remote server answers `false` for a chat host
+   * whose policy shows the link only (`render: "link"`, D160).
+   */
+  readonly apps?: boolean;
+  /**
    * Told the client a server instance serves (one per stdio connection, one per HTTP request) the
    * first time it calls a tool or reads a resource, for whoever counts sessions (the standalone
    * CLI's telemetry, D164 item 4, which counts each client once per process). Never throws into a

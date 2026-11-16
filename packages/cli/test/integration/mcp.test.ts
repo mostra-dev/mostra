@@ -135,7 +135,10 @@ describe("mostra mcp", () => {
     const at = home({ MOSTRA_TEST_UNVERIFIED_PUBLISH: "", MOSTRA_MCP_WORKSPACE: "" });
     const client = await stdioClient(at, ["--workspace", join(at.root, "ws")]);
     const { tools } = await client.listTools();
+    // A client without MCP Apps, its capabilities known over stdio: the thirteen tools, no
+    // app-only ones (D175 item 5).
     expect(tools).toHaveLength(13);
+    expect(tools.some((tool) => tool.name.startsWith("app_"))).toBe(false);
     expect(client.getInstructions()).toContain(join(at.root, "ws"));
 
     const created = JSON.parse(
@@ -303,7 +306,11 @@ describe("mostra mcp", () => {
       );
       clients.push(client);
       expect(client.getProtocolEra()).toBe(era);
-      expect((await client.listTools()).tools).toHaveLength(13);
+      // A request names no capabilities a tool list can read here, so the page's own tools are
+      // listed too, for a host to keep from its model (D175 item 5).
+      const { tools } = await client.listTools();
+      expect(tools.filter((tool) => !tool.name.startsWith("app_"))).toHaveLength(13);
+      expect(tools.filter((tool) => tool.name.startsWith("app_"))).toHaveLength(11);
       const listed = await call(client, "artifact_list", {});
       expect(JSON.parse(listed.text)).toEqual({ artifacts: [] });
     }

@@ -10,18 +10,24 @@ import {
   CLIENT_INFO_META_KEY,
   McpServer,
   type McpServerFactory,
+  type RegisteredTool,
   ResourceNotFoundError,
   ResourceTemplate,
   type ServerContext,
 } from "@modelcontextprotocol/server";
 import {
   type ArtifactRef,
+  appPageMethod,
   artifactGetMethod,
   artifactListMethod,
+  MCP_APP_MIME_TYPE,
+  MCP_APPS_EXTENSION,
   RpcError,
   resultsGetMethod,
   stateGetMethod,
+  versionOfMcpAppUri,
 } from "@mostra/protocol";
+import { LOADER_RESOURCE, loaderHtml } from "./loader.ts";
 import type { McpClientInfo, McpServerOptions } from "./ports.ts";
 import { diagnosticOf, errorResult } from "./results.ts";
 import { docsUri } from "./search.ts";
@@ -161,6 +167,7 @@ export function createMcpServerFactory(options: McpServerOptions): McpServerFact
     server.server.oninitialized = () => {
       initialized?.();
       tell(identity());
+      withoutApps();
     };
     const closed = server.server.onclose;
     server.server.onclose = () => {
@@ -168,14 +175,16 @@ export function createMcpServerFactory(options: McpServerOptions): McpServerFact
       tell(identity());
     };
 
+    const registered: { readonly ui: "render" | "app"; readonly tool: RegisteredTool }[] = [];
     for (const tool of tools) {
-      server.registerTool(
+      const handle = server.registerTool(
         tool.name,
         {
           title: tool.title,
           description: tool.description,
           inputSchema: tool.input as never,
           annotations: tool.annotations,
+          ...(tool.meta !== undefined ? { _meta: { ...tool.meta } } : {}),
         },
         (async (args: unknown, ctx: ServerContext): Promise<CallToolResult> => {
           seen(ctx);
@@ -201,6 +210,29 @@ export function createMcpServerFactory(options: McpServerOptions): McpServerFact
           }
         }) as never,
       );
+      if (tool.ui !== undefined) registered.push({ ui: tool.ui, tool: handle });
+    }
+
+    // MCP Apps' parts, left out for a client known to lack MCP Apps (D175 item 5): its
+    // capabilities, known once a 2025-era session initialized, name no UI extension. A client
+    // whose capabilities aren't known (a stateless 2025-era request) keeps them.
+    const withoutApps = (): void => {
+      const capabilities = server.server.getClientCapabilities() as
+        | { extensions?: Record<string, { mimeTypes?: unknown } | undefined> }
+        | undefined;
+      if (capabilities === undefined) return;
+      const types = capabilities.extensions?.[MCP_APPS_EXTENSION]?.mimeTypes;
+      if (Array.isArray(types) && types.includes(MCP_APP_MIME_TYPE)) return;
+      for (const { ui, tool } of registered) {
+        if (ui === "app") tool.disable();
+        else tool.update({ _meta: {} });
+      }
+    };
+    if (options.apps === false) {
+      for (const { ui, tool } of registered) {
+        if (ui === "app") tool.disable();
+        else tool.update({ _meta: {} });
+      }
     }
 
     server.registerResource(
@@ -268,6 +300,62 @@ export function createMcpServerFactory(options: McpServerOptions): McpServerFact
         }
       },
     );
+    if (options.apps !== false) {
+      // The loader every inline page starts as (D175 item 1).
+      server.registerResource(
+        LOADER_RESOURCE.name,
+        LOADER_RESOURCE.uri,
+        {
+          title: LOADER_RESOURCE.title,
+          description: LOADER_RESOURCE.description,
+          mimeType: LOADER_RESOURCE.mimeType,
+        },
+        async (uri, ctx) => {
+          seen(ctx);
+          return {
+            contents: [
+              { uri: uri.href, mimeType: MCP_APP_MIME_TYPE, text: loaderHtml(options.version) },
+            ],
+          };
+        },
+      );
+      // A version's own page, which the loader reads (D175 items 1, 2): the instance makes it.
+      server.registerResource(
+        "mostra-view",
+        new ResourceTemplate("ui://mostra/view/{versionId}", { list: undefined }),
+        {
+          title: "A version's page",
+          description: "One published version of a Mostra artifact, as an MCP App.",
+          mimeType: MCP_APP_MIME_TYPE,
+        },
+        async (uri, _variables, ctx) => {
+          seen(ctx);
+          const versionId = versionOfMcpAppUri(uri.href);
+          if (versionId === undefined) throw new ResourceNotFoundError(uri.href);
+          try {
+            const page = await options.instance.call(appPageMethod, { versionId });
+            return {
+              contents: [
+                {
+                  uri: uri.href,
+                  mimeType: MCP_APP_MIME_TYPE,
+                  text: page.html,
+                  _meta: { ui: page.meta },
+                },
+              ],
+            };
+          } catch (error) {
+            if (
+              error instanceof RpcError &&
+              error.diagnostic.code === "MOSTRA_ARTIFACT_VERSION_NOT_FOUND"
+            ) {
+              throw new ResourceNotFoundError(uri.href);
+            }
+            throw error;
+          }
+        },
+      );
+    }
     return server;
   };
 }
