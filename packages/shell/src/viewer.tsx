@@ -1105,6 +1105,7 @@ export function ViewerPage(props: {
                     type="button"
                     className="mostra-button"
                     data-mostra-choose={request.reviewSetId}
+                    title={chosen ? CONTROL_WORDS.chosen(label) : CONTROL_WORDS.choose(label)}
                     disabled={!armed || chosen || busy !== undefined || state.closed}
                     onClick={() => {
                       if (armedRef.current) {
@@ -1112,7 +1113,10 @@ export function ViewerPage(props: {
                       }
                     }}
                   >
-                    {chosen ? CONTROL_WORDS.chosen(label) : CONTROL_WORDS.choose(label)}
+                    {/* On a phone the label gives way before the Submit does (#182). */}
+                    <span className="mostra-button-text">
+                      {chosen ? CONTROL_WORDS.chosen(label) : CONTROL_WORDS.choose(label)}
+                    </span>
                   </button>
                 );
               })}
@@ -1124,11 +1128,13 @@ export function ViewerPage(props: {
                   disabled={!armed || submitted || busy !== undefined}
                   onClick={onSubmit}
                 >
-                  {submitted
-                    ? CONTROL_WORDS.submitted
-                    : busy === "submit"
-                      ? CONTROL_WORDS.submitting
-                      : (state.submitLabel ?? CONTROL_WORDS.submit)}
+                  <span className="mostra-button-text">
+                    {submitted
+                      ? CONTROL_WORDS.submitted
+                      : busy === "submit"
+                        ? CONTROL_WORDS.submitting
+                        : (state.submitLabel ?? CONTROL_WORDS.submit)}
+                  </span>
                 </button>
               )}
             </div>
