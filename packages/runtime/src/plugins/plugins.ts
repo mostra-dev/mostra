@@ -961,7 +961,7 @@ export function createPlugins(options: PluginsOptions): Plugins {
   const unacceptedError = (missing: readonly LicenseDisclosure[], command: string): RpcError =>
     new RpcError(
       createDiagnostic("MOSTRA_LICENSE_UNACCEPTED", {
-        message: `This install brings ${missing.length === 1 ? "a license" : "licenses"} that need an acknowledgment: ${missing
+        message: `This install brings ${missing.length === 1 ? "a license that needs" : "licenses that need"} an acknowledgment: ${missing
           .map(
             (license) =>
               `${license.id} (${license.class}; ${license.packages.map((pkg) => (pkg.version ? `${pkg.name}@${pkg.version}` : `the item ${pkg.name}`)).join(", ")})${license.summary ? `: ${license.summary}` : ""}${license.url ? ` ${license.url}` : ""}`,

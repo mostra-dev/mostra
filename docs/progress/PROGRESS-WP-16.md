@@ -1,6 +1,6 @@
 # WP-16 progress: extension contracts and plugin system
 
-**Status:** Accepted by Mirza on 2026-11-15 (M71: "absolutely incredible work. accepted!") with D172 and the package's agent-facing prose (D149), after its reviews (R01, R02, R03), every finding fixed or answered (Reviews). Full CI (`ci:full`, every leg) on `2d710f7`, run 43659119118: green once one flaked job was run again (`e2e (macos, chromium)`, the hosted chrome's report radio, filed as #161); on `73e4cb1`, run 43654684346, the same after two (#95, #139). Earlier, on `0aba94b` (run 43632940492), every job green. Owns EX-01, EX-02, EX-03 and EX-04 ([specification](../design/work-packages/WP-16.md)).
+**Status:** Done. Accepted by Mirza on 2026-11-15 (M71: "absolutely incredible work. accepted!") with D172 and the package's agent-facing prose (D149), after its reviews (R01, R02, R03), every finding fixed or answered (Reviews); merged to `main` through the merge queue as `d6f3624` (#155) and released as Mostra 0.15.0 (#163), the six contracts at 0.1.0. Its check against the released CLI found the release age holding back the contracts themselves, decided with Mirza as D173 (M72), fixed in #172 and released with #169's presence fix as Mostra 0.15.1 (#176), against which the same check passes end to end. Owns EX-01, EX-02, EX-03 and EX-04 ([specification](../design/work-packages/WP-16.md)).
 
 ## Baseline
 
@@ -16,6 +16,9 @@
 ## Decisions with Mirza
 
 - **2026-11-14T12:37Z (M70)**, his answers to the session's first questions: one model review per package from here on, Claude Opus and/or Fable as the package needs (Opus by default; Fable for architecture a test can't prove; both for very large, foundational packages); the six new npm packages' one-time setup is his, at acceptance; license classes, what an install discloses and a host's pre-acceptance delegated; home-wide installs built now; GitHub item addresses built now, not deferred to keep the scope small; contract shapes robust and extensible from day zero; EX-01's "ARCHITECTURE §17" corrected to §13. Recorded as **D172** (item 0 the reviews, amending D80 and D144; items 1 to 12 the plugin system as built).
+
+- **2026-11-15T18:00Z (M72)**, on the finding from the released 0.15.0 (a plugin pinning a contract released that day couldn't install for a day, D95's release age covering the whole tree): "Yes, let's exempt, then", and the plugin author's missing local loop noted "for WP-25 to fix as robustly as it gets". Recorded as **D173**, amending D95 item 7; WP-25's specification takes the loop.
+- **2026-11-15T22:10Z**: the closeout needs no further acceptance once everything is fixed.
 
 ## What was built
 
@@ -84,7 +87,7 @@ Found while proving the fixes: three seeds first went green. The exporter's serv
 
 ## Untested boundaries
 
-- **npm publication of the six contract packages** waits for the release that carries them, after Mirza's one-time `tools/release/npm-setup.sh` for each (D172; REPO_STANDARDS §9). The release rehearsal packs them and dry-runs their publish.
+- **A plugin author's local loop.** Plugins install only from a registry (D95, D173 item 5): the external check published its plugins to a scratch registry (Verdaccio proxying npm). The loop before publishing (`mostra plugin verify <dir|tarball>`) is WP-25's.
 - **A real GitHub registry** was not installed from end to end: no public repository with a root `registry.json` was found to read. GitHub's commit API was checked live (a SHA, 422 for an unknown ref, 404 for a missing repository), and the suite reads through a stand-in that serves the same answers.
 - **A redirect from an `https:` registry to this machine** is refused by `mayFollow`, checked by a unit test: the suites' registries are all on loopback, and no `https:` origin runs in a test.
 - **Contracts without a consumer yet** (verify check, connector, embed engine, anchor provider) are checked as definitions and loaded by the plugin system; running them is WP-25's, WP-20's and the terminal packages' (D172 item 12).
@@ -94,3 +97,45 @@ Found while proving the fixes: three seeds first went green. The exporter's serv
 - The home's plugins are `--global`, not `--home`: `--home <path>` is the global flag naming the home itself, and a boolean `--home` swallowed the next word as the home's path (found by the CLI suite).
 - Mostra's own tooling key in its packages' `package.json` is now `"mostra-tools"`, leaving `"mostra"` to plugins (D172 item 3).
 - The vendored SPDX files are `spdx-licenses.json` and `spdx-exceptions.json`, not the list's own names: the license audit reads any `license…` file as a package's license text.
+- The release age exempts the six contract packages (D173, after acceptance): found by this package's own check against its released CLI, with Mirza's decision (M72).
+
+## External evidence
+
+From outside the repository, on this Mac with a scratch home, a scratch npm cache and a scratch registry (Verdaccio 6, publishing `mostra-wp16-*` and proxying everything else from npm), using the CLI as npm serves it (`npx -y @mostra/cli@<release>`, its runtime bundle downloaded and checked against its pins) and two plugins written against the published `@mostra/contract-exporter@0.1.0`:
+
+| Step | 0.15.0 | 0.15.1 |
+|---|---|---|
+| `plugin validate <dir>` | valid once the directory had its dependencies; before, `MOSTRA_PLUGIN_ENTRY_INVALID`, and a manifest without `license` was named at its file and line | valid |
+| `plugin add` of the MIT plugin | refused `MOSTRA_DEP_NOT_FOUND`: the contract was an hour old (D173's finding) | installed, `ok`; Apache-2.0 and MIT disclosed, neither needing an acknowledgment |
+| `plugin add` of the proprietary one | the same refusal | refused `MOSTRA_LICENSE_UNACCEPTED` ("Nothing was installed, and nothing of it ran"), exit 1, its fix command exact; with `--accept-license LicenseRef-WP16-Closed` installed, `accepted` |
+| `publish`, then `export --as words` | published; the exporter unknown, since the plugin never installed | `ver_4C2896XZPSGDVR7WCQ8FX4YSMR`; `out.txt` read "art, version 1, published yes" |
+| The version's `lock.yaml` | no plugins | `plugins: [mostra-wp16-words, mostra-wp16-closed]`, `licenses: { LicenseRef-WP16-Closed: { class: proprietary, by: flag } }`, no time |
+
+Also from outside, after each release: every package of the release group at its version and the six contracts at 0.1.0 on npm with SLSA provenance, the immutable GitHub release with its 13 assets, the `mostra-host` crate and the plugin repository's tag (VERIFIED_FACTS, WP-16). The run found one wording slip, "a license that need an acknowledgment", fixed in this closeout for the next release.
+
+## Issues at the closeout
+
+| Issue | State | What was done |
+|---|---|---|
+| #161 | Closed | The hosted chrome's report radio, clicked while its dialog was still scaling in from `@starting-style` (the trace measured it at 18 × 0.97 px): the e2e helpers wait for a dialog's animations to finish (`settled`). Fixed in #155 |
+| #162 | Closed | J14's cursor kept after a viewer stopped sharing it: a hook whose options change leaves and joins at once, and a join that reached the gateway first made it drop the older leave by its count (D168 item 6), keeping the cursor. A join after a leave now states everything, `null` included (#169, a unit test red on the old client, a CO-04 seed), released in 0.15.1 |
+| #135 | Open, no milestone | Reopened: met again in Windows Firefox after WP-31's measure (run 43706243208), with its evidence; WP-31's milestone is closed, so it waits on none (D155 item 7) |
+| #160 | Open, no milestone | Filed: the Windows reaper case's fixture supervisor once printed nothing and exited 1 |
+| #164 | Open, no milestone | Filed: `mostra dev`'s package reload once missed its 20 s poll on Linux |
+| #174 | Open, no milestone | Filed: the frame-reload cases count exactly one reload, and a slow Windows runner took two (D157 allows three) |
+| #175 | Open, no milestone | Filed: Windows Firefox didn't show the hosted interstitial within 5 s |
+| #178 | Open, no milestone | Filed from this closeout's own run: RM-08's burst took a 2.3 s p95 on a slow Windows x64 runner against D165 item 13's 0.5 s target, which WP-29's per-platform budgets (D166 item 21) may answer |
+| #95, #139, #152 | Open | Their occurrences in this package's runs recorded on each (#139 stays on WP-17's milestone, #152 on WP-20's) |
+
+Two fixes landed for flakes this package's release met, each with its reasoning: UX-01's suite loads its pages through `gotoShell` (#165, Chromium's `ERR_NO_BUFFER_SPACE` on Windows), and verify's network case accepts a render again caused by that collision and no other (#166, its `wp31-132` seed still red when planted). The `WP-16` milestone had no issue.
+
+## Commits and publication
+
+- **Range:** `72ff5e3..d6f3624` on `main`: the 32 signed-off commits of `wp/16-extensions` (last `07f2392`) and the merge commit `d6f3624` (#155); then #166 (`87ff37a`), #165 (`bdbfc04`), the version pull request #163 (`579dbcc`), #169 (`f5adf75`), #172 (`e5fbffe`, D173) and the version pull request #176 (`b28d4ac`); then this closeout.
+- **CI:** #155's full runs (`ci:full`) green on every leg after re-runs of the flakes named above, and its merge-queue run 43699434721 green. #163's merge-queue runs met #95-, #152- and #162-class failures before 43724945266 passed; #172's met #174, #95 and #175 before its last passed.
+- **Publication:** Mostra 0.15.0 by the `Release` workflow (run 43731377539, on `579dbcc`, every job green): the immutable GitHub release `v0.15.0` with the six bundles, their records, `SHA256SUMS` and attestations (13 assets); every package of the release group on npm with provenance and the six `@mostra/contract-*` at 0.1.0, their first release, through the trusted publishers Mirza set up; the `mostra-host` crate 0.15.0; the plugin repository's `v0.15.0`; the server image. Mostra 0.15.1 (run 43774037995, on `b28d4ac`, every job green): the same at 0.15.1, the contracts unchanged at 0.1.0. The docs site doesn't exist yet (WP-26), so nothing deploys.
+- **Remaining dirty paths:** none in the repository. Outside it: the baseline worktree `/Volumes/Active/mostra-wp16/baseline` (detached at `72ff5e3`), the external checks' scratch homes and registries in `/Volumes/Active/mostra-wp16/external-0.15.*`, and the session's edit scripts and review texts in `~/.jcode/scratch/`. Mostra HQ was not written to (D127).
+
+## Next
+
+WP-17, MCP Apps export (`docs/design/work-packages/WP-17.md`), in a fresh session from `docs/design/work-packages/PROMPT.md` with `WORK PACKAGE: WP-17`: the MCP App exporter on `@mostra/contract-exporter` (D172 item 12), with #139 and #157 on its milestone. The maintenance unit MT-04 (the showcase walkthrough, D174) can run beside it.
