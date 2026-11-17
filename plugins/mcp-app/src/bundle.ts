@@ -177,7 +177,7 @@ export async function bundleEntry(
       comments: { legal: false },
     });
     const chunk = output.find((item) => item.type === "chunk");
-    if (!chunk || chunk.type !== "chunk") throw new Error("re-bundling produced no module");
+    if (chunk?.type !== "chunk") throw new Error("re-bundling produced no module");
     return { code: chunk.code, modules, inlined: [...inlined] };
   } finally {
     await build.close();

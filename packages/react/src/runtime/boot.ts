@@ -156,12 +156,20 @@ async function framedShell(): Promise<ShellConnection | undefined> {
 }
 
 /**
- * Starts the runtime: live behind the gateway inside Mostra's shell, local otherwise (a static
- * export, an MCP App until its transport arrives, a page opened on its own).
+ * Starts the runtime: live behind the gateway inside Mostra's shell, live through the app-only
+ * tools inline in an MCP Apps host, local otherwise (a static export, a page opened on its own).
  */
 export async function startRuntime(): Promise<Runtime> {
   const target = deliveryTarget();
   const tab = tabId();
+  if (target === "mcp-app") {
+    // Inline in an MCP Apps host: its own start, loaded only there (D175 item 6).
+    const { startMcpApp } = await import("./mcp-app.ts");
+    return {
+      ...(await startMcpApp(tab, { wireLifecycle, tabPresence, exclusive })),
+      shell: undefined,
+    };
+  }
   const shell = target === "live" || target === "verify" ? await framedShell() : undefined;
   // Read the tolerant way: a later shell may send values this page doesn't know (Claude review
   // finding 5), which never cost it its view.

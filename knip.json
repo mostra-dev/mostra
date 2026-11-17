@@ -34,9 +34,16 @@
       "project": ["*.mjs"]
     },
     "tests/*": {
-      "entry": ["*.config.ts", "**/*.spec.ts", "global-setup.ts"],
+      "entry": ["*.config.ts", "**/*.spec.ts", "global-setup.ts", "support/mcp-apps-host-page.ts"],
       "project": ["**/*.ts"],
-      "ignoreDependencies": ["@mostra/cli", "@mostra/runtime", "@mostra/server", "@mostra/shell"],
+      "ignoreDependencies": [
+        "@mostra/cli",
+        "@mostra/runtime",
+        "@mostra/server",
+        "@mostra/shell",
+        "@modelcontextprotocol/core",
+        "zod"
+      ],
       "ignore": ["fixtures/**"]
     },
     "packages/runtime": {
