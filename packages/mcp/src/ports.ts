@@ -119,4 +119,10 @@ export interface McpServerOptions {
    * tool.
    */
   readonly onClient?: (client: McpClientInfo) => void;
+  /**
+   * Names the instance the tools act on, the same for every server built for it, so a verify
+   * under way that one request started is joined by the next (#157: over Streamable HTTP each
+   * request builds its own server). Default: this factory's own.
+   */
+  readonly scope?: string;
 }

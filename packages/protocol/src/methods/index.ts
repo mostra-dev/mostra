@@ -51,6 +51,7 @@ import { portSecretsGetMethod } from "./port/secrets-get.ts";
 import { portSubmissionsDeliverMethod } from "./port/submissions-deliver.ts";
 import { portTrustedControlsActivatedMethod } from "./port/trusted-controls-activated.ts";
 import { portTrustedControlsPolicyMethod } from "./port/trusted-controls-policy.ts";
+import { relayAuthorProgressMethod } from "./relay/author-progress.ts";
 import { relayCallBatchMethod } from "./relay/call-batch.ts";
 import { relayEffectMethod } from "./relay/effect.ts";
 import { relayLiveValueMethod } from "./relay/live-value.ts";
@@ -138,6 +139,7 @@ export const hostMethods: readonly AnyMethod[] = [
   portRelayCallMethod,
   relayRunUpdateMethod,
   relayCallBatchMethod,
+  relayAuthorProgressMethod,
   relayEffectMethod,
   portRelayLiveMethod,
   relayLiveValueMethod,

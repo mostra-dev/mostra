@@ -30,8 +30,10 @@ import {
   hostedSubmissionMethod,
   type InstanceInfo,
   type PausedBy,
+  type RelayAuthorProgressParams,
   RouteId,
   RpcError,
+  relayAuthorProgressMethod,
   remoteTokenMethod,
   viewUrlMethod,
 } from "@mostra/protocol";
@@ -150,6 +152,14 @@ export interface HostedHome {
    * authoring goes (D165 items 1b, 5). The newest session of the link is its own.
    */
   defaultOwnerSession(): number | undefined;
+  /**
+   * Hears the stages of a relayed `artifact/verify` its progress token names, as the owner
+   * reports them (`relay/author.progress`, #157); returns the function that stops listening.
+   */
+  onAuthorProgress(
+    progressToken: string,
+    listener: (progress: RelayAuthorProgressParams) => void,
+  ): () => void;
   /** Whether a binding is open, a stream or poll is served, or a delivery waits. */
   busy(): boolean;
   /**
@@ -791,6 +801,8 @@ export async function openHostedHome(options: HostedHomeOptions): Promise<Hosted
     return revoked;
   };
 
+  /** Listeners of relayed verifies' stages, by progress token (#157). */
+  const authorProgress = new Map<string, (progress: RelayAuthorProgressParams) => void>();
   const appPages: AppPages = createAppPages({
     dir: options.dir,
     log,
@@ -1161,6 +1173,19 @@ export async function openHostedHome(options: HostedHomeOptions): Promise<Hosted
         return appPages.keep(params, link);
       }),
       handler(appPageMethod, (params) => appPages.page(params.versionId)),
+      // A relayed verify's stages (#157): from an owner instance's binding, for a token a remote
+      // MCP call listens on (a random one, which only that call and the owner it asked know).
+      handler(relayAuthorProgressMethod, (params, session) => {
+        const link = session.link?.instanceId;
+        if (link === undefined || session.attributes["linkId"] !== link) {
+          throw refuse(
+            "MOSTRA_REMOTE_NOT_OWNER_INSTANCE",
+            "Only an owner instance's binding reports verify's stages.",
+          );
+        }
+        authorProgress.get(params.progressToken)?.(params);
+        return {};
+      }),
       handler(hostedSubmissionMethod, (params, session) => {
         // Only the owner instance of its artifact reads a submission this way (D165 item 1b),
         // and only one it was, or is, delivered.
@@ -1363,6 +1388,12 @@ export async function openHostedHome(options: HostedHomeOptions): Promise<Hosted
       const rows = Object.values(removed).reduce((sum, count) => sum + count, 0);
       log.info("server.artifact_removed", { home: id, artifactId, rows });
       return { rows };
+    },
+    onAuthorProgress(progressToken, listener) {
+      authorProgress.set(progressToken, listener);
+      return () => {
+        if (authorProgress.get(progressToken) === listener) authorProgress.delete(progressToken);
+      };
     },
     defaultOwnerSession() {
       const link = directory.read(

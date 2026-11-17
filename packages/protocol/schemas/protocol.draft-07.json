@@ -471,6 +471,16 @@
         "$ref": "#/definitions/ControlsPolicy"
       }
     },
+    "relay/author.progress": {
+      "direction": "client-to-instance",
+      "mutating": false,
+      "params": {
+        "$ref": "#/definitions/RelayAuthorProgressParams"
+      },
+      "result": {
+        "$ref": "#/definitions/RelayAuthorProgressResult"
+      }
+    },
     "relay/call.batch": {
       "direction": "client-to-instance",
       "mutating": false,
@@ -6278,6 +6288,34 @@
         "reused"
       ],
       "description": "The receipt of artifact/publish: artifact, version, number, capability URL when served, event cursor, reuse."
+    },
+    "RelayAuthorProgressParams": {
+      "type": "object",
+      "properties": {
+        "progressToken": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 200
+        },
+        "stage": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 64
+        },
+        "fraction": {
+          "type": "number",
+          "minimum": 0,
+          "maximum": 1
+        }
+      },
+      "required": [
+        "progressToken",
+        "stage"
+      ]
+    },
+    "RelayAuthorProgressResult": {
+      "type": "object",
+      "properties": {}
     },
     "RelayCallBatchParams": {
       "type": "object",

@@ -134,6 +134,24 @@ describe("the remote MCP server (MC-04)", () => {
     expect(outside.isError).toBe(true);
     expect(outside.text).toContain("MOSTRA_ARTIFACT_PATH_INVALID");
 
+    // Verify runs on the owner, and its stages come back as the call's progress (#157).
+    // Past 45 s it answers running; asking again waits for the same run, as an agent would.
+    const heard: string[] = [];
+    let verdict: { status?: string } = {};
+    for (let asked = 0; asked < 8; asked += 1) {
+      const verified = await client.callTool(
+        { name: "artifact_verify", arguments: { dir: made.dir } },
+        { timeout: 240_000, onprogress: (update) => heard.push(String(update.message)) },
+      );
+      verdict = JSON.parse(
+        (verified.content as { type: string; text?: string }[])[0]?.text ?? "{}",
+      ) as { status?: string };
+      expect(verified.isError, JSON.stringify(verdict)).toBeFalsy();
+      if (verdict.status !== "running") break;
+    }
+    expect(["pass", "fail"]).toContain(verdict.status);
+    expect(heard).toEqual(expect.arrayContaining(["verify: compile", "verify: render"]));
+
     const published = await call(client, "artifact_publish", { dir: made.dir });
     expect(published.isError, published.text).toBe(false);
     const receipt = JSON.parse(published.text) as { artifactId: string; url: string };

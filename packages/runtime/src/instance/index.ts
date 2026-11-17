@@ -31,6 +31,7 @@ import {
   portTrustedControlsActivatedMethod,
   portTrustedControlsPolicyMethod,
   RpcError,
+  relayAuthorProgressMethod,
 } from "@mostra/protocol";
 import { createActions } from "../actions/index.ts";
 import { createAddressing, resolveBind } from "../addressing/index.ts";
@@ -836,6 +837,9 @@ async function assemble(home: OwnedHome, options: StartInstanceOptions): Promise
     runtimeVersion: runtimeVersion(),
     protocol: () => server,
     hostedOn: (artifactId) => link.hostedServers(artifactId),
+    // A relayed verify's stages go back to the server that asked (#157), best effort.
+    progress: (to, params) =>
+      void link.forward(to, relayAuthorProgressMethod, params).catch(() => undefined),
   });
   const stopPushingPublishes = interaction.onPublished((artifactId, versionId) =>
     link.published(artifactId, versionId),

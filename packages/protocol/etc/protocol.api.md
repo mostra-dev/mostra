@@ -2885,6 +2885,16 @@ export const RELAY_AUTHOR_METHODS: readonly ["artifact/create", "artifact/verify
 export type RelayAuthorMethod = (typeof RELAY_AUTHOR_METHODS)[number];
 
 // @public
+export const relayAuthorProgressMethod: MethodDefinition<RelayAuthorProgressParams, Record<string, never>>;
+
+// @public
+export interface RelayAuthorProgressParams {
+    readonly fraction?: number;
+    readonly progressToken: string;
+    readonly stage: string;
+}
+
+// @public
 export const relayCallBatchMethod: MethodDefinition<RelayCallBatchParams, RelayCallBatchResult>;
 
 // @public

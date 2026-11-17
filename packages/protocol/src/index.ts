@@ -619,6 +619,10 @@ export {
   portTrustedControlsPolicyMethod,
 } from "./methods/port/trusted-controls-policy.ts";
 export {
+  type RelayAuthorProgressParams,
+  relayAuthorProgressMethod,
+} from "./methods/relay/author-progress.ts";
+export {
   type RelayCallBatchParams,
   type RelayCallBatchResult,
   relayCallBatchMethod,

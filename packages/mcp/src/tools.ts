@@ -37,6 +37,7 @@ import { planPatch } from "./patch.ts";
 import type { McpServerOptions } from "./ports.ts";
 import { errorResult, jsonResult, textResult } from "./results.ts";
 import { searchDocs } from "./search.ts";
+import { verifyWithin } from "./verify-run.ts";
 
 /** The registry of every tool's input schema, published as the `mcp-tools` bundle. */
 export const toolRegistry: z.core.$ZodRegistry<{ id: string; description?: string }> = z.registry<{
@@ -392,6 +393,8 @@ async function screenshotImages(
 export function createTools(
   readScreenshot: (path: string) => Promise<Uint8Array | undefined>,
 ): readonly ToolDefinition<unknown>[] {
+  // The instance's name for verify runs when the server's options give none: this factory's.
+  const ownScope = randomUUID();
   return [
     defineTool({
       name: "artifact_create",
@@ -500,7 +503,7 @@ export function createTools(
       name: "artifact_verify",
       title: "Verify an artifact",
       description:
-        "Check an artifact before anyone sees it: type-check, build, render it headlessly, click through it, check accessibility and screenshot it at 1280×800 and 390×844. Returns the verdict (status pass or fail, with diagnostics that carry codes and hints) and the screenshots worth looking at. Fix every error and verify again until the status is pass, then look at the screenshots. Can take a few minutes.",
+        "Check an artifact before anyone sees it: type-check, build, render it headlessly, click through it, check accessibility and screenshot it at 1280×800 and 390×844. Returns the verdict (status pass or fail, with diagnostics that carry codes and hints) and the screenshots worth looking at. Fix every error and verify again until the status is pass, then look at the screenshots. Can take a few minutes: when it takes longer than about 45 seconds, it answers status running with the stage it reached, and calling artifact_verify again with the same arguments waits for that same run.",
       input: verifyInput,
       annotations: {
         readOnlyHint: true,
@@ -509,25 +512,43 @@ export function createTools(
         openWorldHint: false,
       },
       async run(args, { options, progress }) {
-        const progressToken = randomUUID();
-        const stop = options.instance.onProgress(progressToken, (update) =>
-          progress(`verify: ${update.stage}`),
+        const dir = options.workspace.resolveDir(args.dir);
+        // One run per instance, directory and screenshots asked for: a call that answered
+        // "running" is joined by the same call again (#157, D175 item 10).
+        const key = [options.scope ?? ownScope, dir, args.screenshots ?? ""].join("\0");
+        const answer = await verifyWithin(
+          key,
+          async (stage) => {
+            const progressToken = randomUUID();
+            const stop = options.instance.onProgress(progressToken, (update) =>
+              stage(update.stage),
+            );
+            try {
+              return await options.instance.call(artifactVerifyMethod, {
+                source: { path: dir },
+                progressToken,
+                ...(args.screenshots !== undefined ? { screenshots: args.screenshots } : {}),
+              });
+            } finally {
+              stop();
+            }
+          },
+          { onStage: (name) => progress(`verify: ${name}`) },
         );
-        try {
-          const verdict = await options.instance.call(artifactVerifyMethod, {
-            source: { path: options.workspace.resolveDir(args.dir) },
-            progressToken,
-            ...(args.screenshots !== undefined ? { screenshots: args.screenshots } : {}),
+        if (!answer.done) {
+          return jsonResult({
+            status: "running",
+            ...(answer.stage !== undefined ? { stage: answer.stage } : {}),
+            elapsedSeconds: answer.elapsedSeconds,
           });
-          return {
-            content: [
-              { type: "text", text: JSON.stringify(verdict) },
-              ...(await screenshotImages(verdict, readScreenshot)),
-            ],
-          };
-        } finally {
-          stop();
         }
+        const verdict = answer.verdict;
+        return {
+          content: [
+            { type: "text", text: JSON.stringify(verdict) },
+            ...(await screenshotImages(verdict, readScreenshot)),
+          ],
+        };
       },
     }),
     defineTool({

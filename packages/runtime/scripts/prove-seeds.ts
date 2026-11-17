@@ -7350,6 +7350,41 @@ const SEEDS: readonly Seed[] = [
     to: '        missing.push({ submissionId: id, cursor: "0" });',
     check: unit("imports.test.ts", "copies each followed event once"),
   },
+  // #157 (D175 item 10): artifact_verify answers within a call's time, and its run is joined.
+  {
+    requirement: "MC-01",
+    name: "#157: the same artifact_verify again starts a second verify",
+    file: "../mcp/src/verify-run.ts",
+    from: "  let run = runs.get(key) as Run<V> | undefined;",
+    to: "  let run = undefined as Run<V> | undefined;",
+    check: ["test/verify.test.ts", "-t", "collects the same run's verdict"],
+    cwd: "../mcp",
+  },
+  {
+    requirement: "MC-01",
+    name: "#157: artifact_verify waits for the verdict however long verify takes",
+    file: "../mcp/src/verify-run.ts",
+    from: '    timer = setTimeout(() => resolve("waiting"), options.waitMs ?? VERIFY_ANSWER_MS);',
+    to: '    timer = setTimeout(() => resolve("waiting"), options.waitMs ?? 2_147_483_647);',
+    check: ["test/verify.test.ts", "-t", "answers running within its wait"],
+    cwd: "../mcp",
+  },
+  {
+    requirement: "MC-04",
+    name: "#157: a hosted home drops the stages a relayed verify reports",
+    file: "src/server/hosted.ts",
+    from: "        authorProgress.get(params.progressToken)?.(params);",
+    to: "",
+    check: integration("remote-mcp.test.ts", "authors through the owner"),
+  },
+  {
+    requirement: "MC-04",
+    name: "#157: the owner keeps a relayed verify's stages to itself",
+    file: "src/link/author.ts",
+    from: '          typeof token === "string" && options.progress !== undefined',
+    to: "          false",
+    check: integration("remote-mcp.test.ts", "authors through the owner"),
+  },
 ];
 
 const runtime = join(dirname(fileURLToPath(import.meta.url)), "..");

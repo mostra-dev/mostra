@@ -175,8 +175,16 @@ export function createRemoteMcp(options: RemoteMcpOptions): RemoteMcp {
               : params;
           return (await subject.client.peer.call(method, sent)) as R;
         },
-        // Progress of a relayed verify isn't streamed back; the verdict arrives whole.
-        onProgress: () => () => undefined,
+        // A relayed verify's stages, as the owner reports them back (#157); the verdict itself
+        // arrives as the relayed call's answer.
+        onProgress: (progressToken, listener) =>
+          subject.home.onAuthorProgress(progressToken, (progress) =>
+            listener({
+              progressToken,
+              stage: progress.stage,
+              ...(progress.fraction !== undefined ? { fraction: progress.fraction } : {}),
+            }),
+          ),
       };
       const workspace: McpWorkspace = {
         // The owner's workspace root, as the owner said it (its paths are the owner's).
@@ -213,6 +221,9 @@ export function createRemoteMcp(options: RemoteMcpOptions): RemoteMcp {
         version: options.version,
         // MCP Apps only where the chat host's policy shows pages through them (D160).
         apps: subject.render === "app",
+        // Every request's server acts on this hosted home: a verify one request started is
+        // joined by the next (#157).
+        scope: `hosted:${subject.home.id}`,
         readScreenshot: async (path) => {
           const answer = (await author("verify/screenshot", { path }, WORKSPACE_TIMEOUT_MS)) as {
             png?: string;

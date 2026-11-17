@@ -161,6 +161,7 @@ export interface McpServerOptions {
     readonly instance: McpInstance;
     readonly onClient?: (client: McpClientInfo) => void;
     readonly readScreenshot?: (path: string) => Promise<Uint8Array>;
+    readonly scope?: string;
     readonly version: string;
     readonly workspace: McpWorkspace;
 }
