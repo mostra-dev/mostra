@@ -268,10 +268,20 @@ export const LOADER_RESOURCE: {
   readonly title: string;
   readonly description: string;
   readonly mimeType: string;
+  /**
+   * What a host applies to every inline page (D175 item 2): the loader's own, since a tool names
+   * one resource on its definition. A host's sandbox follows the resource it frames, so the
+   * origins a version's page declares apply only where a host reads `ui://mostra/view/<versionId>`
+   * itself; through `artifact_open` a page loads nothing from outside, and says so for each origin
+   * the host blocks (MC-03, review findings Opus 7, Fable 5). No union of the home's origins: it
+   * would open every page to what another declared.
+   */
+  readonly meta: { readonly ui: { readonly prefersBorder: boolean } };
 } = {
   uri: MCP_APP_LOADER_URI,
   name: "mostra-app",
   title: "Mostra page",
   description: "Shows a Mostra artifact's page inline: artifact_open's result names the version.",
   mimeType: MCP_APP_MIME_TYPE,
+  meta: { ui: { prefersBorder: true } },
 };

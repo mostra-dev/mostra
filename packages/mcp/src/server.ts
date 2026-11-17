@@ -312,12 +312,19 @@ export function createMcpServerFactory(options: McpServerOptions): McpServerFact
           title: LOADER_RESOURCE.title,
           description: LOADER_RESOURCE.description,
           mimeType: LOADER_RESOURCE.mimeType,
+          // On the listing and the content alike: a host reads either (MCP Apps, draft).
+          _meta: LOADER_RESOURCE.meta,
         },
         async (uri, ctx) => {
           seen(ctx);
           return {
             contents: [
-              { uri: uri.href, mimeType: MCP_APP_MIME_TYPE, text: loaderHtml(options.version) },
+              {
+                uri: uri.href,
+                mimeType: MCP_APP_MIME_TYPE,
+                text: loaderHtml(options.version),
+                _meta: LOADER_RESOURCE.meta,
+              },
             ],
           };
         },

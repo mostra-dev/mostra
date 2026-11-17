@@ -173,7 +173,7 @@ const exporter: Exporter = defineExporter<ExporterDefinition>({
       findings.push({
         code: "ORIGINS_DECLARED",
         severity: "hint",
-        message: `The page declares ${[...new Set([...connectDomains, ...resourceDomains])].join(", ")}; a host may still refuse an origin, and the page then says so.`,
+        message: `The page declares ${[...new Set([...connectDomains, ...resourceDomains])].join(", ")} for a host that shows this resource itself; shown inline through artifact_open, whose loader declares no origin, it loads none of them, and says so for each (D175 item 2).`,
       });
     }
     const description: McpAppDescription = {

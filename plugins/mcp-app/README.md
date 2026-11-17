@@ -21,6 +21,6 @@ Options (`--option name=value`):
 | `resourceDomains` | More `https:` origins the page loads images, styles or media from |
 | `prefersBorder` | Whether the host draws a border and background around the page; `true` unless set, since hosts' own defaults differ |
 
-Mostra's own MCP server (`mostra mcp`) shows an artifact inline through `artifact_open`, and the page saves answers, submits and runs actions through its app-only tools.
+Mostra's own MCP server (`mostra mcp`) shows an artifact inline through `artifact_open`, and the page saves answers, submits and runs actions through its app-only tools. A host frames a page shown that way with its loader's policy, which declares no origin, so the page loads nothing from outside and says so for each origin the host blocks; the origins in `mcp-app.json` apply where a host shows the `ui://mostra/view/<versionId>` resource itself.
 
 Licensed under Apache-2.0.

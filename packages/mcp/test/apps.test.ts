@@ -230,10 +230,21 @@ describe("MCP Apps through the MCP server (D175, MC-02)", () => {
   });
 
   it("serves the loader, one document with nothing to fetch, which parses as script", async () => {
-    const client = await overHttp(base().options);
+    const client = await overHttp(base({ "artifact/list": () => ({ artifacts: [] }) }).options);
     const read = await client.readResource({ uri: "ui://mostra/app" });
-    const content = read.contents[0] as { mimeType?: string; text?: string };
+    const content = read.contents[0] as {
+      mimeType?: string;
+      text?: string;
+      _meta?: Record<string, unknown>;
+    };
     expect(content.mimeType).toBe(MCP_APP_MIME_TYPE);
+    // What a host frames every inline page with: a border asked for, and no outside origin, on
+    // the listing and the content alike (D175 item 2; review findings Opus 7, Fable 5).
+    expect(content._meta).toEqual({ ui: { prefersBorder: true } });
+    const listed = (await client.listResources()).resources.find(
+      (resource) => resource.uri === "ui://mostra/app",
+    );
+    expect(listed?._meta).toEqual({ ui: { prefersBorder: true } });
     const html = content.text ?? "";
     expect(html.startsWith("<!doctype html>")).toBe(true);
     expect(html).not.toMatch(/\b(src|href)=["']?(https?:)?\/\//);

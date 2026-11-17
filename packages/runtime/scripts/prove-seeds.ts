@@ -7574,6 +7574,15 @@ const SEEDS: readonly Seed[] = [
     to: "        const fingerprint = undefined;",
     check: unit("owner-author.test.ts", "fingerprint"),
   },
+  {
+    requirement: "MC-02",
+    name: "the loader asks a host for no border, its pages framed as the host likes (Opus 7, Fable 5)",
+    file: "../mcp/src/loader.ts",
+    from: "  meta: { ui: { prefersBorder: true } },",
+    to: "  meta: { ui: { prefersBorder: false } },",
+    check: ["test/apps.test.ts", "-t", "serves the loader"],
+    cwd: "../mcp",
+  },
 ];
 
 const runtime = join(dirname(fileURLToPath(import.meta.url)), "..");
