@@ -3,6 +3,36 @@
 // host-protocol revision 2026-10-10
 
 //! Every method and notification of the host protocol, as the schema lists them.
+///`app/open`.
+#[derive(Clone, Copy, Debug)]
+pub struct AppOpen;
+impl super::Method for AppOpen {
+    const NAME: &'static str = "app/open";
+    const DIRECTION: super::Direction = super::Direction::ClientToInstance;
+    const MUTATING: bool = true;
+    type Params = super::generated::AppOpenParams;
+    type Result = super::generated::AppOpenResult;
+}
+///`app/page`.
+#[derive(Clone, Copy, Debug)]
+pub struct AppPage;
+impl super::Method for AppPage {
+    const NAME: &'static str = "app/page";
+    const DIRECTION: super::Direction = super::Direction::ClientToInstance;
+    const MUTATING: bool = false;
+    type Params = super::generated::AppPageParams;
+    type Result = super::generated::AppPageResult;
+}
+///`app/request`.
+#[derive(Clone, Copy, Debug)]
+pub struct AppRequest;
+impl super::Method for AppRequest {
+    const NAME: &'static str = "app/request";
+    const DIRECTION: super::Direction = super::Direction::ClientToInstance;
+    const MUTATING: bool = true;
+    type Params = super::generated::AppRequestParams;
+    type Result = super::generated::AppRequestResult;
+}
 ///`artifact/create`.
 #[derive(Clone, Copy, Debug)]
 pub struct ArtifactCreate;
@@ -162,6 +192,16 @@ impl super::Method for GcRun {
     const MUTATING: bool = true;
     type Params = super::generated::GcRunParams;
     type Result = super::generated::GcRunResult;
+}
+///`hosted/page`.
+#[derive(Clone, Copy, Debug)]
+pub struct HostedPage;
+impl super::Method for HostedPage {
+    const NAME: &'static str = "hosted/page";
+    const DIRECTION: super::Direction = super::Direction::ClientToInstance;
+    const MUTATING: bool = true;
+    type Params = super::generated::HostedPageParams;
+    type Result = super::generated::HostedPageResult;
 }
 ///`hosted/push`.
 #[derive(Clone, Copy, Debug)]
@@ -432,6 +472,16 @@ impl super::Method for PortTrustedControlsPolicy {
     const MUTATING: bool = false;
     type Params = super::generated::PortTrustedControlsPolicyParams;
     type Result = super::generated::ControlsPolicy;
+}
+///`relay/author.progress`.
+#[derive(Clone, Copy, Debug)]
+pub struct RelayAuthorProgress;
+impl super::Method for RelayAuthorProgress {
+    const NAME: &'static str = "relay/author.progress";
+    const DIRECTION: super::Direction = super::Direction::ClientToInstance;
+    const MUTATING: bool = false;
+    type Params = super::generated::RelayAuthorProgressParams;
+    type Result = super::generated::RelayAuthorProgressResult;
 }
 ///`relay/call.batch`.
 #[derive(Clone, Copy, Debug)]
@@ -747,6 +797,21 @@ impl super::Notification for EventsNotify {
 /// Every method, in name order.
 pub const METHODS: &[super::MethodInfo] = &[
     super::MethodInfo {
+        name: "app/open",
+        direction: super::Direction::ClientToInstance,
+        mutating: true,
+    },
+    super::MethodInfo {
+        name: "app/page",
+        direction: super::Direction::ClientToInstance,
+        mutating: false,
+    },
+    super::MethodInfo {
+        name: "app/request",
+        direction: super::Direction::ClientToInstance,
+        mutating: true,
+    },
+    super::MethodInfo {
         name: "artifact/create",
         direction: super::Direction::ClientToInstance,
         mutating: true,
@@ -823,6 +888,11 @@ pub const METHODS: &[super::MethodInfo] = &[
     },
     super::MethodInfo {
         name: "gc/run",
+        direction: super::Direction::ClientToInstance,
+        mutating: true,
+    },
+    super::MethodInfo {
+        name: "hosted/page",
         direction: super::Direction::ClientToInstance,
         mutating: true,
     },
@@ -959,6 +1029,11 @@ pub const METHODS: &[super::MethodInfo] = &[
     super::MethodInfo {
         name: "port/trustedControls.policy",
         direction: super::Direction::InstanceToHost,
+        mutating: false,
+    },
+    super::MethodInfo {
+        name: "relay/author.progress",
+        direction: super::Direction::ClientToInstance,
         mutating: false,
     },
     super::MethodInfo {
