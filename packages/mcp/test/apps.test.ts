@@ -170,8 +170,11 @@ describe("MCP Apps through the MCP server (D175, MC-02)", () => {
     const html = content.text ?? "";
     expect(html.startsWith("<!doctype html>")).toBe(true);
     expect(html).not.toMatch(/\b(src|href)=["']?(https?:)?\/\//);
-    const script = /<script>([\s\S]*)<\/script>/.exec(html)?.[1] ?? "";
-    expect(script).not.toContain("</script");
+    // One inline script, whose text no casing of a closing tag can end early.
+    expect(html.match(/<script\b/gi)).toHaveLength(1);
+    const script = /<script>([\s\S]*)<\/script\s*>/i.exec(html)?.[1] ?? "";
+    expect(script.length).toBeGreaterThan(0);
+    expect(script.toLowerCase()).not.toContain("</script");
     // Run in a frame, it opens the MCP Apps handshake with the host, and only that.
     const sent: { method?: string; id?: unknown; params?: Record<string, unknown> }[] = [];
     const listeners: ((event: unknown) => void)[] = [];
