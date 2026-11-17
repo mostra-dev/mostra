@@ -17,6 +17,8 @@ export const RELAY_AUTHOR_METHODS = [
   "workspace/allocate",
   "workspace/read",
   "workspace/apply",
+  // A fingerprint of an artifact's files, so a verify answers only for its source (#157).
+  "workspace/fingerprint",
   "verify/screenshot",
 ] as const;
 

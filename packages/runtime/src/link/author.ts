@@ -140,6 +140,11 @@ export function createOwnerAuthor(options: OwnerAuthorOptions): OwnerAuthor {
         const content = await workspace.read(dirOf(given["dir"]), String(given["path"] ?? ""));
         return content === undefined ? {} : { content: Buffer.from(content).toString("base64") };
       }
+      case "workspace/fingerprint": {
+        // The owner's files are the source a relayed verify runs on (#157, Opus 6, Fable 4).
+        const fingerprint = await workspace.fingerprint?.(dirOf(given["dir"]));
+        return fingerprint === undefined ? {} : { fingerprint };
+      }
       case "workspace/apply": {
         const write = Array.isArray(given["write"]) ? given["write"] : [];
         const deletes = Array.isArray(given["delete"]) ? given["delete"] : [];

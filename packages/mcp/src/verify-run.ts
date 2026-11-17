@@ -11,12 +11,19 @@
  * for. A run ends in one of two ways: answered to a call waiting when it ends, then forgotten; or
  * ending while no call waits, kept for the next call (which asked for it by asking again), and
  * forgotten after {@link VERIFY_KEPT_MS} if none comes.
+ *
+ * A run answers only for the source it started on (review findings Opus 6, Fable 4): a write
+ * through the tools forgets the directory's runs (`forgetVerifyRuns`), a call whose directory's
+ * fingerprint differs from the run's starts a new one, and a run that never settles is left after
+ * {@link VERIFY_RUN_MAX_MS}. A run left behind goes on for the calls already waiting on it.
  */
 
 /** How long one call waits for the verdict before it answers that verify is still running. */
 export const VERIFY_ANSWER_MS: number = 45_000;
 /** How long a verdict no call has collected yet is kept for the call that asks again. */
 export const VERIFY_KEPT_MS: number = 10 * 60_000;
+/** How long a run may go on before a call no longer joins it: verify's own limits are far less. */
+export const VERIFY_RUN_MAX_MS: number = 30 * 60_000;
 
 /** What a call answers. */
 export type VerifyAnswer<V> =
@@ -26,6 +33,8 @@ export type VerifyAnswer<V> =
 /** One run under way, or ended and not yet collected. */
 interface Run<V> {
   readonly started: number;
+  /** The directory's fingerprint when the run started, when the workspace gives one. */
+  readonly fingerprint: string | undefined;
   stage?: string;
   /** The waiting calls' listeners, told each stage as it starts. */
   readonly listeners: Set<(stage: string) => void>;
@@ -44,6 +53,33 @@ export function verifyRunsKept(): number {
   return runs.size;
 }
 
+/** Leaves a run: later calls start afresh; the calls waiting on it still get its answer. */
+function leave(key: string, run: Run<unknown>): void {
+  if (runs.get(key) !== run) return;
+  runs.delete(key);
+  if (run.forget !== undefined) clearTimeout(run.forget);
+}
+
+/** The key of an instance's runs on a path, with the screenshots asked for. */
+export function verifyKey(scope: string, path: string, screenshots: string): string {
+  return [scope, path, screenshots].join("\0");
+}
+
+/**
+ * Forgets an instance's runs on `dir` and on any path under it: the source changed, so what they
+ * found no longer answers for it.
+ */
+export function forgetVerifyRuns(scope: string, dir: string): void {
+  const trimmed = dir.replace(/[\\/]+$/, "");
+  for (const [key, run] of runs) {
+    const [owner, path = ""] = key.split("\0");
+    if (owner !== scope) continue;
+    const under =
+      path === trimmed || path.startsWith(`${trimmed}/`) || path.startsWith(`${trimmed}\\`);
+    if (under) leave(key, run);
+  }
+}
+
 /**
  * Answers one call: joins the run of `key`, or starts one with `start` (which reports stages to
  * `stage`), and waits for it at most `waitMs`. A run's failure is thrown to the call that sees it.
@@ -56,9 +92,20 @@ export async function verifyWithin<V>(
     readonly now?: () => number;
     /** Told each stage that starts while this call waits (a progress notification). */
     readonly onStage?: (stage: string) => void;
+    /** The directory's fingerprint now; a run started on another one isn't joined. */
+    readonly fingerprint?: () => Promise<string | undefined>;
   } = {},
 ): Promise<VerifyAnswer<V>> {
   const now = options.now ?? Date.now;
+  // Asked only where the workspace tells: without one, a call registers at once, in its turn.
+  const fingerprint = options.fingerprint !== undefined ? await options.fingerprint() : undefined;
+  const found = runs.get(key) as Run<V> | undefined;
+  if (
+    found !== undefined &&
+    (found.fingerprint !== fingerprint || now() - found.started > VERIFY_RUN_MAX_MS)
+  ) {
+    leave(key, found as Run<unknown>);
+  }
   let run = runs.get(key) as Run<V> | undefined;
   let begin: (() => void) | undefined;
   if (run === undefined) {
@@ -67,6 +114,7 @@ export async function verifyWithin<V>(
     let settle!: (outcome: { ok: true; verdict: V } | { ok: false; error: unknown }) => void;
     const created: Run<V> = {
       started: now(),
+      fingerprint,
       ended: new Promise((resolve) => {
         settle = resolve;
       }),

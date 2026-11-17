@@ -13064,6 +13064,8 @@ pub enum PortRelayAuthorParamsMethod {
     WorkspaceRead,
     #[serde(rename = "workspace/apply")]
     WorkspaceApply,
+    #[serde(rename = "workspace/fingerprint")]
+    WorkspaceFingerprint,
     #[serde(rename = "verify/screenshot")]
     VerifyScreenshot,
     /// A value a newer Mostra sends that this release doesn't know; it
@@ -24983,6 +24985,7 @@ impl PortRelayAuthorParamsMethod {
             Self::WorkspaceAllocate => "workspace/allocate",
             Self::WorkspaceRead => "workspace/read",
             Self::WorkspaceApply => "workspace/apply",
+            Self::WorkspaceFingerprint => "workspace/fingerprint",
             Self::VerifyScreenshot => "verify/screenshot",
             Self::Unknown(value) => value.as_str(),
         }
@@ -25008,6 +25011,7 @@ impl ::std::str::FromStr for PortRelayAuthorParamsMethod {
                 "workspace/allocate" => Self::WorkspaceAllocate,
                 "workspace/read" => Self::WorkspaceRead,
                 "workspace/apply" => Self::WorkspaceApply,
+                "workspace/fingerprint" => Self::WorkspaceFingerprint,
                 "verify/screenshot" => Self::VerifyScreenshot,
                 other => Self::Unknown(other.to_string()),
             },

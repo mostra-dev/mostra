@@ -37,7 +37,7 @@ import { planPatch } from "./patch.ts";
 import type { McpServerOptions } from "./ports.ts";
 import { errorResult, jsonResult, textResult } from "./results.ts";
 import { searchDocs } from "./search.ts";
-import { verifyWithin } from "./verify-run.ts";
+import { forgetVerifyRuns, verifyKey, verifyWithin } from "./verify-run.ts";
 
 /** The registry of every tool's input schema, published as the `mcp-tools` bundle. */
 export const toolRegistry: z.core.$ZodRegistry<{ id: string; description?: string }> = z.registry<{
@@ -446,6 +446,8 @@ export function createTools(
         const deletes = args.deletes ?? [];
         const warnings = await droppedIds(options, dir, write, deletes);
         const changed = await options.workspace.apply(dir, { write, delete: deletes });
+        // What a verify of the old files found no longer answers for them (Opus 6, Fable 4).
+        forgetVerifyRuns(options.scope ?? ownScope, dir);
         return jsonResult({ dir, ...changed, ...(warnings.length > 0 ? { warnings } : {}) });
       },
     }),
@@ -491,6 +493,7 @@ export function createTools(
         }));
         const warnings = await droppedIds(options, dir, write, plan.change.delete);
         const changed = await options.workspace.apply(dir, { write, delete: plan.change.delete });
+        forgetVerifyRuns(options.scope ?? ownScope, dir);
         return jsonResult({
           dir,
           patched: changed.written,
@@ -515,7 +518,8 @@ export function createTools(
         const dir = options.workspace.resolveDir(args.dir);
         // One run per instance, directory and screenshots asked for: a call that answered
         // "running" is joined by the same call again (#157, D175 item 10).
-        const key = [options.scope ?? ownScope, dir, args.screenshots ?? ""].join("\0");
+        const key = verifyKey(options.scope ?? ownScope, dir, args.screenshots ?? "");
+        const fingerprint = options.workspace.fingerprint;
         const answer = await verifyWithin(
           key,
           async (stage) => {
@@ -533,7 +537,13 @@ export function createTools(
               stop();
             }
           },
-          { onStage: (name) => progress(`verify: ${name}`) },
+          {
+            onStage: (name) => progress(`verify: ${name}`),
+            // A run answers only for the source it started on (Opus 6, Fable 4).
+            ...(fingerprint !== undefined
+              ? { fingerprint: () => fingerprint.call(options.workspace, dir) }
+              : {}),
+          },
         );
         if (!answer.done) {
           return jsonResult({

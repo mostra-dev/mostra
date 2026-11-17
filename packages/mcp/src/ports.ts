@@ -44,6 +44,12 @@ export interface McpWorkspace {
   /** Reads a file of the artifact, or `undefined` when it doesn't exist. */
   read(dir: string, path: string): Promise<Uint8Array | undefined>;
   /**
+   * A fingerprint of the artifact's files in `dir` now (their paths, sizes and times), which
+   * changes when any of them does; `undefined` where the workspace can't tell cheaply. An
+   * `artifact_verify` run answers only for the fingerprint it started on (#157).
+   */
+  fingerprint?(dir: string): Promise<string | undefined>;
+  /**
    * Writes and deletes files of the artifact in `dir` (created when missing). Every path is
    * checked before anything is written; a path outside the directory, or through a link, throws
    * `MOSTRA_ARTIFACT_PATH_INVALID`. Each file is replaced whole (written aside, then renamed).

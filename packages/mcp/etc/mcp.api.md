@@ -176,6 +176,7 @@ export interface McpWorkspace {
         readonly written: string[];
         readonly deleted: string[];
     }>;
+    fingerprint?(dir: string): Promise<string | undefined>;
     read(dir: string, path: string): Promise<Uint8Array | undefined>;
     resolveDir(dir: string): string;
     readonly root: string;

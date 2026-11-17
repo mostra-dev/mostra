@@ -193,6 +193,20 @@ export function createRemoteMcp(options: RemoteMcpOptions): RemoteMcp {
         resolveDir: (dir) => dir,
         allocateDir: async (title) =>
           (await author("workspace/allocate", { title }, WORKSPACE_TIMEOUT_MS)) as string,
+        async fingerprint(dir) {
+          // An owner away, or one of an earlier release, can't tell: the run on its last source
+          // is then left, and a new one asks the owner, as a write through the tools does.
+          try {
+            const answer = (await author(
+              "workspace/fingerprint",
+              { dir },
+              WORKSPACE_TIMEOUT_MS,
+            )) as { fingerprint?: unknown };
+            return typeof answer.fingerprint === "string" ? answer.fingerprint : undefined;
+          } catch {
+            return undefined;
+          }
+        },
         async read(dir, path) {
           const answer = (await author("workspace/read", { dir, path }, WORKSPACE_TIMEOUT_MS)) as {
             content?: string;

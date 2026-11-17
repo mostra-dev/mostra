@@ -5655,6 +5655,7 @@
             "workspace/allocate",
             "workspace/read",
             "workspace/apply",
+            "workspace/fingerprint",
             "verify/screenshot"
           ]
         },
