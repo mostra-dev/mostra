@@ -1,5 +1,12 @@
 # @mostra/mcp
 
+## 0.15.2
+
+### Patch Changes
+
+- Updated dependencies []:
+  - @mostra/protocol@0.15.2
+
 ## 0.15.1
 
 ### Patch Changes
