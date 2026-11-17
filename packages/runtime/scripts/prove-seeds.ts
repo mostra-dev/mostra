@@ -184,6 +184,22 @@ const SEEDS: readonly Seed[] = [
   },
   {
     requirement: "MT-05",
+    name: "12: the directory keeps the address an operator's sign-in carried (D176, M77)",
+    file: "src/server/auth.ts",
+    from: "linked_at, verified_by, verified_recorded_at)\n         VALUES (?, ?, ?, ?, ?, ?, ?)",
+    to: "linked_at, verified_by, verified_recorded_at, email)\n         VALUES (?, ?, ?, ?, ?, ?, ?, 'ada@example.org')",
+    check: integration("signin-facts.test.ts", "verified primary address, though private"),
+  },
+  {
+    requirement: "MT-05",
+    name: "12: the directory's migration 7 leaves the addresses written before (D176, M77)",
+    file: "src/server/directory.ts",
+    from: "      db.exec(`UPDATE identity SET email = NULL WHERE email IS NOT NULL;`);",
+    to: "      db.exec(`SELECT 1;`);",
+    check: unit("directory-address.test.ts", "clears the addresses"),
+  },
+  {
+    requirement: "MT-05",
     name: "13: a tick leaves a relay mark that moved alone unwritten (Opus review 5)",
     file: "src/server/data.ts",
     from: "home_cursor.relay_high IS NOT excluded.relay_high",

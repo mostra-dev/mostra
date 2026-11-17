@@ -283,6 +283,21 @@ describe("sign-in's facts, the verifier on each identity and GitHub's verified a
     });
     // The whole list in one page, read in the API version the adapter was written for.
     expect(github.emailRequests.at(-1)).toEqual({ search: "?per_page=100", version: "2022-11-28" });
+    // The operator module received it, and the server's own directory keeps none (D176): nothing
+    // of the server reads it, so no copy of a private address waits in its backups.
+    const kept = new Database(join(data, "server.sqlite"), { readonly: true });
+    try {
+      expect(
+        kept
+          .prepare("SELECT email FROM identity WHERE provider = 'github' AND subject = '4242'")
+          .get(),
+      ).toEqual({ email: null });
+      expect(
+        kept.prepare("SELECT COUNT(*) AS n FROM identity WHERE email IS NOT NULL").get(),
+      ).toEqual({ n: 0 });
+    } finally {
+      kept.close();
+    }
 
     // A primary address GitHub hasn't verified is no verified address, whatever else is listed;
     // the public one `GET /user` gives stays as before, unflagged.

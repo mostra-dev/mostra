@@ -336,10 +336,14 @@ export function createAuthorization(options: AuthorizationOptions): Authorizatio
       hash,
     );
 
-  /** An account the operator names: kept in the directory under the operator's own ID. */
+  /**
+   * An account the operator names: kept in the directory under the operator's own ID. The
+   * identity's address is never kept (D176, the Claude Opus review of MT-05): the operator module
+   * received it from `accounts.resolve` and keeps what it needs, and nothing here reads it.
+   */
   const operatorAccount = (
     db: LedgerDb,
-    identity: { provider: string; subject: string; name?: string; email?: string },
+    identity: { provider: string; subject: string; name?: string },
     account: string,
     name: string | undefined,
     status: "active" | "suspended",
@@ -354,15 +358,14 @@ export function createAuthorization(options: AuthorizationOptions): Authorizatio
       iso(now()),
     );
     db.run(
-      `INSERT INTO identity (provider, subject, account_id, email, name, linked_at, verified_by, verified_recorded_at)
-         VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+      `INSERT INTO identity (provider, subject, account_id, name, linked_at, verified_by, verified_recorded_at)
+         VALUES (?, ?, ?, ?, ?, ?, ?)
          ON CONFLICT (provider, subject) DO UPDATE SET account_id = excluded.account_id,
-           email = excluded.email, name = excluded.name, verified_by = excluded.verified_by,
+           name = excluded.name, verified_by = excluded.verified_by,
            verified_recorded_at = excluded.verified_recorded_at`,
       identity.provider,
       identity.subject,
       account,
-      identity.email ?? null,
       identity.name ?? null,
       iso(now()),
       verifiedBy ?? null,
