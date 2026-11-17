@@ -17,8 +17,13 @@ import { exitCodeText } from "../../src/workers/pool.ts";
 /**
  * A launcher whose workers answer at once and take `stopMs` to exit when asked to stop; with
  * `dieOnStart`, each worker exits a moment after `worker/start` arrives, without answering it.
+ * With `neverStarts`, a worker never answers `worker/start` and answers pings as its channel
+ * thread would (#111): with its event loop `free`, `blocked` for 5 s, or not at all (`deaf`).
  */
-function fakeLauncher(stopMs: number, options: { dieOnStart?: boolean } = {}) {
+function fakeLauncher(
+  stopMs: number,
+  options: { dieOnStart?: boolean; neverStarts?: "free" | "blocked" | "deaf" } = {},
+) {
   const launched: { exited: boolean }[] = [];
   const launcher: WorkerLauncher = {
     async launch() {
@@ -40,6 +45,12 @@ function fakeLauncher(stopMs: number, options: { dieOnStart?: boolean } = {}) {
         send(message: JsonRpcMessage) {
           if (record.exited) return;
           const request = message as { id?: unknown; method?: string };
+          if (options.neverStarts && request.method === "worker/start") return;
+          if (options.neverStarts === "deaf" && request.method === "worker/ping") return;
+          if (options.neverStarts === "blocked" && request.method === "worker/ping") {
+            answer(request.id, { blockedMs: 5000, waitingForSecret: false, heapUsed: 0 });
+            return;
+          }
           if (request.method === "worker/start" && options.dieOnStart) {
             setTimeout(
               () => end({ code: 1, signal: null, stderrTail: ["Error: the bundle threw at load"] }),
@@ -139,6 +150,65 @@ describe("the worker pool (RT-03)", () => {
     expect(crashes.every((crash) => !crash.parked)).toBe(true);
     expect(crashes[0]?.cause).toMatch(/the bundle threw at load/);
     expect(pool.status()[0]).toMatchObject({ crashes: 3, state: "backoff" });
+    await pool.stopAll();
+  });
+
+  it.each([
+    ["free", /within 200 ms; it was loading its server code, with its event loop free, waiting/],
+    [
+      "blocked",
+      /within 200 ms; it was loading its server code, with its event loop blocked for 5\.0 s/,
+    ],
+    ["deaf", /within 200 ms; it didn't answer a ping within 2 s either: it never read its channel/],
+  ] as const)(
+    "names where a start that never ends stopped: a worker whose event loop is %s (#111)",
+    async (neverStarts, where) => {
+      const { launcher, launched } = fakeLauncher(0, { neverStarts });
+      const crashes: { cause: string }[] = [];
+      const logged: { event: string; fields: Record<string, unknown> }[] = [];
+      const record = (event: string, fields?: Record<string, unknown>): void => {
+        logged.push({ event, fields: fields ?? {} });
+      };
+      const pool = createWorkerPool({
+        launcher,
+        log: { info: record, warn: record, error: record },
+        env: {},
+        bridge: quietBridge,
+        onCrash: (crash) => crashes.push(crash),
+        startTimeoutMs: 200,
+      });
+      const failure = await pool.acquire(version).catch((error: unknown) => error);
+      expect(String((failure as Error).message)).toMatch(where);
+      expect(crashes[0]?.cause).toMatch(where);
+      expect(launched[0]?.exited).toBe(true);
+      // The launch is logged with its time, and the failed start with what the ping showed.
+      expect(logged.map((entry) => entry.event)).toEqual(
+        expect.arrayContaining(["worker.launched", "worker.start_failed"]),
+      );
+      const failed = logged.find((entry) => entry.event === "worker.start_failed");
+      expect(failed?.fields["probe"]).toMatchObject({ answered: neverStarts !== "deaf" });
+      await pool.stopAll();
+    },
+  );
+
+  it("logs a start that ended with its launch and start times (#111)", async () => {
+    const { launcher } = fakeLauncher(0);
+    const logged: { event: string; fields: Record<string, unknown> }[] = [];
+    const record = (event: string, fields?: Record<string, unknown>): void => {
+      logged.push({ event, fields: fields ?? {} });
+    };
+    const pool = createWorkerPool({
+      launcher,
+      log: { info: record, warn: record, error: record },
+      env: {},
+      bridge: quietBridge,
+      onCrash() {},
+    });
+    await pool.acquire(version);
+    const started = logged.find((entry) => entry.event === "worker.started");
+    expect(started?.fields).toMatchObject({ versionId: version.ref.versionId });
+    expect(started?.fields["launchMs"]).toBeTypeOf("number");
+    expect(started?.fields["startMs"]).toBeTypeOf("number");
     await pool.stopAll();
   });
 

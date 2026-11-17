@@ -4571,6 +4571,15 @@ const SEEDS: readonly Seed[] = [
     check: e2e("a field saves as the viewer types"),
     e2e: true,
   },
+  // #111: a worker start that runs out of time names where it stopped.
+  {
+    requirement: "RT-03",
+    name: "#111: a start that never ends fails without saying where the worker was",
+    file: "src/workers/pool.ts",
+    from: '      const reason = timedOut\n        ? `${said.replace(/\\.$/, "")}; ${startStageText("start", probe)}.`\n        : said;',
+    to: "      const reason = said;",
+    check: unit("workers.test.ts", "names where a start that never ends stopped"),
+  },
   // #182: on a phone the trusted Submit stays whole and on the screen beside a long Choose.
   {
     requirement: "SH-02",

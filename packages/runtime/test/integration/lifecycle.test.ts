@@ -22,9 +22,11 @@ import {
   eventually,
   initializeParams,
   runBin,
+  supervisorLines,
   suspendProcess,
   tempDir,
   WINDOWS,
+  within,
 } from "../support.ts";
 
 interface Worker {
@@ -62,19 +64,36 @@ describe("worker lifecycles (RT-03, RT-04)", () => {
   });
 
   it("starts a worker on first need, applies the heap limit, and evicts it after idle (RT-03, RT-08)", async () => {
-    expect(await workersOf(gateway, actions.versionId)).toEqual([]);
-    const page = await openPage(actions.url);
+    // Each step has its own deadline inside the test's 60 s, and one that runs out reports the
+    // pool's state and its worker log lines (each start's stages, #111), so a step that never
+    // ends names itself and where the worker was.
+    const workerState = async (): Promise<string> =>
+      [
+        `The pool: ${JSON.stringify(await workersOf(gateway, actions.versionId).catch((error) => String(error)))}`,
+        ...supervisorLines(gateway.home.home, ["worker.", "process.started", "process.exited"]),
+      ].join("\n");
+    expect(
+      await within("read the pool", 10_000, () => workersOf(gateway, actions.versionId)),
+    ).toEqual([]);
+    const page = await within("open the page", 15_000, () => openPage(actions.url));
     // A run keeps the worker from its idle stop (1.5 s here) while the test looks at it: Windows'
     // process table takes PowerShell longer than that to read, and the stop could come between
     // two calls there (WP-W2).
     // The run lasts until the test cancels it, however long Windows takes to answer.
-    const busy = (await page.run("actions.ts#slow", [120_000])).json<RunState>();
-    const pid = (await page.call("actions.ts#pid", [])).value as number;
+    const busy = (
+      await within("start a run", 10_000, () => page.run("actions.ts#slow", [120_000]), workerState)
+    ).json<RunState>();
+    // The first call waits for the worker's cold start (about 0.6 s on a Windows runner).
+    const pid = (
+      await within("the first call", 30_000, () => page.call("actions.ts#pid", []), workerState)
+    ).value as number;
     const [worker] = await workersOf(gateway, actions.versionId);
     expect(worker).toMatchObject({ state: "ready", pid });
     // The manifest's heap limit (96 MiB) reaches the worker's runtime (D62).
-    expect(commandLineOf(pid)).toContain("--max-old-space-size=96");
-    await page.cancel(busy.runId);
+    expect(await within("read its command line", 10_000, async () => commandLineOf(pid))).toContain(
+      "--max-old-space-size=96",
+    );
+    await within("cancel the run", 10_000, () => page.cancel(busy.runId), workerState);
     expect((await page.settled(busy.runId, 20_000)).status).toBe("cancelled");
     // Idle (no call, no producer) for the test's 1.5 s: the worker stops, and the next call
     // starts a new one.
@@ -86,7 +105,14 @@ describe("worker lifecycles (RT-03, RT-04)", () => {
       10_000,
       "the pool to record the worker stopped",
     );
-    const next = (await page.call("actions.ts#pid", [])).value as number;
+    const next = (
+      await within(
+        "the call after the idle stop",
+        20_000,
+        () => page.call("actions.ts#pid", []),
+        workerState,
+      )
+    ).value as number;
     expect(next).not.toBe(pid);
   });
 
@@ -302,6 +328,45 @@ describe("worker lifecycles (RT-03, RT-04)", () => {
       return Number(now.revision) > stoppedAt && now.error === undefined;
     }, 20_000);
   }, 120_000);
+});
+
+describe("a worker start that never ends (#111)", () => {
+  const gateway = new GatewayHome();
+
+  beforeAll(async () => {
+    // The pool sends no `worker/start` (`worker:start:hang`), as if the worker never answered it,
+    // and gives up after 3 s instead of 60.
+    await gateway.start({
+      env: {
+        MOSTRA_TEST_FAULTS: "worker:start:hang",
+        MOSTRA_TEST_WORKER_START_TIMEOUT_MS: "3000",
+      },
+    });
+  }, 240_000);
+
+  afterAll(async () => {
+    await gateway.stop();
+  });
+
+  it("fails the call naming where the start stopped, from a ping through the real channel", async () => {
+    const actions = await gateway.publish("actions");
+    const page = await openPage(actions.url);
+    const answer = await within("the call", 30_000, () => page.call("actions.ts#pid", []));
+    // The real worker, launched (on Windows through its gate) and reading its channel, answers the
+    // ping with its event loop free: the start was the one thing it was waiting on.
+    expect(answer.status).not.toBe(200);
+    const refusal = JSON.parse(answer.body) as { code?: string; message?: string };
+    expect(refusal.code).toBe("MOSTRA_RUNTIME_WORKER_CRASHED");
+    expect(refusal.message).toMatch(
+      /couldn't start: No response to worker\/start within 3000 ms; it was loading its server code, with its event loop free/,
+    );
+    // The log says how long the launch took and what the ping showed.
+    const lines = supervisorLines(gateway.home.home, ["worker.launched", "worker.start_failed"]);
+    expect(lines.some((line) => line.includes('"event":"worker.launched"'))).toBe(true);
+    expect(lines.find((line) => line.includes('"event":"worker.start_failed"'))).toMatch(
+      /"probe":\{"answered":true,"blockedMs":\d+/,
+    );
+  }, 60_000);
 });
 
 describe("the daemon's lifecycle (RT-08)", () => {

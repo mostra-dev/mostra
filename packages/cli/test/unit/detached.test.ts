@@ -96,6 +96,7 @@ describe("what the CLI's detached processes get", () => {
       "MOSTRA_TEST_VERIFY_TIMEOUT_MS",
       "MOSTRA_TEST_WORKER_BACKOFF_MS",
       "MOSTRA_TEST_WORKER_IDLE_MS",
+      "MOSTRA_TEST_WORKER_START_TIMEOUT_MS",
     ];
     const read = new Set<string>();
     for (const pkg of ["runtime", "worker", "verify", "sdk", "cli"]) {

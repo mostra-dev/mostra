@@ -288,7 +288,8 @@ the 300 s install limit, and `MOSTRA_TEST_CLOCK_OFFSET_MS` moves the gateway's c
 (token expiry, session age) without waiting, and `MOSTRA_TEST_PORT_TIMEOUT_MS` shortens the 30 s limit on host port calls; `MOSTRA_TEST_CONTRACT_VERSIONS` (JSON, `{"exporter":["7.0.0"]}`) makes the instance serve those contract versions in place of this release's, so a recorded plugin goes out of range at load; `MOSTRA_TEST_GITHUB_API` and `MOSTRA_TEST_GITHUB_RAW` point GitHub registry addresses at a local fake; `MOSTRA_TEST_BROWSER_REVISION_NEXT` makes the gateway also serve a newer, test-only browser-protocol revision with today's handlers (VR-10); `MOSTRA_TEST_REQUEST_LOG` makes every gateway listener log each connection and request it sees and how it ended (`gateway.connection`, `gateway.request`, `gateway.request_closed` with `headersSent` and `finished`), the path only, never a query or a header: the browser suites set it, so a request a browser saw go unanswered shows whether it arrived (#66). These are for tests only. `MOSTRA_OFFLINE` (not a
 test variable) makes the instance offline: packages resolve only from the home's store.
 `MOSTRA_TEST_WORKER_IDLE_MS` shortens workers' idle eviction, `MOSTRA_TEST_WORKER_BACKOFF_MS` their
-first restart delay, `MOSTRA_TEST_INTEREST_LEASE_MS` the minute a page's interest in a run or live
+first restart delay, `MOSTRA_TEST_WORKER_START_TIMEOUT_MS` the 60 s a worker has to answer its start
+(`worker:start:hang` in `MOSTRA_TEST_FAULTS` sends it none, #111), `MOSTRA_TEST_INTEREST_LEASE_MS` the minute a page's interest in a run or live
 source lasts, `MOSTRA_TEST_IDLE_EXIT_MS` the daemon's 30 idle minutes, and
 `MOSTRA_TEST_WORKER_HOST` sends every launch to a worker host listening on that socket
 (`test/fixtures/worker-host.mjs`, D124). `MOSTRA_WORKER_ENTRY` points at another build of
