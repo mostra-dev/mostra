@@ -525,6 +525,19 @@ describe("the authorization server for MCP clients (MC-04)", () => {
     expect(theirConsent.status).toBe(200);
     expect(theirConsent.body).toContain("this server&#39;s own app");
 
+    // A client that sends the same ID written otherwise (an upper-case host) is the same document,
+    // matched once normalized: named as the operator names it.
+    const shouting = own.replace("localhost", "LOCALHOST");
+    const third = browser();
+    const shouted = await third.ask(
+      "GET",
+      authorizeUrl(shouting, "https://account.example/signin/done", challenge),
+    );
+    const shoutedBack = await signIn(third, shouted, "Ada");
+    const shoutedConsent = await third.ask("GET", `${shoutedBack.pathname}${shoutedBack.search}`);
+    expect(shoutedConsent.status, shoutedConsent.body).toBe(200);
+    expect(shoutedConsent.body).toContain("this server&#39;s own app");
+
     // Any other metadata-document client is as before, even one naming itself as the operator's.
     const stranger = await who.ask(
       "GET",

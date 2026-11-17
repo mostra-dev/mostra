@@ -7,6 +7,7 @@
  * tick. The directory's own transaction count (`PRAGMA data_version`, read from a connection of
  * its own as a replicator reads it) is the measure.
  */
+import { statSync } from "node:fs";
 import { join } from "node:path";
 import Database from "better-sqlite3";
 import { afterEach, describe, expect, it } from "vitest";
@@ -35,7 +36,11 @@ async function serve(): Promise<{
   rotate(to: string): void;
   row(): Row | undefined;
   commits(): number;
+  /** The directory's WAL, in bytes: what a replicator reads and ships. */
+  wal(): number;
   ledger(): Promise<Ledger>;
+  /** A relayed run's sequence recorded in the home's ledger alone, as a run waiting for its owner. */
+  relay(seq: number): void;
 }> {
   const dir = join(tempDir("marks-data"), "data");
   let current = "";
@@ -88,7 +93,23 @@ async function serve(): Promise<{
       version = now;
       return commits;
     },
+    wal: () => statSync(join(dir, "server.sqlite-wal")).size,
     ledger: async () => (await data.home("hom_1")).ledger,
+    relay: (seq) => {
+      // A connection of its own with foreign keys off, so the run's row needs no artifact, version
+      // or run behind it: only its relay sequence matters to the marks.
+      const raw = new Database(join(dir, "homes", "hom_1", "store", "ledger.sqlite"));
+      try {
+        raw.pragma("foreign_keys = OFF");
+        raw
+          .prepare(
+            "INSERT INTO relay_run (run_id, owner_link_id, relay_seq, offline_limit_at) VALUES (?, 'lnk_1', ?, ?)",
+          )
+          .run(`run_${seq}`, seq, new Date().toISOString());
+      } finally {
+        raw.close();
+      }
+    },
   };
 }
 
@@ -112,11 +133,14 @@ describe("an open home's high-water marks (MT-05)", () => {
     const opened = server.row();
     expect(opened).toBeDefined();
     const base = server.commits();
-    // Fifty ticks with nothing happening: no transaction at all in the directory.
+    const wal = server.wal();
+    // Fifty ticks with nothing happening: no transaction at all in the directory, nothing added to
+    // its WAL for a replicator to ship.
     for (let tick = 0; tick < 50; tick += 1) {
       await ticks(1);
       expect(server.commits(), `tick ${tick}`).toBe(base);
     }
+    expect(server.wal()).toBe(wal);
     expect(server.row()).toEqual(opened);
   });
 
@@ -126,6 +150,21 @@ describe("an open home's high-water marks (MT-05)", () => {
     const base = server.commits();
     const head = append(ledger);
     await ticks(5);
+    expect(server.row()?.high_cursor).toBe(head);
+    const written = server.commits();
+    expect(written).toBeGreaterThan(base);
+    await ticks(20);
+    expect(server.commits()).toBe(written);
+  });
+
+  it("writes a relay mark that moved alone (a run recorded for an absent owner)", async () => {
+    const server = await serve();
+    await server.ledger();
+    const head = server.row()?.high_cursor;
+    const base = server.commits();
+    server.relay(7);
+    await ticks(5);
+    expect(server.row()?.relay_high).toBe(7);
     expect(server.row()?.high_cursor).toBe(head);
     const written = server.commits();
     expect(written).toBeGreaterThan(base);

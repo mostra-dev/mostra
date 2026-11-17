@@ -164,17 +164,21 @@ export interface FakeGitHub extends FakeProvider {
 /**
  * GitHub's OAuth web flow, whose `GET /user` answers `user()` and `GET /user/emails` `emails()` for
  * its access token (VERIFIED_FACTS, MT-05). The token holds the scope the authorization asked for,
- * or what `grant(asked)` says the person left on GitHub's screen; without `user:email` (or `user`)
- * the address list answers 404, as GitHub does. `emails()` may answer a status of its own, or hang.
+ * or what `grant(asked)` says the person left on GitHub's screen (`undefined`: the exchange's
+ * answer leaves `scope` out, the token holding what was asked); without `user:email` (or `user`)
+ * the address list answers 404, as GitHub does. `emails()` may answer a status of its own, or hang;
+ * `delay()` holds the code exchange's answer and the list's for as long as it says.
  */
 export async function fakeGitHub(options: {
   readonly secret: string;
   readonly user: () => Record<string, unknown>;
   readonly emails?: () => readonly FakeGitHubEmail[] | { readonly status: number } | "hang";
-  readonly grant?: (asked: string) => string;
+  readonly grant?: (asked: string) => string | undefined;
+  readonly delay?: () => { readonly token?: number; readonly emails?: number };
 }): Promise<FakeGitHub> {
   const codes = new Map<string, { nonce?: string; challenge: string }>();
-  const scopeOf = new Map<string, string>();
+  const scopeOf = new Map<string, { granted: string; answered: boolean }>();
+  const wait = (ms: number | undefined) => new Promise((resolve) => setTimeout(resolve, ms ?? 0));
   const tokens = new Map<string, string>();
   const scopes: string[] = [];
   const emailRequests: { search: string; version: string | undefined }[] = [];
@@ -183,7 +187,8 @@ export async function fakeGitHub(options: {
       const asked = url.searchParams.get("scope") ?? "";
       scopes.push(asked);
       const code = approve(url, response, codes);
-      scopeOf.set(code, options.grant ? options.grant(asked) : asked);
+      const granted = options.grant ? options.grant(asked) : asked;
+      scopeOf.set(code, { granted: granted ?? asked, answered: granted !== undefined });
       return;
     }
     if (url.pathname === "/login/oauth/access_token") {
@@ -192,11 +197,17 @@ export async function fakeGitHub(options: {
       if (!redeem(body, codes, options.secret)) {
         return json(response, 200, { error: "bad_verification_code" });
       }
+      await wait(options.delay?.().token);
       // GitHub answers the granted scopes comma-separated.
-      const granted = (scopeOf.get(code) ?? "").split(/[ ,]+/).filter(Boolean).join(",");
+      const scoped = scopeOf.get(code) ?? { granted: "", answered: true };
+      const granted = scoped.granted.split(/[ ,]+/).filter(Boolean).join(",");
       const token = `gho_${randomBytes(8).toString("hex")}`;
       tokens.set(token, granted);
-      return json(response, 200, { access_token: token, token_type: "bearer", scope: granted });
+      return json(response, 200, {
+        access_token: token,
+        token_type: "bearer",
+        ...(scoped.answered ? { scope: granted } : {}),
+      });
     }
     const bearer = /^Bearer (.+)$/.exec(request.headers.authorization ?? "")?.[1] ?? "";
     const granted = tokens.get(bearer);
@@ -214,6 +225,7 @@ export async function fakeGitHub(options: {
         response.setHeader("x-accepted-oauth-scopes", "user, user:email");
         return json(response, 404, { message: "Not Found", status: "404" });
       }
+      await wait(options.delay?.().emails);
       const answer = options.emails?.() ?? [];
       if (answer === "hang") return;
       if ("status" in answer) return json(response, answer.status, { message: "Server Error" });

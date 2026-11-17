@@ -52,6 +52,14 @@ const GITHUB_SCOPE = "user:email";
  */
 const GITHUB_EMAILS_TIMEOUT_MS = 3_000;
 
+/**
+ * How much of the sign-in's bound (8 s for a provider's whole answer, `authorize.ts`) the address
+ * lookup may run into: it gives up half a second before it, however long GitHub's code exchange
+ * took, so a slow exchange and a slow list together never cost the person their sign-in (the
+ * Claude Opus review of MT-05).
+ */
+const GITHUB_CALLBACK_BUDGET_MS = PROVIDER_TIMEOUT_MS - 500;
+
 /** The REST API version the adapter reads GitHub's answers in (VERIFIED_FACTS, MT-05). */
 const GITHUB_API_VERSION = "2022-11-28";
 
@@ -234,11 +242,17 @@ async function verifiedPrimary(
   headers: Record<string, string>,
   provider: string,
   log: Log,
+  deadline: number,
 ): Promise<string | undefined> {
+  const left = Math.min(GITHUB_EMAILS_TIMEOUT_MS, deadline - Date.now());
+  if (left <= 0) {
+    log.warn("signin.github_emails_unavailable", { provider, reason: "timeout" });
+    return undefined;
+  }
   try {
     const answer = await fetch(`${url}?per_page=100`, {
       headers,
-      signal: AbortSignal.timeout(GITHUB_EMAILS_TIMEOUT_MS),
+      signal: AbortSignal.timeout(left),
     });
     if (!answer.ok) {
       // Read to the end, so the connection is free for the next request.
@@ -248,7 +262,11 @@ async function verifiedPrimary(
     }
     const listed = (await answer.json()) as unknown;
     if (!Array.isArray(listed)) {
-      log.warn("signin.github_emails_unavailable", { provider, status: answer.status });
+      log.warn("signin.github_emails_unavailable", {
+        provider,
+        status: answer.status,
+        reason: "malformed",
+      });
       return undefined;
     }
     for (const entry of listed as { email?: unknown; primary?: unknown; verified?: unknown }[]) {
@@ -315,6 +333,7 @@ function githubProvider(
       return url.href;
     },
     async callback(params, context) {
+      const deadline = Date.now() + GITHUB_CALLBACK_BUDGET_MS;
       if (params["error"] !== undefined) {
         throw new Error(`GitHub refused the sign-in (${params["error"]}).`);
       }
@@ -350,7 +369,7 @@ function githubProvider(
       };
       // The address beside the account, in parallel, so it adds no wait of its own.
       const primary = grantsAddresses(token.scope)
-        ? verifiedPrimary(endpoints.emails, headers, config.id, log)
+        ? verifiedPrimary(endpoints.emails, headers, config.id, log, deadline)
         : Promise.resolve(undefined);
       const user = await timedFetch(endpoints.user, { headers });
       const found = (await user.json().catch(() => ({}))) as {

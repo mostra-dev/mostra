@@ -5,6 +5,7 @@
  * never code (D137, D165 item 0a): the dossier and this code name only `example` hosts.
  */
 import { readFileSync } from "node:fs";
+import { isIP } from "node:net";
 import { createDiagnostic, Duration, RpcError } from "@mostra/protocol";
 import { safeHref } from "@mostra/themes";
 import * as z from "zod";
@@ -121,8 +122,10 @@ export interface OperatorClient {
 }
 
 /**
- * A client ID that names a metadata document (`https:` with a path and no fragment), written as
- * the URL normalizes it, since a client's `client_id` is compared with it exactly.
+ * A client ID that names a metadata document (`https:` with a path and no fragment, on a name: a
+ * document is never fetched from an address, MT-05's review), written as the URL normalizes it
+ * (a lower-case host, no default port, no `.` or `..`), since a client's `client_id` is matched
+ * with it once normalized.
  */
 const MetadataClientId: z.ZodType<string> = z.string().refine(
   (value) => {
@@ -132,13 +135,17 @@ const MetadataClientId: z.ZodType<string> = z.string().refine(
         url.href === value &&
         url.protocol === "https:" &&
         url.pathname.length > 1 &&
-        url.hash === ""
+        url.hash === "" &&
+        isIP(url.hostname.replace(/^\[|\]$/g, "")) === 0
       );
     } catch {
       return false;
     }
   },
-  { message: "must be a metadata document's https: URL with a path, written in its normal form" },
+  {
+    message:
+      "must be a metadata document's https: URL on a host name, with a path, written in its normal form",
+  },
 );
 
 /** Claim names that would reach an object's prototype rather than a key of its own. */
@@ -367,6 +374,17 @@ export function readServerConfig(file: string | undefined, env: Environment): Re
   if (twice >= 0) {
     throw invalid(
       `The configuration key \`operatorClients.${twice}.clientId\` names a client an earlier entry names.`,
+    );
+  }
+  // A document on a user-content domain is a tenant's (or a hosted shell's own client): never one
+  // the operator can vouch for (MT-05's review).
+  const tenant = clients.findIndex((client) => {
+    const host = new URL(client).host;
+    return domains.some((domain) => host === domain || host.endsWith(`.${domain}`));
+  });
+  if (tenant >= 0) {
+    throw invalid(
+      `The configuration key \`operatorClients.${tenant}.clientId\` is on a user-content domain, whose pages are the tenants'.`,
     );
   }
   return config;

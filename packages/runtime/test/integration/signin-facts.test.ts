@@ -51,7 +51,9 @@ describe("sign-in's facts, the verifier on each identity and GitHub's verified a
   let emails: readonly FakeGitHubEmail[] | { status: number } | "hang" = [];
   let publicEmail: string | null = null;
   /** What the person leaves granted on GitHub's screen, of what the adapter asked. */
-  let grant = (asked: string) => asked;
+  let grant = (asked: string): string | undefined => asked;
+  /** How long GitHub's code exchange and its address list take to answer. */
+  let delay: { token?: number; emails?: number } = {};
   let oidc: FakeProvider;
   const data = tempDir("signin-facts-data");
   const secrets = tempDir("signin-facts-secrets");
@@ -226,6 +228,7 @@ describe("sign-in's facts, the verifier on each identity and GitHub's verified a
       }),
       emails: () => emails,
       grant: (asked) => grant(asked),
+      delay: () => delay,
     });
     oidc = await fakeOidc({
       secret: "oidc-secret",
@@ -328,8 +331,30 @@ describe("sign-in's facts, the verifier on each identity and GitHub's verified a
     expect(Date.now() - started).toBeLessThan(7_000);
     expect(hung["subject"]).toBe("4242");
     expect(hung["email"]).toBeUndefined();
+
+    // A slow code exchange and a list slow within its own 3 s: the list gives up before the
+    // provider's 8 s bound, so the sign-in still goes on (the Claude Opus review of MT-05).
+    emails = [{ email: "ada@example.org", primary: true, verified: true, visibility: "public" }];
+    delay = { token: 5_500, emails: 2_800 };
+    const slow = await signInThrough("github");
+    expect(slow["subject"]).toBe("4242");
+    expect(slow["email"]).toBeUndefined();
+    delay = {};
+
+    // An exchange whose answer leaves `scope` out holds what was asked: the list is read.
+    grant = () => undefined;
+    const unnamed = await signInThrough("github");
+    expect(unnamed).toMatchObject({ email: "ada@example.org", emailVerified: true });
+    grant = (asked) => asked;
     emails = [];
-  }, 60_000);
+
+    // Nothing of a token or an address reaches the server's log, whatever went wrong.
+    const log = server.stderr();
+    expect(log).toContain("signin.github_emails_unavailable");
+    expect(log).not.toContain("gho_");
+    expect(log).not.toContain("ada@example.org");
+    expect(log).not.toContain("noreply");
+  }, 90_000);
 
   it("passes an OpenID Connect provider's chosen claims in `facts`, and nothing new without them", async () => {
     subject = "grace-corp";

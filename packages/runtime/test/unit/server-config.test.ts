@@ -128,6 +128,8 @@ describe("an operator's own clients (MT-05)", () => {
       [{ ...account, clientId: "https://Account.Example/c.json" }, "0.clientId"],
       [{ ...account, clientId: "https://account.example/a/../c.json" }, "0.clientId"],
       [{ ...account, clientId: "mcl_0123" }, "0.clientId"],
+      [{ ...account, clientId: "https://10.0.0.5/client.json" }, "0.clientId"],
+      [{ ...account, clientId: "https://[::1]/client.json" }, "0.clientId"],
       [{ ...account, name: "" }, "0.name"],
       [{ ...account, name: "x".repeat(65) }, "0.name"],
       [{ ...account, name: "Example\u202Etnuocca" }, "0.name"],
@@ -152,5 +154,14 @@ describe("an operator's own clients (MT-05)", () => {
     expect(readClients([account, { ...account, name: "Again" }])).toBe(
       "MOSTRA_REMOTE_CONFIG_INVALID: The configuration key `operatorClients.1.clientId` names a client an earlier entry names.",
     );
+    // A tenant's page, or a hosted shell's own client, on the user-content domain or under it.
+    for (const clientId of [
+      "https://usercontent.example/_mostra/signin",
+      "https://abcdefghijklmnopqrstuvwxyz.usercontent.example/client.json",
+    ]) {
+      expect(readClients([account, { clientId, name: "Tenant" }]), clientId).toBe(
+        "MOSTRA_REMOTE_CONFIG_INVALID: The configuration key `operatorClients.1.clientId` is on a user-content domain, whose pages are the tenants'.",
+      );
+    }
   });
 });

@@ -37,14 +37,17 @@ export interface OAuthClient {
   readonly kind: "metadata" | "registered" | "shell" | "cli";
   readonly name: string;
   readonly redirectUris: readonly string[];
-  /** Whether the name was stated by the client itself, never checked (all but first-party). */
-  readonly unverified: boolean;
   /**
-   * A metadata-document client the server's operator vouches for (`operatorClients`, MT-05): named
-   * as the operator names it, as the server's own.
+   * Who stands behind its name: the server itself (`first-party`: the CLI and the hosted shells),
+   * the server's operator (`operator`: a metadata-document client `operatorClients` names, called
+   * by the name the operator gives it, MT-05), or nobody (`self-named`: a name the client states
+   * about itself, never checked).
    */
-  readonly operator?: true;
+  readonly trust: ClientTrust;
 }
+
+/** Who stands behind a client's name (see {@link OAuthClient.trust}). */
+export type ClientTrust = "first-party" | "operator" | "self-named";
 
 /** A refusal of a client, as an OAuth error. */
 export interface ClientRefusal {
@@ -381,7 +384,7 @@ export function createClients(options: ClientsOptions): Clients {
           ? document.client_name.trim().slice(0, 128)
           : url.hostname,
       redirectUris: redirects,
-      unverified: true,
+      trust: "self-named",
     };
     fetched.set(url.href, { client, until: now() + answer.maxAge * 1000 });
     if (fetched.size > 1_000) fetched.delete(fetched.keys().next().value as string);
@@ -409,7 +412,7 @@ export function createClients(options: ClientsOptions): Clients {
           kind: "cli",
           name: "Mostra CLI",
           redirectUris: [],
-          unverified: false,
+          trust: "first-party",
         };
       }
       const suffix = "/_mostra/signin";
@@ -428,7 +431,7 @@ export function createClients(options: ClientsOptions): Clients {
           kind: "shell",
           name: "Mostra",
           redirectUris: [`${origin}/_mostra/signin`],
-          unverified: false,
+          trust: "first-party",
         };
       }
       const url = metadataClientId(clientId);
@@ -436,9 +439,7 @@ export function createClients(options: ClientsOptions): Clients {
         const found = await fromDocument(url);
         // The operator's word on whose client this is, over the name the document gives itself.
         const name = "error" in found ? undefined : vouched.get(found.id);
-        return name === undefined
-          ? found
-          : { ...(found as OAuthClient), name, unverified: false, operator: true };
+        return name === undefined ? found : { ...(found as OAuthClient), name, trust: "operator" };
       }
       const row = directory.read((db) =>
         db.get<{ metadata_json: string }>(
@@ -456,7 +457,7 @@ export function createClients(options: ClientsOptions): Clients {
         kind: "registered",
         name: metadata.client_name ?? "An unnamed client",
         redirectUris: metadata.redirect_uris,
-        unverified: true,
+        trust: "self-named",
       };
     },
 

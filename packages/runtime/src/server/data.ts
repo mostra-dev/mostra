@@ -188,10 +188,10 @@ export async function openDataDirectory<T>(
 
   /**
    * Writes a home's high-water marks, which a home opened below them was restored. With `changed`,
-   * only when the row doesn't hold them already (MT-05): an open home with nothing happening then
-   * writes nothing, so a backup replicator has nothing to ship. The restore rule reads the marks,
-   * never `updated_at`, and this process is the row's one writer, so the row itself says whether a
-   * write would change anything; reading it is no transaction.
+   * the row is updated only where it doesn't hold them already (MT-05): the upsert's condition
+   * leaves an unchanged row untouched, and a transaction that changes no page commits nothing to
+   * the WAL, so an open home with nothing happening gives a backup replicator nothing to ship. The
+   * restore rule reads the marks, never `updated_at`.
    */
   const recordCursor = (
     id: string,
@@ -200,29 +200,19 @@ export async function openDataDirectory<T>(
     when: "always" | "changed" = "always",
   ): void => {
     const { head, relayHigh } = marksOf(ledger);
-    if (when === "changed") {
-      const row = directory.read((db) =>
-        db.get<{ incarnation: string; high_cursor: number; relay_high: number }>(
-          "SELECT incarnation, high_cursor, relay_high FROM home_cursor WHERE home_id = ?",
-          id,
-        ),
-      );
-      if (
-        row !== undefined &&
-        row.incarnation === incarnation &&
-        row.high_cursor === head &&
-        row.relay_high === relayHigh
-      ) {
-        return;
-      }
-    }
+    const moved =
+      when === "changed"
+        ? `WHERE home_cursor.incarnation IS NOT excluded.incarnation
+             OR home_cursor.high_cursor IS NOT excluded.high_cursor
+             OR home_cursor.relay_high IS NOT excluded.relay_high`
+        : "";
     directory.write((db) =>
       db.run(
         `INSERT INTO home_cursor (home_id, incarnation, high_cursor, relay_high, updated_at)
            VALUES (?, ?, ?, ?, ?)
          ON CONFLICT(home_id) DO UPDATE SET incarnation = excluded.incarnation,
            high_cursor = excluded.high_cursor, relay_high = excluded.relay_high,
-           updated_at = excluded.updated_at`,
+           updated_at = excluded.updated_at ${moved}`,
         id,
         incarnation,
         head,

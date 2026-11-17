@@ -90,7 +90,7 @@ export interface ApiPages {
   allow(
     request: PageRequest,
     form: ConsentForm,
-    client: { readonly name: string; readonly unverified: boolean; readonly operator?: true },
+    client: { readonly name: string; readonly trust: "first-party" | "operator" | "self-named" },
     who: string,
     redirectHost: string,
     loopback: boolean,
@@ -178,11 +178,17 @@ export function createApiPages(server: ServerPages, name: string | null): ApiPag
       });
     },
     allow(request, form, client, who, redirectHost, loopback) {
-      const clientName = client.operator
-        ? html`<strong>${client.name}</strong> <span class="m-hint">(${W.operatorClient})</span>`
-        : client.unverified
-          ? html`<strong>${client.name}</strong> <span class="m-hint">(${W.unverifiedName})</span>`
-          : html`<strong>${client.name}</strong>`;
+      // Whose word the name is: the operator's, the client's own, or (first-party) the server's.
+      const hint =
+        client.trust === "operator"
+          ? W.operatorClient
+          : client.trust === "self-named"
+            ? W.unverifiedName
+            : undefined;
+      const clientName =
+        hint === undefined
+          ? html`<strong>${client.name}</strong>`
+          : html`<strong>${client.name}</strong> <span class="m-hint">(${hint})</span>`;
       return pages.render({
         kind: "task",
         title: W.allowTitle(client.name),
