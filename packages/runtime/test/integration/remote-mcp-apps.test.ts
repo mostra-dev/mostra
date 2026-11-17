@@ -112,7 +112,7 @@ describe("MCP Apps through the remote MCP server (D175 item 8)", () => {
     await stopServer(server);
   });
 
-  it("shows a hosted page inline: its page kept on the server, its answers saved and submitted as the account", async () => {
+  it("shows a hosted page inline: its page made on the server, its answers saved and submitted as the account", async () => {
     const client = await connect();
     const tools = (await client.listTools()).tools;
     expect(tools.filter((tool) => tool.name.startsWith("app_"))).toHaveLength(11);
@@ -145,13 +145,15 @@ describe("MCP Apps through the remote MCP server (D175 item 8)", () => {
     expect(handles.versionId).toBe(receipt.versionId);
     expect(new URL(handles.url).host).toBe(`content.localhost:${port}`);
 
-    // The owner sent the version's page after its push: the server keeps it (D175 item 8).
-    const kept = await until(() => find(data, `${receipt.versionId}.html`)[0]);
-    expect(kept).toBeDefined();
+    // The server makes the version's page itself, from the version's own files, when a chat host
+    // first reads it, and keeps it (D175 item 8): no page arrives from the owner.
+    expect(find(data, `${receipt.versionId}.json`)).toHaveLength(0);
     const read = await client.readResource({ uri: `ui://mostra/view/${receipt.versionId}` });
     const page = read.contents[0] as { mimeType?: string; text?: string };
     expect(page.mimeType).toBe("text/html;profile=mcp-app");
     expect(page.text).toContain('<meta name="mostra-target" content="mcp-app" />');
+    expect(page.text).toContain(`<meta name="mostra-version" content="${receipt.versionId}" />`);
+    expect(find(data, `${receipt.versionId}.json`)).toHaveLength(1);
 
     // The page's own tools act on the hosted home, as the signed-in account.
     const view = await call(client, "app_open", {
@@ -202,21 +204,15 @@ describe("MCP Apps through the remote MCP server (D175 item 8)", () => {
     expect(results.answers).toEqual({ day: "Thursday" });
     expect(results.submission.channel).toBe("artifact");
 
-    // A page the server lacks is asked of the connected owner, and kept.
-    for (const file of find(data, `${receipt.versionId}.html`)) rmSync(file);
-    const again = await client.readResource({ uri: `ui://mostra/view/${receipt.versionId}` });
-    expect((again.contents[0] as { text?: string }).text).toBe(page.text);
-    expect(find(data, `${receipt.versionId}.html`)).toHaveLength(1);
-
-    // While the owner sleeps, the kept page still shows; one the server lacks is refused, and
-    // the loader offers the link instead.
+    // While the owner sleeps, the page still shows: kept, and made again from the version's
+    // files when the kept one is lost, the same page (R01-2: never a page anyone sent).
     await owner.stop();
     const asleep = await client.readResource({ uri: `ui://mostra/view/${receipt.versionId}` });
     expect((asleep.contents[0] as { text?: string }).text).toBe(page.text);
-    for (const file of find(data, `${receipt.versionId}.html`)) rmSync(file);
-    await expect(
-      client.readResource({ uri: `ui://mostra/view/${receipt.versionId}` }),
-    ).rejects.toThrow(/MOSTRA_REMOTE_OWNER_OFFLINE|offline/);
+    for (const file of find(data, `${receipt.versionId}.json`)) rmSync(file);
+    const again = await client.readResource({ uri: `ui://mostra/view/${receipt.versionId}` });
+    expect((again.contents[0] as { text?: string }).text).toBe(page.text);
+    expect(find(data, `${receipt.versionId}.json`)).toHaveLength(1);
   }, 400_000);
 });
 

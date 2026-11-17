@@ -264,7 +264,8 @@ interface Installed {
 const HOME_KEY = "home:plugins";
 
 /** The plugin child's entry: the compiled one beside the compiled supervisor, else the source. */
-function childEntry(): string {
+/** The plugin child's entry, in this runtime's source or build. */
+export function childEntry(): string {
   return fileURLToPath(import.meta.url).endsWith(".ts")
     ? join(runtimeRoot(), "src/plugins/child/host.ts")
     : join(runtimeRoot(), "dist/plugins/child/host.js");

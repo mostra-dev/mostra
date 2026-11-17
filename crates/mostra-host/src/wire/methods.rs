@@ -193,16 +193,6 @@ impl super::Method for GcRun {
     type Params = super::generated::GcRunParams;
     type Result = super::generated::GcRunResult;
 }
-///`hosted/page`.
-#[derive(Clone, Copy, Debug)]
-pub struct HostedPage;
-impl super::Method for HostedPage {
-    const NAME: &'static str = "hosted/page";
-    const DIRECTION: super::Direction = super::Direction::ClientToInstance;
-    const MUTATING: bool = true;
-    type Params = super::generated::HostedPageParams;
-    type Result = super::generated::HostedPageResult;
-}
 ///`hosted/push`.
 #[derive(Clone, Copy, Debug)]
 pub struct HostedPush;
@@ -888,11 +878,6 @@ pub const METHODS: &[super::MethodInfo] = &[
     },
     super::MethodInfo {
         name: "gc/run",
-        direction: super::Direction::ClientToInstance,
-        mutating: true,
-    },
-    super::MethodInfo {
-        name: "hosted/page",
         direction: super::Direction::ClientToInstance,
         mutating: true,
     },

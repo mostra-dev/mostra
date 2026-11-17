@@ -453,11 +453,6 @@ export {
   gcRunMethod,
 } from "./methods/gc/run.ts";
 export {
-  type HostedPageParams,
-  type HostedPageResult,
-  hostedPageMethod,
-} from "./methods/hosted/page.ts";
-export {
   type HostedPushParams,
   type HostedPushResult,
   HostedRoute,

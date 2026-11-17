@@ -25,7 +25,6 @@ import {
   type HostedPushParams,
   type HostedPushResult,
   type HostedRoute,
-  hostedPageMethod,
   hostedPushMethod,
   hostedSubmissionMethod,
   type InstanceInfo,
@@ -54,6 +53,7 @@ import type { Ledger, LedgerDb } from "../ledger/index.ts";
 import { createLive, liveMethods } from "../live/index.ts";
 import type { Log } from "../log.ts";
 import { removeTree } from "../platform/index.ts";
+import { bundledAppPage } from "../plugins/index.ts";
 import {
   handler,
   type MethodHandler,
@@ -62,12 +62,17 @@ import {
 } from "../protocol-server/index.ts";
 import { canonicalRef, listingDigest, versionIdFor } from "../publish/index.ts";
 import { openRegistry, type Registry } from "../registry/index.ts";
-import { type AppPages, createAppPages, removeAppPage } from "./app-pages.ts";
+import { type AppPages, createAppPages } from "./app-pages.ts";
 import type { Authorization } from "./auth.ts";
 import type { ClientAddresses, RateLimiter } from "./clients.ts";
 import { rotateIncarnation } from "./data.ts";
 import { createOperatorFeed, type OperatorFeed } from "./feed.ts";
-import { type HomeOwner, type HostedPagesOptions, hostedPages } from "./hosted-pages.ts";
+import {
+  type HomeOwner,
+  type HostedPagesOptions,
+  hostedPages,
+  quarantineReasonOf,
+} from "./hosted-pages.ts";
 import type { Meter } from "./metering.ts";
 import type { Operator } from "./operator.ts";
 import { createHostedRelay } from "./relay.ts";
@@ -803,32 +808,43 @@ export async function openHostedHome(options: HostedHomeOptions): Promise<Hosted
 
   /** Listeners of relayed verifies' stages, by progress token (#157). */
   const authorProgress = new Map<string, (progress: RelayAuthorProgressParams) => void>();
+  // Each version's MCP App, made here from the version's own files with the exporter Mostra
+  // carries (D175 item 8): never a page an owner sent, so a chat host shows only what was
+  // published and reviewed, with the owner online or not.
   const appPages: AppPages = createAppPages({
     dir: options.dir,
     log,
     artifactOf: (versionId) => registry.version(versionId)?.artifactId,
-    ownerOf: (artifactId) => ownerLinkOf(artifactId),
     underReview: (artifactId, versionId) =>
-      ledger.read(
-        (db) =>
-          db.get<{ found: number }>(
-            "SELECT 1 AS found FROM quarantine WHERE artifact_id = ? AND version_id IN ('', ?) LIMIT 1",
-            artifactId,
-            versionId,
-          ) !== undefined,
-      ),
-    sessionOf: (linkId) =>
-      protocol
-        .registrants("relay")
-        .filter((entry) => entry.owner === linkId)
-        .at(-1)?.session,
-    call: (session, method, params, timeoutMs) =>
-      protocol.callSession(session, method, params, timeoutMs),
+      quarantineReasonOf(ledger, artifactId, versionId) !== undefined,
+    make: (artifactId, versionId) =>
+      bundledAppPage({
+        versionDir: registry.store.versionDir(versionId),
+        artifactId,
+        versionId,
+        number: registry.version(versionId)?.number ?? 0,
+        publishedAt:
+          ledger.read((db) =>
+            db.get<{ published_at: string }>(
+              "SELECT published_at FROM version WHERE id = ?",
+              versionId,
+            ),
+          )?.published_at ?? new Date(0).toISOString(),
+        mostraVersion: options.runtimeVersion,
+        env: process.env,
+        log,
+      }),
   });
 
-  const push = async (params: HostedPushParams, session: Session): Promise<HostedPushResult> => {
+  /** The link of an owner instance's own binding session, or `undefined` for any other. */
+  const ownerBindingOf = (session: Session): string | undefined => {
     const link = session.link?.instanceId;
-    if (link === undefined || session.attributes["linkId"] !== link) {
+    return link !== undefined && session.attributes["linkId"] === link ? link : undefined;
+  };
+
+  const push = async (params: HostedPushParams, session: Session): Promise<HostedPushResult> => {
+    const link = ownerBindingOf(session);
+    if (link === undefined) {
       throw refuse(
         "MOSTRA_REMOTE_NOT_OWNER_INSTANCE",
         "Only an owner instance's binding pushes versions.",
@@ -1161,23 +1177,12 @@ export async function openHostedHome(options: HostedHomeOptions): Promise<Hosted
       handler(artifactListMethod, (params) => ({ artifacts: registry.list(params.filter ?? {}) })),
       handler(artifactGetMethod, (params) => registry.get(canonicalRef(params.artifact))),
       handler(hostedPushMethod, (params, session) => push(params, session)),
-      // A version's MCP App (D175 item 8): the owner instance sends it; chat hosts read it.
-      handler(hostedPageMethod, (params, session) => {
-        const link = session.link?.instanceId;
-        if (link === undefined || session.attributes["linkId"] !== link) {
-          throw refuse(
-            "MOSTRA_REMOTE_NOT_OWNER_INSTANCE",
-            "Only an owner instance's binding sends pages.",
-          );
-        }
-        return appPages.keep(params, link);
-      }),
+      // A version's MCP App (D175 item 8), made here; chat hosts read it.
       handler(appPageMethod, (params) => appPages.page(params.versionId)),
       // A relayed verify's stages (#157): from an owner instance's binding, for a token a remote
       // MCP call listens on (a random one, which only that call and the owner it asked know).
       handler(relayAuthorProgressMethod, (params, session) => {
-        const link = session.link?.instanceId;
-        if (link === undefined || session.attributes["linkId"] !== link) {
+        if (ownerBindingOf(session) === undefined) {
           throw refuse(
             "MOSTRA_REMOTE_NOT_OWNER_INSTANCE",
             "Only an owner instance's binding reports verify's stages.",
@@ -1381,9 +1386,9 @@ export async function openHostedHome(options: HostedHomeOptions): Promise<Hosted
         await removeTree(registry.store.versionDir(versionId)).catch((error: unknown) =>
           log.warn("server.remove_files_failed", { versionId, error }),
         );
-        await removeAppPage(options.dir, versionId).catch((error: unknown) =>
-          log.warn("server.remove_files_failed", { versionId, error }),
-        );
+        await appPages
+          .forget(versionId)
+          .catch((error: unknown) => log.warn("server.remove_files_failed", { versionId, error }));
       }
       const rows = Object.values(removed).reduce((sum, count) => sum + count, 0);
       log.info("server.artifact_removed", { home: id, artifactId, rows });

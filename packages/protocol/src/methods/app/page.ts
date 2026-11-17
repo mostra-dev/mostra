@@ -41,7 +41,8 @@ const result: z.ZodType<AppPageResult> = z
 /**
  * `app/page` (D175 items 1, 4): a version's MCP App, exported by the `mcp-app` exporter (the
  * bundled first-party plugin unless the home or the artifact has its own) and kept by version.
- * A hosted home answers the one its owner sent it (`hosted/page`), or asks its owner.
+ * A hosted home makes its own, from the version's client files it holds, with the exporter Mostra
+ * carries, and keeps it.
  */
 export const appPageMethod: MethodDefinition<AppPageParams, AppPageResult> = defineMethod({
   method: "app/page",

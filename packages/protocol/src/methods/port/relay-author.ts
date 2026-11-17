@@ -18,8 +18,6 @@ export const RELAY_AUTHOR_METHODS = [
   "workspace/read",
   "workspace/apply",
   "verify/screenshot",
-  // A version's MCP App, for a hosted home that hasn't one yet (WP-17, D175 item 8).
-  "app/page",
 ] as const;
 
 /** One of {@link RELAY_AUTHOR_METHODS}. */

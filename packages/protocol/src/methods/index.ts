@@ -23,7 +23,6 @@ import { eventsReadMethod } from "./events/read.ts";
 import { EVENTS_NOTIFY, EventsNotifyParams, eventsSubscribeMethod } from "./events/subscribe.ts";
 import { eventsUnsubscribeMethod } from "./events/unsubscribe.ts";
 import { gcRunMethod } from "./gc/run.ts";
-import { hostedPageMethod } from "./hosted/page.ts";
 import { hostedPushMethod } from "./hosted/push.ts";
 import { hostedSubmissionMethod } from "./hosted/submission.ts";
 import { instanceCheckMethod } from "./instance/check.ts";
@@ -161,7 +160,6 @@ export const hostMethods: readonly AnyMethod[] = [
   appOpenMethod,
   appRequestMethod,
   appPageMethod,
-  hostedPageMethod,
   // gen:methods
 ];
 

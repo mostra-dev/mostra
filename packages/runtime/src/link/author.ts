@@ -15,9 +15,7 @@ import { readFile } from "node:fs/promises";
 import { isAbsolute, join, relative, resolve } from "node:path";
 import { defaultWorkspaceRoot, localWorkspace } from "@mostra/mcp";
 import {
-  type AppPageResult,
   ARTIFACT_PROGRESS,
-  appPageMethod,
   artifactCreateMethod,
   artifactGetMethod,
   artifactPublishMethod,
@@ -182,20 +180,6 @@ export function createOwnerAuthor(options: OwnerAuthorOptions): OwnerAuthor {
         } catch {
           return {};
         }
-      }
-      case "app/page": {
-        // A version's MCP App, for a server that hosts its artifact only (D175 item 8).
-        const page = await local<object, AppPageResult>(appPageMethod, {
-          versionId: String(given["versionId"] ?? ""),
-        });
-        if (!options.hostedOn(page.artifactId).includes(server)) {
-          throw new RpcError(
-            createDiagnostic("MOSTRA_ARTIFACT_VERSION_NOT_FOUND", {
-              message: `No version ${String(given["versionId"])} of an artifact hosted on ${server}.`,
-            }),
-          );
-        }
-        return page;
       }
       case "artifact/create":
         return local(artifactCreateMethod, { ...given, dir: dirOf(given["dir"]) });

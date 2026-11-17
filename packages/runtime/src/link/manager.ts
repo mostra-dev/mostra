@@ -24,12 +24,10 @@ import {
   eventsSubscribeMethod,
   type HostedPushResult,
   type HostedRoute,
-  hostedPageMethod,
   hostedPushMethod,
   hostedSubmissionMethod,
   LinkId,
   type ListingEntry,
-  type McpAppResourceMeta,
   type MethodDefinition,
   portRelayAuthorMethod,
   portSubmissionsDeliverMethod,
@@ -188,10 +186,6 @@ export interface LinkOptions {
   readonly liveChanged?: () => void;
   /** Answers remote MCP's relayed authoring (`port/relay.author`, D165 item 5). */
   readonly author?: (server: string, params: unknown) => Promise<unknown>;
-  /** A version's MCP App, sent to a server after the version (D175 item 8). */
-  readonly appPage?: (
-    versionId: string,
-  ) => Promise<{ readonly html: string; readonly meta: McpAppResourceMeta }>;
   /** The clock (tests move it). */
   readonly now?: () => number;
 }
@@ -888,18 +882,6 @@ export function createLink(options: LinkOptions): Link {
       );
     });
     log.info("link.pushed", { server: connection.server, artifactId, versionId });
-    // Its MCP App too, so a chat host shows it while this machine sleeps (D175 item 8). Best
-    // effort: without it the server asks for it when a chat host does.
-    if (options.appPage !== undefined) {
-      const appPage = options.appPage;
-      void (async () => {
-        const page = await appPage(versionId);
-        await session.call(hostedPageMethod, { versionId, html: page.html, meta: page.meta });
-        log.info("link.page_pushed", { server: connection.server, versionId });
-      })().catch((error: unknown) =>
-        log.warn("link.page_unpushed", { server: connection.server, versionId, error }),
-      );
-    }
     return {
       versionId,
       number: answer.number,

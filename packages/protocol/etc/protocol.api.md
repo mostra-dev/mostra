@@ -1639,21 +1639,6 @@ export interface HostedChrome {
 }
 
 // @public
-export const hostedPageMethod: MethodDefinition<HostedPageParams, HostedPageResult>;
-
-// @public
-export interface HostedPageParams {
-    readonly html: string;
-    readonly meta: McpAppResourceMeta;
-    readonly versionId: string;
-}
-
-// @public
-export interface HostedPageResult {
-    readonly sha256: string;
-}
-
-// @public
 export const hostedPushMethod: MethodDefinition<HostedPushParams, HostedPushResult>;
 
 // @public
@@ -2880,7 +2865,7 @@ export type RegressionDiagnosticCode = (typeof regressionDiagnosticCodes)[number
 export const regressionDiagnosticCodes: readonly ["MOSTRA_REGRESSION_ARIA", "MOSTRA_REGRESSION_PIXELS", "MOSTRA_REGRESSION_FIELD_REMOVED", "MOSTRA_REGRESSION_ACTION_REMOVED", "MOSTRA_REGRESSION_LIVE_REMOVED", "MOSTRA_REGRESSION_PAGE_REMOVED"];
 
 // @public
-export const RELAY_AUTHOR_METHODS: readonly ["artifact/create", "artifact/verify", "artifact/publish", "artifact/get", "workspace/root", "workspace/allocate", "workspace/read", "workspace/apply", "verify/screenshot", "app/page"];
+export const RELAY_AUTHOR_METHODS: readonly ["artifact/create", "artifact/verify", "artifact/publish", "artifact/get", "workspace/root", "workspace/allocate", "workspace/read", "workspace/apply", "verify/screenshot"];
 
 // @public
 export type RelayAuthorMethod = (typeof RELAY_AUTHOR_METHODS)[number];

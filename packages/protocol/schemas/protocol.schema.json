@@ -195,16 +195,6 @@
         "$ref": "#/$defs/GcRunResult"
       }
     },
-    "hosted/page": {
-      "direction": "client-to-instance",
-      "mutating": true,
-      "params": {
-        "$ref": "#/$defs/HostedPageParams"
-      },
-      "result": {
-        "$ref": "#/$defs/HostedPageResult"
-      }
-    },
     "hosted/push": {
       "direction": "client-to-instance",
       "mutating": true,
@@ -3873,91 +3863,6 @@
       "pattern": "^hom_[0-7][0-9A-HJKMNP-TV-Z]{25}$",
       "description": "Hosted home ID: \"hom_\" followed by a 26-character ULID."
     },
-    "HostedPageParams": {
-      "type": "object",
-      "properties": {
-        "versionId": {
-          "$ref": "#/$defs/VersionId"
-        },
-        "html": {
-          "type": "string",
-          "minLength": 1,
-          "maxLength": 16777216
-        },
-        "meta": {
-          "type": "object",
-          "properties": {
-            "csp": {
-              "type": "object",
-              "properties": {
-                "connectDomains": {
-                  "readOnly": true,
-                  "maxItems": 64,
-                  "type": "array",
-                  "items": {
-                    "type": "string",
-                    "minLength": 1,
-                    "maxLength": 512
-                  }
-                },
-                "resourceDomains": {
-                  "readOnly": true,
-                  "maxItems": 64,
-                  "type": "array",
-                  "items": {
-                    "type": "string",
-                    "minLength": 1,
-                    "maxLength": 512
-                  }
-                },
-                "frameDomains": {
-                  "readOnly": true,
-                  "maxItems": 64,
-                  "type": "array",
-                  "items": {
-                    "type": "string",
-                    "minLength": 1,
-                    "maxLength": 512
-                  }
-                },
-                "baseUriDomains": {
-                  "readOnly": true,
-                  "maxItems": 64,
-                  "type": "array",
-                  "items": {
-                    "type": "string",
-                    "minLength": 1,
-                    "maxLength": 512
-                  }
-                }
-              },
-              "additionalProperties": {}
-            },
-            "prefersBorder": {
-              "type": "boolean"
-            }
-          },
-          "additionalProperties": {}
-        }
-      },
-      "required": [
-        "versionId",
-        "html",
-        "meta"
-      ]
-    },
-    "HostedPageResult": {
-      "type": "object",
-      "properties": {
-        "sha256": {
-          "type": "string",
-          "pattern": "^[0-9a-f]{64}$"
-        }
-      },
-      "required": [
-        "sha256"
-      ]
-    },
     "HostedPushParams": {
       "type": "object",
       "properties": {
@@ -5594,8 +5499,7 @@
             "workspace/allocate",
             "workspace/read",
             "workspace/apply",
-            "verify/screenshot",
-            "app/page"
+            "verify/screenshot"
           ]
         },
         "params": {}
