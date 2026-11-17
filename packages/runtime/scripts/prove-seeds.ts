@@ -3262,6 +3262,14 @@ const SEEDS: readonly Seed[] = [
     check: ["--project", "unit", "test/unit/listener-keepalive.test.ts", "-t", "are reset"],
   },
   {
+    requirement: "SH-03",
+    name: "a sandbox listens on ports the system assigns, where Chromium on Windows collides five times as often (#95)",
+    file: "src/addressing/index.ts",
+    from: "        return listenShortLived(server, bindAddress, log);",
+    to: '        if (!(await tryListen(server, 0, bindAddress))) throw bindFailed("none");\n        return (server.address() as { port: number }).port;',
+    check: unit("gateway.test.ts", "listen between the lease range and the dynamic ranges"),
+  },
+  {
     requirement: "EN-07",
     name: "the gateway's request record logs a request's query, where a frame ticket travels (#66)",
     file: "src/gateway/listener.ts",

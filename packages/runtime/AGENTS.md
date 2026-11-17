@@ -208,7 +208,8 @@ the bundle's entry point (D85); it never runs artifact code (RT-02).
 - **verify never touches the home, and publish never skips it (D41, D138).** A verify run serves
   its build from a sandbox (`verify/sandbox.ts`): a scratch ledger in `cache/verify/runs/<run>/`
   with the real interaction, actions, live and gateway code, its own worker pool and two listeners
-  on ports the operating system assigns, reached only with links minted there. Nothing reaches
+  on free ports between the lease range and the dynamic ranges (`addressing`'s short-lived ports,
+  32768 to 49151, #95), reached only with links minted there. Nothing reaches
   the home's drafts, state, events, hosts or deliveries, and the human-facing gateway serves
   published versions only. In the sandbox, a function that didn't opt into `dryRun()` is refused
   before anything is recorded (`MOSTRA_VERIFY_ACTION_SKIPPED`), and documents get the verify
@@ -219,8 +220,8 @@ the bundle's entry point (D85); it never runs artifact code (RT-02).
   regression baseline. Playwright, axe and the type checker run in children (`@mostra/verify`'s
   runner, `typecheck`), never in the supervisor (RT-02's audit covers verify).
 - **A dev preview is never a viewer's path (VR-03, VR-08, D140 item 12).** `mostra dev` serves
-  unpublished source only from its session's sandbox: listeners on loopback ports the operating
-  system picks, a link minted in the session's scratch ledger, the gateway's route table and
+  unpublished source only from its session's sandbox: listeners on short-lived loopback ports (as
+  verify's), a link minted in the session's scratch ledger, the gateway's route table and
   checks in front of the dev server (`gateway/dev.ts` proxies files and the HMR WebSocket, without
   Mostra's cookies), and a dev server that answers only requests carrying the session's secret.
   The home's gateway never proxies to it, no home link opens it, and a non-loopback `--bind`

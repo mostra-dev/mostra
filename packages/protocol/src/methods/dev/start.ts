@@ -8,7 +8,7 @@ import { wireRegistry } from "../../wire-registry.ts";
 export interface DevStartParams {
   /** The artifact source to serve with hot reload. */
   readonly source: SourceRef;
-  /** The loopback port for the dev page; one the operating system assigns when absent. */
+  /** The loopback port for the dev page; a free one Mostra picks when absent. */
   readonly port?: number;
 }
 

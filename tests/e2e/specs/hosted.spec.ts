@@ -13,22 +13,11 @@
  */
 import { spawn } from "node:child_process";
 import { mkdirSync, writeFileSync } from "node:fs";
-import { createServer } from "node:net";
 import { join } from "node:path";
 import { type Browser, expect, type Page, test } from "@playwright/test";
 import { openInShell, publishOwn, saved, settled, viewerName } from "../support/client.ts";
 import { BIN, Client, removeTree, startDaemon } from "../support/mostra.ts";
-
-function freePort(): Promise<number> {
-  return new Promise((resolve, reject) => {
-    const probe = createServer();
-    probe.once("error", reject);
-    probe.listen(0, "127.0.0.1", () => {
-      const port = (probe.address() as { port: number }).port;
-      probe.close(() => resolve(port));
-    });
-  });
-}
+import { shortLivedPort } from "../support/ports.ts";
 
 test.describe("a hosted link (RM-02, §18.4)", () => {
   test.describe.configure({ mode: "serial" });
@@ -38,7 +27,7 @@ test.describe("a hosted link (RM-02, §18.4)", () => {
   let client: Client | undefined;
 
   test.beforeAll(async () => {
-    port = await freePort();
+    port = await shortLivedPort();
     daemon = await startDaemon({ env: { MOSTRA_TEST_SERVER_ADDRESS: `127.0.0.1:${port}` } });
     const data = join(daemon.root, "server");
     mkdirSync(data, { recursive: true });

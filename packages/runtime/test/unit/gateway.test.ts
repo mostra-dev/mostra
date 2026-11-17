@@ -10,7 +10,10 @@ import {
   createAddressing,
   LEASE_FIRST_PORT,
   LEASE_LAST_PORT,
+  listenShortLived,
   resolveBind,
+  SHORT_LIVED_FIRST_PORT,
+  SHORT_LIVED_LAST_PORT,
 } from "../../src/addressing/index.ts";
 import {
   Capabilities,
@@ -556,6 +559,75 @@ describe("addressing (D99)", () => {
     const shellPort = await addressing.listen(shell, { purpose: "shell", owner: "shell" });
     expect(shellPort).not.toBe(moved);
     await close(shell);
+  });
+});
+
+describe("short-lived listeners (D138, #95)", () => {
+  const close = (server: Server): Promise<void> =>
+    new Promise((resolve) => server.close(() => resolve()));
+
+  it("listen between the lease range and the dynamic ranges, lease nothing, and keep a chosen shell port", async () => {
+    const db = ledger();
+    // A verify run's sandbox: its shell and artifact listeners, many runs over.
+    const addressing = createAddressing({
+      ledger: db,
+      log: silentLog,
+      bind: { address: "127.0.0.1" },
+      ephemeral: true,
+    });
+    const servers: Server[] = [];
+    for (let run = 0; run < 20; run++) {
+      for (const owner of [
+        { purpose: "shell" as const, owner: "shell" },
+        { purpose: "artifact" as const, owner: ARTIFACT },
+      ]) {
+        const server = createServer();
+        servers.push(server);
+        const port = await addressing.listen(server, owner);
+        // Above every lease (D99, D132) and below Windows' and macOS's dynamic ranges, where a
+        // port the system assigns would land (#95: 48 of 49 sandbox ports on a Windows runner).
+        expect(port).toBeGreaterThan(LEASE_LAST_PORT);
+        expect(port).toBeLessThan(49152);
+        expect((server.address() as { port: number }).port).toBe(port);
+      }
+    }
+    expect(addressing.leases()).toEqual([]);
+    await Promise.all(servers.map(close));
+    // `mostra dev --port`: the shell listens where it was told.
+    const chosen = createServer();
+    const wanted = await listenShortLived(chosen, "127.0.0.1", silentLog);
+    await close(chosen);
+    const dev = createAddressing({
+      ledger: db,
+      log: silentLog,
+      bind: { address: "127.0.0.1" },
+      ephemeral: true,
+      shellPort: wanted,
+    });
+    const shell = createServer();
+    expect(await dev.listen(shell, { purpose: "shell", owner: "shell" })).toBe(wanted);
+    await close(shell);
+  });
+
+  it("take a port the system assigns, with a warning, when none they try is free", async () => {
+    const warned: string[] = [];
+    const log = { ...silentLog, warn: (event: string) => void warned.push(event) };
+    // A server that finds every port of the range taken, as on a machine that reserves it.
+    const reserved = createServer();
+    const listen = reserved.listen.bind(reserved) as (options: { port: number }) => Server;
+    reserved.listen = function (this: Server, options: { port: number }) {
+      if (options.port === 0) return listen(options);
+      process.nextTick(() =>
+        this.emit("error", Object.assign(new Error("EACCES"), { code: "EACCES" })),
+      );
+      return this;
+    } as typeof reserved.listen;
+    const port = await listenShortLived(reserved, "127.0.0.1", log);
+    expect(port).toBe((reserved.address() as { port: number }).port);
+    expect(warned).toEqual(["addressing.short_lived_assigned"]);
+    await close(reserved);
+    expect(SHORT_LIVED_FIRST_PORT).toBe(LEASE_LAST_PORT + 1);
+    expect(SHORT_LIVED_LAST_PORT).toBe(49151);
   });
 });
 
