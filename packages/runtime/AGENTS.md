@@ -242,8 +242,8 @@ the bundle's entry point (D85); it never runs artifact code (RT-02).
   through (`server/relay.ts`, D169). A sender line's verifier is the one recorded on the identity
   (`identity.verified_by`), never the configuration now (D169). An open home with nothing
   happening writes nothing: its high-water marks (`home_cursor`) are written when it opens and
-  closes, and in between only when a mark moved, so a backup replicator has nothing to ship
-  (`server/data.ts`, MT-05). The consent page names a metadata-document client as the server's own
+  closes, and in between only where a mark moved (a conditional upsert), so a backup replicator
+  has nothing to ship (`server/data.ts`, MT-05). The consent page names a metadata-document client as the server's own
   only when `operatorClients` names it, and asks its consent once per account as for any other
   (`server/oauth-clients.ts`, MT-05).
 - **The shell and every artifact are separate origins (SH-01).** The shell page may be framed by
