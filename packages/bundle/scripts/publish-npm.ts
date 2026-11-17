@@ -53,14 +53,38 @@ interface Member {
   readonly own?: true;
 }
 
+/**
+ * Each workspace package's directory, by name, under `packages/` or `plugins/` (a first-party
+ * plugin, D175 item 2), read from its manifest rather than guessed from its name.
+ */
+function packageDirs(): Map<string, string> {
+  const dirs = new Map<string, string>();
+  for (const folder of ["packages", "plugins"]) {
+    if (!existsSync(join(ROOT, folder))) continue;
+    for (const dir of readdirSync(join(ROOT, folder))) {
+      const path = join(ROOT, folder, dir);
+      try {
+        const { name } = JSON.parse(readFileSync(join(path, "package.json"), "utf8")) as {
+          name: string;
+        };
+        dirs.set(name, path);
+      } catch {
+        // not a package
+      }
+    }
+  }
+  return dirs;
+}
+
 /** The fixed release group, from `.changeset/config.json`, with each package's manifest. */
 function members(): Member[] {
   const config = JSON.parse(readFileSync(join(ROOT, ".changeset", "config.json"), "utf8")) as {
     fixed: string[][];
   };
   const names = config.fixed[0] ?? fail("no fixed release group.");
+  const dirs = packageDirs();
   return names.map((name) => {
-    const dir = join(ROOT, "packages", name.startsWith("@mostra/") ? name.slice(8) : name);
+    const dir = dirs.get(name) ?? fail(`no workspace package is named ${name}.`);
     const manifest = JSON.parse(readFileSync(join(dir, "package.json"), "utf8")) as {
       name: string;
       version: string;

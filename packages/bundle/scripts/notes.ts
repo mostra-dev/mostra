@@ -5,7 +5,7 @@
  *
  *   node packages/bundle/scripts/notes.ts > notes.md
  */
-import { existsSync, readFileSync } from "node:fs";
+import { existsSync, readdirSync, readFileSync } from "node:fs";
 import { dirname, join, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 
@@ -14,8 +14,28 @@ const config = JSON.parse(readFileSync(join(ROOT, ".changeset", "config.json"), 
   fixed: string[][];
 };
 const names = config.fixed[0] ?? [];
-const dirOf = (name: string): string =>
-  join(ROOT, "packages", name.startsWith("@mostra/") ? name.slice("@mostra/".length) : name);
+/** Each workspace package's directory by name, under `packages/` or `plugins/`, from its manifest. */
+const dirs = new Map<string, string>();
+for (const folder of ["packages", "plugins"]) {
+  if (!existsSync(join(ROOT, folder))) continue;
+  for (const dir of readdirSync(join(ROOT, folder))) {
+    try {
+      const { name } = JSON.parse(
+        readFileSync(join(ROOT, folder, dir, "package.json"), "utf8"),
+      ) as {
+        name: string;
+      };
+      dirs.set(name, join(ROOT, folder, dir));
+    } catch {
+      // not a package
+    }
+  }
+}
+const dirOf = (name: string): string => {
+  const dir = dirs.get(name);
+  if (dir === undefined) throw new Error(`No workspace package is named ${name}.`);
+  return dir;
+};
 const version = (
   JSON.parse(readFileSync(join(dirOf("@mostra/sdk"), "package.json"), "utf8")) as {
     version: string;
