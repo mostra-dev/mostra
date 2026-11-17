@@ -59,10 +59,19 @@ async function overHttp(options: McpServerOptions): Promise<Client> {
   return client;
 }
 
+/** Every message a session's server sent, in order (`overSession`). */
+const sentBy = new WeakMap<Client, { method?: string }[]>();
+
 /** A client over one session (as stdio is), with the capabilities it names. */
 async function overSession(options: McpServerOptions, apps: boolean): Promise<Client> {
   const server = createMcpServerFactory(options)({ era: "legacy" });
   const [clientSide, serverSide] = InMemoryTransport.createLinkedPair();
+  const sent: { method?: string }[] = [];
+  const send = serverSide.send.bind(serverSide);
+  serverSide.send = (message, sendOptions) => {
+    sent.push(message as { method?: string });
+    return send(message, sendOptions);
+  };
   await (await server).connect(serverSide);
   const client = new Client(
     { name: "test-host", version: "1" },
@@ -74,6 +83,7 @@ async function overSession(options: McpServerOptions, apps: boolean): Promise<Cl
   );
   await client.connect(clientSide);
   opened.push(client);
+  sentBy.set(client, sent);
   return client;
 }
 
@@ -103,6 +113,10 @@ describe("MCP Apps through the MCP server (D175, MC-02)", () => {
     const plain = (await without.listTools()).tools;
     expect(plain.filter((tool) => tool.name.startsWith("app_"))).toEqual([]);
     expect(uiOf(plain.find((tool) => tool.name === "artifact_open") ?? {})).toBeUndefined();
+    // Left out before it ever listed tools: nothing changed for it, so nothing is announced.
+    expect(sentBy.get(without)?.map((message) => message.method)).not.toContain(
+      "notifications/tools/list_changed",
+    );
     const withApps = await overSession(base().options, true);
     const full = (await withApps.listTools()).tools;
     expect(full.filter((tool) => tool.name.startsWith("app_"))).toHaveLength(11);

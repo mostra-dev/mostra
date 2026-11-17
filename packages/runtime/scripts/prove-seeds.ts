@@ -7393,6 +7393,24 @@ const SEEDS: readonly Seed[] = [
     to: "      client: undefined,",
     check: unit("app-dispatch.test.ts", "its caller"),
   },
+  {
+    requirement: "MC-02",
+    name: "a client without MCP Apps is told the tool list changed, before it listed any",
+    file: "../mcp/src/server.ts",
+    from: '        if (ui === "app") tool.enabled = false;',
+    to: '        if (ui === "app") tool.disable();',
+    check: ["test/apps.test.ts", "-t", "leaves MCP Apps out"],
+    cwd: "../mcp",
+  },
+  {
+    requirement: "MC-02",
+    name: "a release leaves the first-party plugin at the last release's version",
+    file: "../../tools/release/versions.ts",
+    from: 'const PACKAGE_FOLDERS = ["packages", "plugins"] as const;',
+    to: 'const PACKAGE_FOLDERS = ["packages"] as const;',
+    check: ["test/versions.test.ts", "-t", "first-party plugin"],
+    cwd: "../../tools",
+  },
 ];
 
 const runtime = join(dirname(fileURLToPath(import.meta.url)), "..");

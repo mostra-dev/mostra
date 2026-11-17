@@ -216,6 +216,17 @@ export function createMcpServerFactory(options: McpServerOptions): McpServerFact
     // MCP Apps' parts, left out for a client known to lack MCP Apps (D175 item 5): its
     // capabilities, known once a 2025-era session initialized, name no UI extension. A client
     // whose capabilities aren't known (a stateless 2025-era request) keeps them.
+    /**
+     * Leaves every MCP Apps part out of the tool list: set as the list reads them, never through
+     * `disable()` or `update()`, which announce a changed list, since nothing changed for a
+     * client that hasn't listed tools yet.
+     */
+    const leaveAppsOut = (): void => {
+      for (const { ui, tool } of registered) {
+        if (ui === "app") tool.enabled = false;
+        else delete tool._meta;
+      }
+    };
     const withoutApps = (): void => {
       const capabilities = server.server.getClientCapabilities() as
         | { extensions?: Record<string, { mimeTypes?: unknown } | undefined> }
@@ -223,17 +234,9 @@ export function createMcpServerFactory(options: McpServerOptions): McpServerFact
       if (capabilities === undefined) return;
       const types = capabilities.extensions?.[MCP_APPS_EXTENSION]?.mimeTypes;
       if (Array.isArray(types) && types.includes(MCP_APP_MIME_TYPE)) return;
-      for (const { ui, tool } of registered) {
-        if (ui === "app") tool.disable();
-        else tool.update({ _meta: {} });
-      }
+      leaveAppsOut();
     };
-    if (options.apps === false) {
-      for (const { ui, tool } of registered) {
-        if (ui === "app") tool.disable();
-        else tool.update({ _meta: {} });
-      }
-    }
+    if (options.apps === false) leaveAppsOut();
 
     server.registerResource(
       "docs",
