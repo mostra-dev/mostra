@@ -19,7 +19,7 @@ Options (`--option name=value`):
 |---|---|
 | `connectDomains` | More `https:` origins the page fetches from, as a JSON array |
 | `resourceDomains` | More `https:` origins the page loads images, styles or media from |
-| `prefersBorder` | Whether the host draws a border and background around the page |
+| `prefersBorder` | Whether the host draws a border and background around the page; `true` unless set, since hosts' own defaults differ |
 
 Mostra's own MCP server (`mostra mcp`) shows an artifact inline through `artifact_open`, and the page saves answers, submits and runs actions through its app-only tools.
 

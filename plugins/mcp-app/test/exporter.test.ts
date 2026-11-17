@@ -173,6 +173,8 @@ describe("the MCP App exporter (D175 item 2, MC-02)", () => {
         connectDomains: ["https://api.example.com"],
         resourceDomains: ["https://api.example.com", "https://cdn.example.org"],
       },
+      // Always said, since hosts' defaults differ: a border unless the options say none.
+      prefersBorder: true,
     });
     const declared = JSON.stringify(description);
     expect(declared).not.toContain("react.dev");

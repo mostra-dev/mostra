@@ -81,7 +81,8 @@ const exporter: Exporter = defineExporter<ExporterDefinition>({
       },
       prefersBorder: {
         type: "boolean",
-        description: "Whether the host draws a border and background around the page.",
+        description:
+          "Whether the host draws a border and background around the page; true unless set.",
       },
     },
   },
@@ -133,9 +134,10 @@ const exporter: Exporter = defineExporter<ExporterDefinition>({
             },
           }
         : {}),
-      ...(typeof options["prefersBorder"] === "boolean"
-        ? { prefersBorder: options["prefersBorder"] }
-        : {}),
+      // Said every time, since hosts' own defaults differ (MCP Apps recommends an explicit value):
+      // a border and background, so the page and its bar read as one card, unless asked otherwise.
+      prefersBorder:
+        typeof options["prefersBorder"] === "boolean" ? options["prefersBorder"] : true,
     };
     const html = pageHtml({
       title: version.title,
