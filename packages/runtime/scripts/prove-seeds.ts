@@ -6499,8 +6499,8 @@ const SEEDS: readonly Seed[] = [
     requirement: "RM-09",
     name: "the shell isn't told a page is paused",
     file: "src/gateway/index.ts",
-    from: "      const { detail, version, latest, viewId, viewerId, controls, pause } = opening;",
-    to: "      const { detail, version, latest, viewId, viewerId, controls } = opening;\n      const pause = undefined as ReturnType<typeof interaction.pauseOf>;",
+    from: "      const { detail, version, latest, viewId, viewerId, controls, pause, chrome } = opening;",
+    to: "      const { detail, version, latest, viewId, viewerId, controls, chrome } = opening;\n      const pause = undefined as ReturnType<typeof interaction.pauseOf>;",
     check: integration("pause.test.ts", "owner pauses"),
   },
   {
@@ -7521,6 +7521,14 @@ const SEEDS: readonly Seed[] = [
     from: "        const grant = capabilities.presentToken(params.token, params.artifactId, servesShell);",
     to: "        const grant = capabilities.presentToken(params.token, params.artifactId, () => true);",
     check: integration("gateway.test.ts", "shell moved to another port"),
+  },
+  {
+    requirement: "MC-04",
+    name: "a page opened inline on a hosted home isn't counted as a view (R02-16)",
+    file: "src/gateway/index.ts",
+    from: "    const chrome = hosted?.chrome\n      ? await hosted.chrome({ artifactId, tokenId: grant.tokenId, viewerId })\n      : undefined;",
+    to: '    const chrome =\n      hosted?.chrome && input.sessionId !== ""\n        ? await hosted.chrome({ artifactId, tokenId: grant.tokenId, viewerId })\n        : undefined;',
+    check: integration("operator.test.ts", "counts a page opened inline"),
   },
 ];
 

@@ -809,6 +809,8 @@ export function createGateway(options: GatewayOptions): Gateway {
         readonly controls: ControlsPolicy;
         readonly pause: ReturnType<Interaction["pauseOf"]>;
         readonly pinned: boolean;
+        /** On a hosted home, what the trusted chrome shows around the view (D161). */
+        readonly chrome: HostedChrome | undefined;
       }
   > => {
     const { artifactId, grant, asked } = input;
@@ -859,6 +861,12 @@ export function createGateway(options: GatewayOptions): Gateway {
     // channels and controls in force for it (D108).
     const controls = await options.controls(detail);
     const viewerId = interaction.viewerOf(input.sessionViewerId);
+    // On a hosted home the chrome's policy is the operator's, and its making counts the view
+    // (`viewed`): both before the view is recorded, so a failure leaves no view without a load
+    // (review finding R01-10), and an inline view is counted as a browser's is (R02-16).
+    const chrome = hosted?.chrome
+      ? await hosted.chrome({ artifactId, tokenId: grant.tokenId, viewerId })
+      : undefined;
     const viewId = interaction.openView({
       artifactId,
       versionId: version.id,
@@ -876,6 +884,7 @@ export function createGateway(options: GatewayOptions): Gateway {
       controls,
       pause: interaction.pauseOf(artifactId),
       pinned: pinned !== undefined,
+      chrome,
     };
   };
 
@@ -1572,11 +1581,8 @@ export function createGateway(options: GatewayOptions): Gateway {
       if (opening.kind === "damaged") {
         return damaged(opening.number, opening.damage, false, "'none'");
       }
-      const { detail, version, latest, viewId, viewerId, controls, pause } = opening;
+      const { detail, version, latest, viewId, viewerId, controls, pause, chrome } = opening;
       const pinned = session.grant.pinnedVersion;
-      const chrome = hosted?.chrome
-        ? await hosted.chrome({ artifactId, tokenId: session.grant.tokenId, viewerId })
-        : undefined;
       const answer: TicketAnswer = {
         artifactId,
         viewId,
