@@ -98,6 +98,7 @@ export function connectShell(): Promise<ShellConnection | undefined> {
     if (typeof window === "undefined" || window.parent === window) return undefined;
     let session: FrameSession;
     try {
+      bootMark("session-asked");
       const response = await fetch("/_mostra/session", {
         credentials: "same-origin",
         cache: "no-store",
@@ -105,6 +106,7 @@ export function connectShell(): Promise<ShellConnection | undefined> {
       });
       if (!response.ok) return undefined;
       session = (await response.json()) as FrameSession;
+      bootMark("session-read");
     } catch {
       return undefined;
     }
@@ -128,6 +130,7 @@ export function connectShell(): Promise<ShellConnection | undefined> {
     });
     let host: UiInitializeResult;
     try {
+      bootMark("initialize-sent");
       host = await bridge.call(
         uiInitialize,
         {
@@ -142,6 +145,7 @@ export function connectShell(): Promise<ShellConnection | undefined> {
       bridge.close();
       throw error;
     }
+    bootMark("initialized");
     bridge.notify(uiInitialized, {});
     return {
       shellOrigin,
@@ -217,4 +221,20 @@ export async function openLink(url: string): Promise<boolean> {
   if (!OPEN_LINK_SCHEMES.includes(parsed.protocol)) return false;
   window.open(parsed.href, "_blank", "noopener,noreferrer");
   return true;
+}
+
+/**
+ * The client runtime's start, step by step, in the browser's performance timeline:
+ * `mostra:client:<step>` marks (its session asked for and read, `ui/initialize` sent and
+ * answered, the journal opening and open, the store started). A person's tools and Mostra's tests
+ * read them (`performance.getEntriesByType("mark")`), so a page that stalls names the step it
+ * stalled after (#95: in Firefox on Windows a frame once read its session and sent nothing more).
+ * Nothing is shown or sent.
+ */
+export function bootMark(step: string): void {
+  try {
+    globalThis.performance?.mark(`mostra:client:${step}`);
+  } catch {
+    // A browser without the User Timing API: nothing to mark.
+  }
 }
