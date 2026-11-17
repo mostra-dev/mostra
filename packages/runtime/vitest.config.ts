@@ -48,6 +48,7 @@ const REMOTE_ACCESS = [
   "test/integration/operator.test.ts",
   "test/integration/oauth.test.ts",
   "test/integration/remote-mcp.test.ts",
+  "test/integration/remote-mcp-apps.test.ts",
   "test/integration/signin.test.ts",
   "test/integration/hosted-rules.test.ts",
   "test/integration/anonymous-volume.test.ts",

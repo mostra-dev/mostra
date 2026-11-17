@@ -265,8 +265,57 @@ export function startInline(options: {
   store.subscribe(render);
   render();
   document.body.append(element);
-  // The shell's review overlay isn't here: a page that marks review surfaces says so once.
-  setTimeout(() => {
+  // What the page renders, judged as it appears (the page renders after the bar starts, and may
+  // add more later): review surfaces, which the shell's overlay would serve, and frames of origins
+  // the host didn't grant, which its policy blocks (MCP Apps: `frame-src 'none'` unless declared).
+  // Frames are judged here, not only by the policy's violation event, since Firefox reports a
+  // frame's violation to the document that holds the policy, the host's, not to the page.
+  const granted = new Set(grantedFrameOrigins(host));
+  const blockedFrame = (frame: Element): boolean => {
+    const source = frame.getAttribute("src");
+    if (source === null || source === "") return false;
+    let origin: string;
+    try {
+      origin = new URL(source, document.baseURI).origin;
+    } catch {
+      return false;
+    }
+    return origin !== "null" && !granted.has(origin);
+  };
+  const judge = (): boolean => {
     if (document.querySelector("[data-review-id]")) note("review");
-  }, 0);
+    if ([...document.querySelectorAll("iframe, frame, embed, object")].some(blockedFrame)) {
+      note("frames");
+    }
+    return noted.has(INLINE_WORDS.unavailable.review) && noted.has(INLINE_WORDS.unavailable.frames);
+  };
+  if (!judge() && typeof MutationObserver !== "undefined") {
+    const watcher = new MutationObserver(() => {
+      if (judge()) watcher.disconnect();
+    });
+    watcher.observe(document.body, {
+      childList: true,
+      subtree: true,
+      attributes: true,
+      attributeFilter: ["data-review-id", "src"],
+    });
+  }
+}
+
+/** The origins a host lets the page frame: what its sandbox's policy granted (`frameDomains`). */
+function grantedFrameOrigins(host: McpHostConnection): string[] {
+  const sandbox = (host.host.hostCapabilities as { sandbox?: { csp?: { frameDomains?: unknown } } })
+    .sandbox;
+  const domains = sandbox?.csp?.frameDomains;
+  if (!Array.isArray(domains)) return [];
+  const origins: string[] = [];
+  for (const domain of domains) {
+    if (typeof domain !== "string") continue;
+    try {
+      origins.push(new URL(domain).origin);
+    } catch {
+      // A host's pattern (`https://*.example.com`) names no one origin: such frames aren't judged.
+    }
+  }
+  return origins;
 }

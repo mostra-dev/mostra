@@ -5,7 +5,8 @@ import { wireRegistry } from "../../wire-registry.ts";
 /**
  * What remote MCP may ask an owner instance to do for it (INTERFACES §18.8, D165 item 5): the
  * authoring methods of the host protocol, and the owner's workspace (`McpWorkspace`, its root and
- * its artifacts' files) and verify's screenshots, which only that machine holds.
+ * its artifacts' files), verify's screenshots and a version's MCP App, which only that machine
+ * holds or makes.
  */
 export const RELAY_AUTHOR_METHODS = [
   "artifact/create",
@@ -17,6 +18,8 @@ export const RELAY_AUTHOR_METHODS = [
   "workspace/read",
   "workspace/apply",
   "verify/screenshot",
+  // A version's MCP App, for a hosted home that hasn't one yet (WP-17, D175 item 8).
+  "app/page",
 ] as const;
 
 /** One of {@link RELAY_AUTHOR_METHODS}. */

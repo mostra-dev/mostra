@@ -15,6 +15,7 @@ import type { Readable, Writable } from "node:stream";
 import { fileURLToPath } from "node:url";
 import {
   ARTIFACT_PROGRESS,
+  appPageMethod,
   BROWSER_PROTOCOL_REVISIONS,
   type ClientInfo,
   DEV_NOTIFY,
@@ -105,7 +106,7 @@ import {
   type ProcessManager,
   type ReapedChild,
 } from "../processes/index.ts";
-import { ProtocolServer, sessionMethods } from "../protocol-server/index.ts";
+import { attachInProcess, ProtocolServer, sessionMethods } from "../protocol-server/index.ts";
 import {
   artifactMethods,
   canonicalRef,
@@ -814,6 +815,19 @@ async function assemble(home: OwnedHome, options: StartInstanceOptions): Promise
     now: () => Date.now() + clockOffset,
     // Remote MCP's authoring runs here, on this home's own protocol server (D165 item 5).
     author: (from, params) => author(from, params),
+    // A version's MCP App, which a share sends after the version (D175 item 8).
+    appPage: async (versionId) => {
+      // Called once a push completed, long after the protocol server below exists.
+      const { client } = await attachInProcess(server, {
+        name: "mostra-link",
+        version: runtimeVersion(),
+      });
+      try {
+        return await client.peer.call(appPageMethod, { versionId });
+      } finally {
+        client.close();
+      }
+    },
   });
   const author = createOwnerAuthor({
     home: home.path,

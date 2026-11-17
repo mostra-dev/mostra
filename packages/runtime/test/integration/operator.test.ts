@@ -863,7 +863,9 @@ describe("operator ports (HO-09)", () => {
           fetch: loopbackFetch,
         }),
       );
-      expect((await client.listTools()).tools.length).toBe(13);
+      // The model's thirteen, beside a page's own app-only tools (D175 item 5).
+      const listed = (await client.listTools()).tools;
+      expect(listed.filter((tool) => !tool.name.startsWith("app_")).length).toBe(13);
       await client.close();
       expect(
         (await operator.calls("accounts.authenticate")).map((call) => call.payload["resource"]),

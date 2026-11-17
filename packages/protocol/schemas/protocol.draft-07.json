@@ -5740,7 +5740,8 @@
             "workspace/allocate",
             "workspace/read",
             "workspace/apply",
-            "verify/screenshot"
+            "verify/screenshot",
+            "app/page"
           ]
         },
         "params": {}

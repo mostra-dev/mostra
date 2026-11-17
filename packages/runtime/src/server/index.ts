@@ -434,6 +434,26 @@ export async function startServer(options: ServerOptions): Promise<RemoteServer>
     meter,
     home: async (id) => (await data.home(id)).assembled,
     ensureHome: (accountId) => (auth as Authorization).ensureHome(accountId),
+    // D160: the operator's answer for the chat host, else the configuration's, else an app.
+    render: async (clientId) => {
+      const client = await oauthClients.find(clientId);
+      if (!("id" in client)) return "app";
+      let redirectHost: string | undefined;
+      try {
+        redirectHost =
+          client.redirectUris[0] === undefined
+            ? undefined
+            : new URL(client.redirectUris[0]).hostname.toLowerCase();
+      } catch {
+        redirectHost = undefined;
+      }
+      const asked = await operator.chatHost({
+        name: client.name,
+        ...(redirectHost !== undefined ? { redirectHost } : {}),
+      });
+      const configured = redirectHost === undefined ? undefined : config.chatHosts?.[redirectHost];
+      return asked?.render ?? configured?.render ?? "app";
+    },
   });
   api = createApi({
     server: apiPages,

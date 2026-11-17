@@ -7,23 +7,23 @@
  */
 import type { Client as McpClient } from "@modelcontextprotocol/client";
 import { expect, type FrameLocator, type Page, test } from "@playwright/test";
-import { publishOwn } from "../support/client.ts";
+import { publishOwn, republish } from "../support/client.ts";
 import { hostClient, type ReferenceHost, startReferenceHost } from "../support/mcp-apps-host.ts";
-import { Client, readRun } from "../support/mostra.ts";
+import { Client, readRun, removeTree, startDaemon } from "../support/mostra.ts";
 
 const run = readRun();
 // Each test publishes its own version, whose MCP App is made on its first read (app/page): with a
 // cold Firefox, a test that opens two pages took 25 s of its 30.
 test.describe.configure({ timeout: 60_000 });
 let host: ReferenceHost;
-let mcp: McpClient;
+let sharedMcp: McpClient;
 
 test.beforeAll(async () => {
   host = await startReferenceHost();
-  mcp = await hostClient(run.home);
+  sharedMcp = await hostClient(run.home);
 });
 test.afterAll(async () => {
-  await mcp?.close();
+  await sharedMcp?.close();
   await host?.close();
 });
 
@@ -44,14 +44,17 @@ const HOST_CONTEXT = {
 interface Opened {
   readonly toolResult: { structuredContent?: { mostra?: { url: string; versionId: string } } };
   readonly view: FrameLocator;
+  /** Every tool call the page made through the host, in order. */
+  readonly calls: { readonly name: string; readonly arguments?: Record<string, unknown> }[];
 }
 
 /** Calls artifact_open through the host's client and shows its result as the host would. */
 async function openInline(
   page: Page,
   artifactId: string,
-  options: { readonly refuseTools?: boolean } = {},
+  options: { readonly refuseTools?: boolean; readonly mcp?: McpClient } = {},
 ): Promise<Opened> {
+  const mcp = options.mcp ?? sharedMcp;
   const { tools } = await mcp.listTools();
   const open = tools.find((tool) => tool.name === "artifact_open");
   const resourceUri = (open?._meta as { ui?: { resourceUri?: string } } | undefined)?.ui
@@ -64,8 +67,18 @@ async function openInline(
   })) as Opened["toolResult"];
   const read = await mcp.readResource({ uri: resourceUri as string });
   const content = read.contents[0] as { text?: string; _meta?: { ui?: { csp?: unknown } } };
-  await page.exposeFunction("mcpCallTool", (params: { name: string; arguments?: object }) =>
-    mcp.callTool({ name: params.name, arguments: params.arguments as Record<string, unknown> }),
+  const calls: Opened["calls"] = [];
+  await page.exposeFunction(
+    "mcpCallTool",
+    async (params: { name: string; arguments?: Record<string, unknown> }) => {
+      const result = await mcp.callTool({ name: params.name, arguments: params.arguments ?? {} });
+      // Recorded once answered, so a call listed before an event happened ended before it.
+      calls.push({
+        name: params.name,
+        ...(params.arguments ? { arguments: params.arguments } : {}),
+      });
+      return result;
+    },
   );
   await page.exposeFunction("mcpReadResource", (params: { uri: string }) =>
     mcp.readResource({ uri: params.uri }),
@@ -85,7 +98,7 @@ async function openInline(
     },
   );
   await page.goto(host.url);
-  return { toolResult, view: page.frameLocator("#sandbox").frameLocator("iframe") };
+  return { toolResult, view: page.frameLocator("#sandbox").frameLocator("iframe"), calls };
 }
 
 /** The inline bar the runtime renders below the page. */
@@ -113,7 +126,7 @@ test.describe("an artifact inline in an MCP Apps host (MC-02)", () => {
       // Submit, through the artifact channel (app_submit).
       await bar(view).getByRole("button", { name: "Submit" }).click();
       await expect(bar(view).getByText("Submitted")).toBeVisible();
-      const results = await mcp.callTool({
+      const results = await sharedMcp.callTool({
         name: "artifact_results",
         arguments: { artifact: own.artifactId, format: "json" },
       });
@@ -136,7 +149,7 @@ test.describe("an artifact inline in an MCP Apps host (MC-02)", () => {
       const { view, toolResult } = await openInline(page, own.artifactId);
       const handles = toolResult.structuredContent?.mostra;
       // The version's own page declares the origins its source names (D175 item 2).
-      const page2 = await mcp.readResource({ uri: `ui://mostra/view/${handles?.versionId}` });
+      const page2 = await sharedMcp.readResource({ uri: `ui://mostra/view/${handles?.versionId}` });
       const declared = page2.contents[0] as {
         mimeType?: string;
         text?: string;
@@ -183,14 +196,18 @@ test.describe("an artifact inline in an MCP Apps host (MC-02)", () => {
     const client = await Client.connect(run.socket);
     try {
       const own = await publishOwn(client, run.home, info, { fixture: "inline" });
-      const { view } = await openInline(page, own.artifactId);
+      const { view, calls } = await openInline(page, own.artifactId);
+      await expect(bar(view).getByText("1 answer needed")).toBeVisible();
       await view.getByTestId("name").fill("Grace");
-      // No blur: only the teardown's save can carry it (ui/resource-teardown).
+      // No blur, and sooner than the field's debounced save (about 400 ms): only the teardown's
+      // save can have carried it by the time the page answers the host (ui/resource-teardown).
       await page.evaluate(() =>
         (
           window as unknown as { hostBridge: { teardownResource(p: object): Promise<unknown> } }
         ).hostBridge.teardownResource({}),
       );
+      const saved = calls.filter((call) => call.name === "app_fields");
+      expect(JSON.stringify(saved.at(-1)?.arguments)).toContain('"Grace"');
       const again = await page.context().newPage();
       const reopened = await openInline(again, own.artifactId);
       await expect(reopened.view.getByTestId("name")).toHaveValue("Grace");
@@ -202,18 +219,66 @@ test.describe("an artifact inline in an MCP Apps host (MC-02)", () => {
 });
 
 test.describe("what a chat host's frame lacks says so (MC-03)", () => {
-  test("presence and a blocked origin each state their message", async ({ page }, info) => {
+  test("presence, review, frames, outside origins, streamed results and a newer version each state their message", async ({
+    page,
+  }, info) => {
     const client = await Client.connect(run.socket);
     try {
       const own = await publishOwn(client, run.home, info, { fixture: "inline" });
       const { view } = await openInline(page, own.artifactId);
+      await expect(view.getByTestId("mode")).toHaveText("mcp-app");
+      // Presence needs ten updates a second, which a host's tool calls don't carry.
       await expect(view.getByTestId("presence")).toHaveText("unavailable");
       await expect(bar(view).getByText("Who else is here shows on the full page.")).toBeVisible();
+      // The shell's review overlay isn't here.
+      await expect(bar(view).getByText("Comments are made on the full page.")).toBeVisible();
+      // The host's policy blocks the nested frame and the outside image, each named.
+      await expect(bar(view).getByText("Embedded views show on the full page.")).toBeVisible();
       await expect(
         bar(view).getByText(/This chat app blocks https:\/\/images\.example\.com/),
       ).toBeVisible();
+      // A stream's batches arrive with its end.
+      await view.getByTestId("count").click();
+      await expect(view.getByTestId("counted")).toHaveText("1,2,3");
+      await expect(bar(view).getByText("Results here arrive all at once.")).toBeVisible();
+      // A version published since: only the full page's banner offers it.
+      await republish(client, own, (text) => text.replace("Inline fixture", "Inline fixture 2"));
+      await expect(bar(view).getByText("A newer version is on the full page.")).toBeVisible({
+        timeout: 40_000,
+      });
+      // Choose stays the page's own channel here, offered in the bar.
+      await bar(view).getByRole("button", { name: "Choose Dense" }).click();
+      await expect(view.getByTestId("choice")).toHaveText("dense");
     } finally {
       client.close();
+    }
+  });
+
+  test("where only the shell's trusted controls may submit or choose, the page says to use the full page", async ({
+    page,
+  }, info) => {
+    // A home of this test's own: its channel setting applies to every artifact in it.
+    const daemon = await startDaemon();
+    const own = await Client.connect(daemon.socket, {
+      name: "shell-only-host",
+      home: { submitChannels: ["shell"] },
+    });
+    const ownMcp = await hostClient(daemon.home);
+    try {
+      const published = await publishOwn(own, daemon.home, info, { fixture: "inline" });
+      const { view } = await openInline(page, published.artifactId, { mcp: ownMcp });
+      await expect(view.getByTestId("mode")).toHaveText("mcp-app");
+      await expect(bar(view).getByText("Submit from the full page.")).toBeVisible();
+      await expect(bar(view).getByText("Choosing is done on the full page.")).toBeVisible();
+      await expect(bar(view).getByRole("button", { name: "Submit" })).toBeHidden();
+      await expect(bar(view).getByRole("button", { name: /^Choose / })).toBeHidden();
+      await expect(bar(view).getByRole("button", { name: "Open the full page" })).toBeVisible();
+    } finally {
+      await ownMcp.close();
+      own.close();
+      daemon.child.kill("SIGTERM");
+      await new Promise((resolve) => daemon.child.once("exit", resolve));
+      removeTree(daemon.root);
     }
   });
 

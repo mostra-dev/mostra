@@ -4,7 +4,7 @@
  * browser-protocol routes a browser page does (`app/request`), behind the same session, link and
  * scope checks; a browser can never present an app session, nor an inline page a cookie.
  */
-import { readdirSync, readFileSync } from "node:fs";
+import { readdirSync, readFileSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 import { BROWSER_PROTOCOL_REVISION, linkSecret, MutationId, serializeAll } from "@mostra/protocol";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
@@ -307,12 +307,14 @@ describe("the MCP App every home has (D175 items 2, 3, MC-02)", () => {
     expect(first.html.startsWith("<!doctype html>")).toBe(true);
     const cache = join(gateway.home.home, "cache", "mcp-app", actions.versionId);
     expect(readdirSync(cache)).toHaveLength(1);
-    const started = Date.now();
+    // The second answer is the kept page itself, never made again: marked here, it comes back so.
+    const kept = join(cache, readdirSync(cache)[0] as string, "index.html");
+    expect(readFileSync(kept, "utf8")).toBe(first.html);
+    writeFileSync(kept, `${first.html}<!-- kept -->`);
     const again = ok<{ html: string }>(
       await gateway.client.call("app/page", { versionId: actions.versionId }),
     );
-    expect(again.html).toBe(first.html);
-    expect(Date.now() - started).toBeLessThan(5_000);
+    expect(again.html).toBe(`${first.html}<!-- kept -->`);
     expect(
       refused(
         await gateway.client.call("app/page", { versionId: "ver_ABCDEFGHJKMNPQRSTVWXYZ0123" }),

@@ -67,6 +67,11 @@ export interface RemoteMcpOptions {
   readonly home: (homeId: string) => Promise<HostedHome>;
   /** The account's hosted home, made when it has none yet (an account that signed in only here). */
   readonly ensureHome: (accountId: string) => string;
+  /**
+   * How a chat host shows a page (D160): `app` (through the MCP Apps resource) or `link` (the
+   * hosted link only), by the OAuth client a request's token names. Default `app`.
+   */
+  readonly render?: (clientId: string) => Promise<"app" | "link">;
 }
 
 /** The remote MCP endpoint. */
@@ -127,6 +132,7 @@ export function createRemoteMcp(options: RemoteMcpOptions): RemoteMcp {
         readonly client: SocketClient;
         readonly account: string;
         readonly root: string;
+        readonly render: "app" | "link";
       };
       const author = authorOn(subject.home);
       // A directory names an artifact on the owner's machine: the owner says which it is.
@@ -205,6 +211,8 @@ export function createRemoteMcp(options: RemoteMcpOptions): RemoteMcp {
         workspace,
         docs: options.docs,
         version: options.version,
+        // MCP Apps only where the chat host's policy shows pages through them (D160).
+        apps: subject.render === "app",
         readScreenshot: async (path) => {
           const answer = (await author("verify/screenshot", { path }, WORKSPACE_TIMEOUT_MS)) as {
             png?: string;
@@ -308,7 +316,13 @@ export function createRemoteMcp(options: RemoteMcpOptions): RemoteMcp {
           scopes: ["mostra"],
           expiresAt: Math.floor(who.expiresAt / 1000),
           resource: `${options.apiOrigin}/mcp`,
-          subject: { home, client, account: who.accountId, root },
+          subject: {
+            home,
+            client,
+            account: who.accountId,
+            root,
+            render: (await options.render?.(who.clientId).catch(() => "app" as const)) ?? "app",
+          },
         });
         const out: Record<string, string> = {};
         answer.headers.forEach((value, name) => {

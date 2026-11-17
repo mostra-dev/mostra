@@ -17,6 +17,7 @@ import type { IncomingMessage, ServerResponse } from "node:http";
 import { isAbsolute, join, relative } from "node:path";
 import {
   ArtifactManifest,
+  appPageMethod,
   artifactGetMethod,
   artifactListMethod,
   artifactPauseMethod,
@@ -24,6 +25,7 @@ import {
   type HostedPushParams,
   type HostedPushResult,
   type HostedRoute,
+  hostedPageMethod,
   hostedPushMethod,
   hostedSubmissionMethod,
   type InstanceInfo,
@@ -58,6 +60,7 @@ import {
 } from "../protocol-server/index.ts";
 import { canonicalRef, listingDigest, versionIdFor } from "../publish/index.ts";
 import { openRegistry, type Registry } from "../registry/index.ts";
+import { type AppPages, createAppPages, removeAppPage } from "./app-pages.ts";
 import type { Authorization } from "./auth.ts";
 import type { ClientAddresses, RateLimiter } from "./clients.ts";
 import { rotateIncarnation } from "./data.ts";
@@ -788,6 +791,29 @@ export async function openHostedHome(options: HostedHomeOptions): Promise<Hosted
     return revoked;
   };
 
+  const appPages: AppPages = createAppPages({
+    dir: options.dir,
+    log,
+    artifactOf: (versionId) => registry.version(versionId)?.artifactId,
+    ownerOf: (artifactId) => ownerLinkOf(artifactId),
+    underReview: (artifactId, versionId) =>
+      ledger.read(
+        (db) =>
+          db.get<{ found: number }>(
+            "SELECT 1 AS found FROM quarantine WHERE artifact_id = ? AND version_id IN ('', ?) LIMIT 1",
+            artifactId,
+            versionId,
+          ) !== undefined,
+      ),
+    sessionOf: (linkId) =>
+      protocol
+        .registrants("relay")
+        .filter((entry) => entry.owner === linkId)
+        .at(-1)?.session,
+    call: (session, method, params, timeoutMs) =>
+      protocol.callSession(session, method, params, timeoutMs),
+  });
+
   const push = async (params: HostedPushParams, session: Session): Promise<HostedPushResult> => {
     const link = session.link?.instanceId;
     if (link === undefined || session.attributes["linkId"] !== link) {
@@ -1123,6 +1149,18 @@ export async function openHostedHome(options: HostedHomeOptions): Promise<Hosted
       handler(artifactListMethod, (params) => ({ artifacts: registry.list(params.filter ?? {}) })),
       handler(artifactGetMethod, (params) => registry.get(canonicalRef(params.artifact))),
       handler(hostedPushMethod, (params, session) => push(params, session)),
+      // A version's MCP App (D175 item 8): the owner instance sends it; chat hosts read it.
+      handler(hostedPageMethod, (params, session) => {
+        const link = session.link?.instanceId;
+        if (link === undefined || session.attributes["linkId"] !== link) {
+          throw refuse(
+            "MOSTRA_REMOTE_NOT_OWNER_INSTANCE",
+            "Only an owner instance's binding sends pages.",
+          );
+        }
+        return appPages.keep(params, link);
+      }),
+      handler(appPageMethod, (params) => appPages.page(params.versionId)),
       handler(hostedSubmissionMethod, (params, session) => {
         // Only the owner instance of its artifact reads a submission this way (D165 item 1b),
         // and only one it was, or is, delivered.
@@ -1316,6 +1354,9 @@ export async function openHostedHome(options: HostedHomeOptions): Promise<Hosted
       });
       for (const versionId of versions) {
         await removeTree(registry.store.versionDir(versionId)).catch((error: unknown) =>
+          log.warn("server.remove_files_failed", { versionId, error }),
+        );
+        await removeAppPage(options.dir, versionId).catch((error: unknown) =>
           log.warn("server.remove_files_failed", { versionId, error }),
         );
       }

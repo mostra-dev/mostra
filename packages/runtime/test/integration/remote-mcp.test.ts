@@ -110,7 +110,12 @@ describe("the remote MCP server (MC-04)", () => {
 
   it("serves the local server's tools, authors through the owner, and answers the hosted link", async () => {
     const client = await connect(accessToken);
-    const tools = (await client.listTools()).tools.map((tool) => tool.name).sort();
+    // The model's thirteen tools; a page's own (app_*) are listed beside them for a host to keep
+    // from its model, since a stateless request names no capabilities (D175 item 5).
+    const tools = (await client.listTools()).tools
+      .map((tool) => tool.name)
+      .filter((name) => !name.startsWith("app_"))
+      .sort();
     expect(tools).toHaveLength(13);
     expect(tools).toContain("artifact_publish");
     expect(JSON.parse((await call(client, "artifact_list", {})).text)).toEqual({ artifacts: [] });
