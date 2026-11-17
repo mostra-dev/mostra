@@ -37,6 +37,13 @@ and, since WP-31 (D168), `useRespondents` and `usePresence` (`src/team-hooks.ts`
   and `pagehide`, the gateway's 429 waited out). It shares the pointer and the focused element only
   when a hook asks, and ignores `respondents` and `presence` messages it never asked for; the
   server client ignores every kind but its own, so neither ever misreads the other's.
+- An `mcp-app` page (D175 item 6) starts through `src/runtime/mcp-app.ts`, a chunk only such
+  pages load: `mcp-host.ts` holds the MCP Apps host connection (taken over from the loader, or
+  made itself), `mcp-transport.ts` is the same `Transport` over the app-only tools (`app_events`
+  long-polls for the stream), `mcp-theme.ts` sets the host's variables and Mostra's tokens over
+  them, and `inline.ts` renders the bar below the page (save state, blockers, Submit and Choose
+  through the artifact channel where the view allows it, "Open the full page") and says what the
+  frame lacks (MC-03), which the light `inline-sink.ts` lets hooks report without loading it.
 
 ## Invariants it owns
 

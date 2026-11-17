@@ -10,7 +10,7 @@ Audience: MCP clients, through `mostra mcp` and WP-30's remote server. Runs in: 
 
 - **The tools know no transport.** `createMcpServerFactory(options)` returns the SDK's factory:
   one `McpServer` per stdio connection or HTTP request, built over three ports (`instance`,
-  `workspace`, `docs`, `src/ports.ts`) and holding nothing between calls. Whatever a transport
+  `workspace`, `docs`, `src/ports.ts`) and holding nothing between calls but verify runs (below). Whatever a transport
   needs (a daemon session, a token, telemetry) lives with whoever serves the factory.
 - **Every tool takes explicit handles** (a directory, an artifact ID or path, a cursor) and calls
   the instance through the host protocol: no state of the server's own, no logic the protocol
@@ -38,6 +38,8 @@ Audience: MCP clients, through `mostra mcp` and WP-30's remote server. Runs in: 
   checks attach, so the tools, their schemas and their results are the local server's; the remote
   server supplies its own instance, workspace and docs ports. `src/docs.ts` reads the bundled
   reference for both (`fileDocs`).
+- **MCP Apps** (D175 items 1, 5). `artifact_open` names the loader (`ui://mostra/app`, `src/loader.ts`) in `_meta.ui.resourceUri` and its result's `structuredContent.mostra` names the version; the template `ui://mostra/view/{versionId}` reads a version's page through `app/page`. The page acts only through the app-only tools (`src/app.ts`, `_meta.ui.visibility: ["app"]`), each one browser-protocol route over `app/request`, never anything the browser protocol can't do. A client whose capabilities are known and lack the MCP Apps extension gets none of these parts (`server.ts`, `withoutApps`); `apps: false` removes them always.
+- **The one thing kept between calls: verify runs** (#157, `src/verify-run.ts`). `artifact_verify` answers within 45 s, so a run outlives its call, and the call again joins it from whatever server instance it reaches; runs are keyed by `options.scope`, the directory and `screenshots`, and a verdict nobody collected is forgotten after 10 minutes. Nothing else is kept.
 - **No telemetry here.** `onClient` reports the client a server instance serves; only
   `@mostra/cli` may turn that into an event (D119, D140 item 1, D164 item 4).
 
@@ -64,5 +66,6 @@ over stdio and HTTP against a real daemon. After changing a tool's input, `pnpm 
 - Relative directories resolve inside the workspace root (`~/mostra-artifacts` by default), never
   the server's working directory, which differs by client (a desktop app has no project folder);
   one that climbs out of it is refused, and an absolute path names any directory.
+- The loader is one document with inline script only, under any MCP Apps host's default policy; it never fetches, and its words (`LOADER_WORDS`) are viewer-facing, Mirza's to accept.
 - `artifact_wait` is capped at 50 s (`WAIT_MAX_SECONDS`) because clients time tool calls out
   (ChatGPT's reported limit is 60 s); the model calls again with the cursor it got.

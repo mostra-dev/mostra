@@ -47,7 +47,7 @@ These are package map P2 (D65): packages follow audience and process boundaries.
 | `@mostra/react` | artifact authors (browser) | protocol, react | Node built-ins, runtime, worker |
 | `@mostra/server` | artifact authors (worker) | protocol | runtime, react |
 | `@mostra/kit` | artifact authors | react, protocol, themes, kit libraries | runtime, worker, Node built-ins |
-| `@mostra/runtime` | runtime bundle and the remote server's container image | protocol, themes (the server's own pages, UX-01), hono, better-sqlite3, vite (in builder entry only), mcp (in the `server` module, for the remote MCP endpoint, D165, and the `link` module, for the owner's side of its authoring, D167 item 16), openid-client (in the `server` module, D167 item 11) | react, kit, worker internals |
+| `@mostra/runtime` | runtime bundle and the remote server's container image | protocol, themes (the server's own pages, UX-01), hono, better-sqlite3, vite (in builder entry only), mcp (in the `server` module, for the remote MCP endpoint, D165, and the `link` module, for the owner's side of its authoring, D167 item 16), openid-client (in the `server` module, D167 item 11), plugin-mcp-app (carried, never imported: its directory is located and its code runs only in plugin children, D175 item 3) | react, kit, worker internals |
 | `@mostra/worker` | runtime bundle | protocol, server | runtime |
 | `@mostra/verify` | runtime bundle | protocol, playwright, axe-core | runtime internals |
 | `@mostra/themes` | everything visual: the shell, the server's pages, the kit, operators (UX-01) | nothing: its themes are data, its faces and marks files | anything with I/O |
@@ -60,6 +60,7 @@ These are package map P2 (D65): packages follow audience and process boundaries.
 | `@mostra/cli` | agents, people | protocol, sdk, mcp | runtime internals |
 | `create-mostra` | people | cli | |
 | `@mostra/conformance` | host authors | protocol, sdk | runtime internals |
+| `@mostra/plugin-mcp-app` (`plugins/mcp-app/`) | every home, as Mostra's bundled exporter (D175 items 2, 3), and anyone who installs it | contract-exporter, protocol, themes, rolldown (the version Vite pins) | runtime, react, anything with a server |
 | `@mostra/contract-*` | plugin authors | nothing (D172 item 1: a plugin's page gets no Zod, and a contract's version moves only with the contract) | everything |
 | crate `mostra-host` | Rust hosts | serde, tokio, and the crates its HTTP download, TLS, archives and digests need (D143) | anything of Mostra but the published protocol schema |
 | crate `mostra-host-codegen` (unpublished) | the crate's wire types: typify over the draft-07 bundle, `write` and `check` (D143) | typify, schemars, syn | |
