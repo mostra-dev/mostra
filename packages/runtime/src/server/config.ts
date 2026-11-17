@@ -5,6 +5,7 @@
  * never code (D137, D165 item 0a): the dossier and this code name only `example` hosts.
  */
 import { readFileSync } from "node:fs";
+import { isIP } from "node:net";
 import { createDiagnostic, Duration, RpcError } from "@mostra/protocol";
 import { safeHref } from "@mostra/themes";
 import * as z from "zod";
@@ -108,6 +109,45 @@ export function verifierLabel(label: unknown): string | undefined {
   return label;
 }
 
+/**
+ * A Client ID Metadata Document client the server's operator vouches for (MT-05): the consent page
+ * names it by `name`, as the server's own, never "unverified". Its redirect URIs still come from its
+ * document, and consent is still asked once per account.
+ */
+export interface OperatorClient {
+  /** The client's ID: its metadata document's `https:` URL, exactly as the client sends it. */
+  readonly clientId: string;
+  /** What the consent page calls it. */
+  readonly name: string;
+}
+
+/**
+ * A client ID that names a metadata document (`https:` with a path and no fragment, on a name: a
+ * document is never fetched from an address, MT-05's review), written as the URL normalizes it
+ * (a lower-case host, no default port, no `.` or `..`), since a client's `client_id` is matched
+ * with it once normalized.
+ */
+const MetadataClientId: z.ZodType<string> = z.string().refine(
+  (value) => {
+    try {
+      const url = new URL(value);
+      return (
+        url.href === value &&
+        url.protocol === "https:" &&
+        url.pathname.length > 1 &&
+        url.hash === "" &&
+        isIP(url.hostname.replace(/^\[|\]$/g, "")) === 0
+      );
+    } catch {
+      return false;
+    }
+  },
+  {
+    message:
+      "must be a metadata document's https: URL on a host name, with a path, written in its normal form",
+  },
+);
+
 /** Claim names that would reach an object's prototype rather than a key of its own. */
 const RESERVED_CLAIMS = new Set(["__proto__", "constructor", "prototype"]);
 
@@ -140,6 +180,8 @@ export interface RemoteServerConfig {
   readonly framing?: { readonly frameAncestors: "'none'" } | undefined;
   readonly operator?: string | undefined;
   readonly chatHosts?: Record<string, unknown> | undefined;
+  /** The operator's own clients, named as the server's own on the consent page (MT-05). */
+  readonly operatorClients?: OperatorClient[] | undefined;
   /** How the server's own pages look and name themselves (D171). */
   readonly appearance?: AppearanceConfig | undefined;
 }
@@ -206,6 +248,11 @@ const Config: z.ZodType<RemoteServerConfig> & { readonly shape: Record<string, u
     framing: z.strictObject({ frameAncestors: z.literal("'none'") }).optional(),
     operator: z.string().optional(),
     chatHosts: z.record(z.string(), z.unknown()).optional(),
+    operatorClients: z
+      .array(z.strictObject({ clientId: MetadataClientId, name: PageName }))
+      .min(1)
+      .max(16)
+      .optional(),
     appearance: z
       .strictObject({
         theme: z.enum(["studio", "mostra"]).optional(),
@@ -321,6 +368,24 @@ export function readServerConfig(file: string | undefined, env: Environment): Re
   }
   if (new Set(domains).size !== domains.length) {
     throw invalid("The configuration key `domains` names one domain twice.");
+  }
+  const clients = (config.operatorClients ?? []).map((client) => client.clientId);
+  const twice = clients.findIndex((client, index) => clients.indexOf(client) !== index);
+  if (twice >= 0) {
+    throw invalid(
+      `The configuration key \`operatorClients.${twice}.clientId\` names a client an earlier entry names.`,
+    );
+  }
+  // A document on a user-content domain is a tenant's (or a hosted shell's own client): never one
+  // the operator can vouch for (MT-05's review).
+  const tenant = clients.findIndex((client) => {
+    const host = new URL(client).host;
+    return domains.some((domain) => host === domain || host.endsWith(`.${domain}`));
+  });
+  if (tenant >= 0) {
+    throw invalid(
+      `The configuration key \`operatorClients.${tenant}.clientId\` is on a user-content domain, whose pages are the tenants'.`,
+    );
   }
   return config;
 }

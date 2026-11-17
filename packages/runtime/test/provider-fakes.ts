@@ -43,7 +43,7 @@ function approve(
   url: URL,
   response: ServerResponse,
   codes: Map<string, { nonce?: string; challenge: string }>,
-): void {
+): string {
   const code = randomBytes(16).toString("hex");
   codes.set(code, {
     ...(url.searchParams.get("nonce") !== null
@@ -56,6 +56,7 @@ function approve(
   back.searchParams.set("state", url.searchParams.get("state") ?? "");
   response.writeHead(302, { location: back.href });
   response.end();
+  return code;
 }
 
 /** The code a token request redeems, when its PKCE verifier and client secret match. */
@@ -108,7 +109,10 @@ export async function fakeOidc(options: {
       });
     }
     if (url.pathname === "/jwks") return json(response, 200, { keys: [jwk] });
-    if (url.pathname === "/authorize") return approve(url, response, codes);
+    if (url.pathname === "/authorize") {
+      approve(url, response, codes);
+      return;
+    }
     if (url.pathname === "/token" && request.method === "POST") {
       const issued = redeem(await form(request), codes, options.secret);
       if (!issued) return json(response, 400, { error: "invalid_grant" });
@@ -141,26 +145,93 @@ export async function fakeOidc(options: {
   return { ...fake, close: () => fake.server.close() };
 }
 
-/** GitHub's OAuth web flow, whose `GET /user` answers `user()` for its one access token. */
+/** One address of `GET /user/emails`, as GitHub lists them. */
+export interface FakeGitHubEmail {
+  readonly email: string;
+  readonly primary: boolean;
+  readonly verified: boolean;
+  readonly visibility: "public" | "private" | null;
+}
+
+/** What a fake GitHub saw of the sign-ins it answered. */
+export interface FakeGitHub extends FakeProvider {
+  /** The `scope` of every authorization request, in order. */
+  readonly scopes: string[];
+  /** Every `GET /user/emails` request, its query and the API version it asked for. */
+  readonly emailRequests: { readonly search: string; readonly version: string | undefined }[];
+}
+
+/**
+ * GitHub's OAuth web flow, whose `GET /user` answers `user()` and `GET /user/emails` `emails()` for
+ * its access token (VERIFIED_FACTS, MT-05). The token holds the scope the authorization asked for,
+ * or what `grant(asked)` says the person left on GitHub's screen (`undefined`: the exchange's
+ * answer leaves `scope` out, the token holding what was asked); without `user:email` (or `user`)
+ * the address list answers 404, as GitHub does. `emails()` may answer a status of its own, or hang;
+ * `delay()` holds the code exchange's answer and the list's for as long as it says.
+ */
 export async function fakeGitHub(options: {
   readonly secret: string;
   readonly user: () => Record<string, unknown>;
-}): Promise<FakeProvider> {
+  readonly emails?: () => readonly FakeGitHubEmail[] | { readonly status: number } | "hang";
+  readonly grant?: (asked: string) => string | undefined;
+  readonly delay?: () => { readonly token?: number; readonly emails?: number };
+}): Promise<FakeGitHub> {
   const codes = new Map<string, { nonce?: string; challenge: string }>();
+  const scopeOf = new Map<string, { granted: string; answered: boolean }>();
+  const wait = (ms: number | undefined) => new Promise((resolve) => setTimeout(resolve, ms ?? 0));
+  const tokens = new Map<string, string>();
+  const scopes: string[] = [];
+  const emailRequests: { search: string; version: string | undefined }[] = [];
   const fake = await listen(async (request, url, response) => {
-    if (url.pathname === "/login/oauth/authorize") return approve(url, response, codes);
+    if (url.pathname === "/login/oauth/authorize") {
+      const asked = url.searchParams.get("scope") ?? "";
+      scopes.push(asked);
+      const code = approve(url, response, codes);
+      const granted = options.grant ? options.grant(asked) : asked;
+      scopeOf.set(code, { granted: granted ?? asked, answered: granted !== undefined });
+      return;
+    }
     if (url.pathname === "/login/oauth/access_token") {
-      if (!redeem(await form(request), codes, options.secret)) {
+      const body = await form(request);
+      const code = body.get("code") ?? "";
+      if (!redeem(body, codes, options.secret)) {
         return json(response, 200, { error: "bad_verification_code" });
       }
-      return json(response, 200, { access_token: "gho_fake", token_type: "bearer", scope: "" });
+      await wait(options.delay?.().token);
+      // GitHub answers the granted scopes comma-separated.
+      const scoped = scopeOf.get(code) ?? { granted: "", answered: true };
+      const granted = scoped.granted.split(/[ ,]+/).filter(Boolean).join(",");
+      const token = `gho_${randomBytes(8).toString("hex")}`;
+      tokens.set(token, granted);
+      return json(response, 200, {
+        access_token: token,
+        token_type: "bearer",
+        ...(scoped.answered ? { scope: granted } : {}),
+      });
     }
+    const bearer = /^Bearer (.+)$/.exec(request.headers.authorization ?? "")?.[1] ?? "";
+    const granted = tokens.get(bearer);
     if (url.pathname === "/user") {
-      return request.headers.authorization === "Bearer gho_fake"
-        ? json(response, 200, options.user())
-        : json(response, 401, {});
+      return granted !== undefined ? json(response, 200, options.user()) : json(response, 401, {});
+    }
+    if (url.pathname === "/user/emails") {
+      emailRequests.push({
+        search: url.search,
+        version: request.headers["x-github-api-version"] as string | undefined,
+      });
+      if (granted === undefined) return json(response, 401, {});
+      const scoped = granted.split(",").some((scope) => scope === "user:email" || scope === "user");
+      if (!scoped) {
+        response.setHeader("x-accepted-oauth-scopes", "user, user:email");
+        return json(response, 404, { message: "Not Found", status: "404" });
+      }
+      await wait(options.delay?.().emails);
+      const answer = options.emails?.() ?? [];
+      if (answer === "hang") return;
+      if ("status" in answer) return json(response, answer.status, { message: "Server Error" });
+      return json(response, 200, answer);
     }
     json(response, 404, {});
   });
-  return { ...fake, close: () => fake.server.close() };
+  return { ...fake, scopes, emailRequests, close: () => fake.server.close() };
 }

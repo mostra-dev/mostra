@@ -284,6 +284,9 @@ export async function startServer(options: ServerOptions): Promise<RemoteServer>
     ...(config.ledger?.walAutocheckpoint !== undefined
       ? { walAutocheckpoint: config.ledger.walAutocheckpoint }
       : {}),
+    ...(Number(options.env["MOSTRA_TEST_CURSOR_MARK_MS"]) > 0
+      ? { markIntervalMs: Number(options.env["MOSTRA_TEST_CURSOR_MARK_MS"]) }
+      : {}),
   });
   const handle = createHandle({
     apiOrigin: config.apiOrigin,
@@ -373,6 +376,7 @@ export async function startServer(options: ServerOptions): Promise<RemoteServer>
     directory: data.directory,
     log,
     env: options.env,
+    ...(config.operatorClients !== undefined ? { operatorClients: config.operatorClients } : {}),
     isShellOrigin: (origin) => {
       if (!origin.startsWith(`${scheme}://`)) return false;
       const host = origin.slice(scheme.length + 3);
