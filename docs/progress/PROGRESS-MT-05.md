@@ -1,6 +1,6 @@
 # MT-05 progress: who signs in, and what an idle home writes
 
-**Status:** Candidate, in progress. A maintenance unit beside WP-17 and MT-04 ([specification](../design/work-packages/MT-05.md)); it owns no requirement of its own, and the checks it adds extend MC-04's (the consent page), HY-08's (sign-in's identity) and RM-03's (the self-hosted server and its backups) rows. Its decision is D176, approved at M76 with its words. Its scope is the GitHub milestone `MT-05`: #168, #171 and #186.
+**Status:** Accepted by Mirza on 2026-11-17 (M77: "Absolutely incredible work. All accepted!") with D176 and the unit's agent-facing prose (D149), after the Claude Opus review and its fixes; merging and release follow. A maintenance unit beside WP-17 and MT-04 ([specification](../design/work-packages/MT-05.md)); it owns no requirement of its own, and the checks it adds extend MC-04's (the consent page), HY-08's (sign-in's identity) and RM-03's (the self-hosted server and its backups) rows. Its decision is D176, approved at M76 with its words. Its scope is the GitHub milestone `MT-05`: #168, #171 and #186.
 
 ## Baseline
 
@@ -18,7 +18,8 @@
 
 - **M75** (2026-11-16T18:40:49Z): Mirza started the unit with the assignment prompt and its specification.
 - **M76** (2026-11-16T20:49:32Z): Mirza approved the session's questions (the amendment of DATA_MODEL §7.1 and D166 item 14, the consent page's "this server's own app", GitHub's public address kept unflagged when no verified primary is listed, D176's number), delegated the rest, and approved the external checks and the operating layer's follow-up.
-- **D176** (approved at M76): `operatorClients`; GitHub's `user:email` and verified primary address; an open home's marks written only when they moved.
+- **D176** (approved at M76, accepted at M77): `operatorClients`; GitHub's `user:email` and verified primary address; an open home's marks written only when they moved.
+- **M77** (2026-11-17T11:03:37Z): Mirza accepted the unit; the review's finding 4 (the address the directory keeps) delegated. Decided under D176: the open server keeps nothing it doesn't use, so a later unit stops writing `identity.email` and leaves rows already written as they are until after the first release; #193, on WP-33's milestone and in its specification.
 
 ## What was built
 
