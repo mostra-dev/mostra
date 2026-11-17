@@ -939,6 +939,9 @@ export const MIGRATIONS: readonly Migration[] = [
       // A followed submission waits with the hosted cursor of its `submission.created`, so the
       // owner reads them again in the hosted order (#139, D175 item 9); a row kept before has none.
       db.exec("ALTER TABLE remote_missing ADD COLUMN hosted_cursor TEXT");
+      // A delivery that came while an earlier submission still waited is held here with its
+      // envelope until its turn, so the two paths never cross (review findings R01-5, R02-3).
+      db.exec("ALTER TABLE remote_missing ADD COLUMN envelope_json TEXT");
       // An inline page in an MCP Apps host acts through an app session (D175 item 4), sent only
       // in its `app/request` calls: never a cookie, a frame header or a hosted shell's header.
       db.widenCheck(

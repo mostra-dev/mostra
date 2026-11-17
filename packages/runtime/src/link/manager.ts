@@ -53,6 +53,8 @@ import {
 import {
   appendEvent,
   followEvents,
+  forgetHostedOrder,
+  holdBehind,
   type ImportSource,
   noteMissing,
   waitingMissing,
@@ -65,7 +67,7 @@ import { listingDigest } from "../publish/index.ts";
 import type { RemoteShares } from "../share/index.ts";
 import { type Binding, type BindingSession, ownerInitialize, startBinding } from "./binding.ts";
 import { postForm, type RemoteAddress, remoteRequest, testServerAddress } from "./http.ts";
-import { createReimportLine, type ReimportLine } from "./reimport.ts";
+import { createReimportLine, type ReimportLine, refusedForGood } from "./reimport.ts";
 import { createOwnerRelay, type OwnerRelayOptions } from "./relay.ts";
 
 /** The CLI's client ID at every server's authorization server (D166 item 5). */
@@ -480,18 +482,52 @@ export function createLink(options: LinkOptions): Link {
     if (entry === undefined) {
       const line = createReimportLine({
         waiting: () => ledger.read((db) => waitingMissing(db, server)),
-        read: async ({ submissionId }) => {
+        read: async ({ submissionId, envelope: held }) => {
           const current = lines.get(server);
           if (current === undefined) return "retry";
           if (failOnce === submissionId) {
             failOnce = undefined;
             throw new Error("a test's failed read");
           }
-          const envelope = await current.session.call(
-            hostedSubmissionMethod,
-            { submissionId },
-            { timeoutMs: 30_000 },
-          );
+          const forget = (): void => {
+            ledger.write((db) =>
+              db.run(
+                "DELETE FROM remote_missing WHERE server = ? AND submission_id = ?",
+                server,
+                submissionId,
+              ),
+            );
+          };
+          // A delivery held for its turn has its envelope; any other is read again.
+          let envelope: SubmissionEnvelope;
+          if (held !== undefined) {
+            const parsed = SubmissionEnvelope.safeParse(JSON.parse(held));
+            if (!parsed.success) {
+              log.warn("link.submission_unreadable", { server, submissionId, why: "envelope" });
+              forget();
+              return "done";
+            }
+            envelope = parsed.data;
+          } else {
+            try {
+              envelope = await current.session.call(
+                hostedSubmissionMethod,
+                { submissionId },
+                { timeoutMs: 30_000 },
+              );
+            } catch (error) {
+              // The hosted home holds no such submission for this instance, for good (it went
+              // elsewhere, or a restore lost it): it waits no longer, and holds nothing back
+              // (review finding R01-3). A transport failure or a timeout is tried again.
+              const refused = refusedForGood(error);
+              if (refused !== undefined) {
+                log.warn("link.submission_unreadable", { server, submissionId, code: refused });
+                forget();
+                return "done";
+              }
+              throw error;
+            }
+          }
           const answer = options.importSubmission(envelope, current.source);
           log.info("link.submission_reimported", {
             server,
@@ -500,13 +536,7 @@ export function createLink(options: LinkOptions): Link {
           });
           if (!answer.accepted && answer.retry) return "retry";
           // Imported, or refused for good (it can never be held here): it waits no longer.
-          ledger.write((db) =>
-            db.run(
-              "DELETE FROM remote_missing WHERE server = ? AND submission_id = ?",
-              server,
-              submissionId,
-            ),
-          );
+          forget();
           return "done";
         },
         failed: (missing, error) =>
@@ -622,6 +652,26 @@ export function createLink(options: LinkOptions): Link {
         if (!connection.home || !connection.incarnation) {
           return { accepted: false, reason: "the session isn't open yet", retry: true };
         }
+        // An earlier submission still waits to be imported: this one joins the line behind it,
+        // held durably with its envelope, so the log takes them in the hosted order (#139,
+        // review findings R01-5, R02-3). Held is delivered: the line imports it in its turn.
+        const held = ledger.write((db) =>
+          holdBehind(
+            db,
+            connection.server,
+            parsed.data,
+            JSON.stringify(parsed.data),
+            new Date(now()).toISOString(),
+          ),
+        );
+        if (held) {
+          log.info("link.submission_held", {
+            server: connection.server,
+            submissionId: parsed.data.submissionId,
+          });
+          lines.get(connection.server)?.line.kick();
+          return { accepted: true };
+        }
         return options.importSubmission(parsed.data, {
           server: connection.server,
           serverKey: serverKey(connection.server),
@@ -716,6 +766,8 @@ export function createLink(options: LinkOptions): Link {
               connection.incarnation ?? null,
               server,
             );
+            // What waits from before the restore came first: its cursors aren't the new ones'.
+            forgetHostedOrder(db, server);
           });
           log.warn("link.home_regressed", { server, from: row?.follow_cursor, to: head });
         }

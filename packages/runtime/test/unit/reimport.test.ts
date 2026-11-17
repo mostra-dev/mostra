@@ -3,12 +3,14 @@
  * finish in, imports happen in the hosted order, one at a time, and a read that fails holds every
  * later submission back until it is tried again.
  */
+import { createDiagnostic, RpcError } from "@mostra/protocol";
 import { describe, expect, it } from "vitest";
 import {
   createReimportLine,
   inHostedOrder,
   type Missing,
   type ReadOutcome,
+  refusedForGood,
 } from "../../src/link/reimport.ts";
 
 /** A read that ends when the test says. */
@@ -86,6 +88,7 @@ describe("reading followed submissions again, in the hosted order (#139)", () =>
         return "done";
       },
       failed: (missing) => failures.push(missing.submissionId),
+      later: () => undefined,
     });
     line.kick();
     await line.idle();
@@ -93,7 +96,11 @@ describe("reading followed submissions again, in the hosted order (#139)", () =>
     expect(failures).toEqual(["sub_1"]);
     expect(waiting.map((missing) => missing.submissionId)).toEqual(["sub_1", "sub_2"]);
     // A retry answer holds the line the same way.
-    const retried = createReimportLine({ waiting: () => waiting, read: async () => "retry" });
+    const retried = createReimportLine({
+      waiting: () => waiting,
+      read: async () => "retry",
+      later: () => undefined,
+    });
     retried.kick();
     await retried.idle();
     expect(waiting).toHaveLength(2);
@@ -133,5 +140,57 @@ describe("reading followed submissions again, in the hosted order (#139)", () =>
     await line.idle();
     expect(read).toEqual(["sub_1", "sub_2"]);
     expect(most).toBe(1);
+  });
+
+  it("tries again on its own once it stopped, each pause longer, from the first again once through (R02-3)", async () => {
+    const waiting: Missing[] = [{ submissionId: "sub_1", cursor: "10" }];
+    let failing = true;
+    const pauses: number[] = [];
+    let next: (() => void) | undefined;
+    const line = createReimportLine({
+      waiting: () => waiting,
+      read: async () => {
+        if (failing) return "retry";
+        waiting.splice(0, 1);
+        return "done";
+      },
+      later: (fn, ms) => {
+        pauses.push(ms);
+        next = fn;
+      },
+    });
+    line.kick();
+    await line.idle();
+    // A kick while it waits for its turn adds no second timer.
+    line.kick();
+    await line.idle();
+    expect(pauses).toEqual([1_000]);
+    next?.();
+    await line.idle();
+    expect(pauses).toEqual([1_000, 2_000]);
+    failing = false;
+    next?.();
+    await line.idle();
+    expect(waiting).toEqual([]);
+    // Through: the next stop waits the first pause again.
+    waiting.push({ submissionId: "sub_2", cursor: "11" });
+    failing = true;
+    line.kick();
+    await line.idle();
+    expect(pauses).toEqual([1_000, 2_000, 1_000]);
+  });
+
+  it("takes the hosted home's refusal of a submission it doesn't hold as an end, and a failure as a retry (R01-3)", () => {
+    const refusal = (code: Parameters<typeof createDiagnostic>[0]) =>
+      new RpcError(createDiagnostic(code, { message: "no" }));
+    expect(refusedForGood(refusal("MOSTRA_HOST_INVALID_PARAMS"))).toBe(
+      "MOSTRA_HOST_INVALID_PARAMS",
+    );
+    expect(refusedForGood(refusal("MOSTRA_HOST_METHOD_UNKNOWN"))).toBe(
+      "MOSTRA_HOST_METHOD_UNKNOWN",
+    );
+    expect(refusedForGood(refusal("MOSTRA_HOST_TIMEOUT"))).toBeUndefined();
+    expect(refusedForGood(refusal("MOSTRA_HOST_INTERNAL_ERROR"))).toBeUndefined();
+    expect(refusedForGood(new Error("the connection closed"))).toBeUndefined();
   });
 });

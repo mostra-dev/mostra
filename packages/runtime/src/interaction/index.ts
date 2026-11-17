@@ -133,6 +133,8 @@ export { createEphemeralBus, type EphemeralBus } from "./ephemeral.ts";
 export { appendEvent, compactEvents, redactEvents } from "./events.ts";
 export {
   followEvents,
+  forgetHostedOrder,
+  holdBehind,
   type ImportSource,
   importedDeliveryId,
   noteMissing,
