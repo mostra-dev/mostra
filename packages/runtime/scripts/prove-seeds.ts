@@ -7104,7 +7104,7 @@ const SEEDS: readonly Seed[] = [
   },
   {
     requirement: "MC-02",
-    name: "the bundled exporter can be removed",
+    name: "removing the bundled exporter says only that it isn't installed, not why",
     file: "src/plugins/plugins.ts",
     from: "            if (!plugins.includes(name) && bundled.has(name)) {",
     to: "            if (false) {",

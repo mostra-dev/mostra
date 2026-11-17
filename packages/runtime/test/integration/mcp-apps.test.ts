@@ -264,14 +264,13 @@ describe("the MCP App every home has (D175 items 2, 3, MC-02)", () => {
     const bundled = listed.plugins.find((plugin) => plugin.package === "@mostra/plugin-mcp-app");
     expect(bundled?.scope).toBe("bundled");
     expect(bundled?.contributions).toEqual([{ contract: "exporter", id: "mcp-app" }]);
-    expect(
-      refused(
-        await gateway.client.call("plugin/remove", {
-          home: true,
-          packages: ["@mostra/plugin-mcp-app"],
-        }),
-      ),
-    ).toBe("MOSTRA_PLUGIN_NOT_INSTALLED");
+    const removal = await gateway.client.call("plugin/remove", {
+      home: true,
+      packages: ["@mostra/plugin-mcp-app"],
+    });
+    expect(refused(removal)).toBe("MOSTRA_PLUGIN_NOT_INSTALLED");
+    // It says why: the plugin comes with Mostra, and what takes its place (D175 item 3).
+    expect(removal.error?.data.message).toContain("comes with Mostra and can't be removed");
   });
 
   it("exports a version as an MCP App with nothing installed (plugin/export)", async () => {
@@ -299,6 +298,15 @@ describe("the MCP App every home has (D175 items 2, 3, MC-02)", () => {
   });
 
   it("answers a version's MCP App (app/page), made once and kept", async () => {
+    // Exports of this version by its exporter, as the supervisor logs each one it made.
+    const exports = (): number =>
+      readFileSync(join(gateway.home.home, "logs", "supervisor.log"), "utf8")
+        .split("\n")
+        .filter((line) => line.includes('"event":"plugins.exported"'))
+        .map((line) => JSON.parse(line) as { versionId?: string; exporter?: string })
+        .filter((entry) => entry.versionId === actions.versionId && entry.exporter === "mcp-app")
+        .length;
+    const before = exports();
     const first = ok<{ artifactId: string; uri: string; html: string; meta: unknown }>(
       await gateway.client.call("app/page", { versionId: actions.versionId }, 120_000),
     );
@@ -315,6 +323,8 @@ describe("the MCP App every home has (D175 items 2, 3, MC-02)", () => {
       await gateway.client.call("app/page", { versionId: actions.versionId }),
     );
     expect(again.html).toBe(`${first.html}<!-- kept -->`);
+    // Made once: the second answer ran no exporter.
+    expect(exports() - before).toBe(1);
     expect(
       refused(
         await gateway.client.call("app/page", { versionId: "ver_ABCDEFGHJKMNPQRSTVWXYZ0123" }),
