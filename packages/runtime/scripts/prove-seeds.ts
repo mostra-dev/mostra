@@ -7411,6 +7411,15 @@ const SEEDS: readonly Seed[] = [
     check: ["test/versions.test.ts", "-t", "first-party plugin"],
     cwd: "../../tools",
   },
+  {
+    requirement: "EN-07",
+    name: "pnpm check exits before its output is out, losing the summary on a pipe (WP-17's CI)",
+    file: "../../tools/check/exit.ts",
+    from: '  process.stdout.write("", flushed);\n  process.stderr.write("", flushed);',
+    to: "  void flushed;\n  leave();",
+    check: ["test/exit.test.ts"],
+    cwd: "../../tools",
+  },
 ];
 
 const runtime = join(dirname(fileURLToPath(import.meta.url)), "..");
