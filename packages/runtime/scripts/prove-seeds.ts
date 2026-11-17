@@ -130,6 +130,8 @@ const SEEDS: readonly Seed[] = [
     name: "12: an address list that fails fails the sign-in",
     file: "src/server/providers.ts",
     from: `    if (!answer.ok) {
+      // Read to the end, so the connection is free for the next request.
+      await answer.body?.cancel().catch(() => undefined);
       log.warn("signin.github_emails_unavailable", { provider, status: answer.status });
       return undefined;
     }`,

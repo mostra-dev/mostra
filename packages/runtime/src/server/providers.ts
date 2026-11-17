@@ -241,6 +241,8 @@ async function verifiedPrimary(
       signal: AbortSignal.timeout(GITHUB_EMAILS_TIMEOUT_MS),
     });
     if (!answer.ok) {
+      // Read to the end, so the connection is free for the next request.
+      await answer.body?.cancel().catch(() => undefined);
       log.warn("signin.github_emails_unavailable", { provider, status: answer.status });
       return undefined;
     }
@@ -264,7 +266,12 @@ async function verifiedPrimary(
   } catch (error) {
     log.warn("signin.github_emails_unavailable", {
       provider,
-      reason: (error as Error).name === "TimeoutError" ? "timeout" : "unreachable",
+      reason:
+        (error as Error).name === "TimeoutError"
+          ? "timeout"
+          : error instanceof SyntaxError
+            ? "malformed"
+            : "unreachable",
     });
     return undefined;
   }
