@@ -934,8 +934,11 @@ export const MIGRATIONS: readonly Migration[] = [
   },
   {
     version: 18,
-    name: "the app channel",
+    name: "the app channel, and the hosted order of submissions read again",
     up(db) {
+      // A followed submission waits with the hosted cursor of its `submission.created`, so the
+      // owner reads them again in the hosted order (#139, D175 item 9); a row kept before has none.
+      db.exec("ALTER TABLE remote_missing ADD COLUMN hosted_cursor TEXT");
       // An inline page in an MCP Apps host acts through an app session (D175 item 4), sent only
       // in its `app/request` calls: never a cookie, a frame header or a hosted shell's header.
       db.widenCheck(

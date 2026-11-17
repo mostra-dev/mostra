@@ -131,7 +131,13 @@ import { waitFor } from "./wait.ts";
 
 export { createEphemeralBus, type EphemeralBus } from "./ephemeral.ts";
 export { appendEvent, compactEvents, redactEvents } from "./events.ts";
-export { followEvents, type ImportSource, importedDeliveryId } from "./imports.ts";
+export {
+  followEvents,
+  type ImportSource,
+  importedDeliveryId,
+  noteMissing,
+  waitingMissing,
+} from "./imports.ts";
 export type { HostConnections } from "./outbox.ts";
 export { policyInForce } from "./policy.ts";
 export { peerKey } from "./roster.ts";

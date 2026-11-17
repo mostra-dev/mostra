@@ -52,7 +52,13 @@ import {
   viewRevokeMethod,
   viewUrlMethod,
 } from "@mostra/protocol";
-import { appendEvent, followEvents, type ImportSource } from "../interaction/index.ts";
+import {
+  appendEvent,
+  followEvents,
+  type ImportSource,
+  noteMissing,
+  waitingMissing,
+} from "../interaction/index.ts";
 import type { Ledger, LedgerDb } from "../ledger/index.ts";
 import type { Environment, Log } from "../log.ts";
 import { renamePathSync } from "../platform/index.ts";
@@ -61,6 +67,7 @@ import { listingDigest } from "../publish/index.ts";
 import type { RemoteShares } from "../share/index.ts";
 import { type Binding, type BindingSession, ownerInitialize, startBinding } from "./binding.ts";
 import { postForm, type RemoteAddress, remoteRequest, testServerAddress } from "./http.ts";
+import { createReimportLine, type ReimportLine } from "./reimport.ts";
 import { createOwnerRelay, type OwnerRelayOptions } from "./relay.ts";
 
 /** The CLI's client ID at every server's authorization server (D166 item 5). */
@@ -457,10 +464,16 @@ export function createLink(options: LinkOptions): Link {
    * Reads again each followed submission this home doesn't hold (restored from a backup taken
    * before it, or a delivery it committed and then lost) and imports it as a delivery would, keeping
    * its IDs; its local deliveries repeat their derived IDs (FAILURE_MODEL §11.2). The IDs wait in
-   * `remote_missing`, written with the cursor that passed them, until imported: a read that fails
-   * is tried again on the next page and the next session (Opus review of WP-29, 3).
+   * `remote_missing`, written with the cursor that passed them and their own hosted cursor, until
+   * imported: a read that fails is tried again on the next page and the next session (Opus review
+   * of WP-29, 3). One line per server (`reimport.ts`) reads them one at a time in the hosted
+   * order, the first that fails holding the rest back (#139); each read uses the server's newest
+   * session, so a line a reconnect left resumes on the new one.
    */
-  const reimporting = new Set<string>();
+  const lines = new Map<
+    string,
+    { line: ReimportLine; session: BindingSession; source: ImportSource }
+  >();
   /** Tests: the one submission whose first read again fails (`MOSTRA_TEST_REIMPORT_FAIL`). */
   let failOnce = options.env["MOSTRA_TEST_REIMPORT_FAIL"];
   const reimport = (
@@ -468,52 +481,53 @@ export function createLink(options: LinkOptions): Link {
     session: BindingSession,
     source: ImportSource,
   ): void => {
-    const missing = ledger.read((db) =>
-      db
-        .all<{ submission_id: string }>(
-          "SELECT submission_id FROM remote_missing WHERE server = ? ORDER BY noted_at, submission_id",
-          connection.server,
-        )
-        .map((row) => row.submission_id),
-    );
-    for (const submissionId of missing) {
-      const key = `${connection.server} ${submissionId}`;
-      if (reimporting.has(key)) continue;
-      reimporting.add(key);
-      void (async () => {
-        try {
+    const server = connection.server;
+    let entry = lines.get(server);
+    if (entry === undefined) {
+      const line = createReimportLine({
+        waiting: () => ledger.read((db) => waitingMissing(db, server)),
+        read: async ({ submissionId }) => {
+          const current = lines.get(server);
+          if (current === undefined) return "retry";
           if (failOnce === submissionId) {
             failOnce = undefined;
             throw new Error("a test's failed read");
           }
-          const envelope = await session.call(
+          const envelope = await current.session.call(
             hostedSubmissionMethod,
             { submissionId },
             { timeoutMs: 30_000 },
           );
-          const answer = options.importSubmission(envelope, source);
-          // Imported, or refused for good (it can never be held here): it waits no longer.
-          if (answer.accepted || !answer.retry) {
-            ledger.write((db) =>
-              db.run(
-                "DELETE FROM remote_missing WHERE server = ? AND submission_id = ?",
-                connection.server,
-                submissionId,
-              ),
-            );
-          }
+          const answer = options.importSubmission(envelope, current.source);
           log.info("link.submission_reimported", {
-            server: connection.server,
+            server,
             submissionId,
             accepted: answer.accepted,
           });
-        } catch (error) {
-          log.warn("link.reimport_failed", { server: connection.server, submissionId, error });
-        } finally {
-          reimporting.delete(key);
-        }
-      })();
+          if (!answer.accepted && answer.retry) return "retry";
+          // Imported, or refused for good (it can never be held here): it waits no longer.
+          ledger.write((db) =>
+            db.run(
+              "DELETE FROM remote_missing WHERE server = ? AND submission_id = ?",
+              server,
+              submissionId,
+            ),
+          );
+          return "done";
+        },
+        failed: (missing, error) =>
+          log.warn("link.reimport_failed", {
+            server,
+            submissionId: missing.submissionId,
+            error,
+          }),
+      });
+      entry = { line, session, source };
+      lines.set(server, entry);
     }
+    entry.session = session;
+    entry.source = source;
+    entry.line.kick();
   };
 
   /** Copies one page of followed events, then acknowledges it (the sync cursor, §18.2). */
@@ -543,14 +557,7 @@ export function createLink(options: LinkOptions): Link {
         incarnation,
         connection.server,
       );
-      for (const submissionId of followed.missing) {
-        db.run(
-          "INSERT OR IGNORE INTO remote_missing (server, submission_id, noted_at) VALUES (?, ?, ?)",
-          connection.server,
-          submissionId,
-          new Date(now()).toISOString(),
-        );
-      }
+      noteMissing(db, connection.server, followed.missing, new Date(now()).toISOString());
       return followed;
     });
     reimport(connection, session, source);

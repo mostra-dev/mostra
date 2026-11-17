@@ -254,12 +254,53 @@ const NOT_FOLLOWED = new Set([
   "submission.undeliverable",
 ]);
 
+/**
+ * Notes followed submissions this home lacks, each with its hosted cursor, in the transaction
+ * that moves the sync cursor past them (`remote_missing`); a submission noted again keeps its
+ * first row.
+ */
+export function noteMissing(
+  db: LedgerDb,
+  server: string,
+  missing: FollowOutcome["missing"],
+  at: string,
+): void {
+  for (const one of missing) {
+    db.run(
+      "INSERT OR IGNORE INTO remote_missing (server, submission_id, noted_at, hosted_cursor) VALUES (?, ?, ?, ?)",
+      server,
+      one.submissionId,
+      at,
+      one.cursor,
+    );
+  }
+}
+
+/** The followed submissions a server's line still has to read again, with their hosted cursors. */
+export function waitingMissing(
+  db: LedgerDb,
+  server: string,
+): { readonly submissionId: string; readonly cursor?: string }[] {
+  return db
+    .all<{ submission_id: string; hosted_cursor: string | null }>(
+      "SELECT submission_id, hosted_cursor FROM remote_missing WHERE server = ?",
+      server,
+    )
+    .map((row) => ({
+      submissionId: row.submission_id,
+      ...(row.hosted_cursor !== null ? { cursor: row.hosted_cursor } : {}),
+    }));
+}
+
 /** The outcome of copying one page of followed events. */
 export interface FollowOutcome {
   /** Events appended now. */
   readonly appended: number;
-  /** Hosted submissions named by a followed `submission.created` that this home lacks. */
-  readonly missing: readonly string[];
+  /**
+   * Hosted submissions named by a followed `submission.created` that this home lacks, each with
+   * that event's hosted cursor, so they are read again in the hosted order (#139).
+   */
+  readonly missing: readonly { readonly submissionId: string; readonly cursor: string }[];
 }
 
 /**
@@ -277,13 +318,13 @@ export function followEvents(
   },
 ): FollowOutcome {
   let appended = 0;
-  const missing: string[] = [];
+  const missing: { submissionId: string; cursor: string }[] = [];
   for (const event of input.events) {
     if (event.artifactId === null || !input.owned(db, event.artifactId)) continue;
     if (event.type === "submission.created") {
       const id = event.payload["submissionId"];
       if (typeof id === "string" && !db.get("SELECT 1 FROM submission WHERE id = ?", id))
-        missing.push(id);
+        missing.push({ submissionId: id, cursor: event.cursor });
       continue;
     }
     if (NOT_FOLLOWED.has(event.type)) continue;
