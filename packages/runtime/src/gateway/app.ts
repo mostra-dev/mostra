@@ -54,6 +54,19 @@ export function appRoutesOf(specs: readonly RouteSpec[]): ReadonlyMap<AppRoute, 
   return routes;
 }
 
+/**
+ * Who calls through the app channel, as routes and admissions count callers: on a hosted home the
+ * account the session's grant names, since every user of one chat host calls from its servers'
+ * addresses; on a home of one person's, that home.
+ */
+export function appCallerOf(
+  hosted: boolean,
+  attributes: Readonly<Record<string, unknown>>,
+): string {
+  const account = hosted ? attributes["accountId"] : undefined;
+  return typeof account === "string" ? `account:${account}` : "local";
+}
+
 /** What {@link dispatchAppRequest} needs. */
 export interface AppDispatch {
   readonly routes: ReadonlyMap<AppRoute, RouteSpec>;
@@ -68,6 +81,11 @@ export interface AppDispatch {
 export async function dispatchAppRequest(
   dispatch: AppDispatch,
   params: AppRequestParams,
+  /**
+   * Who calls, as the routes' rates count callers (`RouteContext.client`): an app request has no
+   * address of its own, so the caller names it, and no two callers share one count.
+   */
+  caller: string,
 ): Promise<AppRequestResult> {
   // A refusal is logged as the HTTP runner logs one, without any of the request's secrets.
   const refused = (answer: Refusal): AppRequestResult => {
@@ -157,7 +175,7 @@ export async function dispatchAppRequest(
       session,
       document: false,
       remote: undefined,
-      client: undefined,
+      client: caller,
     };
     const response = await spec.handler(context);
     return await readAnswer(response);

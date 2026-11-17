@@ -7385,6 +7385,14 @@ const SEEDS: readonly Seed[] = [
     to: "          false",
     check: integration("remote-mcp.test.ts", "authors through the owner"),
   },
+  {
+    requirement: "MC-02",
+    name: "every app request counts as one caller for a route's rates",
+    file: "src/gateway/app.ts",
+    from: "      client: caller,",
+    to: "      client: undefined,",
+    check: unit("app-dispatch.test.ts", "its caller"),
+  },
 ];
 
 const runtime = join(dirname(fileURLToPath(import.meta.url)), "..");

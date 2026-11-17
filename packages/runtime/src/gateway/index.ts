@@ -81,7 +81,7 @@ import type { Live } from "../live/index.ts";
 import type { Environment, Log } from "../log.ts";
 import { handler, type MethodHandler } from "../protocol-server/index.ts";
 import { type ActionRoutes, actionRoutes } from "./actions.ts";
-import { APP_SESSION_ORIGIN, appRoutesOf, dispatchAppRequest } from "./app.ts";
+import { APP_SESSION_ORIGIN, appCallerOf, appRoutesOf, dispatchAppRequest } from "./app.ts";
 import { type BrowserRoutes, type BrowserRoutesOptions, browserRoutes } from "./browser.ts";
 import {
   type Capabilities,
@@ -655,6 +655,9 @@ export function createGateway(options: GatewayOptions): Gateway {
   );
   let shellPort: number | undefined;
   const hosted = options.hosted;
+  /** An app request's caller (`app.ts`, `appCallerOf`). */
+  const appCaller = (session: { readonly attributes: Readonly<Record<string, unknown>> }): string =>
+    appCallerOf(hosted !== undefined, session.attributes);
   const shellOrigin = (): string => {
     if (hosted) return hosted.shellOrigin();
     if (shellPort === undefined) throw new Error("The gateway hasn't started.");
@@ -2420,7 +2423,7 @@ export function createGateway(options: GatewayOptions): Gateway {
           sessionViewerId,
           sessionId: "",
           asked: params.version,
-          client: undefined,
+          client: appCaller(session),
         });
         if (opening.kind === "refused") return fail(opening.refused);
         if (opening.kind === "json") throw new RpcError(opening.diagnostic);
@@ -2473,8 +2476,8 @@ export function createGateway(options: GatewayOptions): Gateway {
             : {}),
         };
       }),
-      handler(appRequestMethod, (params) =>
-        dispatchAppRequest({ routes: appRoutes, capabilities, log }, params),
+      handler(appRequestMethod, (params, session) =>
+        dispatchAppRequest({ routes: appRoutes, capabilities, log }, params, appCaller(session)),
       ),
       handler(viewDefaultMethod, async (params) => {
         const detail = artifacts.get(params.artifact);
