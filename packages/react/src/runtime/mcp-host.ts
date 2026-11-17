@@ -14,6 +14,7 @@ import {
   MCP_APP_HANDOFF,
   MCP_APPS_MESSAGES,
   MCP_APPS_PROTOCOL_VERSION,
+  type McpAppHandles,
   type McpAppHandoff,
   type McpCallToolResult,
   mcpHostContextChanged,
@@ -29,18 +30,13 @@ import {
 } from "@mostra/protocol";
 
 /** The version this page's build belongs to (`<meta name="mostra-version">`). */
-function builtVersion(): string | undefined {
+export function builtVersion(): string | undefined {
   const content = document.querySelector('meta[name="mostra-version"]')?.getAttribute("content");
   return content ? content : undefined;
 }
 
-/** What artifact_open hands the page (`structuredContent.mostra`). */
-export interface McpAppHandles {
-  readonly artifactId: string;
-  readonly versionId: string;
-  readonly version: number;
-  readonly url: string;
-}
+/** What artifact_open hands the page (`structuredContent.mostra`): the protocol's one shape. */
+export type { McpAppHandles } from "@mostra/protocol";
 
 /** A host's context, as the page reads it. */
 export type McpHostContext = Readonly<Record<string, unknown>>;
@@ -78,7 +74,7 @@ export function handlesOf(result: McpCallToolResult | undefined): McpAppHandles 
   const mostra = (result.structuredContent as { mostra?: Record<string, unknown> } | undefined)
     ?.mostra;
   if (mostra === undefined || mostra === null || typeof mostra !== "object") return undefined;
-  const { artifactId, versionId, version, url } = mostra;
+  const { artifactId, versionId, version, url, personal } = mostra;
   if (
     typeof artifactId !== "string" ||
     typeof versionId !== "string" ||
@@ -89,7 +85,7 @@ export function handlesOf(result: McpCallToolResult | undefined): McpAppHandles 
   ) {
     return undefined;
   }
-  return { artifactId, versionId, version, url };
+  return { artifactId, versionId, version, url, ...(personal === true ? { personal: true } : {}) };
 }
 
 let connecting: Promise<McpHostConnection | undefined> | undefined;
@@ -145,6 +141,9 @@ async function start(): Promise<McpHostConnection | undefined> {
     // same task as the bridge began listening, so nothing is lost or heard twice.
     host = handoff.initialize;
     toolResult = handoff.toolResult;
+    // Seeded before the replay, so a context change the loader kept for the page merges into it
+    // rather than being overwritten (R02 finding 19).
+    context = { ...(host.hostContext as McpHostContext) };
     for (const kept of handoff.claim()) {
       window.dispatchEvent(
         new MessageEvent("message", {
@@ -170,12 +169,13 @@ async function start(): Promise<McpHostConnection | undefined> {
       return undefined;
     }
     bridge.notify(uiInitialized, {});
+    // Seeded before the wait, so a change the host sends meanwhile merges into it.
+    context = { ...(host.hostContext as McpHostContext) };
     toolResult = await Promise.race([
       result,
       new Promise<undefined>((resolve) => setTimeout(() => resolve(undefined), RESULT_WAIT_MS)),
     ]);
   }
-  context = { ...(host.hostContext as McpHostContext) };
   const capabilities = host.hostCapabilities as Record<string, unknown>;
   return {
     host,

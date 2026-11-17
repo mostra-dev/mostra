@@ -23,14 +23,22 @@ export const LOADER_WORDS: {
   readonly cancelled: string;
   readonly noPage: string;
   readonly failed: string;
+  readonly personal: string;
   readonly open: string;
 } = {
   opening: "Opening the page…",
   cancelled: "The page wasn't opened.",
   noPage: "This chat app can't show the page here.",
   failed: "The page couldn't be opened here.",
+  personal: "This link is made for one person, so it opens only for them.",
   open: "Open the full page",
 };
+
+/**
+ * How long the loader waits for `artifact_open`'s result before it says the page couldn't open: a
+ * host that never sends it would otherwise leave "Opening the page…" up for good (R02 finding 8).
+ */
+const RESULT_WAIT_MS = 30_000;
 
 /** The loader's script, run in the host's frame. */
 function loaderScript(version: string): string {
@@ -45,6 +53,8 @@ function loaderScript(version: string): string {
   const kept = [];
   let next = 0;
   let handed = false;
+  // Once the page has its handoff, what the host says next is the page's (R02 finding 19).
+  let offered = false;
   let initialize;
   let toolInput;
   let toolResult;
@@ -94,7 +104,8 @@ function loaderScript(version: string): string {
         resultArrived(undefined);
         return;
       case "ui/notifications/host-context-changed":
-        merge(data.params);
+        if (offered) kept.push({ data, origin: event.origin, source: event.source });
+        else merge(data.params);
         return;
       case "ui/resource-teardown":
         // Nothing is saved before the page runs: answer at once.
@@ -179,7 +190,11 @@ function loaderScript(version: string): string {
       document.documentElement.style.colorScheme = initialize.hostContext.theme;
     }
     size();
-    const answered = await result;
+    const answered = await Promise.race([
+      result,
+      new Promise((resolve) => setTimeout(() => resolve(null), ${RESULT_WAIT_MS})),
+    ]);
+    if (answered === null) return say(WORDS.failed);
     const handles =
       answered && answered.structuredContent && answered.structuredContent.mostra;
     const url = handles && typeof handles.url === "string" ? handles.url : undefined;
@@ -187,8 +202,12 @@ function loaderScript(version: string): string {
     if (answered.isError || !handles || typeof handles.versionId !== "string") {
       return say(WORDS.failed, url);
     }
+    // One person's own link: opened here it would act as them, so it isn't, nor offered.
+    if (handles.personal === true) return say(WORDS.personal);
+    // Reading the page is all it takes: without the host's tool calls the page still shows, and
+    // says its answers stay in this browser (D175 item 7, R02 finding 8).
     const capabilities = (initialize && initialize.hostCapabilities) || {};
-    if (!capabilities.serverResources || !capabilities.serverTools) return say(WORDS.noPage, url);
+    if (!capabilities.serverResources) return say(WORDS.noPage, url);
     let text;
     try {
       const read = await request("resources/read", { uri: "ui://mostra/view/" + handles.versionId });
@@ -210,6 +229,7 @@ function loaderScript(version: string): string {
         },
       }),
     });
+    offered = true;
     run(text);
   })();
 })();`;

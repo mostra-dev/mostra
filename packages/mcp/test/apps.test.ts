@@ -17,6 +17,7 @@ import {
   RpcError,
 } from "@mostra/protocol";
 import { afterEach, describe, expect, it } from "vitest";
+import { LOADER_WORDS } from "../src/loader.ts";
 import { fakeDocs, fakeInstance } from "./support.ts";
 
 const ARTIFACT = "art_01JB8Z3QF6S7W3N8D5K2C4V9XG";
@@ -154,9 +155,61 @@ describe("MCP Apps through the MCP server (D175, MC-02)", () => {
     });
     const text = (result.content as { type: string; text: string }[])[0]?.text ?? "";
     expect(JSON.parse(text).url).toBe(LINK);
+    // The text's facts, for a client that reads only these, and the page's handles beside them.
     expect(result.structuredContent).toEqual({
+      url: LINK,
+      tokenId: "tok_1",
+      scopes: ["view", "draft", "submit"],
       mostra: { artifactId: ARTIFACT, versionId: VERSION, version: 2, url: LINK },
     });
+  });
+
+  it("shows the version the link opens, the latest, after an earlier one was published again (R01 finding 1)", async () => {
+    const { options } = base({
+      "view/default": () => ({ url: LINK, tokenId: "tok_1", scopes: ["view"] }),
+      "artifact/get": () => ({
+        id: ARTIFACT,
+        title: "Plan",
+        // Version 1's source published again: the latest is 1, though 2 is the highest number.
+        latestVersion: { id: "ver_OLD", number: 1 },
+        versions: [
+          { id: VERSION, number: 2 },
+          { id: "ver_OLD", number: 1 },
+        ],
+      }),
+    });
+    const client = await overHttp(options);
+    const result = await client.callTool({
+      name: "artifact_open",
+      arguments: { artifact: ARTIFACT },
+    });
+    expect((result.structuredContent as { mostra?: unknown }).mostra).toEqual({
+      artifactId: ARTIFACT,
+      versionId: "ver_OLD",
+      version: 1,
+      url: LINK,
+    });
+  });
+
+  it("marks one person's own link so no page opens it inline as them (R02 finding 2)", async () => {
+    const { options } = base({
+      "view/url": () => ({ url: LINK, tokenId: "tok_2", scopes: ["view", "draft", "submit"] }),
+      "artifact/get": () => ({
+        id: ARTIFACT,
+        title: "Plan",
+        versions: [{ id: VERSION, number: 2 }],
+      }),
+    });
+    const client = await overHttp(options);
+    const result = await client.callTool({
+      name: "artifact_open",
+      arguments: { artifact: ARTIFACT, viewer: { ref: "alice", name: "Alice" } },
+    });
+    expect((result.structuredContent as { mostra?: { personal?: boolean } }).mostra?.personal).toBe(
+      true,
+    );
+    // The model still gets the link to hand to Alice.
+    expect(JSON.stringify(result.content)).toContain(LINK.slice(0, 20));
   });
 
   it("still answers the link when the version it opens can't be read", async () => {
@@ -222,6 +275,91 @@ describe("MCP Apps through the MCP server (D175, MC-02)", () => {
       },
     ]);
     expect(listeners).toHaveLength(1);
+  });
+
+  /** The loader's script run against a stand-in host: what it sends and says, and its timers. */
+  async function loaderInVm() {
+    const client = await overHttp(base().options);
+    const read = await client.readResource({ uri: "ui://mostra/app" });
+    const html = (read.contents[0] as { text?: string }).text ?? "";
+    const script = /<script>([\s\S]*)<\/script\s*>/i.exec(html)?.[1] ?? "";
+    const sent: { method?: string; id?: unknown; params?: Record<string, unknown> }[] = [];
+    const listeners: ((event: unknown) => void)[] = [];
+    const said: { textContent: string; tag: string }[] = [];
+    const timers: { fn: () => void; ms: number }[] = [];
+    const parent = { postMessage: (message: never) => sent.push(message) };
+    const status = {
+      set textContent(value: string) {
+        if (value === "") said.length = 0;
+      },
+      append: (element: { textContent: string; tag: string }) => said.push(element),
+    };
+    runInNewContext(script, {
+      window: {
+        parent,
+        addEventListener: (_type: string, listener: (event: unknown) => void) =>
+          listeners.push(listener),
+        removeEventListener: () => undefined,
+      },
+      document: {
+        getElementById: () => status,
+        createElement: (tag: string) => ({ tag, textContent: "", addEventListener: () => {} }),
+        documentElement: { getBoundingClientRect: () => ({ height: 40 }), style: {} },
+      },
+      setTimeout: (fn: () => void, ms: number) => timers.push({ fn, ms }),
+      Map,
+      Promise,
+      Math,
+      Object,
+    });
+    const settle = () => new Promise((resolve) => setTimeout(resolve, 0));
+    const deliver = async (data: unknown) => {
+      for (const listener of listeners) listener({ source: parent, data, origin: "https://host" });
+      await settle();
+    };
+    const initialize = (hostCapabilities: Record<string, unknown>) =>
+      deliver({
+        jsonrpc: "2.0",
+        id: "mostra-loader-1",
+        result: { hostCapabilities, hostContext: {} },
+      });
+    const result = (mostra: Record<string, unknown>) =>
+      deliver({
+        jsonrpc: "2.0",
+        method: "ui/notifications/tool-result",
+        params: { content: [], structuredContent: { mostra } },
+      });
+    return { sent, said, timers, initialize, result, settle };
+  }
+
+  const HANDLES = { artifactId: ARTIFACT, versionId: VERSION, version: 2, url: LINK };
+
+  it("never reads or opens one person's own link, and offers no way into it (R02 finding 2)", async () => {
+    const loader = await loaderInVm();
+    await loader.initialize({ serverResources: {}, serverTools: {} });
+    await loader.result({ ...HANDLES, personal: true });
+    expect(loader.sent.some((message) => message.method === "resources/read")).toBe(false);
+    expect(loader.said.map((element) => element.textContent)).toEqual([LOADER_WORDS.personal]);
+  });
+
+  it("reads the page where the host reads resources but runs no tools (R02 finding 8)", async () => {
+    const loader = await loaderInVm();
+    await loader.initialize({ serverResources: {} });
+    await loader.result(HANDLES);
+    const reads = loader.sent.filter((message) => message.method === "resources/read");
+    expect(reads.map((message) => message.params)).toEqual([
+      { uri: `ui://mostra/view/${VERSION}` },
+    ]);
+  });
+
+  it("says the page couldn't open when no tool result comes (R02 finding 8)", async () => {
+    const loader = await loaderInVm();
+    await loader.initialize({ serverResources: {}, serverTools: {} });
+    const wait = loader.timers.find((timer) => timer.ms === 30_000);
+    expect(wait).toBeDefined();
+    wait?.fn();
+    await loader.settle();
+    expect(loader.said.map((element) => element.textContent)).toEqual([LOADER_WORDS.failed]);
   });
 
   it("reads a version's page from the instance (app/page), and names a missing one", async () => {

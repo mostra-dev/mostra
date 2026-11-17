@@ -19,6 +19,8 @@ interface Setup {
   readonly hostContext: Record<string, unknown>;
   /** A host whose server has no app-only tools: every `app_*` call fails (MC-03). */
   readonly refuseTools?: boolean;
+  /** A host that can't pass the page's saves on: `app_fields` fails, so edits stay unsent. */
+  readonly refuseFields?: boolean;
 }
 
 declare global {
@@ -52,6 +54,9 @@ window.hostBridge = bridge;
 bridge.oncalltool = async (params) => {
   if (setup.refuseTools && params.name.startsWith("app_")) {
     throw new Error(`Unknown tool: ${params.name}`);
+  }
+  if (setup.refuseFields && params.name === "app_fields") {
+    throw new Error("The host couldn't reach the server.");
   }
   return (await window.mcpCallTool(params)) as never;
 };

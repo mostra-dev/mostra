@@ -17,7 +17,8 @@ export type Unavailable =
   | "frames"
   | "origin"
   | "tools"
-  | "streaming";
+  | "streaming"
+  | "personal";
 
 /** What the inline chrome offers hooks. */
 export interface InlineSink {

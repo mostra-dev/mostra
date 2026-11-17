@@ -52,7 +52,11 @@ interface Opened {
 async function openInline(
   page: Page,
   artifactId: string,
-  options: { readonly refuseTools?: boolean; readonly mcp?: McpClient } = {},
+  options: {
+    readonly refuseTools?: boolean;
+    readonly refuseFields?: boolean;
+    readonly mcp?: McpClient;
+  } = {},
 ): Promise<Opened> {
   const mcp = options.mcp ?? sharedMcp;
   const { tools } = await mcp.listTools();
@@ -95,6 +99,7 @@ async function openInline(
       sandbox: host.sandbox,
       hostContext: HOST_CONTEXT,
       ...(options.refuseTools ? { refuseTools: true } : {}),
+      ...(options.refuseFields ? { refuseFields: true } : {}),
     },
   );
   await page.goto(host.url);
@@ -105,6 +110,51 @@ async function openInline(
 const bar = (view: FrameLocator) => view.getByRole("region", { name: "Mostra" });
 
 test.describe("an artifact inline in an MCP Apps host (MC-02)", () => {
+  test("keeps each artifact's unsent answers its own, though a host gives every page one origin (D175 item 6)", async ({
+    page,
+  }, info) => {
+    // Three pages inline, one after another.
+    test.setTimeout(120_000);
+    const client = await Client.connect(run.socket);
+    try {
+      const first = await publishOwn(client, run.home, info, { fixture: "inline" });
+      const second = await publishOwn(client, run.home, info, { fixture: "inline" });
+      // The first page's save never reaches the server: its answer waits in the journal.
+      const a = await openInline(page, first.artifactId, { refuseFields: true });
+      // Each page's first showing, given room on a loaded machine.
+      const shown = { timeout: 30_000 };
+      await expect(a.view.getByTestId("mode")).toHaveText("mcp-app", shown);
+      await a.view.getByTestId("name").fill("Only the first's");
+      await a.view.getByTestId("name").blur();
+      await expect(bar(a.view).getByText("Not saved yet")).toBeVisible();
+      await page.close();
+      // Another artifact's page, in the same sandbox origin, once the first's tab is gone: it
+      // adopts what gone tabs left in its journal, and nothing of the first artifact's.
+      const b = await openInline(await page.context().newPage(), second.artifactId);
+      // Its required name is still missing: had it adopted the first's answer, nothing would be.
+      await expect(bar(b.view).getByText("1 answer needed")).toBeVisible(shown);
+      await expect.poll(() => b.calls.some((call) => call.name === "app_events"), shown).toBe(true);
+      await expect(b.view.getByTestId("name")).toHaveValue("");
+      expect(JSON.stringify(b.calls)).not.toContain("Only the first's");
+      // The first artifact's own page, opened again, finds its answer and sends it.
+      const again = await openInline(await page.context().newPage(), first.artifactId);
+      await expect(again.view.getByTestId("name")).toHaveValue("Only the first's", shown);
+      await expect
+        .poll(
+          () =>
+            again.calls.some(
+              (call) =>
+                call.name === "app_fields" &&
+                JSON.stringify(call.arguments).includes("Only the first's"),
+            ),
+          shown,
+        )
+        .toBe(true);
+    } finally {
+      client.close();
+    }
+  });
+
   test("renders through the loader; fields, submit, calls and runs go through the app-only tools", async ({
     page,
   }, info) => {

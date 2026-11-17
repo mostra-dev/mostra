@@ -2090,6 +2090,7 @@ export const MCP_APPS_PROTOCOL_VERSION = "2026-01-26";
 // @public
 export interface McpAppHandles {
     readonly artifactId: string;
+    readonly personal?: boolean;
     readonly url: string;
     readonly version: number;
     readonly versionId: string;

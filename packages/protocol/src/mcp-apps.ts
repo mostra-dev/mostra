@@ -83,6 +83,11 @@ export interface McpAppHandles {
   readonly version: number;
   /** The capability link (`…#t=<secret>`), the same the model hands the person. */
   readonly url: string;
+  /**
+   * `true` for a link made for one person (`artifact_open` with `viewer`): the page never opens it
+   * inline, where it would act as them (R02 finding 2).
+   */
+  readonly personal?: boolean;
 }
 
 /** The Zod schema of the `McpAppHandles` type. */
@@ -91,6 +96,7 @@ export const McpAppHandles: z.ZodType<McpAppHandles> = z.looseObject({
   versionId: z.string().min(1).max(64),
   version: z.int().min(1),
   url: z.string().min(1).max(8192),
+  personal: z.boolean().exactOptional(),
 }) as z.ZodType<McpAppHandles>;
 
 /** The secret of a capability link: its fragment's `t` (D97). */

@@ -16,7 +16,7 @@ import {
 import { startInline } from "./inline.ts";
 import { noteUnavailable } from "./inline-sink.ts";
 import { IndexedDbJournal, type Journal, MemoryJournal } from "./journal.ts";
-import { connectMcpHost } from "./mcp-host.ts";
+import { builtVersion, connectMcpHost } from "./mcp-host.ts";
 import { applyHostContext } from "./mcp-theme.ts";
 import { McpAppTransport } from "./mcp-transport.ts";
 import { Store } from "./store.ts";
@@ -41,7 +41,44 @@ function watchHeight(report: (height: number) => void): void {
   measure();
 }
 
-/** Starts the page inline. */
+/**
+ * Where a page inline keeps what it holds in this browser. An MCP Apps host gives every page one
+ * sandbox origin, where Mostra's gateway gives each artifact its own (D38), so each place is named
+ * for the page's artifact (its version, when the host named none): its journal of unsent answers,
+ * the lock the journal's adoption takes, and the keys answers kept only here are stored under. No
+ * page ever adopts, sends or shows another artifact's answers (D175 item 6).
+ */
+export function inlinePlaces(owner: string): {
+  readonly journal: string;
+  readonly lock: string;
+  readonly local: string;
+} {
+  return {
+    journal: `mostra:${owner}`,
+    lock: `mostra-journal:${owner}`,
+    local: `mostra.app.${owner}.`,
+  };
+}
+
+/** The browser's `localStorage` under one prefix, or none where it can't be used. */
+function storageUnder(
+  prefix: string,
+): Pick<Storage, "getItem" | "setItem" | "removeItem"> | undefined {
+  let storage: Storage | undefined;
+  try {
+    storage = typeof localStorage === "undefined" ? undefined : localStorage;
+  } catch {
+    storage = undefined;
+  }
+  if (storage === undefined) return undefined;
+  const kept = storage;
+  return {
+    getItem: (key) => kept.getItem(`${prefix}${key}`),
+    setItem: (key, value) => kept.setItem(`${prefix}${key}`, value),
+    removeItem: (key) => kept.removeItem(`${prefix}${key}`),
+  };
+}
+
 /** The runtime of a page inline: its store and where it runs (boot adds that no shell frames it). */
 export interface InlineRuntime {
   readonly store: Store;
@@ -56,21 +93,37 @@ export async function startMcpApp(
     readonly tabPresence: (
       tab: string,
     ) => (tabs: readonly string[]) => Promise<ReadonlySet<string>>;
-    readonly exclusive: <T>(fn: () => Promise<T>) => Promise<T>;
+    readonly exclusive: <T>(fn: () => Promise<T>, name?: string) => Promise<T>;
   },
 ): Promise<InlineRuntime> {
   const target: DeliveryTarget = "mcp-app";
   const host = await connectMcpHost();
-  const local = (): Store => {
-    const store = new Store({ mode: "local", journal: new MemoryJournal(), tab });
+  const local = (owner: string | undefined): Store => {
+    const storage = owner === undefined ? undefined : storageUnder(inlinePlaces(owner).local);
+    const store = new Store({
+      mode: "local",
+      journal: new MemoryJournal(),
+      tab,
+      // Never the origin's own keys, which every page inline shares; with no name at all, this
+      // page's memory only.
+      local: storage ?? memoryStorage(),
+    });
     store.start();
     return store;
   };
-  if (host === undefined) return { store: local(), target, mode: target };
+  if (host === undefined) return { store: local(builtVersion()), target, mode: target };
   applyHostContext(host.context());
   host.onContext(applyHostContext);
   watchHeight((height) => host.reportHeight(height));
   const handles = host.handles;
+  if (handles?.personal === true) {
+    // One person's own link: opened here it would act as them (R02 finding 2). The page shows,
+    // keeps nothing anywhere but here, and offers no way into their view.
+    const store = local(handles.artifactId);
+    startInline({ store, host, handles: undefined });
+    noteUnavailable("personal");
+    return { store, target, mode: target };
+  }
   let opened: (ViewContextWire & AppOpenResultFacts) | undefined;
   if (handles !== undefined && host.tools) {
     try {
@@ -87,13 +140,14 @@ export async function startMcpApp(
     }
   }
   if (opened === undefined || handles === undefined) {
-    const store = local();
+    const store = local(handles?.artifactId ?? builtVersion());
     startInline({ store, host, handles });
     noteUnavailable("tools");
     return { store, target, mode: target };
   }
   const view = readViewContext(opened);
-  const journal: Journal = (await IndexedDbJournal.open()) ?? new MemoryJournal();
+  const places = inlinePlaces(handles.artifactId);
+  const journal: Journal = (await IndexedDbJournal.open(places.journal)) ?? new MemoryJournal();
   const store = new Store({
     mode: "live",
     transport: new McpAppTransport(host, {
@@ -111,7 +165,7 @@ export async function startMcpApp(
     ...(opened.viewer ? { viewer: opened.viewer } : {}),
     tab,
     goneTabs: page.tabPresence(tab),
-    exclusive: page.exclusive,
+    exclusive: (fn) => page.exclusive(fn, places.lock),
     channel: (name) =>
       typeof BroadcastChannel === "undefined" ? undefined : new BroadcastChannel(name),
   });
@@ -130,4 +184,14 @@ interface AppOpenResultFacts {
   readonly session: string;
   readonly scopes: readonly string[];
   readonly viewer?: Viewer;
+}
+
+/** Storage that lasts as long as the page: for a page that knows neither its artifact nor version. */
+function memoryStorage(): Pick<Storage, "getItem" | "setItem" | "removeItem"> {
+  const kept = new Map<string, string>();
+  return {
+    getItem: (key) => kept.get(key) ?? null,
+    setItem: (key, value) => void kept.set(key, value),
+    removeItem: (key) => void kept.delete(key),
+  };
 }

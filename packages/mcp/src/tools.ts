@@ -617,32 +617,41 @@ export function createTools(
         const detail = await options.instance
           .call(artifactGetMethod, { artifact })
           .catch(() => undefined);
+        // The version the link opens, by the gateway's own rule: the latest one, which a publish
+        // of an earlier source makes again (D09), not the highest number (R01 finding 1).
         const shown =
           detail === undefined
             ? undefined
             : args.version === undefined
-              ? detail.versions[0]
+              ? (detail.latestVersion ?? detail.versions[0])
               : detail.versions.find((version) =>
                   typeof args.version === "number"
                     ? version.number === args.version
                     : version.id === args.version,
                 );
-        const page = (value: unknown): CallToolResult => {
+        const page = (value: Record<string, unknown>): CallToolResult => {
           const result = jsonResult(value);
           if (detail === undefined || shown === undefined) return result;
           return {
             ...result,
+            // The same facts as the text, for a client that reads only this (R02 finding 20),
+            // and the page's handles beside them.
             structuredContent: {
+              ...value,
               mostra: {
                 artifactId: detail.id,
                 versionId: shown.id,
                 version: shown.number,
                 url: link.url,
+                // A link made for one person is theirs: shown inline it would open their view,
+                // save into their draft and spend their submission (R02 finding 2), so the page
+                // never opens it.
+                ...(args.viewer !== undefined ? { personal: true } : {}),
               },
             },
           };
         };
-        if (args.open !== true) return page(link);
+        if (args.open !== true) return page({ ...link });
         if (options.browser === undefined) return page({ ...link, opened: false });
         const launch = await options.instance.call(viewLaunchMethod, { tokenId: link.tokenId });
         return page({ ...link, opened: await options.browser.open(launch.url) });

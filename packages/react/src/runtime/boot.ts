@@ -125,11 +125,14 @@ function tabPresence(tab: string): (tabs: readonly string[]) => Promise<Readonly
   };
 }
 
-/** Runs `fn` while no other page of the artifact adopts journal entries. */
-function exclusive<T>(fn: () => Promise<T>): Promise<T> {
+/**
+ * Runs `fn` while no other page of the artifact adopts journal entries: the origin's lock, or the
+ * one `name` names (an inline page's, of its artifact's own journal, D175 item 6).
+ */
+function exclusive<T>(fn: () => Promise<T>, name = "mostra-journal"): Promise<T> {
   const api = locks();
   if (!api) return fn();
-  return api.request("mostra-journal", fn) as Promise<T>;
+  return api.request(name, fn) as Promise<T>;
 }
 
 /** The longest pause between two attempts at the shell's handshake. */
