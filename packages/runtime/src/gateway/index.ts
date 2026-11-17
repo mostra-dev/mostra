@@ -2407,9 +2407,9 @@ export function createGateway(options: GatewayOptions): Gateway {
         );
       }),
       handler(appOpenMethod, async (params, session): Promise<AppOpenResult> => {
-        // The link's secret authorizes, as in a browser (D06); a link of any of the home's
-        // addresses opens here, since the app channel has none of its own (D175 item 4).
-        const grant = capabilities.presentToken(params.token, params.artifactId, "*");
+        // The link's secret authorizes, as in a browser (D06), and only while the home serves the
+        // address it was made for: the app channel has none of its own (D175 item 4, R01-4).
+        const grant = capabilities.presentToken(params.token, params.artifactId, servesShell);
         if (isRefusal(grant)) return fail(grant);
         // A link minted without a viewer acts as the home's local user, and on a hosted home as
         // the account the session's grant names (verified, kind `account`).

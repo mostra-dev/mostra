@@ -2803,7 +2803,7 @@ const SEEDS: readonly Seed[] = [
     requirement: "wp05-claude-origin",
     name: "a link works at whatever address the shell moved to",
     file: "src/gateway/capabilities.ts",
-    from: '    if (shellOrigin !== "*" && row.shell_origin !== (shellOrigin ?? this.#shellOrigin())) {',
+    from: "    if (!atItsAddress) {",
     to: "    if (false) {",
     check: integration("gateway.test.ts", "shell moved to another port"),
   },
@@ -7513,6 +7513,14 @@ const SEEDS: readonly Seed[] = [
     from: '  db.run("UPDATE remote_missing SET hosted_cursor = NULL WHERE server = ?", server);',
     to: "  void db;\n  void server;",
     check: unit("imports.test.ts", "holds a delivery behind an earlier submission"),
+  },
+  {
+    requirement: "MC-02",
+    name: "a link whose address closed still opens inline (R01-4)",
+    file: "src/gateway/index.ts",
+    from: "        const grant = capabilities.presentToken(params.token, params.artifactId, servesShell);",
+    to: "        const grant = capabilities.presentToken(params.token, params.artifactId, () => true);",
+    check: integration("gateway.test.ts", "shell moved to another port"),
   },
 ];
 
