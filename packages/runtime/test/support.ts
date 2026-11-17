@@ -214,6 +214,19 @@ export function tempDir(prefix: string, short = false): string {
   return dir;
 }
 
+/**
+ * A temporary directory on Windows' system volume (`%LOCALAPPDATA%\Temp`), for a check that needs
+ * what only that volume does, such as making 8.3 names: CI keeps temporary files on the
+ * workspace's drive, which makes none (#95). Elsewhere, {@link tempDir}'s.
+ */
+export function systemVolumeTempDir(prefix: string): string {
+  const local = process.env["LOCALAPPDATA"];
+  if (!WINDOWS || !local || !existsSync(join(local, "Temp"))) return tempDir(prefix);
+  const dir = realpathSync.native(mkdtempSync(join(local, "Temp", `${prefix}-`)));
+  created.push(dir);
+  return dir;
+}
+
 /** The built runtime binary (`pnpm --filter @mostra/runtime build`). */
 export const BIN: string = join(dirname(fileURLToPath(import.meta.url)), "../dist/bin.js");
 

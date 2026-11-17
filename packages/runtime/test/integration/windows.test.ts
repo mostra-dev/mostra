@@ -35,6 +35,7 @@ import {
   initializeParams,
   sealedAgainstWrites,
   startDaemon,
+  systemVolumeTempDir,
   tempDir,
   testHome,
   WINDOWS,
@@ -652,8 +653,9 @@ describe.runIf(WINDOWS)("a home's spellings on Windows (RT-11, D151 item 5)", ()
   it("is the same home under its short name or another case, and another home under a name only JavaScript's lower case makes equal (Opus review of WP-W2, findings 7 and 8)", async () => {
     const base = testHome();
     // A long name with a space, which always has an 8.3 spelling where 8.3 names are made
-    // (Windows' system volume); a `k`, which the Kelvin sign below stands beside.
-    const root = join(dirname(base.home), "Long kiosk home");
+    // (Windows' system volume, where this home is made); a `k`, which the Kelvin sign below
+    // stands beside.
+    const root = join(systemVolumeTempDir("spellings"), "Long kiosk home");
     const home = { ...base, home: join(root, "home") };
     mkdirSync(home.home, { recursive: true });
     const daemon = await startDaemon(home);
