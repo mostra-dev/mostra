@@ -94,6 +94,8 @@ export interface DataDirectoryOptions<T> {
    * when it first opens (INTERFACES §18.2).
    */
   readonly restored?: readonly string[];
+  /** How often an open home's marks are looked at, and written when they moved. Default 10 s. */
+  readonly markIntervalMs?: number;
 }
 
 /** A home's head and relay high-water mark, as `home_cursor` records them (DATA_MODEL §7.1). */
@@ -184,16 +186,33 @@ export async function openDataDirectory<T>(
   /** `--restored`'s homes not opened since this server started. */
   const restores = new Set(options.restored ?? []);
 
-  /** Writes a home's high-water marks, which a home opened below them was restored. */
-  const recordCursor = (id: string, ledger: Ledger, incarnation: string): void => {
+  /**
+   * Writes a home's high-water marks, which a home opened below them was restored. With `changed`,
+   * the row is updated only where it doesn't hold them already (MT-05): the upsert's condition
+   * leaves an unchanged row untouched, and a transaction that changes no page commits nothing to
+   * the WAL, so an open home with nothing happening gives a backup replicator nothing to ship. The
+   * restore rule reads the marks, never `updated_at`.
+   */
+  const recordCursor = (
+    id: string,
+    ledger: Ledger,
+    incarnation: string,
+    when: "always" | "changed" = "always",
+  ): void => {
     const { head, relayHigh } = marksOf(ledger);
+    const moved =
+      when === "changed"
+        ? `WHERE home_cursor.incarnation IS NOT excluded.incarnation
+             OR home_cursor.high_cursor IS NOT excluded.high_cursor
+             OR home_cursor.relay_high IS NOT excluded.relay_high`
+        : "";
     directory.write((db) =>
       db.run(
         `INSERT INTO home_cursor (home_id, incarnation, high_cursor, relay_high, updated_at)
            VALUES (?, ?, ?, ?, ?)
          ON CONFLICT(home_id) DO UPDATE SET incarnation = excluded.incarnation,
            high_cursor = excluded.high_cursor, relay_high = excluded.relay_high,
-           updated_at = excluded.updated_at`,
+           updated_at = excluded.updated_at ${moved}`,
         id,
         incarnation,
         head,
@@ -337,17 +356,18 @@ export async function openDataDirectory<T>(
     Math.min(30_000, Math.max(50, idleCloseMs / 4)),
   );
   sweep.unref();
-  // At least every 10 s while a home is open (DATA_MODEL §7.1).
+  // Within 10 s of a mark moving while a home is open, and only then (DATA_MODEL §7.1, MT-05); the
+  // writes at opening and closing are unconditional.
   const marker = setInterval(() => {
     for (const [id, entry] of entries) {
       if (!entry.ledger || entry.closing) continue;
       try {
-        recordCursor(id, entry.ledger, entry.incarnation?.() ?? "");
+        recordCursor(id, entry.ledger, entry.incarnation?.() ?? "", "changed");
       } catch (error) {
         log.warn("server.home_cursor_failed", { home: id, error });
       }
     }
-  }, 10_000);
+  }, options.markIntervalMs ?? 10_000);
   marker.unref();
 
   return {

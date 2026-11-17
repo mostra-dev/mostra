@@ -34,7 +34,7 @@ describe("the server's own pages (D171)", () => {
     const allow = pages.allow(
       at,
       { action: "/oauth/authorize/continue?authorize=a&b", csrf: "c" },
-      { name: hostile, unverified: true },
+      { name: hostile, trust: "self-named" },
       hostile,
       "client.example",
       true,

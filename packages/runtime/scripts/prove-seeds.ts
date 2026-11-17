@@ -59,6 +59,193 @@ const unit = (file: string, ...filter: string[]): string[] => [
 const e2e = (...grep: string[]): string[] => (grep.length > 0 ? ["-g", grep.join("|")] : []);
 
 const SEEDS: readonly Seed[] = [
+  // MT-05: who signs in, and what an idle home writes. Each request's check goes red on a violation
+  // planted where it is enforced (`--only MT-05`, `--name "12:"` for one request).
+  {
+    requirement: "MT-05",
+    name: "11: an operator's own client is named as it names itself, unverified",
+    file: "src/server/oauth-clients.ts",
+    from: `        const name = "error" in found ? undefined : vouched.get(found.id);`,
+    to: `        const name = "error" in found ? undefined : vouched.get("");`,
+    check: integration("oauth.test.ts", "operator's own client"),
+  },
+  {
+    requirement: "MT-05",
+    name: "11: an operator's own client skips the consent of an account that never gave it",
+    file: "src/server/authorize.ts",
+    from: "        : !auth.consented(signed.accountId, client.id);",
+    to: '        : client.trust !== "operator" && !auth.consented(signed.accountId, client.id);',
+    check: integration("oauth.test.ts", "operator's own client"),
+  },
+  {
+    requirement: "MT-05",
+    name: "11: a client ID that isn't written as its URL normalizes it is taken",
+    file: "src/server/config.ts",
+    from: "        url.href === value &&\n",
+    to: "",
+    check: unit("server-config.test.ts", "operator's own clients"),
+  },
+  {
+    requirement: "MT-05",
+    name: "11: one client named by two entries is taken",
+    file: "src/server/config.ts",
+    from: "  if (twice >= 0) {",
+    to: "  if (twice >= clients.length) {",
+    check: unit("server-config.test.ts", "operator's own clients"),
+  },
+  {
+    requirement: "MT-05",
+    name: "12: GitHub sign-in asks for no scope",
+    file: "src/server/providers.ts",
+    from: `      url.searchParams.set("scope", GITHUB_SCOPE);`,
+    to: `      url.searchParams.set("scope", "");`,
+    check: integration("signin-facts.test.ts", "verified primary address"),
+  },
+  {
+    requirement: "MT-05",
+    name: "12: the first verified address is taken, primary or not",
+    file: "src/server/providers.ts",
+    from: "        entry?.primary === true &&\n",
+    to: "",
+    check: integration("signin-facts.test.ts", "verified primary address"),
+  },
+  {
+    requirement: "MT-05",
+    name: "12: a primary address GitHub never verified is taken as verified",
+    file: "src/server/providers.ts",
+    from: "        entry.verified === true &&\n",
+    to: "",
+    check: integration("signin-facts.test.ts", "verified primary address"),
+  },
+  {
+    requirement: "MT-05",
+    name: "12: the address list is asked for though the person declined its scope",
+    file: "src/server/providers.ts",
+    from: "      const primary = grantsAddresses(token.scope)",
+    to: "      const primary = grantsAddresses(undefined)",
+    check: integration("signin-facts.test.ts", "scope was declined"),
+  },
+  {
+    requirement: "MT-05",
+    name: "12: an address list that fails fails the sign-in",
+    file: "src/server/providers.ts",
+    from: `    if (!answer.ok) {
+      // Read to the end, so the connection is free for the next request.
+      await answer.body?.cancel().catch(() => undefined);
+      log.warn("signin.github_emails_unavailable", { provider, status: answer.status });
+      return undefined;
+    }`,
+    to: `    if (!answer.ok) {
+      throw new Error("GitHub's address list failed.");
+    }`,
+    also: [
+      {
+        file: "src/server/providers.ts",
+        from: `  } catch (error) {
+    log.warn("signin.github_emails_unavailable", {`,
+        to: `  } catch (error) {
+    if ((error as Error).message.startsWith("GitHub's")) throw error;
+    log.warn("signin.github_emails_unavailable", {`,
+      },
+    ],
+    check: integration("signin-facts.test.ts", "scope was declined"),
+  },
+  {
+    requirement: "MT-05",
+    name: "12: an address list that never answers holds the sign-in past its bound",
+    file: "src/server/providers.ts",
+    from: "      signal: AbortSignal.timeout(left),\n",
+    to: "",
+    check: integration("signin-facts.test.ts", "scope was declined"),
+  },
+  {
+    requirement: "MT-05",
+    name: "13: an open home writes its marks at every tick, moved or not",
+    file: "src/server/data.ts",
+    from: `        recordCursor(id, entry.ledger, entry.incarnation?.() ?? "", "changed");`,
+    to: `        recordCursor(id, entry.ledger, entry.incarnation?.() ?? "");`,
+    check: integration("idle-marks.test.ts", "no transaction"),
+  },
+  {
+    requirement: "MT-05",
+    name: "13: a tick leaves an incarnation the home took while open unwritten",
+    file: "src/server/data.ts",
+    from: "home_cursor.incarnation IS NOT excluded.incarnation",
+    to: "0",
+    check: unit("data-marks.test.ts", "new incarnation"),
+  },
+  {
+    requirement: "MT-05",
+    name: "13: a tick leaves a moved head unwritten",
+    file: "src/server/data.ts",
+    from: "home_cursor.high_cursor IS NOT excluded.high_cursor",
+    to: "0",
+    check: unit("data-marks.test.ts", "head moves"),
+  },
+  {
+    requirement: "MT-05",
+    name: "12: the directory keeps the address an operator's sign-in carried (D176, M77)",
+    file: "src/server/auth.ts",
+    from: "linked_at, verified_by, verified_recorded_at)\n         VALUES (?, ?, ?, ?, ?, ?, ?)",
+    to: "linked_at, verified_by, verified_recorded_at, email)\n         VALUES (?, ?, ?, ?, ?, ?, ?, 'ada@example.org')",
+    check: integration("signin-facts.test.ts", "verified primary address, though private"),
+  },
+  {
+    requirement: "MT-05",
+    name: "12: the directory's migration 7 leaves the addresses written before (D176, M77)",
+    file: "src/server/directory.ts",
+    from: "      db.exec(`UPDATE identity SET email = NULL WHERE email IS NOT NULL;`);",
+    to: "      db.exec(`SELECT 1;`);",
+    check: unit("directory-address.test.ts", "clears the addresses"),
+  },
+  {
+    requirement: "MT-05",
+    name: "13: a tick leaves a relay mark that moved alone unwritten (Opus review 5)",
+    file: "src/server/data.ts",
+    from: "home_cursor.relay_high IS NOT excluded.relay_high",
+    to: "0",
+    check: unit("data-marks.test.ts", "relay mark that moved alone"),
+  },
+  {
+    requirement: "MT-05",
+    name: "12: the address list runs past the sign-in's bound after a slow code exchange (Opus review 1)",
+    file: "src/server/providers.ts",
+    from: "  const left = Math.min(GITHUB_EMAILS_TIMEOUT_MS, deadline - Date.now());",
+    to: "  const left = GITHUB_EMAILS_TIMEOUT_MS + 0 * deadline;",
+    check: integration("signin-facts.test.ts", "scope was declined"),
+  },
+  {
+    requirement: "MT-05",
+    name: "12: an exchange's answer without `scope` is taken as declining the address scope (Opus review 8)",
+    file: "src/server/providers.ts",
+    from: `  if (typeof scope !== "string") return true;`,
+    to: `  if (typeof scope !== "string") return false;`,
+    check: integration("signin-facts.test.ts", "scope was declined"),
+  },
+  {
+    requirement: "MT-05",
+    name: "12: a refused address list logs the request's token (Opus review 8)",
+    file: "src/server/providers.ts",
+    from: `      log.warn("signin.github_emails_unavailable", { provider, status: answer.status });`,
+    to: `      log.warn("signin.github_emails_unavailable", { provider, status: answer.status, sent: headers.authorization });`,
+    check: integration("signin-facts.test.ts", "scope was declined"),
+  },
+  {
+    requirement: "MT-05",
+    name: "11: an operator's client on an address is taken (Opus review 2)",
+    file: "src/server/config.ts",
+    from: `        isIP(url.hostname.replace(/^\\[|\\]$/g, "")) === 0`,
+    to: "        true",
+    check: unit("server-config.test.ts", "operator's own clients"),
+  },
+  {
+    requirement: "MT-05",
+    name: "11: an operator's client on a user-content domain is taken (Opus review 2)",
+    file: "src/server/config.ts",
+    from: "  if (tenant >= 0) {",
+    to: "  if (tenant >= clients.length) {",
+    check: unit("server-config.test.ts", "operator's own clients"),
+  },
   // MT-03: the operator ports as specified, and what sign-in and metering lack. Each item's check
   // goes red on a violation planted where it is enforced (`--only MT-03`, `--name "1:"` for one).
   // UX-01 (D171): the server's own pages keep their rules through the design pass.

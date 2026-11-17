@@ -6,9 +6,11 @@
  * - `oidc`: any OpenID Connect provider, by its issuer's discovery document; the authorization
  *   code flow with PKCE (S256) and a nonce, and the ID token checked (signature, issuer, audience,
  *   expiry, nonce) by `openid-client`; the claims its entry names (`claims`) go into `facts`.
- * - `github`: GitHub's OAuth web flow with PKCE, then `GET /user` for the account's stable ID, its
- *   login and name, and for an operator's policy its age (`facts.createdAt`) and public counts
- *   (`facts.publicRepos`, `publicGists`, `followers`).
+ * - `github`: GitHub's OAuth web flow with PKCE and the scope `user:email` (read-only access to the
+ *   account's addresses), then `GET /user` for the account's stable ID, its login and name, and for
+ *   an operator's policy its age (`facts.createdAt`) and public counts (`facts.publicRepos`,
+ *   `publicGists`, `followers`); and beside it `GET /user/emails` for the primary address GitHub
+ *   marks verified, which the identity carries with `emailVerified: true` (MT-05).
  * - `development`: a page that asks for a name and trusts it, for tests and a self-hoster's first
  *   run; its names are never shown as verified.
  *
@@ -30,12 +32,39 @@ import { configuredVerifier, type IdentityProviderConfig } from "./config.ts";
 /** How long a provider's discovery, token exchange or user lookup may take. */
 const PROVIDER_TIMEOUT_MS = 8_000;
 
-/** GitHub's endpoints (VERIFIED_FACTS, WP-30). */
+/** GitHub's endpoints (VERIFIED_FACTS, WP-30, MT-05). */
 const GITHUB = {
   authorize: "https://github.com/login/oauth/authorize",
   token: "https://github.com/login/oauth/access_token",
   user: "https://api.github.com/user",
+  emails: "https://api.github.com/user/emails",
 } as const;
+
+/**
+ * What the GitHub adapter asks for (MT-05): read-only access to the account's addresses, so the
+ * identity can carry the primary one GitHub verified. GitHub shows it on its own consent screen.
+ */
+const GITHUB_SCOPE = "user:email";
+
+/**
+ * How long the address lookup may take. It runs beside `GET /user`, inside the provider's own
+ * bound, so a slow answer gives no address rather than costing the person their sign-in.
+ */
+const GITHUB_EMAILS_TIMEOUT_MS = 3_000;
+
+/**
+ * How much of the sign-in's bound (8 s for a provider's whole answer, `authorize.ts`) the address
+ * lookup may run into: it gives up half a second before it, however long GitHub's code exchange
+ * took, so a slow exchange and a slow list together never cost the person their sign-in (the
+ * Claude Opus review of MT-05).
+ */
+const GITHUB_CALLBACK_BUDGET_MS = PROVIDER_TIMEOUT_MS - 500;
+
+/** The REST API version the adapter reads GitHub's answers in (VERIFIED_FACTS, MT-05). */
+const GITHUB_API_VERSION = "2022-11-28";
+
+/** The longest address an identity carries (`SignInIdentity.email`). */
+const EMAIL_MAX = 320;
 
 /** A built-in provider: the port's shape, its kind, and its verifier (all but `development`). */
 export interface BuiltInProvider extends IdentityProvider {
@@ -192,8 +221,86 @@ function count(name: string, value: unknown): Record<string, number> {
   return Number.isSafeInteger(value) && (value as number) >= 0 ? { [name]: value as number } : {};
 }
 
-/** The GitHub adapter: an OAuth app's web flow with PKCE (VERIFIED_FACTS, WP-30). */
-function githubProvider(config: IdentityProviderConfig, env: Environment): BuiltInProvider {
+/**
+ * Whether a token GitHub issued holds the address scope, from the `scope` its exchange answered
+ * (comma-separated, normalized: `user` includes `user:email`). A person can grant less than the
+ * adapter asks on GitHub's screen; an answer without `scope` is taken as granting what was asked.
+ */
+function grantsAddresses(scope: unknown): boolean {
+  if (typeof scope !== "string") return true;
+  const granted = scope.split(/[,\s]+/).filter((part) => part !== "");
+  return granted.includes(GITHUB_SCOPE) || granted.includes("user");
+}
+
+/**
+ * The primary address GitHub marks verified, from `GET /user/emails` (MT-05), or none: when the
+ * token lacks the scope, GitHub answers otherwise than 200, the answer isn't the list it documents,
+ * or it takes longer than {@link GITHUB_EMAILS_TIMEOUT_MS}. None of these fails the sign-in.
+ */
+async function verifiedPrimary(
+  url: string,
+  headers: Record<string, string>,
+  provider: string,
+  log: Log,
+  deadline: number,
+): Promise<string | undefined> {
+  const left = Math.min(GITHUB_EMAILS_TIMEOUT_MS, deadline - Date.now());
+  if (left <= 0) {
+    log.warn("signin.github_emails_unavailable", { provider, reason: "timeout" });
+    return undefined;
+  }
+  try {
+    const answer = await fetch(`${url}?per_page=100`, {
+      headers,
+      signal: AbortSignal.timeout(left),
+    });
+    if (!answer.ok) {
+      // Read to the end, so the connection is free for the next request.
+      await answer.body?.cancel().catch(() => undefined);
+      log.warn("signin.github_emails_unavailable", { provider, status: answer.status });
+      return undefined;
+    }
+    const listed = (await answer.json()) as unknown;
+    if (!Array.isArray(listed)) {
+      log.warn("signin.github_emails_unavailable", {
+        provider,
+        status: answer.status,
+        reason: "malformed",
+      });
+      return undefined;
+    }
+    for (const entry of listed as { email?: unknown; primary?: unknown; verified?: unknown }[]) {
+      if (
+        entry?.primary === true &&
+        entry.verified === true &&
+        typeof entry.email === "string" &&
+        entry.email.length <= EMAIL_MAX &&
+        entry.email.includes("@")
+      ) {
+        return entry.email;
+      }
+    }
+    return undefined;
+  } catch (error) {
+    log.warn("signin.github_emails_unavailable", {
+      provider,
+      reason:
+        (error as Error).name === "TimeoutError"
+          ? "timeout"
+          : error instanceof SyntaxError
+            ? "malformed"
+            : "unreachable",
+    });
+    return undefined;
+  }
+}
+
+/** The GitHub adapter: an OAuth app's web flow with PKCE (VERIFIED_FACTS, WP-30, MT-05). */
+function githubProvider(
+  config: IdentityProviderConfig,
+  env: Environment,
+  log: Log,
+): BuiltInProvider {
   if (config.clientId === undefined) {
     throw invalid(`The identity provider \`${config.id}\` (github) needs \`clientId\`.`);
   }
@@ -206,6 +313,7 @@ function githubProvider(config: IdentityProviderConfig, env: Environment): Built
           authorize: `${base}/login/oauth/authorize`,
           token: `${base}/login/oauth/access_token`,
           user: `${base}/user`,
+          emails: `${base}/user/emails`,
         }
       : GITHUB;
   return {
@@ -218,13 +326,14 @@ function githubProvider(config: IdentityProviderConfig, env: Environment): Built
       url.searchParams.set("client_id", config.clientId as string);
       url.searchParams.set("redirect_uri", context.redirectUri);
       url.searchParams.set("state", state);
-      url.searchParams.set("scope", "");
+      url.searchParams.set("scope", GITHUB_SCOPE);
       url.searchParams.set("allow_signup", "true");
       url.searchParams.set("code_challenge", pkce.challenge);
       url.searchParams.set("code_challenge_method", "S256");
       return url.href;
     },
     async callback(params, context) {
+      const deadline = Date.now() + GITHUB_CALLBACK_BUDGET_MS;
       if (params["error"] !== undefined) {
         throw new Error(`GitHub refused the sign-in (${params["error"]}).`);
       }
@@ -246,18 +355,23 @@ function githubProvider(config: IdentityProviderConfig, env: Environment): Built
       });
       const token = (await exchanged.json().catch(() => ({}))) as {
         access_token?: string;
+        scope?: string;
         error?: string;
       };
       if (!exchanged.ok || typeof token.access_token !== "string") {
         throw new Error(`GitHub's code exchange failed (${token.error ?? exchanged.status}).`);
       }
-      const user = await timedFetch(endpoints.user, {
-        headers: {
-          accept: "application/vnd.github+json",
-          authorization: `Bearer ${token.access_token}`,
-          "user-agent": "mostra-remote-server",
-        },
-      });
+      const headers = {
+        accept: "application/vnd.github+json",
+        authorization: `Bearer ${token.access_token}`,
+        "user-agent": "mostra-remote-server",
+        "x-github-api-version": GITHUB_API_VERSION,
+      };
+      // The address beside the account, in parallel, so it adds no wait of its own.
+      const primary = grantsAddresses(token.scope)
+        ? verifiedPrimary(endpoints.emails, headers, config.id, log, deadline)
+        : Promise.resolve(undefined);
+      const user = await timedFetch(endpoints.user, { headers });
       const found = (await user.json().catch(() => ({}))) as {
         id?: number;
         login?: string;
@@ -271,11 +385,18 @@ function githubProvider(config: IdentityProviderConfig, env: Environment): Built
       if (!user.ok || typeof found.id !== "number") {
         throw new Error(`GitHub's user lookup failed (${user.status}).`);
       }
+      // The primary address GitHub verified, vouched for as such; without one, the public address
+      // `GET /user` gives (only when the person made one public), unflagged as before (MT-05).
+      const verified = await primary;
       return {
         provider: config.id,
         // The numeric ID: a login can be renamed and then taken by someone else.
         subject: String(found.id),
-        ...(typeof found.email === "string" ? { email: found.email } : {}),
+        ...(verified !== undefined
+          ? { email: verified, emailVerified: true }
+          : typeof found.email === "string"
+            ? { email: found.email }
+            : {}),
         name: found.name ?? found.login ?? String(found.id),
         // What the same answer tells an operator's policy (an account's age and its public
         // counts, so a fresh, empty account is told from an established one with no other
@@ -328,7 +449,7 @@ export function builtInProviders(
       config.kind === "oidc"
         ? oidcProvider(config, options.env)
         : config.kind === "github"
-          ? githubProvider(config, options.env)
+          ? githubProvider(config, options.env, options.log)
           : developmentProvider(config, options.apiOrigin);
     options.log.info("signin.provider", { id: config.id, kind: config.kind });
     return provider;

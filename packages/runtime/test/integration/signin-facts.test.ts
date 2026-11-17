@@ -1,12 +1,16 @@
 /**
- * What sign-in tells an operator, and who verified a name (MT-03; INTERFACES §18.5, §18.6; D161):
+ * What sign-in tells an operator, and who verified a name (MT-03, MT-05; INTERFACES §18.5, §18.6;
+ * D161):
  * a real `mostra-runtime server` with the fixture operator module, fake GitHub and OpenID Connect
  * providers, and real owner instances. GitHub's public counts arrive in `facts` from the same
  * lookup; an `oidc` entry's chosen claims arrive under their names, and nothing new without them;
  * the sender line's verifier is the one recorded on the owner's identity when it signed in, so a
  * provider renamed in the configuration changes no verified name, an identity from before the
  * record takes the configuration's verifier once, and a provider the operator module supplies is
- * verified exactly when it says so (`IdentityProvider.verifies`).
+ * verified exactly when it says so (`IdentityProvider.verifies`). GitHub's sign-in asks for
+ * `user:email` and names the person's verified primary address, kept private on GitHub or not,
+ * with `emailVerified: true`; with no verified primary, a declined scope, or an address list that
+ * fails or hangs, the sign-in goes on with the public address alone, unflagged, or none (MT-05).
  */
 import { writeFileSync } from "node:fs";
 import { join } from "node:path";
@@ -17,7 +21,13 @@ import { Browser, openLink } from "../browser-client.ts";
 import { GatewayHome, ok } from "../gateway-home.ts";
 import { ApiBrowser } from "../oauth-support.ts";
 import { type Call, control } from "../operator-support.ts";
-import { type FakeProvider, fakeGitHub, fakeOidc } from "../provider-fakes.ts";
+import {
+  type FakeGitHub,
+  type FakeGitHubEmail,
+  type FakeProvider,
+  fakeGitHub,
+  fakeOidc,
+} from "../provider-fakes.ts";
 import {
   freePort,
   ownerEnv,
@@ -31,12 +41,19 @@ import { tempDir } from "../support.ts";
 
 const OPERATOR = fileURLToPath(new URL("../fixtures/operator.mjs", import.meta.url));
 
-describe("sign-in's facts and the verifier on each identity (MT-03)", () => {
+describe("sign-in's facts, the verifier on each identity and GitHub's verified address (MT-03, MT-05)", () => {
   let port: number;
   let controlPort: number;
   let server: RunningServer;
   let operator: ReturnType<typeof control>;
-  let github: FakeProvider;
+  let github: FakeGitHub;
+  /** What GitHub's `GET /user/emails` answers, and what `GET /user` says is public, now. */
+  let emails: readonly FakeGitHubEmail[] | { status: number } | "hang" = [];
+  let publicEmail: string | null = null;
+  /** What the person leaves granted on GitHub's screen, of what the adapter asked. */
+  let grant = (asked: string): string | undefined => asked;
+  /** How long GitHub's code exchange and its address list take to answer. */
+  let delay: { token?: number; emails?: number } = {};
   let oidc: FakeProvider;
   const data = tempDir("signin-facts-data");
   const secrets = tempDir("signin-facts-secrets");
@@ -203,11 +220,15 @@ describe("sign-in's facts and the verifier on each identity (MT-03)", () => {
         id: 4242,
         login: "ada",
         name: "Ada Lovelace",
+        email: publicEmail,
         created_at: "2011-01-01T00:00:00Z",
         public_repos: 37,
         public_gists: 4,
         followers: 128,
       }),
+      emails: () => emails,
+      grant: (asked) => grant(asked),
+      delay: () => delay,
     });
     oidc = await fakeOidc({
       secret: "oidc-secret",
@@ -238,6 +259,117 @@ describe("sign-in's facts and the verifier on each identity (MT-03)", () => {
       followers: 128,
     });
   }, 60_000);
+
+  it("asks GitHub for `user:email` and names the person's verified primary address, though private", async () => {
+    const asked = github.scopes.length;
+    publicEmail = null;
+    emails = [
+      {
+        email: "4242+ada@users.noreply.github.com",
+        primary: false,
+        verified: true,
+        visibility: null,
+      },
+      { email: "old@example.com", primary: false, verified: false, visibility: null },
+      { email: "ada@example.org", primary: true, verified: true, visibility: "private" },
+    ];
+    const identity = await signInThrough("github");
+    expect(github.scopes.slice(asked)).toEqual(["user:email"]);
+    expect(identity).toMatchObject({
+      provider: "github",
+      subject: "4242",
+      email: "ada@example.org",
+      emailVerified: true,
+    });
+    // The whole list in one page, read in the API version the adapter was written for.
+    expect(github.emailRequests.at(-1)).toEqual({ search: "?per_page=100", version: "2022-11-28" });
+    // The operator module received it, and the server's own directory keeps none (D176): nothing
+    // of the server reads it, so no copy of a private address waits in its backups.
+    const kept = new Database(join(data, "server.sqlite"), { readonly: true });
+    try {
+      expect(
+        kept
+          .prepare("SELECT email FROM identity WHERE provider = 'github' AND subject = '4242'")
+          .get(),
+      ).toEqual({ email: null });
+      expect(
+        kept.prepare("SELECT COUNT(*) AS n FROM identity WHERE email IS NOT NULL").get(),
+      ).toEqual({ n: 0 });
+    } finally {
+      kept.close();
+    }
+
+    // A primary address GitHub hasn't verified is no verified address, whatever else is listed;
+    // the public one `GET /user` gives stays as before, unflagged.
+    emails = [
+      { email: "ada@example.org", primary: true, verified: false, visibility: "public" },
+      {
+        email: "4242+ada@users.noreply.github.com",
+        primary: false,
+        verified: true,
+        visibility: null,
+      },
+    ];
+    const unverified = await signInThrough("github");
+    expect(unverified["email"]).toBeUndefined();
+    expect(unverified["emailVerified"]).toBeUndefined();
+    publicEmail = "ada@example.org";
+    const shown = await signInThrough("github");
+    expect(shown["email"]).toBe("ada@example.org");
+    expect(shown["emailVerified"]).toBeUndefined();
+  }, 60_000);
+
+  it("signs in without the verified address when the scope was declined, or GitHub's list fails or hangs", async () => {
+    publicEmail = "ada@example.org";
+    emails = [{ email: "ada@example.org", primary: true, verified: true, visibility: "public" }];
+    // The person removed the address scope on GitHub's screen: the list isn't asked for at all.
+    grant = () => "";
+    const lookups = github.emailRequests.length;
+    const declined = await signInThrough("github");
+    expect(github.emailRequests.length).toBe(lookups);
+    expect(declined).toMatchObject({ subject: "4242", email: "ada@example.org" });
+    expect(declined["emailVerified"]).toBeUndefined();
+    grant = (asked) => asked;
+
+    // GitHub's list answers an error: the sign-in goes on with the public address alone.
+    emails = { status: 502 };
+    const failed = await signInThrough("github");
+    expect(failed).toMatchObject({ subject: "4242", email: "ada@example.org" });
+    expect(failed["emailVerified"]).toBeUndefined();
+
+    // It never answers: the sign-in goes on once its few seconds have passed, inside the
+    // provider's bound.
+    emails = "hang";
+    publicEmail = null;
+    const started = Date.now();
+    const hung = await signInThrough("github");
+    expect(Date.now() - started).toBeLessThan(7_000);
+    expect(hung["subject"]).toBe("4242");
+    expect(hung["email"]).toBeUndefined();
+
+    // A slow code exchange and a list slow within its own 3 s: the list gives up before the
+    // provider's 8 s bound, so the sign-in still goes on (the Claude Opus review of MT-05).
+    emails = [{ email: "ada@example.org", primary: true, verified: true, visibility: "public" }];
+    delay = { token: 5_500, emails: 2_800 };
+    const slow = await signInThrough("github");
+    expect(slow["subject"]).toBe("4242");
+    expect(slow["email"]).toBeUndefined();
+    delay = {};
+
+    // An exchange whose answer leaves `scope` out holds what was asked: the list is read.
+    grant = () => undefined;
+    const unnamed = await signInThrough("github");
+    expect(unnamed).toMatchObject({ email: "ada@example.org", emailVerified: true });
+    grant = (asked) => asked;
+    emails = [];
+
+    // Nothing of a token or an address reaches the server's log, whatever went wrong.
+    const log = server.stderr();
+    expect(log).toContain("signin.github_emails_unavailable");
+    expect(log).not.toContain("gho_");
+    expect(log).not.toContain("ada@example.org");
+    expect(log).not.toContain("noreply");
+  }, 90_000);
 
   it("passes an OpenID Connect provider's chosen claims in `facts`, and nothing new without them", async () => {
     subject = "grace-corp";

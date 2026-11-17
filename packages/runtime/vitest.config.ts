@@ -38,6 +38,7 @@ const REMOTE_HOSTING = [
   "test/integration/relay.test.ts",
   "test/integration/restore.test.ts",
   "test/integration/replicator.test.ts",
+  "test/integration/idle-marks.test.ts",
   "test/integration/tenancy.test.ts",
   "test/integration/pause.test.ts",
   "test/integration/team-hosted.test.ts",

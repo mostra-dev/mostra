@@ -280,4 +280,15 @@ export const SERVER_MIGRATIONS: readonly Migration[] = [
       `);
     },
   },
+  {
+    version: 7,
+    name: "no sign-in addresses kept",
+    up(db) {
+      // MT-05 (D176, DATA_MODEL §7.1). The directory keeps no sign-in's address: an operator module
+      // receives it from `accounts.resolve` and keeps what it needs, and nothing of the server reads
+      // it, so the addresses written before (with an operator module, on every sign-in) are cleared.
+      // The column stays (a migration adds, never drops), and stays NULL.
+      db.exec(`UPDATE identity SET email = NULL WHERE email IS NOT NULL;`);
+    },
+  },
 ];
