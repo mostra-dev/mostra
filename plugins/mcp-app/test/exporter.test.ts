@@ -165,6 +165,7 @@ describe("the MCP App exporter (D175 item 2, MC-02)", () => {
     const carrier = /id="mostra-module">([^<]*)</.exec(elements)?.[1] ?? "";
     const appended: { type?: string; textContent?: string }[] = [];
     runInNewContext(MODULE_BOOTSTRAP, {
+      window: {},
       atob: (text: string) => Buffer.from(text, "base64").toString("latin1"),
       TextDecoder,
       Uint8Array,
@@ -184,6 +185,36 @@ describe("the MCP App exporter (D175 item 2, MC-02)", () => {
     expect(Buffer.from(oddCarrier, "base64").toString("utf8")).toBe(
       "let a = 1, b = 2; export const x = a<!--b;",
     );
+  });
+
+  it("answers the page's own data: files from memory, with their type, and leaves other requests as they are (Fable 13)", async () => {
+    const sent: unknown[] = [];
+    const window: { fetch: (input: unknown, init?: unknown) => Promise<Response> } = {
+      fetch: async (input) => {
+        sent.push(input);
+        return new Response("from the network");
+      },
+    };
+    runInNewContext(MODULE_BOOTSTRAP, {
+      window,
+      atob: (text: string) => Buffer.from(text, "base64").toString("latin1"),
+      TextDecoder,
+      TextEncoder,
+      Uint8Array,
+      Response,
+      Promise,
+      document: { getElementById: () => null },
+    });
+    const csv = await window.fetch(
+      `data:text/csv;base64,${Buffer.from("a,b\n1,2").toString("base64")}`,
+    );
+    expect(csv.headers.get("content-type")).toBe("text/csv");
+    expect(await csv.text()).toBe("a,b\n1,2");
+    const plain = await window.fetch(new URL("data:,caf%C3%A9"));
+    expect(await plain.text()).toBe("café");
+    expect(sent).toEqual([]);
+    expect(await (await window.fetch("https://api.example.com/x")).text()).toBe("from the network");
+    expect(sent).toEqual(["https://api.example.com/x"]);
   });
 
   it("inlines every stylesheet with its images, and leaves the build's faces to the host", async () => {

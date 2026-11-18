@@ -13,6 +13,7 @@
  * are the host's MCP Apps variables where the host gives them.
  */
 import type { ControlRequest } from "@mostra/protocol";
+import { MostraError } from "./errors.ts";
 import { setInlineSink, type Unavailable } from "./inline-sink.ts";
 import type { McpAppHandles, McpHostConnection } from "./mcp-host.ts";
 import type { Store } from "./store.ts";
@@ -30,6 +31,7 @@ export const INLINE_WORDS: {
   readonly open: string;
   readonly shellOnly: string;
   readonly closed: string;
+  readonly unsent: string;
   needed(count: number): string;
   choose(label: string): string;
   readonly unavailable: Readonly<Record<Exclude<Unavailable, "origin">, string>>;
@@ -46,6 +48,7 @@ export const INLINE_WORDS: {
   open: "Open the full page",
   shellOnly: "Submit from the full page.",
   closed: "This page takes no more answers.",
+  unsent: "Your answers weren't sent. Try again.",
   needed: (count) => (count === 1 ? "1 answer needed" : `${count} answers needed`),
   choose: (label) => `Choose ${label}`,
   unavailable: {
@@ -143,6 +146,8 @@ export function startInline(options: {
   let confirmText: string | undefined;
   let confirming = false;
   let submitting = false;
+  /** Why the last Submit wasn't taken, in the instance's own words, until the next press. */
+  let refused: string | undefined;
   const choices = new Map<
     string,
     { candidates: Map<string, string | undefined>; current?: string }
@@ -187,11 +192,13 @@ export function startInline(options: {
     const takesSubmissions = live && view.policy.policy !== "none";
     status.textContent = !live
       ? ""
-      : state === "submitted" || state === "delivered" || state === "pending-delivery"
-        ? INLINE_WORDS.submitted
-        : blockers.length > 0
-          ? INLINE_WORDS.needed(blockers.length)
-          : INLINE_WORDS[save];
+      : refused !== undefined
+        ? refused
+        : state === "submitted" || state === "delivered" || state === "pending-delivery"
+          ? INLINE_WORDS.submitted
+          : blockers.length > 0
+            ? INLINE_WORDS.needed(blockers.length)
+            : INLINE_WORDS[save];
     // Submit: the artifact channel where the view allows it, else the full page's.
     const draftOpen =
       state === "open" || (view?.policy.policy === "epochs" && state !== "submitting");
@@ -205,13 +212,16 @@ export function startInline(options: {
     // The view takes only the shell's trusted Submit, which isn't here (invariant 7).
     if (takesSubmissions && !artifactChannel()) say(INLINE_WORDS.shellOnly);
     if (live && store.closed && view.policy.policy === "once") say(INLINE_WORDS.closed);
-    // Choose: the current candidate of the first review set that asked for it.
+    // Choose: the current candidate of the first review set that asked for it, where the view
+    // offers it (its link's `review` scope, D97; review finding Fable 15).
     const [reviewSetId, set] = [...choices.entries()][0] ?? [];
     const current = set?.current;
-    choose.hidden = reviewSetId === undefined || current === undefined || !artifactChannel();
+    const offered = view?.controls === undefined || view.controls.includes("choose");
+    choose.hidden =
+      reviewSetId === undefined || current === undefined || !artifactChannel() || !offered;
     if (reviewSetId !== undefined && current !== undefined) {
       choose.textContent = INLINE_WORDS.choose(set?.candidates.get(current) ?? current);
-      if (!artifactChannel()) note("choose");
+      if (!artifactChannel() || !offered) note("choose");
     }
     open.hidden = handles === undefined;
   };
@@ -224,10 +234,14 @@ export function startInline(options: {
     }
     confirming = false;
     submitting = true;
+    refused = undefined;
     render();
     void store
       .submit()
-      .catch(() => undefined)
+      .catch((error: unknown) => {
+        // Said as the shell's trusted Submit says it: a limit, a pause, a revoked link (Fable 14).
+        refused = error instanceof MostraError ? error.message : INLINE_WORDS.unsent;
+      })
       .finally(() => {
         submitting = false;
         render();

@@ -56,6 +56,9 @@ async function openInline(
     readonly refuseTools?: boolean;
     readonly refuseFields?: boolean;
     readonly slowCalls?: boolean;
+    readonly refuseSubmit?: boolean;
+    /** The link's scopes: a link of its own, through artifact_open's `scopes`. */
+    readonly scopes?: readonly string[];
     readonly mcp?: McpClient;
   } = {},
 ): Promise<Opened> {
@@ -65,7 +68,10 @@ async function openInline(
   const resourceUri = (open?._meta as { ui?: { resourceUri?: string } } | undefined)?.ui
     ?.resourceUri;
   expect(resourceUri).toBe("ui://mostra/app");
-  const toolInput = { artifact: artifactId };
+  const toolInput = {
+    artifact: artifactId,
+    ...(options.scopes !== undefined ? { scopes: [...options.scopes] } : {}),
+  };
   const toolResult = (await mcp.callTool({
     name: "artifact_open",
     arguments: toolInput,
@@ -102,6 +108,7 @@ async function openInline(
       ...(options.refuseTools ? { refuseTools: true } : {}),
       ...(options.refuseFields ? { refuseFields: true } : {}),
       ...(options.slowCalls ? { slowCalls: true } : {}),
+      ...(options.refuseSubmit ? { refuseSubmit: true } : {}),
     },
   );
   await page.goto(host.url);
@@ -362,6 +369,42 @@ test.describe("what a chat host's frame lacks says so (MC-03)", () => {
       await expect(
         bar(view).getByText("A step that took longer than 45 seconds stopped here."),
       ).toBeVisible();
+    } finally {
+      client.close();
+    }
+  });
+
+  test("a Submit the server refuses says why, in its own words (Fable 14)", async ({
+    page,
+  }, info) => {
+    const client = await Client.connect(run.socket);
+    try {
+      const own = await publishOwn(client, run.home, info, { fixture: "inline" });
+      const { view } = await openInline(page, own.artifactId, { refuseSubmit: true });
+      await view.getByTestId("name").fill("Ada");
+      await view.getByTestId("name").blur();
+      await expect(bar(view).getByText("Saved")).toBeVisible();
+      await bar(view).getByRole("button", { name: "Submit" }).click();
+      await expect(
+        bar(view).getByText("This page is taking many answers; try again shortly."),
+      ).toBeVisible();
+      await expect(bar(view).getByRole("button", { name: "Submit" })).toBeEnabled();
+    } finally {
+      client.close();
+    }
+  });
+
+  test("a link without the review scope gets no Choose, and says where it's done (Fable 15)", async ({
+    page,
+  }, info) => {
+    const client = await Client.connect(run.socket);
+    try {
+      const own = await publishOwn(client, run.home, info, { fixture: "inline" });
+      const { view } = await openInline(page, own.artifactId, {
+        scopes: ["view", "draft", "submit", "action:*"],
+      });
+      await expect(bar(view).getByText("Choosing is done on the full page.")).toBeVisible();
+      await expect(bar(view).getByRole("button", { name: /^Choose / })).toBeHidden();
     } finally {
       client.close();
     }

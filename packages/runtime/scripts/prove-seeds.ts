@@ -7668,6 +7668,42 @@ const SEEDS: readonly Seed[] = [
     to: '    if (client === undefined) return "app";',
     check: unit("chat-hosts.test.ts", "asks once a minute"),
   },
+  {
+    requirement: "MC-03",
+    name: "a refused inline Submit says nothing, the page still showing Saved (Fable 14)",
+    file: "../react/src/runtime/inline.ts",
+    from: "        refused = error instanceof MostraError ? error.message : INLINE_WORDS.unsent;",
+    to: "        void error;",
+    check: [...e2e("refuses says why"), "--project", "chromium"],
+    e2e: true,
+  },
+  {
+    requirement: "MC-03",
+    name: "a link without the review scope is offered a Choose it can't make (Fable 15)",
+    file: "../react/src/runtime/inline.ts",
+    from: '    const offered = view?.controls === undefined || view.controls.includes("choose");',
+    to: "    const offered = true;",
+    check: [...e2e("without the review scope"), "--project", "chromium"],
+    e2e: true,
+  },
+  {
+    requirement: "MC-02",
+    name: "a page sized by the viewport grows with every height it reports (Fable 7)",
+    file: "../react/src/runtime/mcp-app.ts",
+    from: "    if (last !== -1 && viewport === last && over > 0 && over === overshoot) return;",
+    to: "    void over;",
+    check: ["test/height.test.ts"],
+    cwd: "../react",
+  },
+  {
+    requirement: "MC-02",
+    name: "a file the page fetches is blocked as a data: URL by the host's policy (Fable 13)",
+    file: "../../plugins/mcp-app/src/page.ts",
+    from: '  "  var native = window.fetch;",',
+    to: '  "  var native = undefined;",',
+    check: ["test/exporter.test.ts", "-t", "data: files from memory"],
+    cwd: "../../plugins/mcp-app",
+  },
 ];
 
 const runtime = join(dirname(fileURLToPath(import.meta.url)), "..");

@@ -21,23 +21,59 @@ import { applyHostContext } from "./mcp-theme.ts";
 import { McpAppTransport } from "./mcp-transport.ts";
 import { Store } from "./store.ts";
 
-/** How often the page tells its host its height, at most (one frame). */
-function watchHeight(report: (height: number) => void): void {
-  if (typeof ResizeObserver === "undefined") return;
+/** What {@link watchHeight} reads and is told by; a browser's, unless a test gives its own. */
+export interface HeightSources {
+  /** The document's layout height now. */
+  readonly height: () => number;
+  /** The frame's own height (the viewport the page lays out in). */
+  readonly viewport: () => number;
+  /** Calls `changed` whenever the document's size may have changed. */
+  readonly observe: (changed: () => void) => void;
+  /** Runs `fn` before the next paint. */
+  readonly frame: (fn: () => void) => void;
+}
+
+/**
+ * Tells the host the page's height, at most once a frame. A page sized by the viewport (a root of
+ * `min-height: 100vh`, common in pages agents write) is as tall as the frame plus the bar, so each
+ * height the host takes makes it taller still (review finding Fable 7): once the frame took the
+ * last height reported and the page still overshoots it by the same amount, it is sized by the
+ * frame, and the height stays where it is. Content that changes otherwise is reported again.
+ */
+export function watchHeight(report: (height: number) => void, sources?: HeightSources): void {
+  const from =
+    sources ??
+    (typeof ResizeObserver === "undefined"
+      ? undefined
+      : {
+          height: () => document.documentElement.getBoundingClientRect().height,
+          viewport: () => window.innerHeight,
+          observe: (changed: () => void) =>
+            new ResizeObserver(changed).observe(document.documentElement),
+          frame: (fn: () => void) => void requestAnimationFrame(fn),
+        });
+  if (from === undefined) return;
   let last = -1;
+  let overshoot: number | undefined;
   let scheduled = false;
   const measure = (): void => {
     scheduled = false;
-    const height = Math.ceil(document.documentElement.getBoundingClientRect().height);
+    const height = Math.ceil(from.height());
     if (height === last) return;
+    const viewport = Math.ceil(from.viewport());
+    const over = height - viewport;
+    // The frame took the last height and the page outgrew it again by as much: it follows the
+    // frame, and reporting more would only grow both.
+    if (last !== -1 && viewport === last && over > 0 && over === overshoot) return;
+    overshoot = over;
     last = height;
     report(height);
   };
-  new ResizeObserver(() => {
+  from.observe(() => {
     if (scheduled) return;
     scheduled = true;
-    requestAnimationFrame(measure);
-  }).observe(document.documentElement);
+    from.frame(measure);
+  });
   measure();
 }
 

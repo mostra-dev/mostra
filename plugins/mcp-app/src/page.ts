@@ -35,6 +35,28 @@ export function styleText(css: string): string {
  */
 export const MODULE_BOOTSTRAP: string = [
   "(function () {",
+  // A file the build fetches (`new URL("./data.csv", import.meta.url)`, a wasm module) is a
+  // data: URL here, which a host's `connect-src 'none'` would block: it is answered from memory,
+  // with its own type (review finding Fable 13). Every other request goes as it would.
+  "  var native = window.fetch;",
+  '  if (typeof native === "function") {',
+  "    window.fetch = function (input, init) {",
+  '    var url = typeof input === "string" ? input : input && (input.href || input.url);',
+  '    var comma = typeof url === "string" && url.slice(0, 5) === "data:" ? url.indexOf(",") : -1;',
+  "    if (comma === -1) return native.apply(this, arguments);",
+  "    var head = url.slice(5, comma);",
+  "    var payload = url.slice(comma + 1);",
+  "    var encoded = /;base64$/i.test(head);",
+  '    var type = head.replace(/;base64$/i, "") || "text/plain;charset=US-ASCII";',
+  "    var data;",
+  "    if (encoded) {",
+  "      var raw = atob(payload);",
+  "      data = new Uint8Array(raw.length);",
+  "      for (var j = 0; j !== raw.length; j++) data[j] = raw.charCodeAt(j);",
+  "    } else data = new TextEncoder().encode(decodeURIComponent(payload));",
+  '    return Promise.resolve(new Response(data, { headers: { "content-type": type } }));',
+  "    };",
+  "  }",
   '  var carrier = document.getElementById("mostra-module");',
   "  if (carrier === null) return;",
   '  var binary = atob((carrier.textContent || "").trim());',

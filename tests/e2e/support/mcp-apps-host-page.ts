@@ -23,6 +23,8 @@ interface Setup {
   readonly refuseFields?: boolean;
   /** A server function past the chat host's bound: `app_call` answers the 504 refusal (Fable 6). */
   readonly slowCalls?: boolean;
+  /** A server past its rate: `app_submit` answers the 429 refusal (Fable 14). */
+  readonly refuseSubmit?: boolean;
 }
 
 declare global {
@@ -59,6 +61,17 @@ bridge.oncalltool = async (params) => {
   }
   if (setup.refuseFields && params.name === "app_fields") {
     throw new Error("The host couldn't reach the server.");
+  }
+  if (setup.refuseSubmit && params.name === "app_submit") {
+    const body = {
+      code: "MOSTRA_REMOTE_RATE_LIMITED",
+      severity: "error",
+      message: "This page is taking many answers; try again shortly.",
+    };
+    return {
+      content: [{ type: "text", text: JSON.stringify({ status: 429, body }) }],
+      structuredContent: { status: 429, body },
+    } as never;
   }
   if (setup.slowCalls && params.name === "app_call") {
     const body = {
