@@ -15,6 +15,7 @@ import type {
 } from "@mostra/protocol";
 import { useEffect, useMemo, useSyncExternalStore } from "react";
 import { useStore } from "./hooks.ts";
+import { noteUnavailable } from "./runtime/inline-sink.ts";
 
 export type {
   Peer,
@@ -131,13 +132,15 @@ export function usePresence(options: PresenceOptions = {}): Presence {
   useSyncExternalStore(team.subscribe, team.version, team.version);
   const cursor = options.cursor === true;
   const selection = options.selection === true;
-  useEffect(
-    () => (team.available ? team.joinPresence({ cursor, selection }) : undefined),
-    [team, cursor, selection],
-  );
+  useEffect(() => {
+    if (team.presenceAvailable) return team.joinPresence({ cursor, selection });
+    // Said in the page where it's missing for being inline, not merely outside a live page.
+    noteUnavailable("presence");
+    return undefined;
+  }, [team, cursor, selection]);
   const state = team.presence();
   return useMemo((): Presence => {
-    if (!team.available) return { status: "unavailable", others: [] };
+    if (!team.presenceAvailable) return { status: "unavailable", others: [] };
     if (!state) return { status: "joining", others: [] };
     const self = state.peers.find((peer) => peer.self);
     return {

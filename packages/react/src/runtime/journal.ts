@@ -144,8 +144,11 @@ function done(transaction: IDBTransaction): Promise<void> {
 }
 
 /**
- * The journal in the artifact origin's IndexedDB: one database per origin, so per artifact (D38).
- * Each write starts its transaction at once, so an edit made just before the page closes is in it.
+ * The journal in the artifact origin's IndexedDB: one database per origin, so per artifact (D38),
+ * behind Mostra's gateway. An MCP Apps host gives every page one sandbox origin, so a page inline
+ * opens a database of its artifact's own (`journalOf`, D175 item 6): no page ever adopts, or
+ * sends, another artifact's unsent answers. Each write starts its transaction at once, so an edit
+ * made just before the page closes is in it.
  */
 export class IndexedDbJournal implements Journal {
   readonly durable: boolean = true;
@@ -155,11 +158,14 @@ export class IndexedDbJournal implements Journal {
     this.#db = db;
   }
 
-  /** Opens the journal; `undefined` where IndexedDB can't be used (a private mode, a sandbox). */
-  static async open(): Promise<IndexedDbJournal | undefined> {
+  /**
+   * Opens the journal, the origin's own or the database `name` names; `undefined` where IndexedDB
+   * can't be used (a private mode, a sandbox).
+   */
+  static async open(name: string = DB_NAME): Promise<IndexedDbJournal | undefined> {
     if (typeof indexedDB === "undefined") return undefined;
     try {
-      const open = indexedDB.open(DB_NAME, 1);
+      const open = indexedDB.open(name, 1);
       open.onupgradeneeded = () => {
         if (!open.result.objectStoreNames.contains(STORE)) open.result.createObjectStore(STORE);
       };

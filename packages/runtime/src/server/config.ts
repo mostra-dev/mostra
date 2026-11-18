@@ -179,6 +179,11 @@ export interface RemoteServerConfig {
   readonly homes?: { readonly idleCloseMinutes?: number | undefined } | undefined;
   readonly framing?: { readonly frameAncestors: "'none'" } | undefined;
   readonly operator?: string | undefined;
+  /**
+   * How each chat host shows pages and what a quota message there may say (D160), by the host
+   * name its OAuth client redirects to (`claude.ai`); the operator's `policy.chatHost` answers
+   * first.
+   */
   readonly chatHosts?: Record<string, unknown> | undefined;
   /** The operator's own clients, named as the server's own on the consent page (MT-05). */
   readonly operatorClients?: OperatorClient[] | undefined;
@@ -247,6 +252,7 @@ const Config: z.ZodType<RemoteServerConfig> & { readonly shape: Record<string, u
     homes: z.strictObject({ idleCloseMinutes: z.number().positive().optional() }).optional(),
     framing: z.strictObject({ frameAncestors: z.literal("'none'") }).optional(),
     operator: z.string().optional(),
+    // Read as openly as before (D32): `chat-hosts.ts` uses the entries it can and logs the rest.
     chatHosts: z.record(z.string(), z.unknown()).optional(),
     operatorClients: z
       .array(z.strictObject({ clientId: MetadataClientId, name: PageName }))

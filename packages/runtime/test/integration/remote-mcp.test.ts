@@ -110,7 +110,12 @@ describe("the remote MCP server (MC-04)", () => {
 
   it("serves the local server's tools, authors through the owner, and answers the hosted link", async () => {
     const client = await connect(accessToken);
-    const tools = (await client.listTools()).tools.map((tool) => tool.name).sort();
+    // The model's thirteen tools; a page's own (app_*) are listed beside them for a host to keep
+    // from its model, since a stateless request names no capabilities (D175 item 5).
+    const tools = (await client.listTools()).tools
+      .map((tool) => tool.name)
+      .filter((name) => !name.startsWith("app_"))
+      .sort();
     expect(tools).toHaveLength(13);
     expect(tools).toContain("artifact_publish");
     expect(JSON.parse((await call(client, "artifact_list", {})).text)).toEqual({ artifacts: [] });
@@ -128,6 +133,24 @@ describe("the remote MCP server (MC-04)", () => {
     });
     expect(outside.isError).toBe(true);
     expect(outside.text).toContain("MOSTRA_ARTIFACT_PATH_INVALID");
+
+    // Verify runs on the owner, and its stages come back as the call's progress (#157).
+    // Past 45 s it answers running; asking again waits for the same run, as an agent would.
+    const heard: string[] = [];
+    let verdict: { status?: string } = {};
+    for (let asked = 0; asked < 8; asked += 1) {
+      const verified = await client.callTool(
+        { name: "artifact_verify", arguments: { dir: made.dir } },
+        { timeout: 240_000, onprogress: (update) => heard.push(String(update.message)) },
+      );
+      verdict = JSON.parse(
+        (verified.content as { type: string; text?: string }[])[0]?.text ?? "{}",
+      ) as { status?: string };
+      expect(verified.isError, JSON.stringify(verdict)).toBeFalsy();
+      if (verdict.status !== "running") break;
+    }
+    expect(["pass", "fail"]).toContain(verdict.status);
+    expect(heard).toEqual(expect.arrayContaining(["verify: compile", "verify: render"]));
 
     const published = await call(client, "artifact_publish", { dir: made.dir });
     expect(published.isError, published.text).toBe(false);

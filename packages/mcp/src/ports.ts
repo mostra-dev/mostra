@@ -44,6 +44,12 @@ export interface McpWorkspace {
   /** Reads a file of the artifact, or `undefined` when it doesn't exist. */
   read(dir: string, path: string): Promise<Uint8Array | undefined>;
   /**
+   * A fingerprint of the artifact's files in `dir` now (their paths, sizes and times), which
+   * changes when any of them does; `undefined` where the workspace can't tell cheaply. An
+   * `artifact_verify` run answers only for the fingerprint it started on (#157).
+   */
+  fingerprint?(dir: string): Promise<string | undefined>;
+  /**
    * Writes and deletes files of the artifact in `dir` (created when missing). Every path is
    * checked before anything is written; a path outside the directory, or through a link, throws
    * `MOSTRA_ARTIFACT_PATH_INVALID`. Each file is replaced whole (written aside, then renamed).
@@ -107,10 +113,22 @@ export interface McpServerOptions {
   /** The server's version, as `serverInfo` reports it (the release's). */
   readonly version: string;
   /**
+   * Whether the server offers MCP Apps (D175 items 1, 5): the app-only tools, the pages and
+   * `artifact_open`'s `_meta.ui`. Default `true`; a remote server answers `false` for a chat host
+   * whose policy shows the link only (`render: "link"`, D160).
+   */
+  readonly apps?: boolean;
+  /**
    * Told the client a server instance serves (one per stdio connection, one per HTTP request) the
    * first time it calls a tool or reads a resource, for whoever counts sessions (the standalone
    * CLI's telemetry, D164 item 4, which counts each client once per process). Never throws into a
    * tool.
    */
   readonly onClient?: (client: McpClientInfo) => void;
+  /**
+   * Names the instance the tools act on, the same for every server built for it, so a verify
+   * under way that one request started is joined by the next (#157: over Streamable HTTP each
+   * request builds its own server). Default: this factory's own.
+   */
+  readonly scope?: string;
 }

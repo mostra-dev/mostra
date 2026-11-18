@@ -19,9 +19,13 @@ import { appendEvent } from "../../src/interaction/events.ts";
 import {
   createInteraction,
   followEvents,
+  forgetHostedOrder,
+  holdBehind,
   type ImportSource,
   type Interaction,
   importedDeliveryId,
+  noteMissing,
+  waitingMissing,
 } from "../../src/interaction/index.ts";
 import { viewerForSpec } from "../../src/interaction/viewers.ts";
 import type { Ledger } from "../../src/ledger/index.ts";
@@ -292,6 +296,12 @@ describe("hosted submissions through the owner's outbox (RM-02, D165 item 1)", (
       );
       // Its submission isn't here yet: the record waits for the delivery, never appended alone.
       expect(once.missing).toHaveLength(1);
+      // With the hosted cursor of its `submission.created`, the order it is read again in (#139).
+      const created = records.find((record) => record.type === "submission.created");
+      expect(once.missing[0]).toEqual({
+        submissionId: created?.payload["submissionId"],
+        cursor: created?.cursor,
+      });
       const copied = s.ownerLedger.read((db) =>
         db.all<{ type: string }>(
           "SELECT type FROM event WHERE origin_json IS NOT NULL ORDER BY cursor",
@@ -371,6 +381,75 @@ describe("hosted submissions through the owner's outbox (RM-02, D165 item 1)", (
       // Pages that follow the roster hear each import that changed a status.
       expect(heard.filter((id) => id === s.artifactId).length).toBeGreaterThanOrEqual(2);
       stop();
+    } finally {
+      s.stop();
+    }
+  });
+
+  it("keeps each followed submission it lacks with its hosted cursor, to read again in order (#139)", async () => {
+    const s = await setup();
+    try {
+      const at = new Date().toISOString();
+      s.ownerLedger.write((db) =>
+        noteMissing(
+          db,
+          SERVER,
+          [
+            { submissionId: "sub_01Z", cursor: "281" },
+            { submissionId: "sub_01A", cursor: "283" },
+          ],
+          at,
+        ),
+      );
+      // Noted again (a page the follow saw twice): the first row stays.
+      s.ownerLedger.write((db) =>
+        noteMissing(db, SERVER, [{ submissionId: "sub_01Z", cursor: "999" }], at),
+      );
+      const waiting = s.ownerLedger.read((db) => waitingMissing(db, SERVER));
+      expect([...waiting].sort((a, b) => (a.submissionId < b.submissionId ? -1 : 1))).toEqual([
+        { submissionId: "sub_01A", cursor: "283" },
+        { submissionId: "sub_01Z", cursor: "281" },
+      ]);
+    } finally {
+      s.stop();
+    }
+  });
+
+  it("holds a delivery behind an earlier submission that still waits, never one with none before it (R01-5, R02-3)", async () => {
+    const s = await setup();
+    try {
+      const at = new Date().toISOString();
+      const hold = (submissionId: string, cursor: string | undefined) =>
+        s.ownerLedger.write((db) =>
+          holdBehind(
+            db,
+            SERVER,
+            { submissionId, ...(cursor !== undefined ? { cursor } : {}) },
+            JSON.stringify({ submissionId }),
+            at,
+          ),
+        );
+      // Nothing waits: a delivery is imported at once.
+      expect(hold("sub_01C", "300")).toBe(false);
+      s.ownerLedger.write((db) =>
+        noteMissing(db, SERVER, [{ submissionId: "sub_01A", cursor: "281" }], at),
+      );
+      // One earlier in the hosted order waits: the later delivery joins the line, with its
+      // envelope; one earlier than it, or one with no cursor to order by, doesn't.
+      expect(hold("sub_01B", "283")).toBe(true);
+      expect(hold("sub_01Y", "200")).toBe(false);
+      expect(hold("sub_01N", undefined)).toBe(false);
+      const waiting = s.ownerLedger.read((db) => waitingMissing(db, SERVER));
+      expect(waiting.find((one) => one.submissionId === "sub_01B")).toEqual({
+        submissionId: "sub_01B",
+        cursor: "283",
+        envelope: JSON.stringify({ submissionId: "sub_01B" }),
+      });
+      // After a restore, what waits from before loses its cursor: it came first.
+      s.ownerLedger.write((db) => forgetHostedOrder(db, SERVER));
+      expect(
+        s.ownerLedger.read((db) => waitingMissing(db, SERVER)).map((one) => one.cursor),
+      ).toEqual([undefined, undefined]);
     } finally {
       s.stop();
     }

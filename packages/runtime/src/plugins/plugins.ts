@@ -25,7 +25,7 @@
  */
 import { existsSync, realpathSync } from "node:fs";
 import { mkdir, readFile } from "node:fs/promises";
-import { dirname, isAbsolute, join, relative, resolve, sep } from "node:path";
+import { delimiter, dirname, isAbsolute, join, relative, resolve, sep } from "node:path";
 import { fileURLToPath } from "node:url";
 import {
   type ContractName,
@@ -122,6 +122,36 @@ export interface PluginsOptions {
   readonly implemented?: (contract: ContractName) => readonly string[];
   /** How long one plugin child may take: loading entries, or an export. Default 120 s. */
   readonly childTimeoutMs?: number;
+  /**
+   * The directories of the first-party plugins this runtime carries (D175 item 3): every home has
+   * them, below its own plugins and an artifact's (scope `bundled`). Never imported here: like any
+   * plugin, their code runs only in a plugin child (RT-02).
+   */
+  readonly bundled?: readonly string[];
+}
+
+/**
+ * The first-party plugins this runtime carries (D175 item 3): each built package's directory, the
+ * runtime bundle's (`@mostra/plugin-*` beside `@mostra/runtime`) or this repository's
+ * (`plugins/*`). `MOSTRA_BUNDLED_PLUGINS` (directories separated by the platform's path
+ * delimiter) replaces them, an empty value naming none, for a test that runs without them.
+ */
+export function locateBundledPlugins(env: Environment): readonly string[] {
+  const given = env["MOSTRA_BUNDLED_PLUGINS"];
+  if (given !== undefined) return given.split(delimiter).filter((dir) => dir !== "");
+  const found: string[] = [];
+  for (const short of ["mcp-app"]) {
+    for (const dir of [
+      resolve(runtimeRoot(), "..", `plugin-${short}`),
+      resolve(runtimeRoot(), "..", "..", "plugins", short),
+    ]) {
+      if (existsSync(join(dir, "package.json")) && existsSync(join(dir, "dist", "index.js"))) {
+        found.push(dir);
+        break;
+      }
+    }
+  }
+  return found;
 }
 
 /** The plugins of one instance; the deps module's plugin gate. */
@@ -234,7 +264,8 @@ interface Installed {
 const HOME_KEY = "home:plugins";
 
 /** The plugin child's entry: the compiled one beside the compiled supervisor, else the source. */
-function childEntry(): string {
+/** The plugin child's entry, in this runtime's source or build. */
+export function childEntry(): string {
   return fileURLToPath(import.meta.url).endsWith(".ts")
     ? join(runtimeRoot(), "src/plugins/child/host.ts")
     : join(runtimeRoot(), "dist/plugins/child/host.js");
@@ -359,7 +390,8 @@ export function createPlugins(options: PluginsOptions): Plugins {
         );
       }
     }
-    if (!manifestScopes(manifest).includes(plugin.scope)) {
+    // A bundled plugin is the home's (D175 item 3): it may contribute exporters and commands only.
+    if (!manifestScopes(manifest).includes(plugin.scope === "bundled" ? "home" : plugin.scope)) {
       found.push(
         createDiagnostic("MOSTRA_PLUGIN_SCOPE_INVALID", {
           message: `${plugin.name} contributes more than exporters and CLI commands, so it is installed for an artifact, not for the home.`,
@@ -495,7 +527,7 @@ export function createPlugins(options: PluginsOptions): Plugins {
         add(
           mine,
           createDiagnostic("MOSTRA_PLUGIN_SHADOWED", {
-            message: `${mine.name} and the home's ${other.name} both contribute the ${item.contract} "${item.id}"; this artifact uses ${mine.name}'s.`,
+            message: `${mine.name} and ${other.scope === "bundled" ? "Mostra's bundled" : "the home's"} ${other.name} both contribute the ${item.contract} "${item.id}"; ${mine.scope === "home" ? "the home" : "this artifact"} uses ${mine.name}'s.`,
           }),
         );
       }
@@ -639,6 +671,31 @@ export function createPlugins(options: PluginsOptions): Plugins {
    * The home's own plugins as they stand, for the shadow warnings and the home's exporters and
    * commands; `install: false` reads only a layout already installed (nothing starts).
    */
+  /** The runtime's own plugins, read once: a bundle's files never change under it. */
+  let bundledRead: Promise<Installed[]> | undefined;
+  const bundledPlugins = (): Promise<Installed[]> => {
+    bundledRead ??= Promise.all(
+      (options.bundled ?? []).map((dir) =>
+        readPackage(dir, "bundled").catch((failure: unknown) => {
+          // A runtime without its bundled plugin still serves everything else.
+          log.error("plugins.bundled_unreadable", { dir, error: String(failure) });
+          return undefined;
+        }),
+      ),
+    ).then((found) => found.filter((plugin): plugin is Installed => plugin !== undefined));
+    return bundledRead;
+  };
+  /**
+   * The plugins below a scope's own, which it shadows: an artifact's sees the home's and the
+   * runtime's, the home's the runtime's.
+   */
+  const othersOf = async (kind: PluginScope): Promise<Installed[]> =>
+    kind === "artifact"
+      ? [...(await homePlugins(false)), ...(await bundledPlugins())]
+      : kind === "home"
+        ? bundledPlugins()
+        : [];
+
   const homePlugins = async (install: boolean): Promise<Installed[]> => {
     const staged = await dependencies.working(homeTarget, { install }).catch(() => undefined);
     if (staged?.nodeModules === undefined) return [];
@@ -1016,7 +1073,7 @@ export function createPlugins(options: PluginsOptions): Plugins {
       input.scope,
     );
     const fresh = set.filter((plugin) => input.fresh?.includes(plugin.name));
-    const others = input.scope === "artifact" ? await homePlugins(false) : [];
+    const others = await othersOf(input.scope);
     const checked = statics(set, others);
     const refusal = firstError(checked, fresh);
     if (refusal !== undefined) throw new RpcError(refusal);
@@ -1182,7 +1239,7 @@ export function createPlugins(options: PluginsOptions): Plugins {
       const target = await targetOf(scope);
       const staged = await dependencies.working(target);
       const set = await installedOf(staged?.lock, staged?.nodeModules, scope.kind);
-      const others = scope.kind === "artifact" ? await homePlugins(false) : [];
+      const others = await othersOf(scope.kind);
       // What needs no code: listing never runs a plugin.
       const checked = statics(set, others);
       const licenses = await disclose({
@@ -1190,13 +1247,18 @@ export function createPlugins(options: PluginsOptions): Plugins {
         previous: staged?.lock.licenses,
         accept: [],
       });
+      // The home lists the runtime's own plugins too (scope `bundled`), after its own.
+      const bundled = scope.kind === "home" ? await bundledPlugins() : [];
       return {
-        plugins: set.map((plugin) =>
-          summary(plugin, [
-            ...(checked.get(plugin) ?? []),
-            ...(licenses.warnings.get(plugin) ?? []),
-          ]),
-        ),
+        plugins: [
+          ...set.map((plugin) =>
+            summary(plugin, [
+              ...(checked.get(plugin) ?? []),
+              ...(licenses.warnings.get(plugin) ?? []),
+            ]),
+          ),
+          ...bundled.map((plugin) => summary(plugin, staticChecks(plugin))),
+        ],
         licenses: licenses.disclosures,
       };
     },
@@ -1209,7 +1271,14 @@ export function createPlugins(options: PluginsOptions): Plugins {
           // Read inside the change, which holds the lockfile's queue: a plugin another call
           // added meanwhile stays (WP-16 review R01 finding 4).
           const plugins = staged.previous?.plugins ?? [];
+          const bundled = new Set((await bundledPlugins()).map((plugin) => plugin.name));
           for (const name of input.packages) {
+            if (!plugins.includes(name) && bundled.has(name)) {
+              throw error(
+                "MOSTRA_PLUGIN_NOT_INSTALLED",
+                `${name} comes with Mostra and can't be removed; a plugin installed with the same exporter or command takes its place.`,
+              );
+            }
             if (!plugins.includes(name)) {
               throw error(
                 "MOSTRA_PLUGIN_NOT_INSTALLED",
@@ -1223,7 +1292,7 @@ export function createPlugins(options: PluginsOptions): Plugins {
             staged.nodeModules,
             scope.kind,
           );
-          const others = scope.kind === "artifact" ? await homePlugins(false) : [];
+          const others = await othersOf(scope.kind);
           const checked = statics(set, others);
           return {
             plugins: order,
@@ -1272,7 +1341,7 @@ export function createPlugins(options: PluginsOptions): Plugins {
             })();
       const found: PluginCommandInfo[] = [];
       // The artifact's own command wins over the home's of the same words (D172 item 5).
-      for (const plugin of [...own, ...(await homePlugins(false))]) {
+      for (const plugin of [...own, ...(await homePlugins(false)), ...(await bundledPlugins())]) {
         for (const item of plugin.manifest ? contributionsOf(plugin.manifest) : []) {
           if (item.contract !== "cli-command") continue;
           if (found.some((command) => command.command === item.id)) continue;
@@ -1309,8 +1378,10 @@ export function createPlugins(options: PluginsOptions): Plugins {
               "artifact",
             );
       const home = await homePlugins(true);
+      // Then the runtime's own (D175 item 3): an exporter of the same ID above shadows it.
+      const bundled = await bundledPlugins();
       const found: ExporterRef[] = [];
-      for (const plugin of [...own, ...home]) {
+      for (const plugin of [...own, ...home, ...bundled]) {
         const problem = staticChecks(plugin).find((diagnostic) => diagnostic.severity === "error");
         for (const item of plugin.manifest ? contributionsOf(plugin.manifest) : []) {
           if (item.contract !== "exporter") continue;

@@ -20,6 +20,7 @@ import { join } from "node:path";
 import { parseArgs } from "node:util";
 import { fromRoot, runStreaming } from "../lib/repo.ts";
 import { armDeadline } from "./deadline.ts";
+import { exitAfterOutput } from "./exit.ts";
 import { JOB_NAMES, JOBS, type Job, type JobName, WINDOWS_PACKAGES } from "./jobs.ts";
 import { makePlan, type Plan } from "./plan.ts";
 
@@ -246,4 +247,5 @@ for (const name of JOB_NAMES) {
     console.log(`- ${name.padEnd(12)} skipped (not affected)`);
   }
 }
-process.exit(failed > 0 ? 1 : 0);
+// Once the output is out: an exit straight after printing it lost the summary on a pipe.
+exitAfterOutput(failed > 0 ? 1 : 0);

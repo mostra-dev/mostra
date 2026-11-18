@@ -12,6 +12,7 @@
       "@mostra/cli",
       "@mostra/conformance",
       "@mostra/mcp",
+      "@mostra/plugin-mcp-app",
       "@mostra/protocol",
       "@mostra/react",
       "@mostra/runtime",

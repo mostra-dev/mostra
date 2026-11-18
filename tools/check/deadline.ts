@@ -13,6 +13,7 @@ import { spawnSync } from "node:child_process";
 import { cpSync, type Dirent, mkdirSync, readdirSync, realpathSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join, relative } from "node:path";
+import { exitAfterOutput } from "./exit.ts";
 
 /** The command that lists every process on `platform`, with what a hang report needs. */
 export function processListing(platform: NodeJS.Platform): {
@@ -274,7 +275,8 @@ export function armDeadline(minutes: number, into: string | undefined): () => vo
   const timer = setTimeout(() => {
     console.log(`\n${reportHang(minutes, into)}`);
     stopDescendants();
-    process.exit(1);
+    // Once the report is out: it's what a hung run leaves behind (#55).
+    exitAfterOutput(1);
   }, minutes * 60_000);
   timer.unref();
   return () => clearTimeout(timer);

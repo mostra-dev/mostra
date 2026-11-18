@@ -95,7 +95,9 @@ export const PACKAGE_MAP: readonly PackageRule[] = [
     dir: "packages/runtime",
     audience: "runtime bundle",
     environment: "node",
-    workspace: ["@mostra/protocol", "@mostra/mcp", "@mostra/themes"],
+    // `@mostra/plugin-mcp-app` is carried, never imported: its code runs only in plugin children
+    // (RT-02, D175 item 3).
+    workspace: ["@mostra/protocol", "@mostra/mcp", "@mostra/themes", "@mostra/plugin-mcp-app"],
     external: "any",
     published: true,
   },
@@ -185,6 +187,17 @@ export const PACKAGE_MAP: readonly PackageRule[] = [
     environment: "node",
     workspace: ["@mostra/protocol"],
     external: ["@modelcontextprotocol/server", "zod", "diff"],
+    published: true,
+  },
+  {
+    // The first first-party plugin (D175 items 2, 3): the MCP App exporter, on the exporter
+    // contract, run only in a plugin child; the runtime bundle carries it for every home.
+    name: "@mostra/plugin-mcp-app",
+    dir: "plugins/mcp-app",
+    audience: "every home (bundled), and anyone exporting an MCP App",
+    environment: "node",
+    workspace: ["@mostra/contract-exporter", "@mostra/protocol", "@mostra/themes"],
+    external: ["rolldown"],
     published: true,
   },
   {

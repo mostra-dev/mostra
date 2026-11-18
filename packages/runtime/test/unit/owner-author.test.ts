@@ -53,4 +53,21 @@ describe("relayed authoring on the owner", () => {
     }
     expect(await screenshot(join(home, "outside.png"))).toEqual({});
   });
+
+  it("tells a relayed verify its source's fingerprint, which changes with the files, and never outside the workspace (#157)", async () => {
+    const dir = join(home, "work", "page");
+    mkdirSync(dir, { recursive: true });
+    writeFileSync(join(dir, "index.tsx"), "export default () => null;");
+    const fingerprint = async (at: string) =>
+      (await author("https://api.example", {
+        method: "workspace/fingerprint",
+        params: { dir: at },
+      })) as { fingerprint?: string };
+    const first = await fingerprint("page");
+    expect(first.fingerprint).toMatch(/^[0-9a-f]{64}$/);
+    expect(await fingerprint("page")).toEqual(first);
+    writeFileSync(join(dir, "index.tsx"), "export default () => 'edited, and longer';");
+    expect((await fingerprint("page")).fingerprint).not.toBe(first.fingerprint);
+    await expect(fingerprint(home)).rejects.toThrow();
+  });
 });

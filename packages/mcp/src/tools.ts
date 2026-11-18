@@ -10,6 +10,7 @@ import type { CallToolResult, ToolAnnotations } from "@modelcontextprotocol/serv
 import {
   type ArtifactRef,
   artifactCreateMethod,
+  artifactGetMethod,
   artifactListMethod,
   artifactPublishMethod,
   artifactVerifyMethod,
@@ -18,6 +19,7 @@ import {
   type Diagnostic,
   Duration,
   livePushMethod,
+  MCP_APP_LOADER_URI,
   MutationId,
   RpcError,
   resultsGetMethod,
@@ -30,10 +32,12 @@ import {
   waitMethod,
 } from "@mostra/protocol";
 import * as z from "zod";
+import { APP_ONLY_META, createAppTools } from "./app.ts";
 import { planPatch } from "./patch.ts";
 import type { McpServerOptions } from "./ports.ts";
 import { errorResult, jsonResult, textResult } from "./results.ts";
 import { searchDocs } from "./search.ts";
+import { forgetVerifyRuns, verifyKey, verifyWithin } from "./verify-run.ts";
 
 /** The registry of every tool's input schema, published as the `mcp-tools` bundle. */
 export const toolRegistry: z.core.$ZodRegistry<{ id: string; description?: string }> = z.registry<{
@@ -48,9 +52,28 @@ export const WAIT_MAX_SECONDS = 50;
 export interface ToolCall {
   /** The ports and settings the server was built with. */
   readonly options: McpServerOptions;
+  /**
+   * Whether the client shows MCP Apps: `true` when it said so, `false` when it said it doesn't
+   * (or the server shows none), `undefined` when it didn't say (a stateless 2025-era request).
+   */
+  readonly apps?: boolean | undefined;
   /** Reports progress to a client that asked for it (`progressToken`); a no-op otherwise. */
   progress(message: string): void;
 }
+
+/**
+ * What `artifact_open` tells the model about where the page shows (D175 item 1, Mirza at M79):
+ * without it, a model whose chat shows the page can't tell, and hands the person a link they
+ * don't need.
+ */
+export const OPEN_WORDS: {
+  readonly shown: string;
+  readonly maybe: string;
+} = {
+  shown:
+    "The page is shown in this chat with this result, where the person can answer it. The link opens the same page in a browser and keeps the same answers; give it only if they ask for it or the chat doesn't show the page.",
+  maybe: "Chat apps that show pages show it with this result. The link opens it in a browser.",
+};
 
 /** One tool. */
 export interface ToolDefinition<Input> {
@@ -64,6 +87,14 @@ export interface ToolDefinition<Input> {
   readonly input: z.ZodType<Input>;
   /** Hints for the client: whether it reads only, changes or destroys anything. */
   readonly annotations: ToolAnnotations;
+  /** Its `_meta` in `tools/list`: an MCP App's `ui` (D175 item 5). */
+  readonly meta?: Readonly<Record<string, unknown>>;
+  /**
+   * Its part in MCP Apps: `render`, a tool whose result a host shows as a page (its `_meta.ui`
+   * is left out for a client without MCP Apps); `app`, a tool only a page calls (not listed to
+   * such a client at all).
+   */
+  readonly ui?: "render" | "app";
   /** Does the tool's work; a throw becomes an `isError` result with its diagnostic. */
   run(args: Input, call: ToolCall): Promise<CallToolResult>;
 }
@@ -381,6 +412,8 @@ async function screenshotImages(
 export function createTools(
   readScreenshot: (path: string) => Promise<Uint8Array | undefined>,
 ): readonly ToolDefinition<unknown>[] {
+  // The instance's name for verify runs when the server's options give none: this factory's.
+  const ownScope = randomUUID();
   return [
     defineTool({
       name: "artifact_create",
@@ -432,6 +465,8 @@ export function createTools(
         const deletes = args.deletes ?? [];
         const warnings = await droppedIds(options, dir, write, deletes);
         const changed = await options.workspace.apply(dir, { write, delete: deletes });
+        // What a verify of the old files found no longer answers for them (Opus 6, Fable 4).
+        forgetVerifyRuns(options.scope ?? ownScope, dir);
         return jsonResult({ dir, ...changed, ...(warnings.length > 0 ? { warnings } : {}) });
       },
     }),
@@ -477,6 +512,7 @@ export function createTools(
         }));
         const warnings = await droppedIds(options, dir, write, plan.change.delete);
         const changed = await options.workspace.apply(dir, { write, delete: plan.change.delete });
+        forgetVerifyRuns(options.scope ?? ownScope, dir);
         return jsonResult({
           dir,
           patched: changed.written,
@@ -489,7 +525,7 @@ export function createTools(
       name: "artifact_verify",
       title: "Verify an artifact",
       description:
-        "Check an artifact before anyone sees it: type-check, build, render it headlessly, click through it, check accessibility and screenshot it at 1280×800 and 390×844. Returns the verdict (status pass or fail, with diagnostics that carry codes and hints) and the screenshots worth looking at. Fix every error and verify again until the status is pass, then look at the screenshots. Can take a few minutes.",
+        "Check an artifact before anyone sees it: type-check, build, render it headlessly, click through it, check accessibility and screenshot it at 1280×800 and 390×844. Returns the verdict (status pass or fail, with diagnostics that carry codes and hints) and the screenshots worth looking at. Fix every error and verify again until the status is pass, then look at the screenshots. Can take a few minutes: when it takes longer than about 45 seconds, it answers status running with the stage it reached, and calling artifact_verify again with the same arguments waits for that same run.",
       input: verifyInput,
       annotations: {
         readOnlyHint: true,
@@ -498,25 +534,50 @@ export function createTools(
         openWorldHint: false,
       },
       async run(args, { options, progress }) {
-        const progressToken = randomUUID();
-        const stop = options.instance.onProgress(progressToken, (update) =>
-          progress(`verify: ${update.stage}`),
+        const dir = options.workspace.resolveDir(args.dir);
+        // One run per instance, directory and screenshots asked for: a call that answered
+        // "running" is joined by the same call again (#157, D175 item 10).
+        const key = verifyKey(options.scope ?? ownScope, dir, args.screenshots ?? "");
+        const fingerprint = options.workspace.fingerprint;
+        const answer = await verifyWithin(
+          key,
+          async (stage) => {
+            const progressToken = randomUUID();
+            const stop = options.instance.onProgress(progressToken, (update) =>
+              stage(update.stage),
+            );
+            try {
+              return await options.instance.call(artifactVerifyMethod, {
+                source: { path: dir },
+                progressToken,
+                ...(args.screenshots !== undefined ? { screenshots: args.screenshots } : {}),
+              });
+            } finally {
+              stop();
+            }
+          },
+          {
+            onStage: (name) => progress(`verify: ${name}`),
+            // A run answers only for the source it started on (Opus 6, Fable 4).
+            ...(fingerprint !== undefined
+              ? { fingerprint: () => fingerprint.call(options.workspace, dir) }
+              : {}),
+          },
         );
-        try {
-          const verdict = await options.instance.call(artifactVerifyMethod, {
-            source: { path: options.workspace.resolveDir(args.dir) },
-            progressToken,
-            ...(args.screenshots !== undefined ? { screenshots: args.screenshots } : {}),
+        if (!answer.done) {
+          return jsonResult({
+            status: "running",
+            ...(answer.stage !== undefined ? { stage: answer.stage } : {}),
+            elapsedSeconds: answer.elapsedSeconds,
           });
-          return {
-            content: [
-              { type: "text", text: JSON.stringify(verdict) },
-              ...(await screenshotImages(verdict, readScreenshot)),
-            ],
-          };
-        } finally {
-          stop();
         }
+        const verdict = answer.verdict;
+        return {
+          content: [
+            { type: "text", text: JSON.stringify(verdict) },
+            ...(await screenshotImages(verdict, readScreenshot)),
+          ],
+        };
       },
     }),
     defineTool({
@@ -553,7 +614,11 @@ export function createTools(
         idempotentHint: false,
         openWorldHint: false,
       },
-      async run(args, { options }) {
+      // A host with MCP Apps shows the page inline (D175 item 1): the loader, which reads the
+      // version's own page; the flat key is the one hosts read before the nested one.
+      meta: { ui: { resourceUri: MCP_APP_LOADER_URI }, "ui/resourceUri": MCP_APP_LOADER_URI },
+      ui: "render",
+      async run(args, { options, apps }) {
         const artifact = artifactRef(args.artifact, options);
         const fresh =
           args.version !== undefined ||
@@ -576,10 +641,60 @@ export function createTools(
               ...(args.ttl !== undefined ? { ttl: args.ttl } : {}),
             })
           : await options.instance.call(viewDefaultMethod, { artifact });
-        if (args.open !== true) return jsonResult(link);
-        if (options.browser === undefined) return jsonResult({ ...link, opened: false });
+        // The page's handles (D175 item 1): the version the link opens, and the link. Without
+        // them the model still gets its link, and an inline page offers the full one.
+        const detail = await options.instance
+          .call(artifactGetMethod, { artifact })
+          .catch(() => undefined);
+        // The version the link opens, by the gateway's own rule: the latest one, which a publish
+        // of an earlier source makes again (D09), not the highest number (R01 finding 1).
+        const shown =
+          detail === undefined
+            ? undefined
+            : args.version === undefined
+              ? (detail.latestVersion ?? detail.versions[0])
+              : detail.versions.find((version) =>
+                  typeof args.version === "number"
+                    ? version.number === args.version
+                    : version.id === args.version,
+                );
+        const page = (value: Record<string, unknown>): CallToolResult => {
+          const result = jsonResult(value);
+          if (detail === undefined || shown === undefined) return result;
+          // Where the page shows, said to the model after the link's facts, which stay the
+          // first block. Not for one person's link, which shows no page, nor where none shows.
+          const where =
+            args.viewer !== undefined || apps === false
+              ? undefined
+              : apps === true
+                ? OPEN_WORDS.shown
+                : OPEN_WORDS.maybe;
+          return {
+            ...result,
+            ...(where !== undefined
+              ? { content: [...result.content, { type: "text" as const, text: where }] }
+              : {}),
+            // The same facts as the text, for a client that reads only this (R02 finding 20),
+            // and the page's handles beside them.
+            structuredContent: {
+              ...value,
+              mostra: {
+                artifactId: detail.id,
+                versionId: shown.id,
+                version: shown.number,
+                url: link.url,
+                // A link made for one person is theirs: shown inline it would open their view,
+                // save into their draft and spend their submission (R02 finding 2), so the page
+                // never opens it.
+                ...(args.viewer !== undefined ? { personal: true } : {}),
+              },
+            },
+          };
+        };
+        if (args.open !== true) return page({ ...link });
+        if (options.browser === undefined) return page({ ...link, opened: false });
         const launch = await options.instance.call(viewLaunchMethod, { tokenId: link.tokenId });
-        return jsonResult({ ...link, opened: await options.browser.open(launch.url) });
+        return page({ ...link, opened: await options.browser.open(launch.url) });
       },
     }),
     defineTool({
@@ -752,8 +867,29 @@ export function createTools(
         return jsonResult({ hits: searchDocs(options.docs, args.query as string) });
       },
     }),
+    // The app-only tools last: no model sees them (D175 item 5).
+    ...APP_TOOL_DEFINITIONS,
   ];
 }
+
+/** The app-only tools as tool definitions, their inputs registered in the wire bundle once. */
+const APP_TOOL_DEFINITIONS: readonly ToolDefinition<unknown>[] = createAppTools(input).map((tool) =>
+  defineTool<Record<string, unknown>>({
+    name: tool.name,
+    title: tool.title,
+    description: tool.description,
+    input: tool.input as unknown as z.ZodType<Record<string, unknown>>,
+    annotations: {
+      readOnlyHint: false,
+      destructiveHint: false,
+      idempotentHint: false,
+      openWorldHint: false,
+    },
+    meta: APP_ONLY_META,
+    ui: "app",
+    run: (args, { options }) => tool.run(args, options),
+  }),
+);
 
 const ENTRIES = new Set(["index.tsx", "index.jsx", "index.mdx"]);
 const MANIFEST_ID = /\bid\s*:\s*["'`]?(art_[0-9A-HJKMNP-TV-Z]{26})\b/;

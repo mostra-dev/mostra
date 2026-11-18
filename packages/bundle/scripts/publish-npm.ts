@@ -25,6 +25,7 @@ import { existsSync, mkdirSync, readdirSync, readFileSync, rmSync } from "node:f
 import { dirname, join, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 import { parseArgs } from "node:util";
+import { workspacePackages } from "./workspace.ts";
 
 const ROOT = resolve(dirname(fileURLToPath(import.meta.url)), "..", "..", "..");
 const { values, positionals } = parseArgs({
@@ -53,14 +54,23 @@ interface Member {
   readonly own?: true;
 }
 
+/**
+ * Each workspace package's directory, by name, under `packages/` or `plugins/` (a first-party
+ * plugin, D175 item 2), read from its manifest rather than guessed from its name (`workspace.ts`).
+ */
+function packageDirs(): Map<string, string> {
+  return workspacePackages(ROOT);
+}
+
 /** The fixed release group, from `.changeset/config.json`, with each package's manifest. */
 function members(): Member[] {
   const config = JSON.parse(readFileSync(join(ROOT, ".changeset", "config.json"), "utf8")) as {
     fixed: string[][];
   };
   const names = config.fixed[0] ?? fail("no fixed release group.");
+  const dirs = packageDirs();
   return names.map((name) => {
-    const dir = join(ROOT, "packages", name.startsWith("@mostra/") ? name.slice(8) : name);
+    const dir = dirs.get(name) ?? fail(`no workspace package is named ${name}.`);
     const manifest = JSON.parse(readFileSync(join(dir, "package.json"), "utf8")) as {
       name: string;
       version: string;

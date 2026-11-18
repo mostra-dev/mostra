@@ -29,9 +29,12 @@ import type { IncomingMessage, ServerResponse } from "node:http";
 import { join, resolve } from "node:path";
 import type { Duplex } from "node:stream";
 import {
+  type AppOpenResult,
   type ArtifactDetail,
   ArtifactId,
   type ArtifactRef,
+  appOpenMethod,
+  appRequestMethod,
   BROWSER_PROTOCOL_REVISIONS,
   type CapabilityLink,
   type CapabilityScope,
@@ -54,6 +57,7 @@ import {
   StreamTicketRequest,
   safePath,
   scopeAllows,
+  type VersionRef,
   viewDefaultMethod,
   viewLaunchMethod,
   viewRevokeMethod,
@@ -77,6 +81,7 @@ import type { Live } from "../live/index.ts";
 import type { Environment, Log } from "../log.ts";
 import { handler, type MethodHandler } from "../protocol-server/index.ts";
 import { type ActionRoutes, actionRoutes } from "./actions.ts";
+import { APP_SESSION_ORIGIN, appCallerOf, appRoutesOf, dispatchAppRequest } from "./app.ts";
 import { type BrowserRoutes, type BrowserRoutesOptions, browserRoutes } from "./browser.ts";
 import {
   type Capabilities,
@@ -638,8 +643,21 @@ export function createGateway(options: GatewayOptions): Gateway {
           revisions: options.revisions ?? BROWSER_PROTOCOL_REVISIONS,
         })
       : undefined;
+  // The routes an inline page reaches through the app channel (D175 item 4): the artifact
+  // origin's own, behind the same session and scope checks.
+  const appRoutes = appRoutesOf(
+    laterArtifactRoutes(served, acting, async () =>
+      jsonResponse(
+        refusal("MOSTRA_HYGIENE_NOT_SERVED", "The app channel takes no stream tickets.").diagnostic,
+        { status: 404 },
+      ),
+    ),
+  );
   let shellPort: number | undefined;
   const hosted = options.hosted;
+  /** An app request's caller (`app.ts`, `appCallerOf`). */
+  const appCaller = (session: { readonly attributes: Readonly<Record<string, unknown>> }): string =>
+    appCallerOf(hosted !== undefined, session.attributes);
   const shellOrigin = (): string => {
     if (hosted) return hosted.shellOrigin();
     if (shellPort === undefined) throw new Error("The gateway hasn't started.");
@@ -759,6 +777,115 @@ export function createGateway(options: GatewayOptions): Gateway {
           ...(found.collected !== undefined ? { collected: found.collected } : {}),
         }
       : undefined;
+  };
+
+  /**
+   * Opens one view of a link's version (D104, D108): a shell's frame ticket and an inline page's
+   * `app/open` (D175 item 4) alike. It picks the version (the link's pinned one, the asked one or
+   * the latest, D97 item 9), refuses one collected or damaged, asks a remote server's operator
+   * (`admitView`), runs `before` (the frame's own steps), then records the view with the controls
+   * in force. A refusal says how its caller answers it.
+   */
+  const openViewFor = async (input: {
+    readonly artifactId: string;
+    readonly grant: Grant;
+    /** The viewer the session acts as (its link's, or the identity port's); absent: the home's user. */
+    readonly sessionViewerId: string | undefined;
+    readonly sessionId: string;
+    readonly asked: number | undefined;
+    readonly client: string | undefined;
+    readonly before?: (version: VersionRef) => Promise<Refusal | undefined> | Refusal | undefined;
+  }): Promise<
+    | { readonly kind: "refused"; readonly refused: Refusal & { readonly retryAfter?: number } }
+    | { readonly kind: "json"; readonly status: number; readonly diagnostic: Diagnostic }
+    | { readonly kind: "damaged"; readonly number: number; readonly damage: string }
+    | {
+        readonly kind: "opened";
+        readonly detail: ArtifactDetail;
+        readonly version: VersionRef;
+        readonly latest: VersionRef;
+        readonly viewId: string;
+        readonly viewerId: string;
+        readonly controls: ControlsPolicy;
+        readonly pause: ReturnType<Interaction["pauseOf"]>;
+        readonly pinned: boolean;
+        /** On a hosted home, what the trusted chrome shows around the view (D161). */
+        readonly chrome: HostedChrome | undefined;
+      }
+  > => {
+    const { artifactId, grant, asked } = input;
+    const pinned = grant.pinnedVersion;
+    // A link that names a version opens that version only (D97 item 9).
+    if (pinned !== undefined && asked !== undefined && asked !== pinned) {
+      return {
+        kind: "refused",
+        refused: refusal("MOSTRA_HYGIENE_SCOPE_DENIED", `This link opens version ${pinned} only.`),
+      };
+    }
+    const detail = artifacts.get({ artifactId });
+    const version = versionOf(detail, asked ?? pinned);
+    const latest = versionOf(detail, undefined);
+    if (!version || !latest) {
+      return {
+        kind: "json",
+        status: 404,
+        diagnostic: createDiagnostic("MOSTRA_ARTIFACT_VERSION_NOT_FOUND", {
+          message: `This artifact has no version ${asked ?? pinned ?? ""}.`.replace(" .", "."),
+        }),
+      };
+    }
+    // A collected version's files are gone until its source is published again (D140 item 14).
+    if (version.collected !== undefined) {
+      return { kind: "json", status: 410, diagnostic: collectedDiagnostic(version.number) };
+    }
+    // A damaged version is never shown (FAILURE_MODEL §3). A dev preview has no stored build to
+    // check: Vite serves the source (D140 item 12).
+    const damage = options.dev ? undefined : await integrity.check(version.id);
+    if (damage !== undefined) return { kind: "damaged", number: version.number, damage };
+    // On a remote server: a quarantined route or version, or a view the operator's `limits`
+    // refused, gets no view (WP-30).
+    if (hosted?.admitView) {
+      const refused = await hosted.admitView({
+        artifactId,
+        versionId: version.id,
+        tokenId: grant.tokenId,
+        sessionId: input.sessionId,
+        client: input.client,
+      });
+      if (refused) return { kind: "refused", refused };
+    }
+    const ref = { id: version.id, number: version.number };
+    const stopped = await input.before?.(ref);
+    if (stopped) return { kind: "refused", refused: stopped };
+    // One load is one view, of exactly this version, by this link's viewer (D104), with the
+    // channels and controls in force for it (D108).
+    const controls = await options.controls(detail);
+    const viewerId = interaction.viewerOf(input.sessionViewerId);
+    // On a hosted home the chrome's policy is the operator's, and its making counts the view
+    // (`viewed`): both before the view is recorded, so a failure leaves no view without a load
+    // (review finding R01-10), and an inline view is counted as a browser's is (R02-16).
+    const chrome = hosted?.chrome
+      ? await hosted.chrome({ artifactId, tokenId: grant.tokenId, viewerId })
+      : undefined;
+    const viewId = interaction.openView({
+      artifactId,
+      versionId: version.id,
+      viewerId,
+      tokenId: grant.tokenId,
+      controls,
+    });
+    return {
+      kind: "opened",
+      detail,
+      version: ref,
+      latest: { id: latest.id, number: latest.number },
+      viewId,
+      viewerId,
+      controls,
+      pause: interaction.pauseOf(artifactId),
+      pinned: pinned !== undefined,
+      chrome,
+    };
   };
 
   // ── Faces (D158 item 1) ─────────────────────────────────────────────────────────────────
@@ -1417,80 +1544,45 @@ export function createGateway(options: GatewayOptions): Gateway {
           meta,
         );
       }
-      const pinned = session.grant.pinnedVersion;
-      // A link that names a version opens that version only (D97 item 9).
-      if (pinned !== undefined && asked !== undefined && asked !== pinned) {
-        return refuse(
-          checks,
-          refusal("MOSTRA_HYGIENE_SCOPE_DENIED", `This link opens version ${pinned} only.`),
-          meta,
-        );
-      }
-      const detail = artifacts.get({ artifactId });
-      const version = versionOf(detail, (asked as number | undefined) ?? pinned);
-      const latest = versionOf(detail, undefined);
-      if (!version || !latest) {
-        return jsonResponse(
-          createDiagnostic("MOSTRA_ARTIFACT_VERSION_NOT_FOUND", {
-            message:
-              `This artifact has no version ${asked ?? session.grant.pinnedVersion ?? ""}.`.replace(
-                " .",
-                ".",
-              ),
-          }),
-          { status: 404 },
-        );
-      }
-      // A collected version's files are gone until its source is published again (D140 item 14).
-      if (version.collected !== undefined) {
-        return jsonResponse(collectedDiagnostic(version.number), { status: 410 });
-      }
-      // A damaged version is never shown (FAILURE_MODEL §3).
-      // A dev preview has no stored build to check: Vite serves the source (D140 item 12).
-      const damage = options.dev ? undefined : await integrity.check(version.id);
-      if (damage !== undefined) return damaged(version.number, damage, false, "'none'");
-      // On a remote server: a quarantined route or version, or a view the operator's `limits`
-      // refused, gets no frame; the shell shows why (WP-30).
-      if (hosted?.admitView) {
-        const refused = await hosted.admitView({
-          artifactId,
-          versionId: version.id,
-          tokenId: session.grant.tokenId,
-          sessionId: session.id,
-          client: context.client,
-        });
-        if (refused) return refuse(checks, refused, meta);
-      }
       // The frame opens on the artifact's way in this shell's group: its loopback listener, or
       // the artifact's face at this address (D158 item 1), in the mode the pair needs (D70).
-      const found = await artifactWayFor(way, group, artifactId);
-      if (isRefusal(found)) return refuse(checks, found, meta);
-      const artifactOrigin = found.way.origin() as string;
-      const mode = modeOf(found.way, found.group);
-      const value = capabilities.mintTicket({
-        tokenId: session.grant.tokenId,
+      let artifactOrigin = "";
+      // Set by the frame's own steps (`before`); typed wide, since TypeScript can't see them.
+      let mode = "cookie" as FrameMode;
+      let value = "";
+      const opening = await openViewFor({
         artifactId,
-        versionId: version.id,
-        origin: artifactOrigin,
-        shellOrigin: way.origin() ?? "",
-        shellSessionId: session.id,
-        viewerId: session.viewerId,
+        grant: session.grant,
+        sessionViewerId: session.viewerId,
+        sessionId: session.id,
+        asked: asked as number | undefined,
+        client: context.client,
+        before: async (version) => {
+          const found = await artifactWayFor(way, group, artifactId);
+          if (isRefusal(found)) return found;
+          artifactOrigin = found.way.origin() as string;
+          mode = modeOf(found.way, found.group);
+          value = capabilities.mintTicket({
+            tokenId: session.grant.tokenId,
+            artifactId,
+            versionId: version.id,
+            origin: artifactOrigin,
+            shellOrigin: way.origin() ?? "",
+            shellSessionId: session.id,
+            viewerId: session.viewerId,
+          });
+          return undefined;
+        },
       });
-      // One frame load is one view, of exactly this version, by this link's viewer (D104), with
-      // the channels and controls in force for it (D108).
-      const controls = await options.controls(detail);
-      const viewerId = interaction.viewerOf(session.viewerId);
-      const pause = interaction.pauseOf(artifactId);
-      const chrome = hosted?.chrome
-        ? await hosted.chrome({ artifactId, tokenId: session.grant.tokenId, viewerId })
-        : undefined;
-      const viewId = interaction.openView({
-        artifactId,
-        versionId: version.id,
-        viewerId,
-        tokenId: session.grant.tokenId,
-        controls,
-      });
+      if (opening.kind === "refused") return refuse(checks, opening.refused, meta);
+      if (opening.kind === "json") {
+        return jsonResponse(opening.diagnostic, { status: opening.status });
+      }
+      if (opening.kind === "damaged") {
+        return damaged(opening.number, opening.damage, false, "'none'");
+      }
+      const { detail, version, latest, viewId, viewerId, controls, pause, chrome } = opening;
+      const pinned = session.grant.pinnedVersion;
       const answer: TicketAnswer = {
         artifactId,
         viewId,
@@ -2320,6 +2412,79 @@ export function createGateway(options: GatewayOptions): Gateway {
           ),
         );
       }),
+      handler(appOpenMethod, async (params, session): Promise<AppOpenResult> => {
+        // The link's secret authorizes, as in a browser (D06), and only while the home serves the
+        // address it was made for: the app channel has none of its own (D175 item 4, R01-4).
+        const grant = capabilities.presentToken(params.token, params.artifactId, servesShell);
+        if (isRefusal(grant)) return fail(grant);
+        // A link minted without a viewer acts as the home's local user, and on a hosted home as
+        // the account the session's grant names (verified, kind `account`).
+        const accountId = hosted ? session.attributes["accountId"] : undefined;
+        const sessionViewerId =
+          grant.viewerId ??
+          (typeof accountId === "string" ? interaction.viewerForAccount(accountId) : undefined);
+        const opening = await openViewFor({
+          artifactId: grant.artifactId,
+          grant,
+          sessionViewerId,
+          sessionId: "",
+          asked: params.version,
+          client: appCaller(session),
+        });
+        if (opening.kind === "refused") return fail(opening.refused);
+        if (opening.kind === "json") throw new RpcError(opening.diagnostic);
+        if (opening.kind === "damaged") {
+          throw new RpcError(
+            createDiagnostic("MOSTRA_HOME_INTEGRITY", {
+              message: `Version ${opening.number} of this artifact is damaged: ${opening.damage}.`,
+            }),
+          );
+        }
+        const created = capabilities.createSession({
+          tokenId: grant.tokenId,
+          origin: APP_SESSION_ORIGIN,
+          versionId: opening.version.id,
+          viewerId: grant.viewerId === undefined ? sessionViewerId : undefined,
+          mode: "app",
+        });
+        const { detail, controls, pause } = opening;
+        return {
+          artifactId: grant.artifactId,
+          viewId: opening.viewId,
+          version: opening.version,
+          latest: opening.latest,
+          policy: detail.policy ?? { policy: "once", scope: "per-artifact" },
+          submitChannels: controls.submitChannels,
+          controls: (controls.controls ?? ["submit", "choose", "approve"]).filter((control) =>
+            control === "submit"
+              ? scopeAllows(grant.scopes, "submit")
+              : control === "choose"
+                ? scopeAllows(grant.scopes, "review")
+                : true,
+          ),
+          target: "mcp-app",
+          session: created.cookie,
+          scopes: grant.scopes,
+          viewer: interaction.viewer(opening.viewerId),
+          follow: interaction.following({
+            artifactId: grant.artifactId,
+            viewerId: opening.viewerId,
+          }),
+          pinned: opening.pinned,
+          ...(options.parked?.(opening.version.id) ? { serverParked: true as const } : {}),
+          ...(pause
+            ? {
+                paused: {
+                  by: pause.by,
+                  ...(pause.reason !== undefined ? { reason: pause.reason } : {}),
+                },
+              }
+            : {}),
+        };
+      }),
+      handler(appRequestMethod, (params, session) =>
+        dispatchAppRequest({ routes: appRoutes, capabilities, log }, params, appCaller(session)),
+      ),
       handler(viewDefaultMethod, async (params) => {
         const detail = artifacts.get(params.artifact);
         return link(capabilities.defaultLink(detail.id, await linkBase(detail.id)));

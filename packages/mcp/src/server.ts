@@ -7,21 +7,29 @@
 import { readFile } from "node:fs/promises";
 import {
   type CallToolResult,
+  CLIENT_CAPABILITIES_META_KEY,
   CLIENT_INFO_META_KEY,
   McpServer,
   type McpServerFactory,
+  type RegisteredTool,
   ResourceNotFoundError,
   ResourceTemplate,
   type ServerContext,
 } from "@modelcontextprotocol/server";
 import {
   type ArtifactRef,
+  appPageMethod,
   artifactGetMethod,
   artifactListMethod,
+  createDiagnostic,
+  MCP_APP_MIME_TYPE,
+  MCP_APPS_EXTENSION,
   RpcError,
   resultsGetMethod,
   stateGetMethod,
+  versionOfMcpAppUri,
 } from "@mostra/protocol";
+import { LOADER_RESOURCE, loaderHtml } from "./loader.ts";
 import type { McpClientInfo, McpServerOptions } from "./ports.ts";
 import { diagnosticOf, errorResult } from "./results.ts";
 import { docsUri } from "./search.ts";
@@ -123,6 +131,29 @@ async function artifactReport(options: McpServerOptions, artifact: ArtifactRef):
   return lines.join("\n");
 }
 
+/**
+ * Whether capabilities say their client shows MCP Apps (`io.modelcontextprotocol/ui` with the
+ * page's media type), or `undefined` when they aren't known.
+ */
+function showsApps(capabilities: unknown): boolean | undefined {
+  if (capabilities === undefined || capabilities === null || typeof capabilities !== "object") {
+    return undefined;
+  }
+  const types = (
+    capabilities as { extensions?: Record<string, { mimeTypes?: unknown } | undefined> }
+  ).extensions?.[MCP_APPS_EXTENSION]?.mimeTypes;
+  return Array.isArray(types) && types.includes(MCP_APP_MIME_TYPE);
+}
+
+/**
+ * Whether the client of a request shows MCP Apps: from a 2026-07-28 request's own envelope, else
+ * `undefined` (a 2025-era session is judged once it initialized).
+ */
+function appsOf(ctx: ServerContext): boolean | undefined {
+  const envelope = ctx.mcpReq.envelope as Record<string, unknown> | undefined;
+  return envelope === undefined ? undefined : showsApps(envelope[CLIENT_CAPABILITIES_META_KEY]);
+}
+
 /** Builds the factory every transport serves. */
 export function createMcpServerFactory(options: McpServerOptions): McpServerFactory {
   const tools = createTools(
@@ -161,6 +192,7 @@ export function createMcpServerFactory(options: McpServerOptions): McpServerFact
     server.server.oninitialized = () => {
       initialized?.();
       tell(identity());
+      withoutApps();
     };
     const closed = server.server.onclose;
     server.server.onclose = () => {
@@ -168,21 +200,42 @@ export function createMcpServerFactory(options: McpServerOptions): McpServerFact
       tell(identity());
     };
 
+    const registered: {
+      readonly ui: "render" | "app";
+      readonly tool: RegisteredTool;
+      readonly meta: Record<string, unknown> | undefined;
+    }[] = [];
     for (const tool of tools) {
-      server.registerTool(
+      const handle = server.registerTool(
         tool.name,
         {
           title: tool.title,
           description: tool.description,
           inputSchema: tool.input as never,
           annotations: tool.annotations,
+          ...(tool.meta !== undefined ? { _meta: { ...tool.meta } } : {}),
         },
         (async (args: unknown, ctx: ServerContext): Promise<CallToolResult> => {
           seen(ctx);
+          // A page's own tool, called by a client that says it shows no MCP Apps: no page of
+          // its asks for it, so its model would be acting through a link (Fable 9).
+          if (tool.ui === "app" && (options.apps === false || appsOf(ctx) === false)) {
+            return errorResult(
+              createDiagnostic("MOSTRA_HOST_METHOD_UNKNOWN", {
+                message: `${tool.name} serves an MCP App's page, which this client doesn't show.`,
+              }),
+            );
+          }
           const progressToken = ctx.mcpReq._meta?.progressToken;
           let step = 0;
           const call: ToolCall = {
             options,
+            // Whether this client shows MCP Apps: what this request says (2026-07-28), else what
+            // its session said at `initialize`, else unknown; never where the server shows none.
+            apps:
+              options.apps === false
+                ? false
+                : (appsOf(ctx) ?? showsApps(server.server.getClientCapabilities())),
             progress(message) {
               if (progressToken === undefined) return;
               step += 1;
@@ -201,6 +254,49 @@ export function createMcpServerFactory(options: McpServerOptions): McpServerFact
           }
         }) as never,
       );
+      if (tool.ui !== undefined) {
+        registered.push({
+          ui: tool.ui,
+          tool: handle,
+          meta: tool.meta !== undefined ? { ...tool.meta } : undefined,
+        });
+      }
+    }
+
+    // MCP Apps' parts, left out for a client known to lack MCP Apps (D175 item 5): its
+    // capabilities, known once a 2025-era session initialized, name no UI extension. A client
+    // whose capabilities aren't known (a stateless 2025-era request) keeps them.
+    /**
+     * Leaves every MCP Apps part out of the tool list: set as the list reads them, never through
+     * `disable()` or `update()`, which announce a changed list, since nothing changed for a
+     * client that hasn't listed tools yet.
+     */
+    const showApps = (shown: boolean): void => {
+      for (const { ui, tool, meta } of registered) {
+        if (ui === "app") tool.enabled = shown;
+        else if (shown && meta !== undefined) tool._meta = { ...meta };
+        else delete tool._meta;
+      }
+    };
+    const withoutApps = (): void => {
+      if (showsApps(server.server.getClientCapabilities()) === false) showApps(false);
+    };
+    if (options.apps === false) showApps(false);
+    else {
+      // A 2026-07-28 request names its client's capabilities itself, and a session may never
+      // initialize: each list is judged by the request it answers (review finding Fable 9).
+      const list = (
+        server.server as unknown as {
+          _getRequestHandler(method: string): ((request: never, ctx: never) => unknown) | undefined;
+        }
+      )._getRequestHandler("tools/list");
+      if (list !== undefined) {
+        server.server.setRequestHandler("tools/list", (request, ctx) => {
+          const shown = appsOf(ctx as ServerContext);
+          if (shown !== undefined) showApps(shown);
+          return list(request as never, ctx as never) as never;
+        });
+      }
     }
 
     server.registerResource(
@@ -268,6 +364,69 @@ export function createMcpServerFactory(options: McpServerOptions): McpServerFact
         }
       },
     );
+    if (options.apps !== false) {
+      // The loader every inline page starts as (D175 item 1).
+      server.registerResource(
+        LOADER_RESOURCE.name,
+        LOADER_RESOURCE.uri,
+        {
+          title: LOADER_RESOURCE.title,
+          description: LOADER_RESOURCE.description,
+          mimeType: LOADER_RESOURCE.mimeType,
+          // On the listing and the content alike: a host reads either (MCP Apps, draft).
+          _meta: LOADER_RESOURCE.meta,
+        },
+        async (uri, ctx) => {
+          seen(ctx);
+          return {
+            contents: [
+              {
+                uri: uri.href,
+                mimeType: MCP_APP_MIME_TYPE,
+                text: loaderHtml(options.version),
+                _meta: LOADER_RESOURCE.meta,
+              },
+            ],
+          };
+        },
+      );
+      // A version's own page, which the loader reads (D175 items 1, 2): the instance makes it.
+      server.registerResource(
+        "mostra-view",
+        new ResourceTemplate("ui://mostra/view/{versionId}", { list: undefined }),
+        {
+          title: "A version's page",
+          description: "One published version of a Mostra artifact, as an MCP App.",
+          mimeType: MCP_APP_MIME_TYPE,
+        },
+        async (uri, _variables, ctx) => {
+          seen(ctx);
+          const versionId = versionOfMcpAppUri(uri.href);
+          if (versionId === undefined) throw new ResourceNotFoundError(uri.href);
+          try {
+            const page = await options.instance.call(appPageMethod, { versionId });
+            return {
+              contents: [
+                {
+                  uri: uri.href,
+                  mimeType: MCP_APP_MIME_TYPE,
+                  text: page.html,
+                  _meta: { ui: page.meta },
+                },
+              ],
+            };
+          } catch (error) {
+            if (
+              error instanceof RpcError &&
+              error.diagnostic.code === "MOSTRA_ARTIFACT_VERSION_NOT_FOUND"
+            ) {
+              throw new ResourceNotFoundError(uri.href);
+            }
+            throw error;
+          }
+        },
+      );
+    }
     return server;
   };
 }

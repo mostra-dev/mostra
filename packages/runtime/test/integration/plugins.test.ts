@@ -123,7 +123,7 @@ interface AddResult {
     package: string;
     status: string;
     scope: string;
-    diagnostics: { code: string }[];
+    diagnostics: { code: string; message: string }[];
   }[];
   readonly added: readonly string[];
   readonly licenses: readonly { id: string; class: string; acknowledgment: string }[];
@@ -523,6 +523,44 @@ describe("contracts at install and at load (EX-01)", () => {
     );
     expect(exported.exporter.package).toBe("mostra-fixture-words-twin");
     expect(code(await target.client.call("plugin/list", {}))).toBe("MOSTRA_PLUGIN_SCOPE_INVALID");
+  });
+
+  it("lets the home's own MCP App exporter take the bundled one's place (D175 item 3)", async () => {
+    const target = await start();
+    const added = ok<AddResult>(
+      await target.client.call("plugin/add", {
+        home: true,
+        packages: ["mostra-fixture-own-app@1.0.0"],
+      }),
+    );
+    const shadowed = added.plugins[0]?.diagnostics.find(
+      (diagnostic) => diagnostic.code === "MOSTRA_PLUGIN_SHADOWED",
+    );
+    expect(shadowed?.message).toContain("Mostra's bundled @mostra/plugin-mcp-app");
+    const receipt = ok<{ artifactId: string; versionId: string }>(
+      await target.client.call("artifact/publish", { source: { path: artifact() } }),
+    );
+    const page = ok<{ html: string; meta: unknown }>(
+      await target.client.call("app/page", { versionId: receipt.versionId }),
+    );
+    expect(page.html).toBe("<!doctype html><title>own app</title>");
+    expect(page.meta).toEqual({ prefersBorder: true });
+    // Removing it brings the bundled one back, for versions whose page wasn't kept yet.
+    ok(
+      await target.client.call("plugin/remove", {
+        home: true,
+        packages: ["mostra-fixture-own-app"],
+      }),
+    );
+    const second = ok<{ versionId: string }>(
+      await target.client.call("artifact/publish", {
+        source: { path: artifact({ "index.tsx": "export default () => <p>two</p>;\n" }) },
+      }),
+    );
+    const bundled = ok<{ html: string }>(
+      await target.client.call("app/page", { versionId: second.versionId }, 120_000),
+    );
+    expect(bundled.html).toContain('<meta name="mostra-target" content="mcp-app" />');
   });
 });
 
