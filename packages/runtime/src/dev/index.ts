@@ -361,7 +361,16 @@ export function createDev(options: DevOptions): Dev {
           const files = changed.map((change) => change.file);
           if (next !== nodeModules || key !== manifestKey) {
             // Other packages or another manifest: a new dev server over the same mirror, its
-            // server bundle in the worker, and every page loaded again (D140 item 12).
+            // server bundle in the worker, and every page loaded again (D140 item 12). Why it
+            // restarts is logged: a restart cuts the requests the old server was answering
+            // (the gateway sends them again, #164), and a run of them is worth explaining.
+            log.info("dev.restarted", {
+              sessionId,
+              packages: next !== nodeModules,
+              manifest: key !== manifestKey,
+              forced: forceResolve,
+              files,
+            });
             nodeModules = next;
             manifestKey = key;
             const old = child;

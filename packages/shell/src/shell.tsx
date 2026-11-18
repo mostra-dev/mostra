@@ -8,7 +8,6 @@
 
 import { type ReactElement, useEffect, useState } from "react";
 import {
-  type Access,
   type Conflict,
   exchange,
   type FrameTicket,
@@ -20,7 +19,7 @@ import {
 } from "./api.ts";
 import { enterRoute, forgetSession, keepSession, takeSignIn } from "./hosted.ts";
 import { type Credential, credentialFrom, parseTarget, type ShellTarget } from "./location.ts";
-import { describeAccess, explain } from "./messages.ts";
+import { describeLink, explain, prefersOffered } from "./messages.ts";
 import { mark, ViewerPage } from "./viewer.tsx";
 
 /**
@@ -134,27 +133,45 @@ async function open(): Promise<State> {
   }
 }
 
-/** The choice between the link the browser has and the link just opened (D98 item 8). */
+/**
+ * The choice between the link the browser has and the link just opened (D98 item 8). Each says
+ * whose it is; when the opened link is someone's personal link and the open one isn't, using it
+ * is the first choice, since keeping a shared link answers as nobody in particular (#184).
+ */
 function Choice(props: {
-  readonly current: Access;
-  readonly offered: Access;
+  readonly current: Conflict["current"];
+  readonly offered: Conflict["offered"];
   readonly onKeep: () => void;
   readonly onReplace: () => void;
 }): ReactElement {
+  const personalFirst = prefersOffered(props);
+  const keep = (
+    <button
+      key="keep"
+      type="button"
+      className={personalFirst ? "mostra-button" : "mostra-button mostra-primary"}
+      onClick={props.onKeep}
+    >
+      Keep the link I have
+    </button>
+  );
+  const replace = (
+    <button
+      key="replace"
+      type="button"
+      className={personalFirst ? "mostra-button mostra-primary" : "mostra-button"}
+      onClick={props.onReplace}
+    >
+      {personalFirst ? "Use the personal link" : "Use the new link"}
+    </button>
+  );
   return (
     <main className="mostra-shell mostra-notice">
       <div className="mostra-card">
         <h1>This artifact is already open here with another link</h1>
-        <p>The link you have open: {describeAccess(props.current)}</p>
-        <p>The link you just opened: {describeAccess(props.offered)}</p>
-        <div className="mostra-actions">
-          <button type="button" className="mostra-button mostra-primary" onClick={props.onKeep}>
-            Keep the link I have
-          </button>
-          <button type="button" className="mostra-button" onClick={props.onReplace}>
-            Use the new link
-          </button>
-        </div>
+        <p>The link you have open: {describeLink(props.current)}</p>
+        <p>The link you just opened: {describeLink(props.offered)}</p>
+        <div className="mostra-actions">{personalFirst ? [replace, keep] : [keep, replace]}</div>
       </div>
     </main>
   );

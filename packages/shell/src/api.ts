@@ -105,10 +105,20 @@ async function call<T>(url: string, init: RequestInit): Promise<T> {
 
 const JSON_HEADERS = { "content-type": "application/json" };
 
+/**
+ * One of two links that met: what it allows, and whose it is. A personal link acts as the person
+ * it was minted for (D104), whose display name it carries when one is known; a shared link names
+ * nobody. A gateway before #184 sent neither.
+ */
+export interface ConflictSide extends Access {
+  readonly personal?: boolean;
+  readonly name?: string;
+}
+
 /** Two links met: what the session has and what the opened link offers. */
 export interface Conflict {
-  readonly current: Access;
-  readonly offered: Access;
+  readonly current: ConflictSide;
+  readonly offered: ConflictSide;
 }
 
 /**

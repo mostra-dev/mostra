@@ -41,7 +41,7 @@ import {
   shareStopMethod,
 } from "@mostra/protocol";
 import type { Capabilities, FaceHandle, FaceSpec, Gateway } from "../gateway/index.ts";
-import { faceKey } from "../gateway/index.ts";
+import { checkRespondentLinks, faceKey } from "../gateway/index.ts";
 import { appendEvent, type Interaction } from "../interaction/index.ts";
 import {
   InflightRequests,
@@ -653,13 +653,24 @@ export function createShares(options: SharesOptions): Shares {
     const withRespondents = async (share: ShareStartResult): Promise<ShareStartResult> => {
       const respondents = params.respondents;
       if (respondents === undefined || respondents.length === 0 || !options.remote) return share;
-      const plan = JSON.parse((row(share.shareId) as ShareRow).plan_json) as Plan;
+      const shared = row(share.shareId) as ShareRow;
+      const plan = JSON.parse(shared.plan_json) as Plan;
       const links = await options.remote.respondents({
         server: plan.server as string,
         artifactId: detail.id,
         respondents,
         scopes: params.scopes,
         ttl: params.ttl,
+      });
+      // Each respondent's link is their own, never the share's own nor another's (#184): what
+      // the server answered is checked before anything is printed, and the links' token IDs
+      // (never their secrets, D97 item 2) are logged, so a sighting can be checked against the
+      // hosted roster without anyone comparing secrets by eye.
+      checkRespondentLinks(links, [shared.token_id]);
+      log.info("share.respondents", {
+        shareId: share.shareId,
+        artifactId: detail.id,
+        tokenIds: links.map(({ link }) => link.tokenId),
       });
       return { ...share, respondents: [...links] };
     };

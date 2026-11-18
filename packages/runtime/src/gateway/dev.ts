@@ -83,6 +83,44 @@ export function devFetch(
   });
 }
 
+/** How many times a request a restart cut goes to the dev server that replaced the one it went to. */
+export const DEV_RESTART_RETRIES = 3;
+
+/**
+ * Fetches `path` from the session's dev server, through its restarts (#164). A restart starts the
+ * new dev server, switches the session to it and only then stops the old one (D140 item 12), so a
+ * request that went to the old one is cut, and the page that asked for one of its modules never
+ * renders: a module graph with a hole in it. Such a request goes again to the server that
+ * replaced it, when it is a GET or a HEAD (a module, a file: nothing a second ask changes) and
+ * the session now names another server than the one that failed it; a server that failed with
+ * no restart behind it fails the request as before. Rejects with the last failure.
+ */
+export async function devFetchAcrossRestarts(
+  current: () => DevUpstream | undefined,
+  first: DevUpstream,
+  request: Request,
+  path: string,
+  retried?: (failure: {
+    readonly from: number;
+    readonly to: number;
+    readonly error: unknown;
+  }) => void,
+): Promise<Awaited<ReturnType<typeof devFetch>>> {
+  const again = request.method === "GET" || request.method === "HEAD";
+  let upstream = first;
+  for (let attempt = 0; ; attempt += 1) {
+    try {
+      return await devFetch(upstream, request, path);
+    } catch (error) {
+      const next = current();
+      if (!again || attempt >= DEV_RESTART_RETRIES || !next || next.port === upstream.port)
+        throw error;
+      retried?.({ from: upstream.port, to: next.port, error });
+      upstream = next;
+    }
+  }
+}
+
 /**
  * Hands an upgrade the gateway accepted to the dev server: the request line and its headers, with
  * the secret added, the Host rewritten and Mostra's cookies removed, then both directions piped.

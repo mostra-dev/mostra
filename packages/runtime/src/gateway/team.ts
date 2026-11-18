@@ -46,6 +46,43 @@ export interface RosterMethodsOptions {
   readonly linkLimit?: (artifactId: string, count: number) => Promise<void>;
 }
 
+/**
+ * Refuses respondents' personal links that aren't each that person's own (#184): every link must
+ * act as the respondent it is given for (its viewer's `ref` is theirs, D104), and no two
+ * respondents, nor a respondent and a link in `notOneOf` (a share's own link), may hold one link.
+ * A respondent given the share's link answers as nobody in particular and never completes the
+ * roster; one given another's link answers as that person. Nothing here can produce either, so
+ * one that appears is a fault: nothing is handed out, and the message names the respondent,
+ * never a secret.
+ */
+export function checkRespondentLinks(
+  links: readonly { readonly ref: string; readonly link: CapabilityLink }[],
+  notOneOf: readonly string[] = [],
+): void {
+  const holder = new Map<string, string>();
+  for (const { ref, link } of links) {
+    const other = holder.get(link.tokenId);
+    const wrong =
+      link.viewer === undefined
+        ? "names no person"
+        : link.viewer.ref !== ref
+          ? "acts as another person"
+          : notOneOf.includes(link.tokenId)
+            ? "is the share's own link"
+            : other !== undefined
+              ? `is also the one given for ${other}`
+              : undefined;
+    if (wrong !== undefined) {
+      throw new RpcError(
+        createDiagnostic("MOSTRA_HOST_INTERNAL_ERROR", {
+          message: `The personal link given for ${ref} ${wrong}, so no link was handed out. Add them again with roster/add.`,
+        }),
+      );
+    }
+    holder.set(link.tokenId, ref);
+  }
+}
+
 /** Who changed the roster: the client that called. */
 function actorOf(session: Session): Actor {
   return { kind: "agent", ...(session.client ? { id: session.client.name } : {}) };
@@ -82,10 +119,12 @@ export function rosterMethods(options: RosterMethodsOptions): MethodHandler[] {
        * asked for (Opus review 6). Otherwise the respondent gets a new link; the old one isn't
        * revoked, since they may hold it already.
        */
-      const reusable = (tokenId: string): boolean => {
+      const reusable = (tokenId: string, viewerId: string): boolean => {
         const grant = capabilities.grant(tokenId);
         return (
           grant?.live === true &&
+          // Only the respondent's own link: one acting for anyone else is never theirs (#184).
+          grant.viewerId === viewerId &&
           grant.shellOrigin === base &&
           normalizeScopes(grant.scopes).join(" ") === scopes &&
           grant.pinnedVersion === pinned &&
@@ -100,12 +139,12 @@ export function rosterMethods(options: RosterMethodsOptions): MethodHandler[] {
           key !== undefined && ledger.read((db) => recordedResult(db, key)) !== undefined;
         if (!replay) {
           const current = new Map(
-            interaction.roster(detail.id, live).respondents.map((one) => [one.ref, one.tokenId]),
+            interaction.roster(detail.id, live).respondents.map((one) => [one.ref, one]),
           );
           let fresh = 0;
           for (const ref of new Set(params.respondents.map((one) => one.ref))) {
-            const tokenId = current.get(ref);
-            if (tokenId === undefined || !reusable(tokenId)) fresh += 1;
+            const one = current.get(ref);
+            if (one?.tokenId === undefined || !reusable(one.tokenId, one.viewerId)) fresh += 1;
           }
           if (fresh > 0) await options.linkLimit(detail.id, fresh);
         }
@@ -124,7 +163,7 @@ export function rosterMethods(options: RosterMethodsOptions): MethodHandler[] {
           // mint; a revoked, expired or moved one, or one of other scopes, version or expiry, is
           // replaced by a new one for the same viewer.
           link: (viewerId, current) => {
-            if (current !== undefined && reusable(current)) return current;
+            if (current !== undefined && reusable(current, viewerId)) return current;
             const token = capabilities.mint(
               {
                 artifactId: detail.id,
@@ -156,6 +195,7 @@ export function rosterMethods(options: RosterMethodsOptions): MethodHandler[] {
         }
         return { ref, link: options.link(token) };
       });
+      checkRespondentLinks(links);
       return { roster: roster(detail.id), links };
     }),
     handler(rosterRemoveMethod, (params, session) => {
