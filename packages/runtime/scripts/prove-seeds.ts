@@ -2025,6 +2025,23 @@ const SEEDS: readonly Seed[] = [
     to: "        void stop();",
     check: unit("dev-session.test.ts", "never as an unhandled rejection"),
   },
+  // #164: a dev server's restart cut the module requests the old one was answering.
+  {
+    requirement: "VR-08",
+    name: "a module request a dev server's restart cut fails the page (#164)",
+    file: "src/gateway/dev.ts",
+    from: "      if (!again || attempt >= DEV_RESTART_RETRIES || !next || next.port === upstream.port)\n        throw error;",
+    to: "      if (next !== undefined) throw error;",
+    check: unit("dev-proxy.test.ts", "sends a module request the restart cut"),
+  },
+  {
+    requirement: "VR-08",
+    name: "a request that changes something goes to the new dev server a second time (#164)",
+    file: "src/gateway/dev.ts",
+    from: '  const again = request.method === "GET" || request.method === "HEAD";',
+    to: "  const again = true;",
+    check: unit("dev-proxy.test.ts", "never sends anything but a GET or a HEAD"),
+  },
   // WP-W3: Windows III (RT-12): the Windows bundles, the SDK, the crate and the kit on Windows.
   {
     requirement: "RT-12",
@@ -3532,9 +3549,17 @@ const SEEDS: readonly Seed[] = [
     requirement: "EN-07",
     name: "a POSIX integration suite runs in two groups",
     file: "vitest.config.ts",
-    from: "    exclude: [VERIFY_SUITES, DEV, ...FAULTS, ...REMOTE, ...EXTENSIONS],",
-    to: "    exclude: [VERIFY_SUITES, ...FAULTS, ...REMOTE, ...EXTENSIONS],",
+    from: "    exclude: [VERIFY_SUITES, DEV, ...FAULTS, ...REMOTE, ...REGISTRY_INSTALLS],",
+    to: "    exclude: [VERIFY_SUITES, ...FAULTS, ...REMOTE, ...REGISTRY_INSTALLS],",
     check: unit("windows-groups.test.ts", "macOS and Linux"),
+  },
+  {
+    requirement: "EN-07",
+    name: "core runs the dependency installs again, at its deadline on slow macOS runners (#197)",
+    file: "vitest.config.ts",
+    from: "const REGISTRY_INSTALLS = [...EXTENSIONS, DEPS];",
+    to: "const REGISTRY_INSTALLS = [...EXTENSIONS];",
+    check: unit("windows-groups.test.ts", "not in `core`"),
   },
   {
     requirement: "EN-07",

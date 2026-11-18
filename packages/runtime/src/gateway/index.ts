@@ -84,7 +84,7 @@ import {
   type MintedToken,
   SESSION_MAX_AGE_S,
 } from "./capabilities.ts";
-import { type DevUpstream, devFetch, devUpgrade } from "./dev.ts";
+import { type DevUpstream, devFetchAcrossRestarts, devUpgrade } from "./dev.ts";
 import {
   BASE_HEADERS,
   cookieValues,
@@ -1920,9 +1920,18 @@ export function createGateway(options: GatewayOptions): Gateway {
             meta,
           );
         }
-        const answered = await devFetch(upstream, context.request, url.pathname + url.search).catch(
-          () => undefined,
-        );
+        const devOptions = options.dev;
+        const answered = await devFetchAcrossRestarts(
+          () => devOptions.upstream(),
+          upstream,
+          context.request,
+          url.pathname + url.search,
+          ({ from, to, error }) =>
+            log.info("gateway.dev_retried", { path: url.pathname, from, to, error }),
+        ).catch((error: unknown) => {
+          log.warn("gateway.dev_failed", { path: url.pathname, port: upstream.port, error });
+          return undefined;
+        });
         if (!answered) {
           return refuse(
             checks,

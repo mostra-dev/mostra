@@ -544,13 +544,19 @@ describe("mostra dev's packages and leftovers (VR-08)", () => {
           initializeParams({ capabilities: { notifications: ["dev/notify"] } }),
         ),
       );
+      // When the page doesn't show the package, the session's notifications say what it went
+      // through: each restart is a `reloaded`, and #164's page was cut by three in about 3 s.
+      const since = Date.now();
+      const arrivals: string[] = [];
       void (async () => {
         for (;;) {
           const message = await owner
             .next((m) => m.method === "dev/notify", 600_000)
             .catch(() => undefined);
           if (!message) return;
-          events.push((message as unknown as { params: DevEvent }).params);
+          const event = (message as unknown as { params: DevEvent }).params;
+          events.push(event);
+          arrivals.push(`${event.kind} at +${Date.now() - since} ms`);
         }
       })();
       const started = ok<{ url: string; sessionId: string }>(
@@ -596,7 +602,12 @@ describe("mostra dev's packages and leftovers (VR-08)", () => {
               .catch(() => ""),
           { timeout: 20_000 },
         )
-        .toBe("clicks");
+        .toBe("clicks")
+        .catch((error: unknown) => {
+          throw new Error(
+            `${error instanceof Error ? error.message : String(error)}\nThe session's dev/notify: ${arrivals.join(", ")}`,
+          );
+        });
       ok(await owner.call("dev/stop", { sessionId: started.sessionId }));
       owner.close();
     } finally {
