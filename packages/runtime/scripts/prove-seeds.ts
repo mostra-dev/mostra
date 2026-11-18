@@ -3524,8 +3524,8 @@ const SEEDS: readonly Seed[] = [
     requirement: "EN-07",
     name: "a POSIX integration suite runs in two groups",
     file: "vitest.config.ts",
-    from: "    exclude: [VERIFY_SUITES, DEV, ...FAULTS, ...REMOTE, ...EXTENSIONS],",
-    to: "    exclude: [VERIFY_SUITES, ...FAULTS, ...REMOTE, ...EXTENSIONS],",
+    from: "    exclude: [VERIFY_SUITES, DEV, ...FAULTS, ...REMOTE, ...EXTENSIONS, ...CORE_OVERFLOW],",
+    to: "    exclude: [VERIFY_SUITES, ...FAULTS, ...REMOTE, ...EXTENSIONS, ...CORE_OVERFLOW],",
     check: unit("windows-groups.test.ts", "macOS and Linux"),
   },
   {
@@ -8011,6 +8011,14 @@ const SEEDS: readonly Seed[] = [
     to: "        if (false) kept.push({ data, origin: event.origin, source: event.source });",
     check: ["test/apps.test.ts", "-t", "R02 finding 19"],
     cwd: "../mcp",
+  },
+  {
+    requirement: "EN-07",
+    name: "the dependency suite rebalanced into extensions runs in core too",
+    file: "vitest.config.ts",
+    from: "    exclude: [VERIFY_SUITES, DEV, ...FAULTS, ...REMOTE, ...EXTENSIONS, ...CORE_OVERFLOW],",
+    to: "    exclude: [VERIFY_SUITES, DEV, ...FAULTS, ...REMOTE, ...EXTENSIONS],",
+    check: unit("windows-groups.test.ts", "macOS and Linux"),
   },
 ];
 
