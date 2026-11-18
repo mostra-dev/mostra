@@ -7,7 +7,7 @@
  */
 import type { Client as McpClient } from "@modelcontextprotocol/client";
 import { expect, type FrameLocator, type Page, test } from "@playwright/test";
-import { publishOwn, republish } from "../support/client.ts";
+import { gotoShell, publishOwn, republish } from "../support/client.ts";
 import { hostClient, type ReferenceHost, startReferenceHost } from "../support/mcp-apps-host.ts";
 import { Client, readRun, removeTree, startDaemon } from "../support/mostra.ts";
 
@@ -111,7 +111,7 @@ async function openInline(
       ...(options.refuseSubmit ? { refuseSubmit: true } : {}),
     },
   );
-  await page.goto(host.url);
+  await gotoShell(page, host.url);
   return { toolResult, view: page.frameLocator("#sandbox").frameLocator("iframe"), calls };
 }
 

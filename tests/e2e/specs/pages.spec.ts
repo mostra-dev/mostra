@@ -11,7 +11,7 @@ import { readFileSync } from "node:fs";
 import { createServer, type Server } from "node:http";
 import { dirname, extname, join, posix } from "node:path";
 import { expect, test } from "@playwright/test";
-import { linkFor, openInShell, publishOwn, viewerName } from "../support/client.ts";
+import { gotoShell, linkFor, openInShell, publishOwn, viewerName } from "../support/client.ts";
 import { Client, readRun } from "../support/mostra.ts";
 
 const run = readRun();
@@ -130,7 +130,7 @@ test.describe("pages/ in each delivery target (AU-09)", () => {
     const own = await publishOwn(client, run.home, info, { fixture: "pages" });
     const served = await serveExport(await clientDirOf(client, own.artifactId), "static");
     try {
-      await page.goto(served.url);
+      await gotoShell(page, served.url);
       await expect(page.getByTestId("page")).toHaveText("Home");
       await expect(page.getByTestId("mode")).toHaveText("static");
       await page.getByTestId("to-settings").click();
@@ -138,10 +138,10 @@ test.describe("pages/ in each delivery target (AU-09)", () => {
       expect(new URL(page.url()).hash).toBe("#/settings");
       expect(new URL(page.url()).pathname).toBe("/");
       // The hash is a deep link a static host can serve.
-      await page.goto(`${served.url}#/reports/9`);
+      await gotoShell(page, `${served.url}#/reports/9`);
       await expect(page.getByTestId("page")).toHaveText("Report 9");
       // Fields keep local state where there is no Mostra server (INTERFACES §2.3).
-      await page.goto(`${served.url}#/settings`);
+      await gotoShell(page, `${served.url}#/settings`);
       await page.getByTestId("theme").fill("dark");
       await page.reload();
       await expect(page.getByTestId("theme")).toHaveValue("dark");
@@ -164,7 +164,7 @@ test.describe("pages/ in each delivery target (AU-09)", () => {
     expect(exported.entry).toBe(join(out, "index.html"));
     const served = await serveFile(join(out, "index.html"));
     try {
-      await page.goto(served.url);
+      await gotoShell(page, served.url);
       await expect(page.getByTestId("page")).toHaveText("Home");
       await expect(page.getByTestId("mode")).toHaveText("mcp-app");
       const before = page.url();

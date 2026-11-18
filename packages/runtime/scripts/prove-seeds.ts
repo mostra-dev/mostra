@@ -8020,6 +8020,15 @@ const SEEDS: readonly Seed[] = [
     to: "    exclude: [VERIFY_SUITES, DEV, ...FAULTS, ...REMOTE, ...EXTENSIONS],",
     check: unit("windows-groups.test.ts", "macOS and Linux"),
   },
+  {
+    requirement: "EN-07",
+    name: "a browser spec may load a page with a bare page.goto, which fails at random on Windows (#132)",
+    file: "../../tools/repo-lint/cli.ts",
+    from: "    if (call === null) continue;",
+    to: "    if (call === null || true) continue;",
+    check: ["test/rules.test.ts", "-t", "page loads"],
+    cwd: "../../tools",
+  },
 ];
 
 const runtime = join(dirname(fileURLToPath(import.meta.url)), "..");
