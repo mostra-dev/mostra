@@ -56,6 +56,11 @@ A local server's links open on this computer only: to reach someone elsewhere, s
 
 Where the chat app shows apps (Claude, ChatGPT, VS Code and others), `artifact_open` also shows the page right in the conversation: the person answers there, and the answers are saved and come back to you exactly as from the full page, since both use the same link and draft. Below the page Mostra adds a bar with the save state, Submit and "Open the full page". A chat app's frame can't do everything a browser tab can: comments on the page, who else is here, frames of other sites and anything loaded from an origin the chat app blocks show on the full page instead, and the page says so. When a page needs those, give the person the link from `artifact_open` too.
 
+Three things to know when a page will be shown inline:
+- Inside the chat, a page loads nothing from other sites: put its images and data in the artifact (`public/`, or imported files), which travel with it.
+- A plain server call stops after 45 seconds there. Work that takes longer belongs in an action run (`useAction`), which keeps going and reports its progress.
+- A link made for one person (`artifact_open` with `viewer`) isn't shown inline, since it would act as that person: hand it to them.
+
 ## Through a Mostra server in a chat app
 
 A chat app's connector reaches the person's own computer through their Mostra server. Creating, writing, verifying and publishing run there, in its workspace, so that computer must be on with Mostra running; otherwise those tools answer `MOSTRA_REMOTE_NO_INSTANCE`, while listing, waiting and reading results keep working. Answers people send wait on the server while that computer sleeps, and reach it when it's back.

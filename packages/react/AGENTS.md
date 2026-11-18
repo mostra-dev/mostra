@@ -44,6 +44,11 @@ and, since WP-31 (D168), `useRespondents` and `usePresence` (`src/team-hooks.ts`
   them, and `inline.ts` renders the bar below the page (save state, blockers, Submit and Choose
   through the artifact channel where the view allows it, "Open the full page") and says what the
   frame lacks (MC-03), which the light `inline-sink.ts` lets hooks report without loading it.
+- **Inline, one origin holds every artifact's page.** A chat host gives each page it shows the same
+  origin, so an `mcp-app` page keeps its journal, its lock and its local keys under its artifact's
+  own names (`inlinePlaces` in `mcp-app.ts`), never the origin's shared ones, and a link marked
+  `personal` runs on its own, never as its person. The height it reports settles for a page sized
+  by the viewport (`watchHeight`), which would otherwise grow with every height the frame takes.
 
 ## Invariants it owns
 
