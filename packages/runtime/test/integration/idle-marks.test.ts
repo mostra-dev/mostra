@@ -9,17 +9,21 @@
  */
 import { cpSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
+import { fileURLToPath } from "node:url";
 import { MutationId } from "@mostra/protocol";
 import Database from "better-sqlite3";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
 import { openPage } from "../action-page.ts";
 import { Browser, openLink } from "../browser-client.ts";
 import { GatewayHome, ok } from "../gateway-home.ts";
+import { control } from "../operator-support.ts";
 import {
+  deviceSignIn,
   freePort,
   ownerEnv,
   ownerSignIn,
   type RunningServer,
+  send,
   startServer,
   stopServer,
   testConfig,
@@ -187,5 +191,71 @@ export default function Page() {
     await owner.stop();
     await stopServer(server);
     expect(marks()).toMatchObject(reached);
+  }, 60_000);
+});
+
+describe("an operator's metering window on a real server (MT-06, #203)", () => {
+  it("closes one window on every multiple of the operator's window, one batch each, and writes the directory only then", async () => {
+    const port = await freePort();
+    const controlPort = await freePort();
+    const data = join(tempDir("meter-window-data"), "data");
+    const windowMs = 2_000;
+    const server = await startServer({
+      data,
+      port,
+      config: testConfig(port, {
+        operator: fileURLToPath(new URL("../fixtures/operator.mjs", import.meta.url)),
+        metering: { windowSeconds: windowMs / 1000 },
+      }),
+      env: {
+        MOSTRA_TEST_OPERATOR_PORT: String(controlPort),
+        MOSTRA_TEST_OPERATOR_DISPATCH_MS: "50",
+      },
+    });
+    try {
+      expect(server.status.status, server.stderr()).toBe("started");
+      const operator = control(controlPort);
+      // A person links a machine, which makes their home; a request on it opens it (a version
+      // file no push asked for: refused, the home open all the same).
+      const signed = await deviceSignIn(port, "Ada");
+      const upload = await send(port, `api.localhost:${port}`, `/files/${"0".repeat(64)}`, {
+        method: "PUT",
+        headers: { authorization: `Bearer ${signed.accessToken}` },
+        body: "x",
+      });
+      expect(upload.status, upload.body).toBe(409);
+      const directory = new Database(join(data, "server.sqlite"), { readonly: true });
+      try {
+        // Watch the directory's commits over five windows while the open home stays idle.
+        let version = directory.pragma("data_version", { simple: true }) as number;
+        let commits = 0;
+        const until = Date.now() + 5 * windowMs + 500;
+        while (Date.now() < until) {
+          await new Promise((resolve) => setTimeout(resolve, 25));
+          const now = directory.pragma("data_version", { simple: true }) as number;
+          if (now !== version) commits += 1;
+          version = now;
+        }
+        const batches = (await operator.calls("metering")).map(
+          (call) => call.payload as unknown as { from: string; to: string },
+        );
+        expect(batches.length).toBeGreaterThanOrEqual(4);
+        for (const batch of batches) {
+          // Every window ends on a multiple of its length; every window but the first starts on one.
+          expect(Date.parse(batch.to) % windowMs, batch.to).toBe(0);
+        }
+        for (const batch of batches.slice(1)) {
+          expect(Date.parse(batch.from) % windowMs, batch.from).toBe(0);
+          expect(Date.parse(batch.to) - Date.parse(batch.from)).toBe(windowMs);
+        }
+        // Each window queues its batch and drops it once the operator took it: two commits a
+        // window at most, nothing between.
+        expect(commits).toBeLessThanOrEqual(2 * (batches.length + 1));
+      } finally {
+        directory.close();
+      }
+    } finally {
+      await stopServer(server);
+    }
   }, 60_000);
 });
