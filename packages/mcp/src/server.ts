@@ -230,6 +230,12 @@ export function createMcpServerFactory(options: McpServerOptions): McpServerFact
           let step = 0;
           const call: ToolCall = {
             options,
+            // Whether this client shows MCP Apps: what this request says (2026-07-28), else what
+            // its session said at `initialize`, else unknown; never where the server shows none.
+            apps:
+              options.apps === false
+                ? false
+                : (appsOf(ctx) ?? showsApps(server.server.getClientCapabilities())),
             progress(message) {
               if (progressToken === undefined) return;
               step += 1;

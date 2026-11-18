@@ -52,9 +52,28 @@ export const WAIT_MAX_SECONDS = 50;
 export interface ToolCall {
   /** The ports and settings the server was built with. */
   readonly options: McpServerOptions;
+  /**
+   * Whether the client shows MCP Apps: `true` when it said so, `false` when it said it doesn't
+   * (or the server shows none), `undefined` when it didn't say (a stateless 2025-era request).
+   */
+  readonly apps?: boolean | undefined;
   /** Reports progress to a client that asked for it (`progressToken`); a no-op otherwise. */
   progress(message: string): void;
 }
+
+/**
+ * What `artifact_open` tells the model about where the page shows (D175 item 1, Mirza at M79):
+ * without it, a model whose chat shows the page can't tell, and hands the person a link they
+ * don't need.
+ */
+export const OPEN_WORDS: {
+  readonly shown: string;
+  readonly maybe: string;
+} = {
+  shown:
+    "The page is shown in this chat with this result, where the person can answer it. The link opens the same page in a browser and keeps the same answers; give it only if they ask for it or the chat doesn't show the page.",
+  maybe: "Chat apps that show pages show it with this result. The link opens it in a browser.",
+};
 
 /** One tool. */
 export interface ToolDefinition<Input> {
@@ -599,7 +618,7 @@ export function createTools(
       // version's own page; the flat key is the one hosts read before the nested one.
       meta: { ui: { resourceUri: MCP_APP_LOADER_URI }, "ui/resourceUri": MCP_APP_LOADER_URI },
       ui: "render",
-      async run(args, { options }) {
+      async run(args, { options, apps }) {
         const artifact = artifactRef(args.artifact, options);
         const fresh =
           args.version !== undefined ||
@@ -642,8 +661,19 @@ export function createTools(
         const page = (value: Record<string, unknown>): CallToolResult => {
           const result = jsonResult(value);
           if (detail === undefined || shown === undefined) return result;
+          // Where the page shows, said to the model after the link's facts, which stay the
+          // first block. Not for one person's link, which shows no page, nor where none shows.
+          const where =
+            args.viewer !== undefined || apps === false
+              ? undefined
+              : apps === true
+                ? OPEN_WORDS.shown
+                : OPEN_WORDS.maybe;
           return {
             ...result,
+            ...(where !== undefined
+              ? { content: [...result.content, { type: "text" as const, text: where }] }
+              : {}),
             // The same facts as the text, for a client that reads only this (R02 finding 20),
             // and the page's handles beside them.
             structuredContent: {

@@ -18,6 +18,7 @@ import {
 } from "@mostra/protocol";
 import { afterEach, describe, expect, it } from "vitest";
 import { LOADER_WORDS } from "../src/loader.ts";
+import { createTools, OPEN_WORDS } from "../src/tools.ts";
 import { fakeDocs, fakeInstance } from "./support.ts";
 
 const ARTIFACT = "art_01JB8Z3QF6S7W3N8D5K2C4V9XG";
@@ -243,6 +244,57 @@ describe("MCP Apps through the MCP server (D175, MC-02)", () => {
     );
     // The model still gets the link to hand to Alice.
     expect(JSON.stringify(result.content)).toContain(LINK.slice(0, 20));
+  });
+
+  it("tells the model the page shows in the chat where its client said it shows MCP Apps (M79)", async () => {
+    const instance = {
+      "view/default": () => ({ url: LINK, tokenId: "tok_1", scopes: ["view", "draft", "submit"] }),
+      "artifact/get": () => ({
+        id: ARTIFACT,
+        title: "Plan",
+        versions: [{ id: VERSION, number: 2 }],
+      }),
+    };
+    const texts = async (apps: boolean) => {
+      const client = await overSession(base(instance).options, apps);
+      const result = await client.callTool({
+        name: "artifact_open",
+        arguments: { artifact: ARTIFACT },
+      });
+      return (result.content as { type: string; text: string }[]).map((block) => block.text);
+    };
+    const shown = await texts(true);
+    // The link's facts stay the first block, so a model or client reading it reads them as before.
+    expect(JSON.parse(shown[0] ?? "").url).toBe(LINK);
+    expect(shown.slice(1)).toEqual([OPEN_WORDS.shown]);
+    // A client that says it shows none hears nothing of a page.
+    expect((await texts(false)).slice(1)).toEqual([]);
+  });
+
+  it("says a page may show where its client didn't say, and nothing for one person's link (M79)", async () => {
+    const { options } = base({
+      "view/default": () => ({ url: LINK, tokenId: "tok_1", scopes: ["view"] }),
+      "view/url": () => ({ url: LINK, tokenId: "tok_2", scopes: ["view"] }),
+      "artifact/get": () => ({
+        id: ARTIFACT,
+        title: "Plan",
+        versions: [{ id: VERSION, number: 2 }],
+      }),
+    });
+    const open = createTools(async () => new Uint8Array()).find(
+      (tool) => tool.name === "artifact_open",
+    );
+    if (open === undefined) throw new Error("artifact_open isn't among the tools");
+    const run = async (apps: boolean | undefined, args: Record<string, unknown>) => {
+      const result = await open.run(
+        { artifact: ARTIFACT, ...args },
+        { options, apps, progress() {} },
+      );
+      return (result.content as { type: string; text: string }[]).map((block) => block.text);
+    };
+    expect((await run(undefined, {})).slice(1)).toEqual([OPEN_WORDS.maybe]);
+    // One person's link opens no page inline (R02 finding 2), so none is said to show.
+    expect((await run(true, { viewer: { ref: "alice" } })).slice(1)).toEqual([]);
   });
 
   it("still answers the link when the version it opens can't be read", async () => {

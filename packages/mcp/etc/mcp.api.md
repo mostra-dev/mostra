@@ -251,6 +251,7 @@ export interface TextEdit {
 
 // @public
 export interface ToolCall {
+    readonly apps?: boolean | undefined;
     readonly options: McpServerOptions;
     progress(message: string): void;
 }

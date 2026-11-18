@@ -8029,6 +8029,24 @@ const SEEDS: readonly Seed[] = [
     check: ["test/rules.test.ts", "-t", "page loads"],
     cwd: "../../tools",
   },
+  {
+    requirement: "MC-02",
+    name: "artifact_open never tells the model its page shows in the chat, though the client said it shows MCP Apps (M79)",
+    file: "../mcp/src/tools.ts",
+    from: "                ? OPEN_WORDS.shown",
+    to: "                ? OPEN_WORDS.maybe",
+    check: ["test/apps.test.ts", "-t", "M79"],
+    cwd: "../mcp",
+  },
+  {
+    requirement: "MC-02",
+    name: "artifact_open says one person's link shows in the chat, where no page opens it (M79)",
+    file: "../mcp/src/tools.ts",
+    from: "            args.viewer !== undefined || apps === false",
+    to: "            apps === false",
+    check: ["test/apps.test.ts", "-t", "M79"],
+    cwd: "../mcp",
+  },
 ];
 
 const runtime = join(dirname(fileURLToPath(import.meta.url)), "..");
