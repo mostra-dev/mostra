@@ -720,6 +720,15 @@ export class Capabilities {
         );
   }
 
+  /**
+   * Ends a session now: a frame session its frame replaced by entering as another viewer (a hosted
+   * page signed out, MT-06), so nothing acts as the viewer it was any more.
+   */
+  endSession(sessionId: string): void {
+    this.#touched.delete(sessionId);
+    this.#ledger.write((db) => db.run("DELETE FROM session WHERE id = ?", sessionId));
+  }
+
   /** Records the version a frame session entered (D98 item 5). */
   enterVersion(sessionId: string, versionId: string): void {
     this.#ledger.write((db) =>

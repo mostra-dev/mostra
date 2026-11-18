@@ -169,6 +169,43 @@ export function takeSignIn(): PendingSignIn | undefined {
   }
 }
 
+const SIGNED_OUT_KEY = (routeId: string): string => `mostra.signed-out.${routeId}`;
+
+/**
+ * Notes that this page was signed out in this browser (MT-06), so its next sign-in asks the person
+ * to name themselves again ("Answer as yourself") whoever the API origin still has signed in. In
+ * memory too, so a page whose storage is full still asks.
+ */
+const signedOutRoutes = new Set<string>();
+export function markSignedOut(routeId: string): void {
+  signedOutRoutes.add(routeId);
+  try {
+    globalThis.localStorage?.setItem(SIGNED_OUT_KEY(routeId), "1");
+  } catch {
+    // Kept in memory for this page's life.
+  }
+}
+
+/** Whether this page was signed out in this browser since its last sign-in. */
+export function signedOutHere(routeId: string): boolean {
+  if (signedOutRoutes.has(routeId)) return true;
+  try {
+    return globalThis.localStorage?.getItem(SIGNED_OUT_KEY(routeId)) === "1";
+  } catch {
+    return false;
+  }
+}
+
+/** A sign-in finished: the next one on this page asks as usual. */
+export function clearSignedOut(routeId: string): void {
+  signedOutRoutes.delete(routeId);
+  try {
+    globalThis.localStorage?.removeItem(SIGNED_OUT_KEY(routeId));
+  } catch {
+    // Nothing kept.
+  }
+}
+
 /** Whether this tab passed a route's interstitial already (D161): it is shown once per tab. */
 export function interstitialPassed(routeId: string | undefined): boolean {
   if (routeId === undefined) return true;

@@ -218,7 +218,8 @@ export async function startServer(options: ServerOptions): Promise<RemoteServer>
     meter: meter as Meter,
     routing,
     signin: {
-      start: (signin, challenge) => (authorizer as Authorize).startViewerSignin(signin, challenge),
+      start: (signin, challenge, prompt) =>
+        (authorizer as Authorize).startViewerSignin(signin, challenge, prompt),
       finish: (input) => (authorizer as Authorize).finishViewerSignin(input),
     },
     signInOffered: () =>

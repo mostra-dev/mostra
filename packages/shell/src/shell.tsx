@@ -18,7 +18,7 @@ import {
   type ShellSession,
   signInFinish,
 } from "./api.ts";
-import { enterRoute, forgetSession, keepSession, takeSignIn } from "./hosted.ts";
+import { clearSignedOut, enterRoute, forgetSession, keepSession, takeSignIn } from "./hosted.ts";
 import { type Credential, credentialFrom, parseTarget, type ShellTarget } from "./location.ts";
 import { describeAccess, explain } from "./messages.ts";
 import { mark, ViewerPage } from "./viewer.tsx";
@@ -83,6 +83,7 @@ async function signInReturn(): Promise<State> {
   try {
     const session = await readSession(apiBase);
     await signInFinish(apiBase, session.csrf, { code, verifier: pending.verifier, state });
+    clearSignedOut(pending.routeId);
   } catch {
     return { kind: "error", code: "SIGN_IN_FAILED" };
   }

@@ -3,7 +3,8 @@
  * §18.4, D161, D165 items 8, 9, 13, 14): who a browser is on a link minted without a viewer, what
  * the trusted chrome shows around a view, which views and submissions the server's rules refuse
  * before they reach the ledger, and the shell routes of a hosted home of its own (the report
- * control, an anonymous viewer's name; sign-in arrives with the authorization server).
+ * control, an anonymous viewer's name, sign-in through the authorization server, and signing out
+ * of the page, MT-06).
  *
  * Everything here answers through the gateway's one checked route table and its hooks
  * (`HostedAddressing`), so every rule is applied in the same order as every other route's (D96).
@@ -72,6 +73,7 @@ export interface HostedPagesOptions {
     readonly start: (
       signin: { homeId: string; routeId: string; sessionId: string; shellOrigin: string },
       challenge: string,
+      prompt?: "consent",
     ) => { readonly url: string; readonly state: string };
     readonly finish: (input: {
       state: string;
@@ -300,10 +302,12 @@ export function hostedPages(
       const body = await readJsonObject(context.request, 4 * 1024);
       if (isRefusal(body)) return helpers.refuse(body, meta(context));
       const challenge = body["challenge"];
+      const prompt = body["prompt"];
       const route = options.routeOf(context.artifactId as string);
       if (
         typeof challenge !== "string" ||
         !/^[A-Za-z0-9_-]{43}$/.test(challenge) ||
+        (prompt !== undefined && prompt !== "consent") ||
         !route ||
         !options.signin ||
         !context.session
@@ -325,8 +329,50 @@ export function hostedPages(
           shellOrigin: context.request.headers.get("origin") ?? "",
         },
         challenge,
+        // After the page signed out here, the sign-in asks again ("Answer as yourself") whoever the
+        // API origin still has signed in (MT-06).
+        ...(prompt === "consent" ? (["consent"] as const) : []),
       );
       return jsonResponse(started);
+    };
+
+    /**
+     * Signing out of this page (MT-06): the route's shell session goes back to the route's
+     * anonymous viewer, by the browser's key for this route (`browser`, as at the session's
+     * exchange, D165 item 8), or a fresh one when the shell has none. What the account drafted and
+     * submitted stays the account's. A link minted for a named person keeps acting as that person
+     * (D104): there, nothing changes. The API origin's own sign-in is untouched (the shell has no
+     * credential there).
+     */
+    const signout = async (context: RouteContext): Promise<Response> => {
+      const body = await readJsonObject(context.request, 4 * 1024);
+      if (isRefusal(body)) return helpers.refuse(body, meta(context));
+      const browser = body["browser"];
+      if (
+        (browser !== undefined &&
+          (typeof browser !== "string" || !/^[A-Za-z0-9_-]{16,64}$/.test(browser))) ||
+        !context.session
+      ) {
+        return helpers.refuse(
+          refusal(
+            "MOSTRA_HYGIENE_REQUEST_MALFORMED",
+            "A sign-out sends at most the browser's key for this page.",
+          ),
+          meta(context),
+        );
+      }
+      const session = context.session;
+      if (session.grant.viewerId !== undefined) {
+        return jsonResponse({ viewer: interaction.viewer(session.grant.viewerId) });
+      }
+      const viewerId = interaction.viewerForAnonymous(
+        typeof browser === "string" ? browser : `session:${randomBytes(16).toString("hex")}`,
+      );
+      ledger.write((db) =>
+        db.run("UPDATE session SET viewer_id = ? WHERE id = ?", viewerId, session.id),
+      );
+      log.info("hosted.signed_out", { routeId: options.routeOf(context.artifactId as string)?.id });
+      return jsonResponse({ viewer: interaction.viewer(viewerId) });
     };
 
     /** The code back from the authorization server: the session acts as the account from now on. */
@@ -392,6 +438,13 @@ export function hostedPages(
         intent: "mutation",
         auth: "session",
         handler: signinFinish,
+      },
+      {
+        method: "POST",
+        path: "/a/:artifactId/_mostra/session/signout",
+        intent: "mutation",
+        auth: "session",
+        handler: signout,
       },
       {
         method: "POST",

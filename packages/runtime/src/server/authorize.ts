@@ -131,6 +131,7 @@ export interface Authorize {
   startViewerSignin(
     signin: ViewerSignin,
     challenge: string,
+    prompt?: "consent",
   ): { readonly url: string; readonly state: string };
   /** Finishes a page's sign-in: the code, for the same route and session only. */
   finishViewerSignin(input: {
@@ -868,7 +869,7 @@ export function createAuthorize(options: AuthorizeOptions): Authorize {
     providers: async () =>
       (await providers()).map((provider) => ({ id: provider.id, label: provider.label })),
 
-    startViewerSignin(signin, challenge) {
+    startViewerSignin(signin, challenge, prompt) {
       const state = token();
       const clientId = clients.shellClientId(signin.shellOrigin);
       keep("authorize", state, { ...signin, clientId } satisfies ViewerSigninRecord);
@@ -880,6 +881,8 @@ export function createAuthorize(options: AuthorizeOptions): Authorize {
       url.searchParams.set("mostra_signin", state);
       url.searchParams.set("code_challenge", challenge);
       url.searchParams.set("code_challenge_method", "S256");
+      // A page signed out here asks "Answer as yourself" again, whoever is signed in (MT-06).
+      if (prompt === "consent") url.searchParams.set("prompt", "consent");
       return { url: url.href, state };
     },
 
