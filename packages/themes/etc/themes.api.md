@@ -293,6 +293,13 @@ export interface SafeHtml {
 }
 
 // @public
+export function signedInLine(who: HtmlValue, form: {
+    readonly action: string;
+    readonly fields: Readonly<Record<string, string>>;
+    readonly label: HtmlValue;
+}): SafeHtml;
+
+// @public
 export interface Stage {
     readonly background: Color;
     readonly foreground: Color;

@@ -245,7 +245,14 @@ the bundle's entry point (D85); it never runs artifact code (RT-02).
   closes, and in between only where a mark moved (a conditional upsert), so a backup replicator
   has nothing to ship (`server/data.ts`, MT-05). The consent page names a metadata-document client as the server's own
   only when `operatorClients` names it, and asks its consent once per account as for any other
-  (`server/oauth-clients.ts`, MT-05).
+  (`server/oauth-clients.ts`, MT-05). A person signs out of the API origin by a `POST /signout`
+  only its own pages (their `Origin` and the session's CSRF token) or an operator's own app (its
+  pages' exact `Origin`) can send, never by a `GET`, and goes back only to an address the client
+  registered; a hosted page's sign-out puts its session back on the route's anonymous viewer, and
+  a frame entering as another viewer ends the session it held (`server/authorize.ts`,
+  `server/hosted-pages.ts`, MT-06). Expired sign-ins are removed by a sweep on its own timer, never
+  inside a request (`server/sweep.ts`), and metering windows start on multiples of the operator's
+  `metering.windowSeconds` (`server/metering.ts`, MT-06).
 - **The shell and every artifact are separate origins (SH-01).** The shell page may be framed by
   nothing and sends `Cross-Origin-Opener-Policy: same-origin`, so no popup of a frame can navigate
   it; an artifact document may be framed only by its shell (D98 items 4 and 7).
@@ -318,7 +325,9 @@ from), `MOSTRA_TEST_OIDC_INSECURE` and `MOSTRA_TEST_GITHUB_BASE` (providers' fak
 queue and meter), `MOSTRA_TEST_HELD_SNAPSHOT_MS` (how often every held level is sent again, a day
 by default), `MOSTRA_TEST_SESSION_TOUCH_MS` (how often a session's last use is written, an hour by
 default, which idle expiry reads), `MOSTRA_TEST_CURSOR_MARK_MS` (how often an open home's
-high-water marks are looked at and written when they moved, 10 s by default), the fault point `remove:after-purge` (`MOSTRA_TEST_FAULTS`, a removal cut off
+high-water marks are looked at and written when they moved, 10 s by default),
+`MOSTRA_TEST_SIGNIN_SESSION_MS` (a browser's 7-day sign-in on the API origin) and
+`MOSTRA_TEST_SIGNIN_SWEEP_MS` (how often expired sign-ins are swept, hourly by default), the fault point `remove:after-purge` (`MOSTRA_TEST_FAULTS`, a removal cut off
 between its two databases), the relay's `MOSTRA_TEST_RELAY_*`, and `MOSTRA_TEST_BINDING_TRACE` (every binding
 message, for the secrets grep). `test/fixtures/operator.mjs` is an operator module with a control
 server (`test/operator-support.ts`), and `test/oauth-support.ts` a browser on the API origin.
