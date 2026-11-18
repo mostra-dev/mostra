@@ -319,6 +319,8 @@ As built (MT-03, D169): directory migration 5 adds `identity.verified_by` (the l
 
 As built (MT-05, D176): directory migration 7 clears `identity.email`, and the server never writes it again. The address a sign-in carries goes to the operator module through `accounts.resolve`, which keeps what it needs; nothing of the server reads it, so the directory and its backups hold no one's address. The column stays (a migration adds, never drops) and stays NULL.
 
+As built (MT-06, D177): rows of `browser_session`, `signin` and `token` are removed by a periodic sweep of the server's own (at its start and hourly), never inside a request that reads them (each read checks a row's expiry itself): expired browser sessions, sign-ins in progress past their 15 minutes, device codes past their 10, authorization codes an hour after their expiry (a code shown twice revokes its grant, so a spent code is kept that long), and access and refresh tokens past their expiry. A sweep that finds nothing changes no page, so it commits nothing a WAL replicator ships. `POST /signout` removes the browser's `browser_session` row, and a new sign-in removes the one it replaces in the transaction that inserts its own, so a browser holds one row at a time. `oauth_client.metadata_json` keeps a client's `post_logout_redirect_uris` beside its redirect URIs (INTERFACES §18.5). No migration: no column or table changes.
+
 ### 7.2 A hosted home
 
 A hosted home is a home (§1) with these differences:
