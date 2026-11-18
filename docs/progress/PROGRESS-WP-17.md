@@ -102,6 +102,11 @@ Two independent reviews of `git diff 8165633...wp/17-mcp-apps` under D172 item 0
   - a #157 test of this package's own timed out on Linux: on a slow runner the server's real file reads (the fingerprint) lag behind the test's fake clock, which reached the MCP client's own 60 s request timeout before the server's 45 s answer. The test's verify calls now take a request timeout past anything its clock reaches; what it checks, the server's answer and its status, is as strict as before.
   - macOS `core` ran past its 10-minute deadline with every suite passed, as it nearly did on `main` (10 min 7 s and 10 min 27 s in MT-05's merge queue): the dependency suite (about 2 minutes) moved to `extensions` on macOS and Linux, which took about 4 (REPO_STANDARDS §6), Windows' partition unchanged.
   - `surfaces.spec.ts` on Linux Chromium: a hosted frame unpainted after the sign-in returned, #152's symptom, until now seen on macOS only; the whole spec passed 5 of 5 locally on the same commit; recorded on #152.
+- **By the fourth `ci:full` run** (44280075785, on `f1a19b1`):
+  - the seed of the `core` group's exclusions no longer found its line after the rebalance: re-anchored, and the rebalance has a seed of its own (both red, then green).
+  - #157's HTTP tests stepped their fake clock past Vitest's default 5 s on a slow Linux runner: their describe takes a minute; what they check is unchanged.
+  - `gateway.spec.ts` failed once on Windows arm64 with `net::ERR_NO_BUFFER_SPACE` from its own bare `page.goto`, which #132's fix hadn't reached. Every browser spec now loads through `gotoShell` (this package's `mcp-apps.spec.ts` too), and the repository lint refuses a bare `page.goto` but `about:blank` (`e2eLoadProblems`, its seed red, then green); recorded on #132.
+  - `surfaces.spec.ts` again, on macOS Chromium: #152, recorded there.
 
 ## Deviations
 
