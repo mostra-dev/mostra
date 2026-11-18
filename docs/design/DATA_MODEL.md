@@ -247,6 +247,7 @@ The ledger carries `schema_migration`. A new ledger is built in a temporary file
 The plan update of 2026-10-16 added stored data for the remote server and teams. WP-28's is designed below (D165); the others are a *Deferred decision* for the package named, which adds its tables, columns and events here additively, without weakening a constraint above.
 - **WP-28** (D116, D117) designed the remote server's data below (D165); WP-29 and WP-30 add its tables and migrations.
 - **WP-31** (D121, as built, D168): migration 16 adds `roster_entry(artifact_id, ref, name NULL, email NULL, viewer_id FK, token_id NULL, position, added_at, PRIMARY KEY(artifact_id, ref), UNIQUE(artifact_id, viewer_id), UNIQUE(artifact_id, position))`, one row per expected respondent, whose viewer is its personal link's (kind `token` by `ref`); and `roster_state(artifact_id PK, round, round_cursor, round_started_at, complete)`, a trigger refusing a round or its cursor that goes back. Attribution is `field.updated_by_json` and `updated_at` (§3). Presence, cursors and selections stay in the supervisor's memory and are never stored (§4, D47). The server's directory migration 4 lets `outbound` hold `invitations`, each by its link's token ID, never its URL.
+- **WP-17** (D175, as built): migration 18 widens `session.mode` with `app`, the app channel's sessions (item 4), and adds `remote_missing.hosted_cursor` and `remote_missing.envelope_json` (#139, item 9). A home keeps the MCP App pages it made under `cache/mcp-app/<versionId>/<exporter key>/` (`index.html`, `mcp-app.json`), a cache it can make again; a hosted home keeps the page it makes of each version beside its ledger as `pages/<versionId>.json` (`{ html, meta }`), written once and removed with the artifact (item 8).
 - **WP-20** (D121): the mention event raised by an `@mention` in a review comment (CO-06).
 - **WP-33 to WP-35** (D170): homes an organization owns, in §7.6.
 
@@ -370,10 +371,13 @@ version_push(artifact_id, version_id, server, state CHECK(state IN ('pending','c
                                                     -- publishes waiting to reach the server (D165 item 3); one the
                                                     -- server refused for good is `refused` with why, and nothing
                                                     -- waits behind it (WP-29, D166 item 22)
-remote_missing(server FK, submission_id, noted_at, hosted_cursor NULL, PRIMARY KEY(server, submission_id))
+remote_missing(server FK, submission_id, noted_at, hosted_cursor NULL, envelope_json NULL, PRIMARY KEY(server, submission_id))
                                                     -- followed submissions this home doesn't hold, written with the
                                                     -- cursor that passed them, read again until imported (D166 item 22),
-                                                    -- one at a time in hosted_cursor's order (#139, D175 item 9)
+                                                    -- one at a time in hosted_cursor's order (#139, D175 item 9);
+                                                    -- envelope_json holds a delivery that came while an earlier
+                                                    -- submission waited, imported in its turn; a read refused
+                                                    -- for good ends its row; a new incarnation clears the cursors
 relayed_run(run_id PK, server, relay_seq, artifact_id, version_id, fn_id, status, seq_sent, started_at, finished_at NULL)
                                                     -- the hosted run's ID recorded before its worker starts, so a
                                                     -- repeated relay.run joins it; a crash mid-run ends it failed,
@@ -462,7 +466,7 @@ A route with `adopting_json` takes no push and sends no delivery or run until th
 
 **A hosted home's ledger.** No migration. `delivery_terminal` refuses a change of a delivery's `port_owner` (`ledger/migrations.ts:338-343`), and it stays: adoption rewrites no delivery, because a hosted home's outbox sends each pending delivery to its artifact's owner link as the route names it then (4.5). A delivery's `port_owner` on a hosted home is therefore the link that owned the route when the submission was committed. The adoption commit updates `relay_run.owner_link_id` and `relay_seq` of never-sent runs, which no trigger guards. The new events are rows of the existing `event` table.
 
-**The owner's ledger, migration 18 (WP-34).** `remote_link` is rebuilt with a local key, and its children reference the key.
+**The owner's ledger, migration 19 (WP-34; 18 is WP-17's, D175).** `remote_link` is rebuilt with a local key, and its children reference the key.
 
 ```sql
 remote_link(id PK,                       -- local: rl_ + ULID
