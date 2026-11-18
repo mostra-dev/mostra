@@ -236,6 +236,12 @@ export interface Clients {
    * metadata origin (`MOSTRA_TEST_CIMD_ORIGIN`) is its `http:` origin.
    */
   pagesOrigin(client: OAuthClient): string | undefined;
+  /**
+   * Whether the operator vouches for a client ID (`operatorClients`, MT-05), once normalized: read
+   * from the configuration, fetching nothing, so a sign-out from anywhere else is refused before
+   * any document is fetched for it (MT-06).
+   */
+  vouches(clientId: string): boolean;
 }
 
 /** Whether a client ID names a metadata document: an https URL with a path. */
@@ -433,6 +439,11 @@ export function createClients(options: ClientsOptions): Clients {
 
   return {
     shellClientId,
+
+    vouches(clientId) {
+      const url = metadataClientId(clientId);
+      return url !== undefined && vouched.has(url.href);
+    },
 
     pagesOrigin(client) {
       const url = client.kind === "metadata" ? metadataClientId(client.id) : undefined;

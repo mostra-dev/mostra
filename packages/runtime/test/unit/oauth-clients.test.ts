@@ -77,3 +77,31 @@ describe("a client's own pages (MT-06)", () => {
     );
   });
 });
+
+describe("the operator's word on a client (MT-06)", () => {
+  it("is read from the configuration, once the ID is normalized, and fetches nothing", () => {
+    const opening = openLedger({
+      storeDir: tempDir("oauth-clients-vouched"),
+      fileName: "server.sqlite",
+      runtimeVersion: "1.0.0",
+      owner: { pid: process.pid, startTime: "boot/1" },
+      log: silentLog,
+      migrations: SERVER_MIGRATIONS,
+      locking: "normal",
+    });
+    if (!opening.ok) throw new Error("locked");
+    open.push(opening.ledger);
+    const all = createClients({
+      directory: opening.ledger,
+      log: silentLog,
+      env: {},
+      isShellOrigin: () => false,
+      operatorClients: [{ clientId: "https://account.example/oauth/client.json", name: "Account" }],
+    });
+    expect(all.vouches("https://account.example/oauth/client.json")).toBe(true);
+    expect(all.vouches("https://ACCOUNT.example:443/oauth/client.json")).toBe(true);
+    expect(all.vouches("https://account.example/other.json")).toBe(false);
+    expect(all.vouches("mcl_0123")).toBe(false);
+    expect(all.vouches("")).toBe(false);
+  });
+});

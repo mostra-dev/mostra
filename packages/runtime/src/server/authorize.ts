@@ -820,7 +820,9 @@ export function createAuthorize(options: AuthorizeOptions): Authorize {
     const own = origin === apiOrigin;
     if (!own) {
       const clientId = form.get("client_id") ?? "";
-      const client = clientId === "" ? undefined : await clients.find(clientId);
+      // Only an app the operator vouches for is asked about at all: nothing is fetched for a
+      // sign-out from anywhere else.
+      const client = clients.vouches(clientId) ? await clients.find(clientId) : undefined;
       const operator =
         client !== undefined &&
         !("error" in client) &&

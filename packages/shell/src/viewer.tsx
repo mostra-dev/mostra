@@ -952,7 +952,10 @@ export function ViewerPage(props: {
       setTicket(next);
       return;
     }
-    throw new Error("The frame couldn't enter again.");
+    // The page is signed out already: a frame that couldn't enter again mustn't stay the
+    // account's, so the page loads again, its session (stored, as a signed-in page's is) entering
+    // as the anonymous viewer.
+    location.reload();
   };
 
   const doSubmit = async (): Promise<void> => {

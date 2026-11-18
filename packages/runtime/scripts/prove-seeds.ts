@@ -119,6 +119,14 @@ const SEEDS: readonly Seed[] = [
   },
   {
     requirement: "MT-06",
+    name: "sign-out: a sign-out from an app the operator doesn't vouch for fetches its document",
+    file: "src/server/authorize.ts",
+    from: "      const client = clients.vouches(clientId) ? await clients.find(clientId) : undefined;",
+    to: '      const client = clientId !== "" ? await clients.find(clientId) : undefined;',
+    check: integration("signout.test.ts", "ends nothing"),
+  },
+  {
+    requirement: "MT-06",
     name: "sign-out: a metadata-document client's pages are taken to be elsewhere",
     file: "src/server/oauth-clients.ts",
     from: "      return url.origin;\n    },",

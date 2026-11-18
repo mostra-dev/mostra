@@ -58,6 +58,8 @@ describe("signing out of the server's sign-in (MT-06)", () => {
   /** The operator's own app: its metadata document, its pages' origin and where it comes back. */
   let ownApp: string;
   let ownBack: string;
+  /** Every path the metadata documents' server was asked for. */
+  const fetched: string[] = [];
 
   beforeAll(async () => {
     github = await fakeGitHub({
@@ -66,6 +68,7 @@ describe("signing out of the server's sign-in (MT-06)", () => {
     });
     writeFileSync(join(secrets, "github"), "gh-secret");
     documents = createServer((request, response) => {
+      fetched.push(request.url ?? "");
       response.writeHead(200, { "content-type": "application/json" });
       const id = `${documentsOrigin.replace("http:", "https:")}${request.url ?? ""}`;
       response.end(
@@ -251,6 +254,9 @@ describe("signing out of the server's sign-in (MT-06)", () => {
       { origin: documentsOrigin },
     );
     expect(other.status).toBe(403);
+    // Refused before anything is fetched for it: no document is read for a sign-out the operator
+    // doesn't vouch for.
+    expect(fetched).not.toContain("/other-app.json");
     await stillIn();
     // A GET is a page with one button, and ends nothing (D98), a client's sign-out link included.
     for (const path of [
