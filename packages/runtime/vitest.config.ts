@@ -67,12 +67,18 @@ const EXTENSIONS = [
   // WP-17: the app channel and the MCP App exporter, a bundled plugin (D175).
   "test/integration/mcp-apps.test.ts",
 ];
+// Suites `core` has no room for on macOS and Linux, which `extensions` runs there (REPO_STANDARDS
+// §6: a group near its deadline is rebalanced). macOS `core` reached its 10 minutes on `main` (10 min
+// 7 s and 10 min 27 s in MT-05's merge queue, 44230190769 and 44224848051) and ran past it on WP-17's
+// `ci:full` run (44270632827), while `extensions` takes about 4 minutes. The dependency suite installs
+// as the plugin and pack suites do. Windows keeps it in `windows`, so its partition is unchanged.
+const CORE_OVERFLOW = ["test/integration/deps.test.ts"];
 export const INTEGRATION_GROUPS: Record<string, { include: string[]; exclude: string[] }> = {
   core: {
     include: ["test/integration/**/*.test.ts"],
-    exclude: [VERIFY_SUITES, DEV, ...FAULTS, ...REMOTE, ...EXTENSIONS],
+    exclude: [VERIFY_SUITES, DEV, ...FAULTS, ...REMOTE, ...EXTENSIONS, ...CORE_OVERFLOW],
   },
-  extensions: { include: EXTENSIONS, exclude: [] },
+  extensions: { include: [...EXTENSIONS, ...CORE_OVERFLOW], exclude: [] },
   remote: { include: REMOTE_HOSTING, exclude: [] },
   "remote-access": { include: REMOTE_ACCESS, exclude: [] },
   verify: { include: [VERIFY_SUITES, DEV], exclude: [VERIFY_FAILURES] },
