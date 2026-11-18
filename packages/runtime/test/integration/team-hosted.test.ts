@@ -240,4 +240,51 @@ describe("a team form on a remote server (CO-01, CO-02, CO-03)", () => {
     const payload = completed?.payload["payload"] as { submissions?: unknown[] } | undefined;
     expect(payload?.submissions).toHaveLength(3);
   }, 240_000);
+
+  it("gives each respondent a link of their own, never the share's, a retried share/start too (#184)", async () => {
+    const dir = join(tempDir("team-hosted-184"), "team");
+    cpSync(FIXTURE, dir, { recursive: true });
+    const { artifactId } = ok<{ artifactId: string }>(
+      await owner.client.call("artifact/publish", { source: { path: dir } }, 120_000),
+    );
+    type Started = {
+      url: string;
+      respondents: {
+        ref: string;
+        link: { url: string; tokenId: string; viewer?: { ref?: string } };
+      }[];
+    };
+    const params = {
+      artifact: { artifactId },
+      via: "remote",
+      respondents: [
+        { ref: "ada-184", name: "Ada" },
+        { ref: "sam-184", name: "Sam" },
+      ],
+      requestId: "share-184",
+    };
+    const first = ok<Started>(await owner.client.call("share/start", params, 60_000));
+    // The same request again, as a client's retry sends it: the same share and the same links.
+    const again = ok<Started>(await owner.client.call("share/start", params, 60_000));
+    const secretOf = (url: string): string => new URL(url).hash.slice("#t=".length);
+    for (const started of [first, again]) {
+      const own = secretOf(started.url);
+      const secrets = started.respondents.map((entry) => secretOf(entry.link.url));
+      expect(secrets).not.toContain(own);
+      expect(new Set(secrets).size).toBe(secrets.length);
+      for (const entry of started.respondents) expect(entry.link.viewer?.ref).toBe(entry.ref);
+    }
+    expect(again.url).toBe(first.url);
+    expect(again.respondents.map((entry) => entry.link.tokenId)).toEqual(
+      first.respondents.map((entry) => entry.link.tokenId),
+    );
+    // Added again on its own, Sam keeps the link he was given.
+    const sam = ok<{ links: { ref: string; link: { tokenId: string } }[] }>(
+      await owner.client.call("roster/add", {
+        artifact: { artifactId },
+        respondents: [{ ref: "sam-184", name: "Sam" }],
+      }),
+    );
+    expect(sam.links[0]?.link.tokenId).toBe(first.respondents[1]?.link.tokenId);
+  }, 120_000);
 });
