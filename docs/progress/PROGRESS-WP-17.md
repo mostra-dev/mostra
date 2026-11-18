@@ -1,6 +1,6 @@
 # WP-17 progress: MCP Apps export
 
-**Status:** In progress. Owns MC-02 and MC-03 ([specification](../design/work-packages/WP-17.md)), with #139 and #157 on its milestone.
+**Status:** Accepted by Mirza on 2026-11-18 (M80: "You absolutely have my acceptance!"), with D175 and the package's agent-facing prose (D149), after its reviews (Opus, Fable) and the Claude Desktop check; to be merged through the merge queue and released. Owns MC-02 and MC-03 ([specification](../design/work-packages/WP-17.md)), with #139 and #157 on its milestone.
 
 ## Baseline
 
@@ -20,6 +20,8 @@
 - **2026-11-16T10:45Z (M74)**, his answers to the session's first questions: merge #170 before branching ("I agree with you, let's merge it"); waits are chained at most 51 minutes each; nothing installed for the external checks (VS Code and the rest) until he sets them up at the end; and every other question delegated: "I trust you to make the most robust, appropriate, high-quality … decisions". Recorded as **D175**.
 
 - **2026-11-18T13:37Z (M79)**, after the Claude Desktop check: `artifact_open`'s wording as proposed ("Good call, absolutely!"); no further chat hosts ("testing whether it works on claude.ai or VS Code would simply be verifying the functionality/consistency of MCP Apps, not our app"); the full page's "Submitted" receipt to go in the package that next touches the shell. Recorded in D175 item 12 and WP-20's specification.
+
+- **2026-11-18T14:42Z (M80)**: accepted the package, with D175 and its agent-facing prose (D149): "You absolutely have my acceptance!"
 
 ## What was built
 
@@ -109,6 +111,7 @@ Two independent reviews of `git diff 8165633...wp/17-mcp-apps` under D172 item 0
   - #157's HTTP tests stepped their fake clock past Vitest's default 5 s on a slow Linux runner: their describe takes a minute; what they check is unchanged.
   - `gateway.spec.ts` failed once on Windows arm64 with `net::ERR_NO_BUFFER_SPACE` from its own bare `page.goto`, which #132's fix hadn't reached. Every browser spec now loads through `gotoShell` (this package's `mcp-apps.spec.ts` too), and the repository lint refuses a bare `page.goto` but `about:blank` (`e2eLoadProblems`, its seed red, then green); recorded on #132.
   - `surfaces.spec.ts` again, on macOS Chromium: #152, recorded there.
+- **By the fifth and sixth `ci:full` runs** (44310404628 on `075b5ed`, 44318288452 on `f4786fa`): five macOS jobs never got a runner (no step ran) in the fifth, every job that ran passing; in the sixth, #157's HTTP test again, now at the edit beside the tools: it stepped the fake clock a fixed number of times while the server read the source's fingerprint, real time no step moves. The test now waits in real time until the server reached verify, then steps the clock; with a 2 s real delay in the fingerprint the old test fails as CI did and the new one passes. Also #189's race on Windows x64, recorded there.
 
 ## External evidence
 
