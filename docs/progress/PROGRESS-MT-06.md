@@ -68,7 +68,7 @@ MT-06 owns no requirement (D152): one row per item of its scope, each checked th
 
 ## Agent-facing and viewer-facing words for review (D149)
 
-- The API origin's pages (`packages/runtime/src/server/pages.ts`, `API_PAGE_WORDS`): "Signed in as Ada", "Sign out", "Sign out?", "This browser is signed in here as Ada until you sign out.", the line naming an app and where it goes back to, "You're signed out", "This browser is no longer signed in here. The next sign-in goes through your sign-in provider again.", "On a computer others use, sign out of your sign-in provider too.", "Sign in"; the refusal "Signing out here works from this server's own pages and apps only." (pictures in `docs/progress/evidence/mt-06/`).
+- The API origin's pages (`packages/runtime/src/server/pages.ts`, `API_PAGE_WORDS`): "Signed in as Ada", "Sign out", "Sign out?", "This browser is signed in here as Ada until you sign out.", the line naming an app and where it goes back to, "You're signed out", "You can close this page." (two longer lines about the provider removed at Mirza's note of 2026-11-18), "Sign in"; the refusal "Signing out here works from this server's own pages and apps only." (pictures in `docs/progress/evidence/mt-06/`).
 - The shell (`packages/shell/src/words.ts`, `HOSTED_WORDS`): "Sign out", "Signing out didn't finish. Try once more."
 - The self-hosting page's `metering` row and its "Signing people out" section.
 - `packages/runtime/AGENTS.md` (the remote-server invariant's MT-06 sentences, the two new test hooks) and `packages/shell/AGENTS.md` (the hosted chrome's sign-out).

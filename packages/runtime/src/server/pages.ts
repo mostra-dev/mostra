@@ -72,9 +72,7 @@ export const API_PAGE_WORDS = {
     html`${client} asks to sign you out here, then sends you back to <strong>${host}</strong>.`,
   staySignedInHint: "To stay signed in, close this page.",
   signedOutTitle: "You're signed out",
-  signedOutDetail:
-    "This browser is no longer signed in here. The next sign-in goes through your sign-in provider again.",
-  signedOutShared: "On a computer others use, sign out of your sign-in provider too.",
+  signedOutDetail: "You can close this page.",
   signInAgain: "Sign in",
 } as const;
 
@@ -282,7 +280,7 @@ export function createApiPages(server: ServerPages, name: string | null): ApiPag
       return pages.render({
         kind: "notice",
         title: W.signedOutTitle,
-        body: html`<p>${W.signedOutDetail}</p><p>${W.signedOutShared}</p>${next !== undefined ? actions(linkButton(next, W.signInAgain, { primary: true })) : ""}`,
+        body: html`<p>${W.signedOutDetail}</p>${next !== undefined ? actions(linkButton(next, W.signInAgain, { primary: true })) : ""}`,
         ...request,
       });
     },
