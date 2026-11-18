@@ -21,6 +21,8 @@ interface Setup {
   readonly refuseTools?: boolean;
   /** A host that can't pass the page's saves on: `app_fields` fails, so edits stay unsent. */
   readonly refuseFields?: boolean;
+  /** A server function past the chat host's bound: `app_call` answers the 504 refusal (Fable 6). */
+  readonly slowCalls?: boolean;
 }
 
 declare global {
@@ -57,6 +59,17 @@ bridge.oncalltool = async (params) => {
   }
   if (setup.refuseFields && params.name === "app_fields") {
     throw new Error("The host couldn't reach the server.");
+  }
+  if (setup.slowCalls && params.name === "app_call") {
+    const body = {
+      code: "MOSTRA_TARGET_CALL_TOO_LONG",
+      severity: "error",
+      message: "The call didn't finish within 45 seconds, so it was stopped.",
+    };
+    return {
+      content: [{ type: "text", text: JSON.stringify({ status: 504, body }) }],
+      structuredContent: { status: 504, body },
+    } as never;
   }
   return (await window.mcpCallTool(params)) as never;
 };

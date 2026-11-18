@@ -57,6 +57,7 @@ export const INLINE_WORDS: {
     tools:
       "This chat app can't save answers here: they stay in this browser. Open the full page to send them.",
     streaming: "Results here arrive all at once.",
+    calls: "A step that took longer than 45 seconds stopped here. Open the full page to run it.",
     personal: "This link is made for one person, so it opens only for them.",
   },
   origin: (origin) =>

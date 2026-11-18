@@ -18,6 +18,7 @@ export type Unavailable =
   | "origin"
   | "tools"
   | "streaming"
+  | "calls"
   | "personal";
 
 /** What the inline chrome offers hooks. */

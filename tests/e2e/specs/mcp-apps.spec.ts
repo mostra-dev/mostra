@@ -55,6 +55,7 @@ async function openInline(
   options: {
     readonly refuseTools?: boolean;
     readonly refuseFields?: boolean;
+    readonly slowCalls?: boolean;
     readonly mcp?: McpClient;
   } = {},
 ): Promise<Opened> {
@@ -100,6 +101,7 @@ async function openInline(
       hostContext: HOST_CONTEXT,
       ...(options.refuseTools ? { refuseTools: true } : {}),
       ...(options.refuseFields ? { refuseFields: true } : {}),
+      ...(options.slowCalls ? { slowCalls: true } : {}),
     },
   );
   await page.goto(host.url);
@@ -344,6 +346,22 @@ test.describe("what a chat host's frame lacks says so (MC-03)", () => {
       ).toBeVisible();
       await expect(bar(view).getByRole("button", { name: "Open the full page" })).toBeVisible();
       await expect(bar(view).getByRole("button", { name: "Submit" })).toBeHidden();
+    } finally {
+      client.close();
+    }
+  });
+
+  test("a call past the chat host's bound says why it stopped (Fable 6)", async ({
+    page,
+  }, info) => {
+    const client = await Client.connect(run.socket);
+    try {
+      const own = await publishOwn(client, run.home, info, { fixture: "inline" });
+      const { view } = await openInline(page, own.artifactId, { slowCalls: true });
+      await view.getByTestId("call").click();
+      await expect(
+        bar(view).getByText("A step that took longer than 45 seconds stopped here."),
+      ).toBeVisible();
     } finally {
       client.close();
     }

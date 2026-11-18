@@ -155,6 +155,7 @@ export async function startMcpApp(
       session: opened.session,
       viewId: view.viewId,
       onBatched: () => noteUnavailable("streaming"),
+      onTooLong: () => noteUnavailable("calls"),
       onNewer: (number) => {
         if (number > view.version.number) noteUnavailable("versions");
       },

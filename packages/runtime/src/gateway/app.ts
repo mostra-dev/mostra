@@ -11,6 +11,7 @@ import {
   type AppRequestResult,
   type AppRoute,
   BROWSER_PROTOCOL_REVISION,
+  createDiagnostic,
   type Refusal,
   refusal,
   scopeAllows,
@@ -41,7 +42,17 @@ const ROUTE_PATHS: Readonly<Record<AppRoute, string>> = {
 };
 
 /** The longest a route may take for the app channel: a long poll's 25 s and a call's run. */
-const ROUTE_TIMEOUT_MS = 10 * 60_000;
+/**
+ * How long one app request may take: under a chat host's own limit on a tool call (about a
+ * minute), so a page always hears an answer; a long poll waits at most 25 s of it.
+ */
+const ROUTE_TIMEOUT_MS = 55_000;
+/**
+ * How long a plain call may run before it is stopped (review finding Fable 6): a call isn't
+ * durable, so past the host's limit its result would be lost while it ran on unobserved. Long work
+ * is an action run, which outlives any call.
+ */
+export const APP_CALL_MS = 45_000;
 
 /** The app routes of the gateway's artifact routes, by name. */
 export function appRoutesOf(specs: readonly RouteSpec[]): ReadonlyMap<AppRoute, RouteSpec> {
@@ -156,7 +167,11 @@ export async function dispatchAppRequest(
     url.searchParams.set("wait", String(params.wait ?? 0));
   }
   const controller = new AbortController();
-  const timer = setTimeout(() => controller.abort(), ROUTE_TIMEOUT_MS);
+  const limit = params.route === "call" ? APP_CALL_MS : ROUTE_TIMEOUT_MS;
+  let timer: ReturnType<typeof setTimeout> | undefined;
+  const late = new Promise<"late">((resolve) => {
+    timer = setTimeout(() => resolve("late"), limit);
+  });
   try {
     const request = new Request(url, {
       method: spec.method,
@@ -177,22 +192,47 @@ export async function dispatchAppRequest(
       remote: undefined,
       client: caller,
     };
-    const response = await spec.handler(context);
-    return await readAnswer(response);
+    const handler = spec.handler;
+    const answered = (async () => readAnswer(await handler(context), dispatch.log))();
+    const outcome = await Promise.race([answered, late]);
+    if (outcome !== "late") return outcome;
+    // Past the bound: the call is stopped (its function hears its abort signal), and the page
+    // told why, rather than a host ending the tool call with nothing.
+    controller.abort();
+    answered.catch(() => undefined);
+    return refused({
+      status: 504,
+      diagnostic:
+        params.route === "call"
+          ? createDiagnostic("MOSTRA_TARGET_CALL_TOO_LONG", {
+              message: `The call of ${params.fnId ?? "a server function"} didn't finish within ${APP_CALL_MS / 1000} seconds, so it was stopped.`,
+            })
+          : createDiagnostic("MOSTRA_HOST_TIMEOUT", {
+              message: `The app request ${params.route} didn't finish within ${limit / 1000} seconds.`,
+            }),
+    });
   } finally {
     clearTimeout(timer);
   }
 }
 
-/** A route's answer as the app channel returns it: its JSON body, or a call's NDJSON lines. */
-async function readAnswer(response: Response): Promise<AppRequestResult> {
+/**
+ * A route's answer as the app channel returns it: its JSON body, or a call's NDJSON lines. A line
+ * that isn't JSON is logged and left out, never the whole answer lost (review finding Opus 16).
+ */
+async function readAnswer(response: Response, log: Log): Promise<AppRequestResult> {
   const type = response.headers.get("content-type") ?? "";
   const text = await response.text();
   if (type.includes("ndjson")) {
-    const lines = text
-      .split("\n")
-      .filter((line) => line.trim() !== "")
-      .map((line) => JSON.parse(line) as unknown);
+    const lines: unknown[] = [];
+    for (const line of text.split("\n")) {
+      if (line.trim() === "") continue;
+      try {
+        lines.push(JSON.parse(line) as unknown);
+      } catch {
+        log.warn("gateway.app_line_unreadable", { length: line.length });
+      }
+    }
     return { status: response.status, lines };
   }
   if (text.trim() === "") return { status: response.status };

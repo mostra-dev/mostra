@@ -4,8 +4,13 @@
  * home's per-address submissions) count each caller apart rather than every app request as one.
  */
 
-import { describe, expect, it } from "vitest";
-import { appCallerOf, appRoutesOf, dispatchAppRequest } from "../../src/gateway/app.ts";
+import { describe, expect, it, vi } from "vitest";
+import {
+  APP_CALL_MS,
+  appCallerOf,
+  appRoutesOf,
+  dispatchAppRequest,
+} from "../../src/gateway/app.ts";
 import type { Capabilities } from "../../src/gateway/capabilities.ts";
 import type { RouteContext, RouteSpec } from "../../src/gateway/routes.ts";
 import { silentLog } from "../../src/log.ts";
@@ -86,5 +91,69 @@ describe("the app channel's dispatcher (D175 item 4)", () => {
       (await dispatchAppRequest(viewOnly, { ...submit, session: "guessed" }, "local")).status,
     ).toBe(401);
     expect(seen).toEqual([]);
+  });
+
+  it("stops a plain call past its bound and tells the page, before a chat host ends the tool call (Fable 6)", async () => {
+    vi.useFakeTimers();
+    try {
+      let aborted = false;
+      const routes = appRoutesOf(
+        specs([]).map((spec) =>
+          spec.path.includes("/call/")
+            ? {
+                ...spec,
+                handler: (context: RouteContext) =>
+                  new Promise<Response>(() => {
+                    context.request.signal.addEventListener("abort", () => {
+                      aborted = true;
+                    });
+                  }),
+              }
+            : spec,
+        ),
+      );
+      const dispatch = { routes, capabilities: capabilities(["view", "action:*"]), log: silentLog };
+      const answer = dispatchAppRequest(
+        dispatch,
+        { artifactId: ARTIFACT, session: "good", route: "call", fnId: "actions.ts#slow", body: {} },
+        "local",
+      );
+      await vi.advanceTimersByTimeAsync(APP_CALL_MS - 1);
+      expect(aborted).toBe(false);
+      await vi.advanceTimersByTimeAsync(1);
+      const done = await answer;
+      expect(done.status).toBe(504);
+      expect(done.body).toMatchObject({ code: "MOSTRA_TARGET_CALL_TOO_LONG" });
+      // The function hears its abort signal: nothing runs on unobserved.
+      expect(aborted).toBe(true);
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
+  it("leaves out a call's line that isn't JSON, never the whole answer (Opus 16)", async () => {
+    const routes = appRoutesOf(
+      specs([]).map((spec) =>
+        spec.path.includes("/call/")
+          ? {
+              ...spec,
+              handler: () =>
+                new Response('{"batch":[1]}\nnot json\n{"end":{"status":"succeeded"}}\n', {
+                  headers: { "content-type": "application/x-ndjson" },
+                }),
+            }
+          : spec,
+      ),
+    );
+    const dispatch = { routes, capabilities: capabilities(["view", "action:*"]), log: silentLog };
+    const answer = await dispatchAppRequest(
+      dispatch,
+      { artifactId: ARTIFACT, session: "good", route: "call", fnId: "actions.ts#x", body: {} },
+      "local",
+    );
+    expect(answer).toEqual({
+      status: 200,
+      lines: [{ batch: [1] }, { end: { status: "succeeded" } }],
+    });
   });
 });

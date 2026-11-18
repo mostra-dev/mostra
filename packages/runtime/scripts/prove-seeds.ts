@@ -7583,6 +7583,31 @@ const SEEDS: readonly Seed[] = [
     check: ["test/apps.test.ts", "-t", "serves the loader"],
     cwd: "../mcp",
   },
+  {
+    requirement: "MC-03",
+    name: "a plain call inline runs past the chat host's limit, its answer lost (Fable 6)",
+    file: "src/gateway/app.ts",
+    from: '  const limit = params.route === "call" ? APP_CALL_MS : ROUTE_TIMEOUT_MS;',
+    to: "  const limit = 10 * 60_000;",
+    check: unit("app-dispatch.test.ts", "stops a plain call past its bound"),
+  },
+  {
+    requirement: "MC-03",
+    name: "one bad line loses a call's whole answer (Opus 16)",
+    file: "src/gateway/app.ts",
+    from: "        lines.push(JSON.parse(line) as unknown);\n      } catch {",
+    to: "        lines.push(JSON.parse(line) as unknown);\n      } finally {",
+    check: unit("app-dispatch.test.ts", "isn't JSON"),
+  },
+  {
+    requirement: "MC-03",
+    name: "a call stopped at the chat host's bound fails without a word inline (Fable 6)",
+    file: "../react/src/runtime/mcp-app.ts",
+    from: '      onTooLong: () => noteUnavailable("calls"),',
+    to: "      onTooLong: () => undefined,",
+    check: [...e2e("says why it stopped"), "--project", "chromium"],
+    e2e: true,
+  },
 ];
 
 const runtime = join(dirname(fileURLToPath(import.meta.url)), "..");

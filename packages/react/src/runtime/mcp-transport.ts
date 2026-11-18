@@ -61,6 +61,7 @@ export class McpAppTransport implements Transport {
   readonly #viewId: string;
   /** Whether a call's batches came at once: a degradation the page states (D175 item 7). */
   readonly #onBatched: (() => void) | undefined;
+  readonly #onTooLong: (() => void) | undefined;
   /** Hears of a version newer than the page's, which only the full page's banner offers. */
   readonly #onNewer: ((version: number) => void) | undefined;
 
@@ -71,6 +72,8 @@ export class McpAppTransport implements Transport {
       readonly session: string;
       readonly viewId: string;
       readonly onBatched?: () => void;
+      /** Told when a plain call ran past the chat host's bound and was stopped. */
+      readonly onTooLong?: () => void;
       readonly onNewer?: (version: number) => void;
     },
   ) {
@@ -79,6 +82,7 @@ export class McpAppTransport implements Transport {
     this.#session = handles.session;
     this.#viewId = handles.viewId;
     this.#onBatched = handles.onBatched;
+    this.#onTooLong = handles.onTooLong;
     this.#onNewer = handles.onNewer;
   }
 
@@ -143,7 +147,16 @@ export class McpAppTransport implements Transport {
 
   async *call(fnId: string, request: CallRequest, signal?: AbortSignal): AsyncIterable<CallLine> {
     signal?.throwIfAborted();
-    const answer = await this.#route(APP_TOOLS.call, { fnId, body: request });
+    let answer: RouteAnswer;
+    try {
+      answer = await this.#route(APP_TOOLS.call, { fnId, body: request });
+    } catch (error) {
+      // A chat host's tool call is bounded: past 45 s a plain call stops (Fable 6).
+      if (error instanceof MostraError && error.code === "MOSTRA_TARGET_CALL_TOO_LONG") {
+        this.#onTooLong?.();
+      }
+      throw error;
+    }
     const lines = (answer.lines ?? []) as CallLine[];
     if (lines.filter((line) => "batch" in line).length > 1) this.#onBatched?.();
     for (const line of lines) {
