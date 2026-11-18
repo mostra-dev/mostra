@@ -14,6 +14,7 @@ import {
   linkFor,
   openInShell,
   publishOwn,
+  reopenInShell,
   republish,
   results,
   saved,
@@ -400,6 +401,36 @@ test.describe("a frame whose load fails (D157, #66)", () => {
       await page.waitForTimeout(8_000);
       expect(refused).toBe(4);
       await page.unrouteAll({ behavior: "wait" });
+    } finally {
+      client.close();
+    }
+  });
+});
+
+test.describe("the suites' recovery when Playwright loses a ready frame (#135)", () => {
+  test("loading the shell's page afresh where it is keeps the view, what it saved, and a working Submit", async ({
+    page,
+  }, info) => {
+    const client = await Client.connect(run.socket);
+    try {
+      const own = await publishOwn(client, run.home, info);
+      const frame = await openInShell(
+        page,
+        await linkFor(client, own.artifactId, viewerName(info)),
+      );
+      await frame.getByTestId("name").fill("Ana");
+      await saved(page);
+      await reopenInShell(page);
+      const again = page.frameLocator("iframe.mostra-frame");
+      await expect(again.getByTestId("name")).toHaveValue("Ana");
+      const typing = await watchTyping(page, again);
+      await again.getByTestId("notes").fill("after a fresh load");
+      await typing.typed("notes", "after a fresh load");
+      await saved(page);
+      await page.locator("#mostra-submit").click();
+      await expect(page.locator("#mostra-submit")).toHaveText("Submitted");
+      const done = (await results(client, own.artifactId)) as { answers: Record<string, unknown> };
+      expect(done.answers).toMatchObject({ name: "Ana", notes: "after a fresh load" });
     } finally {
       client.close();
     }
