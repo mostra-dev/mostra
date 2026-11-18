@@ -61,12 +61,18 @@ const REMOTE = [...REMOTE_HOSTING, ...REMOTE_ACCESS];
 // Plugins and source packs (WP-16): real installs from a local registry, plugin children and
 // local registry servers, a group of their own, since `core` has no room for them.
 const EXTENSIONS = ["test/integration/plugins.test.ts", "test/integration/packs.test.ts"];
+// Dependency installs (D95) are built the same way (a real daemon, a real pnpm install child and a
+// local registry) and were `core`'s largest suite, which ran at its 10-minute deadline on slow
+// macOS runners (#197). On macOS and Linux they join the plugins and packs; Windows keeps them in
+// its `windows` group, which partitions the suites its own way.
+const DEPS = "test/integration/deps.test.ts";
+const REGISTRY_INSTALLS = [...EXTENSIONS, DEPS];
 export const INTEGRATION_GROUPS: Record<string, { include: string[]; exclude: string[] }> = {
   core: {
     include: ["test/integration/**/*.test.ts"],
-    exclude: [VERIFY_SUITES, DEV, ...FAULTS, ...REMOTE, ...EXTENSIONS],
+    exclude: [VERIFY_SUITES, DEV, ...FAULTS, ...REMOTE, ...REGISTRY_INSTALLS],
   },
-  extensions: { include: EXTENSIONS, exclude: [] },
+  extensions: { include: REGISTRY_INSTALLS, exclude: [] },
   remote: { include: REMOTE_HOSTING, exclude: [] },
   "remote-access": { include: REMOTE_ACCESS, exclude: [] },
   verify: { include: [VERIFY_SUITES, DEV], exclude: [VERIFY_FAILURES] },
@@ -82,7 +88,7 @@ export const INTEGRATION_GROUPS: Record<string, { include: string[]; exclude: st
       "test/integration/platform.test.ts",
       "test/integration/reaping.test.ts",
       "test/integration/processes.test.ts",
-      "test/integration/deps.test.ts",
+      DEPS,
       "test/integration/windows.test.ts",
       "test/integration/heartbeat.test.ts",
     ],
