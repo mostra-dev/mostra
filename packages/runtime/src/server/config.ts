@@ -184,6 +184,12 @@ export interface RemoteServerConfig {
   readonly operatorClients?: OperatorClient[] | undefined;
   /** How the server's own pages look and name themselves (D171). */
   readonly appearance?: AppearanceConfig | undefined;
+  /**
+   * The operator's metering (MT-06): how long a window of counters lasts, in seconds. A length
+   * that divides an hour, at most 3,600, 60 by default; windows start on its multiples since the
+   * epoch.
+   */
+  readonly metering?: { readonly windowSeconds?: number | undefined } | undefined;
 }
 
 /** The schema of {@link RemoteServerConfig}. */
@@ -248,6 +254,18 @@ const Config: z.ZodType<RemoteServerConfig> & { readonly shape: Record<string, u
     framing: z.strictObject({ frameAncestors: z.literal("'none'") }).optional(),
     operator: z.string().optional(),
     chatHosts: z.record(z.string(), z.unknown()).optional(),
+    metering: z
+      .strictObject({
+        windowSeconds: z
+          .int()
+          .min(1)
+          .max(3_600)
+          .refine((seconds) => 3_600 % seconds === 0, {
+            message: "must divide an hour evenly (60, 120, 300, 600, 900, 1200, 1800 or 3600)",
+          })
+          .optional(),
+      })
+      .optional(),
     operatorClients: z
       .array(z.strictObject({ clientId: MetadataClientId, name: PageName }))
       .min(1)

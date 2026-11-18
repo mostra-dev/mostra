@@ -202,8 +202,9 @@ export function createAuthorize(options: AuthorizeOptions): Authorize {
   // ── in-progress records ─────────────────────────────────────────────────────────────────
 
   const keep = (kind: "provider" | "step" | "authorize", handle: string, data: unknown): void =>
+    // An expired record is swept by the server's periodic sweep (`sweep.ts`, MT-06), never here:
+    // every read checks its expiry itself.
     directory.write((db) => {
-      db.run("DELETE FROM signin WHERE expires_at < ?", iso(now()));
       db.run(
         "INSERT INTO signin (hash, kind, data_json, expires_at) VALUES (?, ?, ?, ?)",
         hashSecret(handle),

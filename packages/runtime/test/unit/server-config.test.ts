@@ -165,3 +165,37 @@ describe("an operator's own clients (MT-05)", () => {
     }
   });
 });
+
+describe("an operator's metering window (MT-06, #203)", () => {
+  /** Reads `MOSTRA_SERVER_METERING`; its error's message. */
+  const metering = (value: unknown): string | undefined => {
+    try {
+      const config = readServerConfig(undefined, {
+        MOSTRA_SERVER_API_ORIGIN: base.apiOrigin,
+        MOSTRA_SERVER_DOMAINS: JSON.stringify(base.domains),
+        MOSTRA_SERVER_METERING: JSON.stringify(value),
+      });
+      expect(config.metering).toEqual(value);
+      return undefined;
+    } catch (error) {
+      if (!(error instanceof RpcError)) throw error;
+      return `${error.diagnostic.code}: ${error.diagnostic.message}`;
+    }
+  };
+
+  it("takes a length that divides an hour, up to an hour", () => {
+    for (const seconds of [1, 60, 120, 300, 600, 900, 1_200, 1_800, 3_600]) {
+      expect(metering({ windowSeconds: seconds }), String(seconds)).toBeUndefined();
+    }
+    expect(metering({})).toBeUndefined();
+  });
+
+  it("refuses one that straddles an hour, is longer, isn't whole, or isn't a number, naming the key", () => {
+    for (const seconds of [0, -60, 7, 45 * 60, 7_200, 90.5, "600", null]) {
+      expect(metering({ windowSeconds: seconds }), String(seconds)).toMatch(
+        /^MOSTRA_REMOTE_CONFIG_INVALID: .*`metering\.windowSeconds`/,
+      );
+    }
+    expect(metering({ window: 600 })).toMatch(/^MOSTRA_REMOTE_CONFIG_INVALID: .*`metering`/);
+  });
+});

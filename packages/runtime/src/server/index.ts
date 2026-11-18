@@ -54,12 +54,13 @@ import { createHandle } from "./handle.ts";
 import { type HostedHome, type HostedServices, openHostedHome } from "./hosted.ts";
 import { type HomeOwner, homeUnavailable } from "./hosted-pages.ts";
 import { createRemoteMcp, serverDocs } from "./mcp.ts";
-import { createMeter, heldLevels, type Meter } from "./metering.ts";
+import { createMeter, DEFAULT_WINDOW_SECONDS, heldLevels, type Meter } from "./metering.ts";
 import { createClients } from "./oauth-clients.ts";
 import { loadOperator, type Operator } from "./operator.ts";
 import { APPEARANCE_PATH, createApiPages } from "./pages.ts";
 import { type BuiltInProvider, builtInProviders } from "./providers.ts";
 import { createRouting, type Destination, type Routing } from "./routing.ts";
+import { startSweep } from "./sweep.ts";
 
 export { type RemoteServerConfig, readServerConfig } from "./config.ts";
 
@@ -321,6 +322,15 @@ export async function startServer(options: ServerOptions): Promise<RemoteServer>
   }
   // A held file recorded before sizes were kept (directory migration 6) takes its stored size once.
   fillHeldSizes(data.directory, join(options.data, "files"), log);
+  // Expired sign-in sessions, sign-ins in progress, spent codes and expired tokens go on a timer
+  // of their own, never inside a request (MT-06).
+  const sweep = startSweep({
+    directory: data.directory,
+    log,
+    ...(Number(options.env["MOSTRA_TEST_SIGNIN_SWEEP_MS"]) > 0
+      ? { everyMs: Number(options.env["MOSTRA_TEST_SIGNIN_SWEEP_MS"]) }
+      : {}),
+  });
   routing = createRouting({
     apiHost: new URL(config.apiOrigin).host,
     domains: () => [config.domains.active, ...(config.domains.spares ?? [])],
@@ -333,9 +343,11 @@ export async function startServer(options: ServerOptions): Promise<RemoteServer>
     operator,
     keysDir: join(options.data, "keys"),
     log,
-    ...(Number(options.env["MOSTRA_TEST_METER_WINDOW_MS"]) > 0
-      ? { windowMs: Number(options.env["MOSTRA_TEST_METER_WINDOW_MS"]) }
-      : {}),
+    // The operator's window (`metering.windowSeconds`, MT-06), or a test's shorter one.
+    windowMs:
+      Number(options.env["MOSTRA_TEST_METER_WINDOW_MS"]) > 0
+        ? Number(options.env["MOSTRA_TEST_METER_WINDOW_MS"])
+        : (config.metering?.windowSeconds ?? DEFAULT_WINDOW_SECONDS) * 1000,
     activeHomes: () => data.open().map((home) => ({ home, account: ownerOf(home).account })),
     // `bytes.held` (MT-03): each home's running total, sent when it changed, and all in a snapshot.
     held: heldLevels(data.directory),
@@ -395,6 +407,7 @@ export async function startServer(options: ServerOptions): Promise<RemoteServer>
       log,
     });
   } catch (error) {
+    sweep.stop();
     operator?.stop();
     await data.close();
     throw error;
@@ -407,6 +420,7 @@ export async function startServer(options: ServerOptions): Promise<RemoteServer>
     apiPages = serverPages(config.appearance, { appearanceAction: APPEARANCE_PATH });
     hostedPages = serverPages(config.appearance);
   } catch (error) {
+    sweep.stop();
     operator?.stop();
     await data.close();
     throw new RpcError(
@@ -744,6 +758,7 @@ export async function startServer(options: ServerOptions): Promise<RemoteServer>
         await mcp.close().catch(() => undefined);
         // What the operator hasn't taken yet stays queued in the directory for the next start.
         meter?.stop();
+        sweep.stop();
         operator?.stop();
         await stopListener();
         await data.close();
