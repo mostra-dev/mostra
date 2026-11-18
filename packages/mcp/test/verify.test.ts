@@ -44,6 +44,14 @@ async function answered<T>(pending: Promise<T>): Promise<T> {
   return pending;
 }
 
+/**
+ * A request timeout past anything these tests' fake clock reaches. Each step of the clock may
+ * outrun the server's real work (its files read for the fingerprint) on a slow machine, and the
+ * client's own 60 s limit would end a call these tests wait on; what they check is the server's
+ * own 45 s answer, by the status it gives.
+ */
+const CLOCK_SAFE = { timeout: 30 * 60_000 } as const;
+
 /** A run that ends when the test says. */
 function controlled<V>() {
   let resolve!: (value: V) => void;
@@ -240,7 +248,10 @@ describe("artifact_verify over Streamable HTTP, a server per request (#157)", ()
       }),
     );
     const verify = () =>
-      client.callTool({ name: "artifact_verify", arguments: { dir: "page" } }) as Promise<{
+      client.callTool(
+        { name: "artifact_verify", arguments: { dir: "page" } },
+        CLOCK_SAFE,
+      ) as Promise<{
         content: { type: string; text?: string }[];
       }>;
     const running = async () => {
@@ -304,7 +315,10 @@ describe("artifact_verify over Streamable HTTP, a server per request (#157)", ()
     );
     try {
       const call = () =>
-        client.callTool({ name: "artifact_verify", arguments: { dir: "page" } }) as Promise<{
+        client.callTool(
+          { name: "artifact_verify", arguments: { dir: "page" } },
+          CLOCK_SAFE,
+        ) as Promise<{
           content: { type: string; text?: string }[];
           isError?: boolean;
         }>;
