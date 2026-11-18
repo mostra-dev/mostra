@@ -69,7 +69,10 @@ describe("respondents' personal links (#184)", () => {
       refused(() =>
         checkRespondentLinks([
           { ref: "ada", link: link("tk_one", "ada") },
-          { ref: "sam", link: { ...link("tk_one", "ada"), viewer: link("x", "sam").viewer } },
+          {
+            ref: "sam",
+            link: { ...link("tk_one", "ada"), viewer: { id: "vw_sam", kind: "token", ref: "sam" } },
+          },
         ]),
       ),
     ).toContain("also the one given for ada");
