@@ -217,7 +217,12 @@ describe("a verify run answers only for the source it started on (Opus 6, Fable 
   });
 });
 
-describe("artifact_verify over Streamable HTTP, a server per request (#157)", () => {
+// Each test steps a fake clock through a call's 45 s, a second at a time, with real HTTP and file
+// work between the steps: a slow runner needs more than Vitest's default 5 s for that (CI run
+// 44280075785). The bound is the runner's; what each test checks is unchanged.
+describe("artifact_verify over Streamable HTTP, a server per request (#157)", {
+  timeout: 60_000,
+}, () => {
   it("starts afresh once the source changed, through the tools or beside them (Opus 6, Fable 4)", async () => {
     vi.useFakeTimers({ shouldAdvanceTime: true });
     const verdicts = [controlled<unknown>(), controlled<unknown>(), controlled<unknown>()];
