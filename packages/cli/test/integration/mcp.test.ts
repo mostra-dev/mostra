@@ -306,11 +306,14 @@ describe("mostra mcp", () => {
       );
       clients.push(client);
       expect(client.getProtocolEra()).toBe(era);
-      // A request names no capabilities a tool list can read here, so the page's own tools are
-      // listed too, for a host to keep from its model (D175 item 5).
+      // A 2026-07-28 request names its client's capabilities, and this client shows no MCP Apps:
+      // the page's own tools aren't listed. A stateless 2025-era request names none a list can
+      // read, so they are, for a host to keep from its model (D175 item 5, Fable 9).
       const { tools } = await client.listTools();
       expect(tools.filter((tool) => !tool.name.startsWith("app_"))).toHaveLength(13);
-      expect(tools.filter((tool) => tool.name.startsWith("app_"))).toHaveLength(11);
+      expect(tools.filter((tool) => tool.name.startsWith("app_"))).toHaveLength(
+        era === "modern" ? 0 : 11,
+      );
       const listed = await call(client, "artifact_list", {});
       expect(JSON.parse(listed.text)).toEqual({ artifacts: [] });
     }

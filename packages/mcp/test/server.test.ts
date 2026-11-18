@@ -19,9 +19,14 @@ async function connect(
   era: "modern" | "legacy" = "modern",
 ): Promise<Client> {
   const handler = createMcpHandler(createMcpServerFactory(options));
+  // An MCP Apps host's client: a 2026-07-28 request names its capabilities, and the page's parts
+  // are listed only for one that shows MCP Apps (D175 item 5).
+  const capabilities = {
+    extensions: { "io.modelcontextprotocol/ui": { mimeTypes: ["text/html;profile=mcp-app"] } },
+  } as never;
   const client = new Client(
     { name: "test-harness", version: "1.2.3" },
-    era === "modern" ? { versionNegotiation: { mode: "auto" } } : {},
+    era === "modern" ? { versionNegotiation: { mode: "auto" }, capabilities } : { capabilities },
   );
   await client.connect(
     new StreamableHTTPClientTransport(new URL("http://test.local/mcp"), {

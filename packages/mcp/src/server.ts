@@ -7,6 +7,7 @@
 import { readFile } from "node:fs/promises";
 import {
   type CallToolResult,
+  CLIENT_CAPABILITIES_META_KEY,
   CLIENT_INFO_META_KEY,
   McpServer,
   type McpServerFactory,
@@ -20,6 +21,7 @@ import {
   appPageMethod,
   artifactGetMethod,
   artifactListMethod,
+  createDiagnostic,
   MCP_APP_MIME_TYPE,
   MCP_APPS_EXTENSION,
   RpcError,
@@ -129,6 +131,29 @@ async function artifactReport(options: McpServerOptions, artifact: ArtifactRef):
   return lines.join("\n");
 }
 
+/**
+ * Whether capabilities say their client shows MCP Apps (`io.modelcontextprotocol/ui` with the
+ * page's media type), or `undefined` when they aren't known.
+ */
+function showsApps(capabilities: unknown): boolean | undefined {
+  if (capabilities === undefined || capabilities === null || typeof capabilities !== "object") {
+    return undefined;
+  }
+  const types = (
+    capabilities as { extensions?: Record<string, { mimeTypes?: unknown } | undefined> }
+  ).extensions?.[MCP_APPS_EXTENSION]?.mimeTypes;
+  return Array.isArray(types) && types.includes(MCP_APP_MIME_TYPE);
+}
+
+/**
+ * Whether the client of a request shows MCP Apps: from a 2026-07-28 request's own envelope, else
+ * `undefined` (a 2025-era session is judged once it initialized).
+ */
+function appsOf(ctx: ServerContext): boolean | undefined {
+  const envelope = ctx.mcpReq.envelope as Record<string, unknown> | undefined;
+  return envelope === undefined ? undefined : showsApps(envelope[CLIENT_CAPABILITIES_META_KEY]);
+}
+
 /** Builds the factory every transport serves. */
 export function createMcpServerFactory(options: McpServerOptions): McpServerFactory {
   const tools = createTools(
@@ -175,7 +200,11 @@ export function createMcpServerFactory(options: McpServerOptions): McpServerFact
       tell(identity());
     };
 
-    const registered: { readonly ui: "render" | "app"; readonly tool: RegisteredTool }[] = [];
+    const registered: {
+      readonly ui: "render" | "app";
+      readonly tool: RegisteredTool;
+      readonly meta: Record<string, unknown> | undefined;
+    }[] = [];
     for (const tool of tools) {
       const handle = server.registerTool(
         tool.name,
@@ -188,6 +217,15 @@ export function createMcpServerFactory(options: McpServerOptions): McpServerFact
         },
         (async (args: unknown, ctx: ServerContext): Promise<CallToolResult> => {
           seen(ctx);
+          // A page's own tool, called by a client that says it shows no MCP Apps: no page of
+          // its asks for it, so its model would be acting through a link (Fable 9).
+          if (tool.ui === "app" && (options.apps === false || appsOf(ctx) === false)) {
+            return errorResult(
+              createDiagnostic("MOSTRA_HOST_METHOD_UNKNOWN", {
+                message: `${tool.name} serves an MCP App's page, which this client doesn't show.`,
+              }),
+            );
+          }
           const progressToken = ctx.mcpReq._meta?.progressToken;
           let step = 0;
           const call: ToolCall = {
@@ -210,7 +248,13 @@ export function createMcpServerFactory(options: McpServerOptions): McpServerFact
           }
         }) as never,
       );
-      if (tool.ui !== undefined) registered.push({ ui: tool.ui, tool: handle });
+      if (tool.ui !== undefined) {
+        registered.push({
+          ui: tool.ui,
+          tool: handle,
+          meta: tool.meta !== undefined ? { ...tool.meta } : undefined,
+        });
+      }
     }
 
     // MCP Apps' parts, left out for a client known to lack MCP Apps (D175 item 5): its
@@ -221,22 +265,33 @@ export function createMcpServerFactory(options: McpServerOptions): McpServerFact
      * `disable()` or `update()`, which announce a changed list, since nothing changed for a
      * client that hasn't listed tools yet.
      */
-    const leaveAppsOut = (): void => {
-      for (const { ui, tool } of registered) {
-        if (ui === "app") tool.enabled = false;
+    const showApps = (shown: boolean): void => {
+      for (const { ui, tool, meta } of registered) {
+        if (ui === "app") tool.enabled = shown;
+        else if (shown && meta !== undefined) tool._meta = { ...meta };
         else delete tool._meta;
       }
     };
     const withoutApps = (): void => {
-      const capabilities = server.server.getClientCapabilities() as
-        | { extensions?: Record<string, { mimeTypes?: unknown } | undefined> }
-        | undefined;
-      if (capabilities === undefined) return;
-      const types = capabilities.extensions?.[MCP_APPS_EXTENSION]?.mimeTypes;
-      if (Array.isArray(types) && types.includes(MCP_APP_MIME_TYPE)) return;
-      leaveAppsOut();
+      if (showsApps(server.server.getClientCapabilities()) === false) showApps(false);
     };
-    if (options.apps === false) leaveAppsOut();
+    if (options.apps === false) showApps(false);
+    else {
+      // A 2026-07-28 request names its client's capabilities itself, and a session may never
+      // initialize: each list is judged by the request it answers (review finding Fable 9).
+      const list = (
+        server.server as unknown as {
+          _getRequestHandler(method: string): ((request: never, ctx: never) => unknown) | undefined;
+        }
+      )._getRequestHandler("tools/list");
+      if (list !== undefined) {
+        server.server.setRequestHandler("tools/list", (request, ctx) => {
+          const shown = appsOf(ctx as ServerContext);
+          if (shown !== undefined) showApps(shown);
+          return list(request as never, ctx as never) as never;
+        });
+      }
+    }
 
     server.registerResource(
       "docs",

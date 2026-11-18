@@ -45,11 +45,21 @@ function base(
 }
 
 /** A client over HTTP: a 2026-07-28 request names no capabilities the tool list could read. */
-async function overHttp(options: McpServerOptions): Promise<Client> {
+/** An MCP Apps host's client over Streamable HTTP, or (`apps: false`) a client without MCP Apps. */
+async function overHttp(options: McpServerOptions, apps = true): Promise<Client> {
   const handler = createMcpHandler(createMcpServerFactory(options));
   const client = new Client(
     { name: "test-host", version: "1" },
-    { versionNegotiation: { mode: "auto" } },
+    {
+      versionNegotiation: { mode: "auto" },
+      ...(apps
+        ? {
+            capabilities: {
+              extensions: { [MCP_APPS_EXTENSION]: { mimeTypes: [MCP_APP_MIME_TYPE] } },
+            } as never,
+          }
+        : {}),
+    },
   );
   await client.connect(
     new StreamableHTTPClientTransport(new URL("http://test.local/mcp"), {
@@ -92,6 +102,29 @@ const uiOf = (tool: { _meta?: unknown }) =>
   (tool._meta as { ui?: { visibility?: string[]; resourceUri?: string } } | undefined)?.ui;
 
 describe("MCP Apps through the MCP server (D175, MC-02)", () => {
+  it("judges each 2026-07-28 request by the capabilities it names: no MCP Apps, no page parts (Fable 9)", async () => {
+    const { options } = base({ "artifact/list": () => ({ artifacts: [] }) });
+    const plain = await overHttp(options, false);
+    const tools = (await plain.listTools()).tools;
+    expect(tools.map((tool) => tool.name).filter((name) => name.startsWith("app_"))).toEqual([]);
+    expect(tools).toHaveLength(13);
+    expect(tools.find((tool) => tool.name === "artifact_open")?._meta).toBeUndefined();
+    // Nor does a page's own tool answer such a client, which no page of its asks for it.
+    const called = (await plain.callTool({
+      name: "app_open",
+      arguments: { artifactId: "art_01JB8Z3QF6S7W3N8D5K2C4V9XG", url: "http://x/a/b#t=secret" },
+    })) as { isError?: boolean; content: { text?: string }[] };
+    expect(called.isError).toBe(true);
+    expect(called.content[0]?.text).toContain("MOSTRA_HOST_METHOD_UNKNOWN");
+    // An MCP Apps host's request, on the same factory, has them all.
+    const host = await overHttp(options);
+    const listed = (await host.listTools()).tools;
+    expect(listed.filter((tool) => tool.name.startsWith("app_"))).toHaveLength(11);
+    expect(uiOf(listed.find((tool) => tool.name === "artifact_open") ?? {})?.resourceUri).toBe(
+      "ui://mostra/app",
+    );
+  });
+
   it("lists the page's tools as app-only and names the loader on artifact_open", async () => {
     const client = await overHttp(base().options);
     const { tools } = await client.listTools();
