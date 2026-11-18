@@ -27,6 +27,7 @@ import {
   tempDir,
   testHome,
   WINDOWS,
+  windowsPowerShell,
 } from "../support.ts";
 
 const DAY = 86_400_000;
@@ -712,14 +713,7 @@ function firewallBlocks(since: Date, name: string): string[] {
     `$events = Get-WinEvent -FilterHashtable @{ LogName = 'Security'; Id = 5031; StartTime = $since } -ErrorAction SilentlyContinue`,
     `$events | Where-Object { $_.Message -like '*${name}*' } | ForEach-Object { $_.Message.Replace([char]13, ' ').Replace([char]10, ' ') }`,
   ].join("; ");
-  const out = execFileSync(
-    "powershell.exe",
-    ["-NoProfile", "-NonInteractive", "-Command", script],
-    {
-      encoding: "utf8",
-      windowsHide: true,
-    },
-  );
+  const out = windowsPowerShell(script, "reading the firewall's blocked-application events");
   return out.split(/\r?\n/).filter((line) => line.trim() !== "");
 }
 
