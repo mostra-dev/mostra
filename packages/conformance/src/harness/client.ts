@@ -64,7 +64,12 @@ export class HostUnderTest {
   readonly #child: ChildProcess;
   readonly #peer: RpcPeer;
   readonly #stderr: string[] = [];
-  readonly #exited: Promise<number | null>;
+  /** Resolves once the shim's output has closed (or it never started). */
+  readonly #exited: Promise<void>;
+  readonly #spawnedAt = performance.now();
+  /** How the shell ended, once Node.js has seen it end; until then its PID is still its own. */
+  #end: { code: number | null; signal: NodeJS.Signals | null; afterMs: number } | undefined;
+  #spawnError: Error | undefined;
   /** What the host said about itself. */
   info: InitializeResult | undefined;
 
@@ -79,9 +84,15 @@ export class HostUnderTest {
       detached: !WINDOWS,
       windowsHide: true,
     });
+    this.#child.on("exit", (code, signal) => {
+      this.#end = { code, signal, afterMs: Math.round(performance.now() - this.#spawnedAt) };
+    });
     this.#exited = new Promise((done) => {
-      this.#child.on("close", (code) => done(code));
-      this.#child.on("error", () => done(null));
+      this.#child.on("close", () => done());
+      this.#child.on("error", (error) => {
+        this.#spawnError = error;
+        done();
+      });
     });
     this.#peer = new RpcPeer({
       send: (message) => {
@@ -102,13 +113,27 @@ export class HostUnderTest {
       }
     });
     this.#child.stdin?.on("error", () => {});
-    void this.#exited.then((code) =>
+    void this.#exited.then(() =>
       this.#peer.close(
         createDiagnostic("MOSTRA_HOST_CONNECTION_CLOSED", {
-          message: `The host under test exited (${code ?? "signal"}): ${this.#stderr.slice(-3).join(" | ")}`,
+          message: `The host under test ${this.#ending()}: ${this.#stderr.slice(-5).join(" | ")}`,
         }),
       ),
     );
+  }
+
+  /**
+   * How the shim ended, for the failure it causes: its exit code or signal and how long after its
+   * start, so a shim that died at once reads differently from one that ran a while (#140).
+   */
+  #ending(): string {
+    if (this.#spawnError !== undefined) return `couldn't be started (${this.#spawnError.message})`;
+    if (this.#end === undefined) return "closed its output";
+    const how =
+      this.#end.signal !== null
+        ? `signal ${this.#end.signal}`
+        : `code ${this.#end.code ?? "unknown"}`;
+    return `exited (${how}, ${this.#end.afterMs} ms after it started)`;
   }
 
   /** Starts the shim and asks it who it is. */
@@ -200,7 +225,7 @@ export class HostUnderTest {
   /**
    * Ends the shim: stdin closes, then SIGTERM to its process group, then SIGKILL. Windows has no
    * process groups or signals (D150 item 6): there the kit notes the shell's process tree while it
-   * runs, and after 5 s ends the shell's tree (`taskkill /T`, while the shell lives) and every
+   * runs, and after 5 s ends the shell's tree (`taskkill /T`, only while the shell lives) and every
    * process it noted (`mostra-win reap`, which ends one only while its creation time matches), so
    * a descendant of a shell that already exited is ended too (Opus review of WP-W3, finding 3).
    */
@@ -216,11 +241,19 @@ export class HostUnderTest {
       ]);
     if (WINDOWS) {
       if ((await wait(5000)) === "waiting" && pid !== undefined) {
-        const system = process.env["SystemRoot"] ?? "C:\\Windows";
-        spawnSync(`${system}\\System32\\taskkill.exe`, ["/pid", String(pid), "/T", "/F"], {
-          stdio: "ignore",
-          windowsHide: true,
-        });
+        // Only while the shell lives: Node.js keeps its process handle open until it sees the
+        // shell end, so until then the PID can name no other process, and nothing runs between
+        // this check and the synchronous taskkill. Once the shell has ended, Windows may have
+        // given its PID to another process, and `/T /F` would end that one and everything below
+        // it: another suite's process on a shared machine (#140). Its descendants are then ended
+        // through the tree noted above alone.
+        if (this.#end === undefined) {
+          const system = process.env["SystemRoot"] ?? "C:\\Windows";
+          spawnSync(`${system}\\System32\\taskkill.exe`, ["/pid", String(pid), "/T", "/F"], {
+            stdio: "ignore",
+            windowsHide: true,
+          });
+        }
         if (helper !== undefined) endTree(helper, tree);
         await wait(5000);
       }
