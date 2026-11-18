@@ -30,7 +30,11 @@ afterEach(() => {
  * Moves the fake clock a second at a time until `pending` settles: a call first reads its
  * directory's fingerprint, so its wait starts only once that read is done.
  */
-async function answered<T>(pending: Promise<T>): Promise<T> {
+async function answered<T>(pending: Promise<T>, started?: () => boolean): Promise<T> {
+  // The server reads the disk (the source's fingerprint) before verify starts: real time, which
+  // stepping the fake clock doesn't move, so a slow runner ran out of steps first (CI run
+  // 44318288452). Wait for that in real time, then step through the call's 45 s.
+  if (started !== undefined) await realUntil(started);
   let settled = false;
   void pending.then(
     () => {
@@ -51,6 +55,22 @@ async function answered<T>(pending: Promise<T>): Promise<T> {
  * own 45 s answer, by the status it gives.
  */
 const CLOCK_SAFE = { timeout: 30 * 60_000 } as const;
+
+/** The real `setTimeout`, kept before any test fakes the timers. */
+const realTimeout = globalThis.setTimeout;
+
+/**
+ * Waits in real time, a few milliseconds at a time, until `ready()` holds, for at most 30 s: the
+ * server's own work on the disk, which no fake clock moves. Stepping the fake clock meanwhile
+ * would run it ahead of the server, past a run's 10- and 30-minute rules.
+ */
+async function realUntil(ready: () => boolean): Promise<void> {
+  const end = process.hrtime.bigint() + 30_000_000_000n;
+  while (!ready()) {
+    if (process.hrtime.bigint() > end) throw new Error("the server never reached verify");
+    await new Promise((resolve) => realTimeout(resolve, 5));
+  }
+}
 
 /** A run that ends when the test says. */
 function controlled<V>() {
@@ -259,13 +279,17 @@ describe("artifact_verify over Streamable HTTP, a server per request (#157)", {
       ) as Promise<{
         content: { type: string; text?: string }[];
       }>;
-    const running = async () => {
-      expect(JSON.parse((await answered(verify())).content[0]?.text ?? "")).toMatchObject({
+    // A verify call answered `running`, once the server has started the `count`-th run.
+    const running = async (count: number) => {
+      const pending = verify();
+      expect(
+        JSON.parse((await answered(pending, () => calls >= count)).content[0]?.text ?? ""),
+      ).toMatchObject({
         status: "running",
       });
     };
     try {
-      await running();
+      await running(1);
       // A write through the tools: the run on the old source isn't joined.
       await client.callTool({
         name: "artifact_write",
@@ -274,12 +298,12 @@ describe("artifact_verify over Streamable HTTP, a server per request (#157)", {
           files: [{ path: "index.tsx", content: "export default () => 1;" }],
         },
       });
-      await running();
+      await running(2);
       expect(calls).toBe(2);
       // An edit beside the tools (an agent's own editor): the fingerprint tells.
       writeFileSync(join(root, "page", "index.tsx"), "export default () => 'edited';");
       const last = verify();
-      for (let step = 0; step < 200 && calls < 3; step++) await vi.advanceTimersByTimeAsync(10);
+      await realUntil(() => calls >= 3);
       expect(calls).toBe(3);
       (verdicts[2] as ReturnType<typeof controlled<unknown>>).resolve({
         status: "pass",
@@ -327,7 +351,9 @@ describe("artifact_verify over Streamable HTTP, a server per request (#157)", {
           content: { type: string; text?: string }[];
           isError?: boolean;
         }>;
-      const running = await answered(call());
+      const running = await answered(call(), () =>
+        instance.calls.some((c) => c.method === "artifact/verify"),
+      );
       expect(running.isError, running.content[0]?.text).toBeFalsy();
       expect(JSON.parse(running.content[0]?.text ?? "")).toEqual({
         status: "running",
