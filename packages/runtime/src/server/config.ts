@@ -6,10 +6,6 @@
  */
 import { readFileSync } from "node:fs";
 import { createDiagnostic, Duration, RpcError } from "@mostra/protocol";
-import {
-  type ChatHostPolicy,
-  ChatHostPolicy as ChatHostPolicySchema,
-} from "@mostra/protocol/operator";
 import { safeHref } from "@mostra/themes";
 import * as z from "zod";
 import type { AppearanceConfig } from "../gateway/index.ts";
@@ -148,7 +144,7 @@ export interface RemoteServerConfig {
    * name its OAuth client redirects to (`claude.ai`); the operator's `policy.chatHost` answers
    * first.
    */
-  readonly chatHosts?: Record<string, ChatHostPolicy> | undefined;
+  readonly chatHosts?: Record<string, unknown> | undefined;
   /** How the server's own pages look and name themselves (D171). */
   readonly appearance?: AppearanceConfig | undefined;
 }
@@ -214,16 +210,8 @@ const Config: z.ZodType<RemoteServerConfig> & { readonly shape: Record<string, u
     homes: z.strictObject({ idleCloseMinutes: z.number().positive().optional() }).optional(),
     framing: z.strictObject({ frameAncestors: z.literal("'none'") }).optional(),
     operator: z.string().optional(),
-    chatHosts: z
-      .record(
-        z
-          .string()
-          .min(1)
-          .max(253)
-          .regex(/^[a-z0-9.-]+$/),
-        ChatHostPolicySchema,
-      )
-      .optional(),
+    // Read as openly as before (D32): `chat-hosts.ts` uses the entries it can and logs the rest.
+    chatHosts: z.record(z.string(), z.unknown()).optional(),
     appearance: z
       .strictObject({
         theme: z.enum(["studio", "mostra"]).optional(),

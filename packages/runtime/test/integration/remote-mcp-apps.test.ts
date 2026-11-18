@@ -256,14 +256,15 @@ describe("a chat host whose policy shows links only (D160)", () => {
     expect(listed).not.toContain("ui://mostra/app");
   }, 120_000);
 
-  it("refuses a configuration whose chat host policy it can't use", async () => {
-    const bad = await startServer({
-      data: tempDir("mcp-links-bad"),
+  it("starts with chat host entries it can't use, as the release before it did, and leaves them out (Fable 10)", async () => {
+    const lenient = await startServer({
+      data: tempDir("mcp-links-lenient"),
       port: await freePort(),
-      config: testConfig(port, { chatHosts: { "client.example": { render: "frame" } } }),
+      config: testConfig(port, {
+        chatHosts: { "client.example": { render: "frame" }, ChatGPT: { render: "link" } },
+      }),
     });
-    expect(bad.status.status).toBe("failed");
-    expect(JSON.stringify(bad.status)).toContain("MOSTRA_REMOTE_CONFIG_INVALID");
-    await stopServer(bad);
+    expect(lenient.status.status, JSON.stringify(lenient.status)).not.toBe("failed");
+    await stopServer(lenient);
   }, 60_000);
 });

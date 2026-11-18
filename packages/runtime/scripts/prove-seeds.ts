@@ -7626,6 +7626,30 @@ const SEEDS: readonly Seed[] = [
     check: ["test/apps.test.ts", "-t", "judges each 2026-07-28 request"],
     cwd: "../mcp",
   },
+  {
+    requirement: "MC-04",
+    name: "a chat host policy entry the server can't use stops it, though the release before took it (Fable 10)",
+    file: "src/server/chat-hosts.ts",
+    from: '      log.warn("server.chat_host_ignored", { key, why: "not a chat host policy" });\n      continue;',
+    to: "      throw new Error(`chatHosts.${key} isn't a chat host policy`);",
+    check: unit("chat-hosts.test.ts", "uses the entries it can"),
+  },
+  {
+    requirement: "MC-04",
+    name: "every request of an open page asks the operator how its chat host renders (Fable 11, Opus 13)",
+    file: "src/server/chat-hosts.ts",
+    from: "    if (last !== undefined && now() - last.at < RENDER_KEPT_MS) return last.render;",
+    to: "    void RENDER_KEPT_MS;",
+    check: unit("chat-hosts.test.ts", "asks once a minute"),
+  },
+  {
+    requirement: "MC-04",
+    name: "a client that can't be read once renders as the default, not as its host's policy (Fable 11)",
+    file: "src/server/chat-hosts.ts",
+    from: '    if (client === undefined) return last?.render ?? "app";',
+    to: '    if (client === undefined) return "app";',
+    check: unit("chat-hosts.test.ts", "asks once a minute"),
+  },
 ];
 
 const runtime = join(dirname(fileURLToPath(import.meta.url)), "..");

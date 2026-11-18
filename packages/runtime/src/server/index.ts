@@ -47,6 +47,7 @@ import type { Environment, Log } from "../log.ts";
 import { type Api, createApi } from "./api.ts";
 import { type Authorization, createAuthorization } from "./auth.ts";
 import { type Authorize, createAuthorize } from "./authorize.ts";
+import { chatHostPolicies, createRender } from "./chat-hosts.ts";
 import { clientAddresses, RateLimiter } from "./clients.ts";
 import type { RemoteServerConfig } from "./config.ts";
 import { type DataDirectory, type HomeAssembler, openDataDirectory } from "./data.ts";
@@ -435,25 +436,14 @@ export async function startServer(options: ServerOptions): Promise<RemoteServer>
     home: async (id) => (await data.home(id)).assembled,
     ensureHome: (accountId) => (auth as Authorization).ensureHome(accountId),
     // D160: the operator's answer for the chat host, else the configuration's, else an app.
-    render: async (clientId) => {
-      const client = await oauthClients.find(clientId);
-      if (!("id" in client)) return "app";
-      let redirectHost: string | undefined;
-      try {
-        redirectHost =
-          client.redirectUris[0] === undefined
-            ? undefined
-            : new URL(client.redirectUris[0]).hostname.toLowerCase();
-      } catch {
-        redirectHost = undefined;
-      }
-      const asked = await operator.chatHost({
-        name: client.name,
-        ...(redirectHost !== undefined ? { redirectHost } : {}),
-      });
-      const configured = redirectHost === undefined ? undefined : config.chatHosts?.[redirectHost];
-      return asked?.render ?? configured?.render ?? "app";
-    },
+    render: createRender({
+      client: async (clientId) => {
+        const client = await oauthClients.find(clientId);
+        return "id" in client ? client : undefined;
+      },
+      ask: (client) => operator.chatHost(client),
+      configured: chatHostPolicies(config.chatHosts, log),
+    }),
   });
   api = createApi({
     server: apiPages,
