@@ -18,16 +18,42 @@ export function escapeHtml(text: string): string {
 }
 
 /**
- * Text that goes inside an element whose content isn't parsed as HTML (`<script>`, `<style>`).
- * In a script, `</script`, `<script` and `<!--` change where HTML ends it, so their `<` is
- * written `\x3C`: the same character to JavaScript in a string, a template or a regular
- * expression, and impossible elsewhere in a module. In a stylesheet `</style` ends it, written
- * `<\/style` (CSS reads `\/` as `/`).
+ * A stylesheet's text inside `<style>`, where `</style` would end it: written `<\/style`, which
+ * CSS reads as the same text (`\/` is `/`), in a string, a comment or anywhere else.
  */
-export function rawText(text: string, tag: "script" | "style"): string {
-  return tag === "script"
-    ? text.replace(/<(\/script|script|!--)/gi, "\\x3C$1")
-    : text.replace(/<\/(style)/gi, "<\\/$1");
+export function styleText(css: string): string {
+  return css.replace(/<\/(style)/gi, "<\\/$1");
+}
+
+/**
+ * The page's own code, run without its text ever going through the HTML parser (review findings
+ * Opus 11, Fable 12): rewriting `</script`, `<script` or `<!--` is right in a string and wrong in
+ * code (`i<scriptCount`), and only a JavaScript tokenizer could tell them apart. So the module
+ * travels as base64, which has no `<`, in an inert element, and {@link MODULE_BOOTSTRAP}, Mostra's
+ * own few lines, decodes it and gives it to a module script as its `textContent`: the code runs
+ * byte for byte as built. MCP Apps' default policy allows inline scripts (`'unsafe-inline'`).
+ */
+export const MODULE_BOOTSTRAP: string = [
+  "(function () {",
+  '  var carrier = document.getElementById("mostra-module");',
+  "  if (carrier === null) return;",
+  '  var binary = atob((carrier.textContent || "").trim());',
+  "  var bytes = new Uint8Array(binary.length);",
+  "  for (var i = 0; i !== binary.length; i++) bytes[i] = binary.charCodeAt(i);",
+  '  var module = document.createElement("script");',
+  '  module.type = "module";',
+  "  module.textContent = new TextDecoder().decode(bytes);",
+  "  document.body.append(module);",
+  "})();",
+].join("\n");
+
+/** The two elements that carry and run the page's module (see {@link MODULE_BOOTSTRAP}). */
+export function moduleElements(code: string): string {
+  const encoded = Buffer.from(code, "utf8").toString("base64");
+  return [
+    `    <script type="application/octet-stream" id="mostra-module">${encoded}</script>`,
+    `    <script>${MODULE_BOOTSTRAP}</script>`,
+  ].join("\n");
 }
 
 /** What the build's `index.html` names: its module entry and stylesheets, its language. */
@@ -175,11 +201,11 @@ export function pageHtml(parts: PageParts): string {
     `    <title>${escapeHtml(parts.title)}</title>`,
     `    <script type="application/json" id="mostra-host-tokens">${tokens}</script>`,
     '    <script>addEventListener("vite:preloadError", function (event) { event.preventDefault(); });</script>',
-    `    <style>${rawText(parts.css, "style")}</style>`,
+    `    <style>${styleText(parts.css)}</style>`,
     "  </head>",
     "  <body>",
     '    <div id="root"></div>',
-    `    <script type="module">${rawText(parts.code, "script")}</script>`,
+    moduleElements(parts.code),
     "  </body>",
     "</html>",
     "",

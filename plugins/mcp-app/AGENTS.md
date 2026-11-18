@@ -7,7 +7,7 @@ Mostra's MCP App exporter (D175 items 2 and 3, MC-02, INTERFACES §12 and §15):
 - **One document, nothing else.** The page holds the whole client build: one module script (the build's chunks and dynamic imports joined by Rolldown), every stylesheet inline, every file the build names by path as a `data:` URL. It loads nothing from anywhere, so a host's default policy shows it.
 - **It never reads outside the version.** Every module comes from the exporter's file tree; an import of anything else (a bare specifier, a URL) fails the export. It never sees `server/`.
 - **Its own origins only.** It declares the `https:` origins the artifact's own sources name (from the build's source maps, never a package's documentation links) and those its stylesheets load, plus the options' own.
-- **Nothing ends its elements early.** Script text has the `<` of `</script`, `<script` and `<!--` written `\x3C`; stylesheet text has `</style` written `<\/style`.
+- **Nothing ends its elements early, and the code runs as built.** The module never goes through the HTML parser: it travels as base64 in an inert `<script type="application/octet-stream" id="mostra-module">`, and `MODULE_BOOTSTRAP` gives it to a module script as `textContent`, so no rewrite of `</script`, `<script` or `<!--` can change what it means (`page.ts`). Stylesheet text has `</style` written `<\/style`.
 - **The target marker** `<meta name="mostra-target" content="mcp-app">` beside `mostra-version`, so the page routes in memory and talks to its host through the app-only tools (D111).
 
 ## Public interface

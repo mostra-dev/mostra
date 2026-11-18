@@ -287,8 +287,16 @@ describe("the MCP App every home has (D175 items 2, 3, MC-02)", () => {
     const html = readFileSync(join(out, "index.html"), "utf8");
     expect(html).toContain('<meta name="mostra-target" content="mcp-app" />');
     expect(html).toContain(`<meta name="mostra-version" content="${actions.versionId}" />`);
-    // The version's server code never reaches an export (D172 item 11).
+    // The version's server code never reaches an export (D172 item 11): not in the document, nor
+    // in its module, which travels as base64 (review findings Opus 11, Fable 12).
     expect(html).not.toContain("execFileSync");
+    const carried =
+      /<script type="application\/octet-stream" id="mostra-module">([A-Za-z0-9+/=]+)<\/script>/.exec(
+        html,
+      )?.[1];
+    const module = Buffer.from(carried ?? "", "base64").toString("utf8");
+    expect(module).toContain("mostra-target");
+    expect(module).not.toContain("execFileSync");
     const description = JSON.parse(readFileSync(join(out, "mcp-app.json"), "utf8")) as {
       uri: string;
       mimeType: string;

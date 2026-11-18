@@ -4169,7 +4169,7 @@ export interface TallyValue {
 export type TargetDiagnosticCode = (typeof targetDiagnosticCodes)[number];
 
 // @public
-export const targetDiagnosticCodes: readonly ["MOSTRA_TARGET_UNAVAILABLE"];
+export const targetDiagnosticCodes: readonly ["MOSTRA_TARGET_UNAVAILABLE", "MOSTRA_TARGET_CALL_TOO_LONG"];
 
 // @public
 export type TeamDiagnosticCode = (typeof teamDiagnosticCodes)[number];

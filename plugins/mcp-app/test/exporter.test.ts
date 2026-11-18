@@ -7,7 +7,7 @@ import { runInNewContext } from "node:vm";
 import type { FileTree } from "@mostra/contract-exporter";
 import exporter, { EXPORTER_ID } from "@mostra/plugin-mcp-app";
 import { describe, expect, it } from "vitest";
-import { rawText } from "../src/page.ts";
+import { MODULE_BOOTSTRAP, moduleElements, styleText } from "../src/page.ts";
 
 const PNG = new Uint8Array([137, 80, 78, 71, 13, 10, 26, 10, 0, 0, 0, 13]);
 
@@ -103,11 +103,14 @@ async function exported(options: Record<string, unknown> = {}) {
   return { result, html, description };
 }
 
-/** The page's module script, as the browser would run it. */
+/** The page's module code, as its bootstrap hands it to the browser (base64, decoded). */
 function moduleOf(html: string): string {
-  const match = /<script type="module">([\s\S]*?)<\/script>/.exec(html);
-  if (!match) throw new Error("no module script");
-  return match[1] as string;
+  const match =
+    /<script type="application\/octet-stream" id="mostra-module">([A-Za-z0-9+/=]*)<\/script>/.exec(
+      html,
+    );
+  if (!match) throw new Error("no module carrier");
+  return Buffer.from(match[1] as string, "base64").toString("utf8");
 }
 
 describe("the MCP App exporter (D175 item 2, MC-02)", () => {
@@ -126,7 +129,7 @@ describe("the MCP App exporter (D175 item 2, MC-02)", () => {
 
   it("holds the whole build in one document: one module, its lazy chunk inlined, no other file", async () => {
     const { html } = await exported();
-    expect(html.match(/<script type="module">/g)).toHaveLength(1);
+    expect(html.match(/id="mostra-module"/g)).toHaveLength(1);
     expect(html).not.toMatch(/<script[^>]*\bsrc=/);
     expect(html).not.toMatch(/<link[^>]*stylesheet/);
     expect(html).not.toContain("sourceMappingURL");
@@ -145,15 +148,42 @@ describe("the MCP App exporter (D175 item 2, MC-02)", () => {
     expect(page.ending).toBe("</script><!-- <script>");
   });
 
-  it("never lets the page's text end its script or stylesheet early", async () => {
+  it("never lets the page's text end its script or stylesheet early, and runs its code byte for byte (Opus 11, Fable 12)", async () => {
     const { html } = await exported();
-    // One closing tag per element the document opens: the token table, the guard, the module.
-    expect(html.match(/<\/script/gi)).toHaveLength(3);
+    // One closing tag per element the document opens: the token table, the guard, the module's
+    // carrier and its bootstrap.
+    expect(html.match(/<\/script/gi)).toHaveLength(4);
     expect(html.match(/<\/style/gi)).toHaveLength(1);
-    expect(rawText("a</script>b<script c<!--d", "script")).toBe(
-      "a\\x3C/script>b\\x3Cscript c\\x3C!--d",
+    expect(styleText("x</STYLE>")).toBe("x<\\/STYLE>");
+    // Code a rewrite of `<script` or `<!--` would break, and a string a page shows as is.
+    const code =
+      'const i = 1, scriptCount = 2; globalThis.__out = [i<scriptCount, "</script><!--"]; // a<!--b';
+    expect(MODULE_BOOTSTRAP).not.toMatch(/<\/script|<!--/i);
+    const elements = moduleElements(code);
+    expect(elements.match(/<\/script/gi)).toHaveLength(2);
+    // The bootstrap, run as a browser runs it, hands the module exactly the built text.
+    const carrier = /id="mostra-module">([^<]*)</.exec(elements)?.[1] ?? "";
+    const appended: { type?: string; textContent?: string }[] = [];
+    runInNewContext(MODULE_BOOTSTRAP, {
+      atob: (text: string) => Buffer.from(text, "base64").toString("latin1"),
+      TextDecoder,
+      Uint8Array,
+      document: {
+        getElementById: (id: string) => (id === "mostra-module" ? { textContent: carrier } : null),
+        createElement: () => ({}),
+        body: { append: (node: { type?: string; textContent?: string }) => appended.push(node) },
+      },
+    });
+    expect(appended).toEqual([{ type: "module", textContent: code }]);
+    const sandbox: Record<string, unknown> = {};
+    runInNewContext(appended[0]?.textContent ?? "", { globalThis: sandbox });
+    expect(sandbox["__out"]).toEqual([true, "</script><!--"]);
+    // A module's `a<!--b` (no HTML comment in a module) reaches the browser exactly so too.
+    const odd = moduleElements("let a = 1, b = 2; export const x = a<!--b;");
+    const oddCarrier = /id="mostra-module">([^<]*)</.exec(odd)?.[1] ?? "";
+    expect(Buffer.from(oddCarrier, "base64").toString("utf8")).toBe(
+      "let a = 1, b = 2; export const x = a<!--b;",
     );
-    expect(rawText("x</STYLE>", "style")).toBe("x<\\/STYLE>");
   });
 
   it("inlines every stylesheet with its images, and leaves the build's faces to the host", async () => {
