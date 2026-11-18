@@ -205,6 +205,14 @@ body {
 .mostra-pill-static {
   cursor: default;
 }
+/* A control's words: one line, cut with an ellipsis only when its bar has no more room (#182).
+   They take no pointer events, so a point on the control is the control itself (SH-02). */
+.mostra-button-text {
+  min-inline-size: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  pointer-events: none;
+}
 .mostra-primary {
   min-height: 40px;
   padding: 0 22px;
@@ -897,9 +905,30 @@ body {
     width: auto;
     height: auto;
     clip-path: none;
+    min-inline-size: 0;
+    overflow: hidden;
+    text-overflow: ellipsis;
+  }
+  /* The dock is one row as wide as the screen: the save state, then a Choose, give way with an
+     ellipsis, so the trusted Submit always stays whole and on the screen (#182). */
+  .mostra-actionbar[data-mostra-dock] .mostra-status {
+    /* The save state gives way first (its dot and colour stay), then a Choose's label. */
+    flex: 0 20 auto;
+    min-inline-size: 0;
   }
   .mostra-actionbar[data-mostra-dock] .mostra-trusted {
+    flex: 1 1 auto;
+    justify-content: flex-end;
+    min-inline-size: 0;
     margin-inline-start: auto;
+  }
+  .mostra-actionbar[data-mostra-dock] .mostra-trusted .mostra-button {
+    flex: 0 1 auto;
+    min-inline-size: 0;
+  }
+  .mostra-actionbar[data-mostra-dock] .mostra-trusted .mostra-primary {
+    flex: none;
+    max-inline-size: 100%;
   }
   .mostra-actionbar[data-mostra-dock] .mostra-primary {
     min-height: 44px;

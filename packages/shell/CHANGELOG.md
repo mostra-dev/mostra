@@ -1,5 +1,22 @@
 # @mostra/shell
 
+## 0.16.0
+
+### Patch Changes
+
+- Updated dependencies []:
+  - @mostra/protocol@0.16.0
+  - @mostra/themes@0.16.0
+
+## 0.15.2
+
+### Patch Changes
+
+- [#187](https://github.com/mostra-dev/mostra/pull/187) [`71a031e`](https://github.com/mostra-dev/mostra/commit/71a031ebcc97fde705b5fce1fd835bef3aeaae26) Thanks [@dev-mirzabicer](https://github.com/dev-mirzabicer)! - On a phone, the trusted Submit stays whole and on the screen whatever a Choose's label is ([#182](https://github.com/mostra-dev/mostra/issues/182)): in the bar at the bottom, the save state and then the Choose's label give way with an ellipsis, while the Submit keeps its width. Each control keeps its full words as its accessible name, and a Choose shows them on hover too.
+- Updated dependencies []:
+  - @mostra/protocol@0.15.2
+  - @mostra/themes@0.15.2
+
 ## 0.15.1
 
 ### Patch Changes

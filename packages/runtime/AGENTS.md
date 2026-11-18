@@ -243,7 +243,12 @@ the bundle's entry point (D85); it never runs artifact code (RT-02).
   Viewer input never waits on the operator past its bound: `limits` is asked for a relayed run,
   a waiting run and a plain call before anything is recorded or relayed, and no answer lets each
   through (`server/relay.ts`, D169). A sender line's verifier is the one recorded on the identity
-  (`identity.verified_by`), never the configuration now (D169).
+  (`identity.verified_by`), never the configuration now (D169). An open home with nothing
+  happening writes nothing: its high-water marks (`home_cursor`) are written when it opens and
+  closes, and in between only where a mark moved (a conditional upsert), so a backup replicator
+  has nothing to ship (`server/data.ts`, MT-05). The consent page names a metadata-document client as the server's own
+  only when `operatorClients` names it, and asks its consent once per account as for any other
+  (`server/oauth-clients.ts`, MT-05).
 - **The shell and every artifact are separate origins (SH-01).** The shell page may be framed by
   nothing and sends `Cross-Origin-Opener-Policy: same-origin`, so no popup of a frame can navigate
   it; an artifact document may be framed only by its shell (D98 items 4 and 7).
@@ -315,7 +320,8 @@ from), `MOSTRA_TEST_OIDC_INSECURE` and `MOSTRA_TEST_GITHUB_BASE` (providers' fak
 `MOSTRA_TEST_OPERATOR_DISPATCH_MS` and `MOSTRA_TEST_METER_WINDOW_MS` (the operator's outbound
 queue and meter), `MOSTRA_TEST_HELD_SNAPSHOT_MS` (how often every held level is sent again, a day
 by default), `MOSTRA_TEST_SESSION_TOUCH_MS` (how often a session's last use is written, an hour by
-default, which idle expiry reads), the fault point `remove:after-purge` (`MOSTRA_TEST_FAULTS`, a removal cut off
+default, which idle expiry reads), `MOSTRA_TEST_CURSOR_MARK_MS` (how often an open home's
+high-water marks are looked at and written when they moved, 10 s by default), the fault point `remove:after-purge` (`MOSTRA_TEST_FAULTS`, a removal cut off
 between its two databases), the relay's `MOSTRA_TEST_RELAY_*`, and `MOSTRA_TEST_BINDING_TRACE` (every binding
 message, for the secrets grep). `test/fixtures/operator.mjs` is an operator module with a control
 server (`test/operator-support.ts`), and `test/oauth-support.ts` a browser on the API origin.

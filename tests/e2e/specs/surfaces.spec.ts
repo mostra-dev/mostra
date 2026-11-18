@@ -2,8 +2,8 @@
 /**
  * Every surface a person meets, photographed and checked (UX-01, D171): the API origin's pages
  * (sign-in, the development provider's name page, linking a machine in each of its states, a chat
- * app's consent with and without a loopback redirect, "Answer as yourself", "Sign-in can't
- * continue"), the hosted shell's chrome in each of its states (anonymous, naming oneself, signed
+ * app's consent with and without a loopback redirect, the consent of the operator's own app
+ * (`operatorClients`, MT-05), "Answer as yourself", "Sign-in can't continue"), the hosted shell's chrome in each of its states (anonymous, naming oneself, signed
  * in, the report dialog, folded, sent, paused with an operator's long reason, a refused answer, a
  * new version, an operator's interstitial, a title that won't break), the pages a link can end on
  * (expired, under review, suspended, moving, a limit reached on view, an unknown host), and the
@@ -16,7 +16,7 @@
  */
 import { spawn } from "node:child_process";
 import { mkdirSync, writeFileSync } from "node:fs";
-import { request as httpRequest } from "node:http";
+import { createServer as createHttpServer, request as httpRequest, type Server } from "node:http";
 import { createServer } from "node:net";
 import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
@@ -106,6 +106,9 @@ test.describe("every surface a person meets (UX-01, D171)", () => {
   let control = 0;
   let api = "";
   let server: ReturnType<typeof spawn> | undefined;
+  /** Serves the operator's own app's Client ID Metadata Document (MT-05). */
+  let documents: Server | undefined;
+  let ownClient = "";
   let daemon: Awaited<ReturnType<typeof startDaemon>> | undefined;
   let client: Client | undefined;
   const findings: string[] = [];
@@ -129,6 +132,25 @@ test.describe("every surface a person meets (UX-01, D171)", () => {
     daemon = await startDaemon({ env: { MOSTRA_TEST_SERVER_ADDRESS: `127.0.0.1:${port}` } });
     const data = join(daemon.root, "server");
     mkdirSync(data, { recursive: true });
+    // The operator's own app signs people in as a metadata-document client, from a name (never a
+    // literal address), which the server's test hook lets it fetch over http on loopback.
+    documents = createHttpServer((request, response) => {
+      response.writeHead(request.url === "/account.json" ? 200 : 404, {
+        "content-type": "application/json",
+      });
+      response.end(
+        request.url === "/account.json"
+          ? JSON.stringify({
+              client_id: ownClient,
+              client_name: "Account",
+              redirect_uris: ["https://account.example/signin/done"],
+            })
+          : "",
+      );
+    });
+    await new Promise<void>((resolve) => documents?.listen(0, "127.0.0.1", resolve));
+    const documentsOrigin = `http://localhost:${(documents.address() as { port: number }).port}`;
+    ownClient = `${documentsOrigin.replace("http:", "https:")}/account.json`;
     const config = join(daemon.root, "server.json");
     writeFileSync(
       config,
@@ -138,6 +160,7 @@ test.describe("every surface a person meets (UX-01, D171)", () => {
         scheme: "http",
         identityProviders: [{ id: "dev", kind: "development", label: "Development" }],
         operator: OPERATOR,
+        operatorClients: [{ clientId: ownClient, name: "Example Cloud account" }],
       }),
     );
     server = spawn(
@@ -145,7 +168,11 @@ test.describe("every surface a person meets (UX-01, D171)", () => {
       [BIN, "server", "--data", data, "--config", config, "--listen", `127.0.0.1:${port}`],
       {
         stdio: ["ignore", "pipe", "inherit"],
-        env: { ...process.env, MOSTRA_TEST_OPERATOR_PORT: String(control) },
+        env: {
+          ...process.env,
+          MOSTRA_TEST_OPERATOR_PORT: String(control),
+          MOSTRA_TEST_CIMD_ORIGIN: documentsOrigin,
+        },
       },
     );
     await new Promise<void>((resolve, reject) => {
@@ -177,6 +204,7 @@ test.describe("every surface a person meets (UX-01, D171)", () => {
   test.afterAll(async () => {
     client?.close();
     server?.kill("SIGTERM");
+    documents?.close();
     daemon?.child.kill("SIGTERM");
     await new Promise((resolve) => daemon?.child.once("exit", resolve));
     if (daemon) removeTree(daemon.root);
@@ -463,6 +491,11 @@ test.describe("every surface a person meets (UX-01, D171)", () => {
         const local = "http://127.0.0.1/callback";
         await gotoShell(page, authorize(await registerClient("Local agent", local), local));
         await shoot(page, "api-allow-loopback");
+        // The operator's own app (MT-05): named as the server's own, never as naming itself.
+        const accountPage = "https://account.example/signin/done";
+        await gotoShell(page, authorize(ownClient, accountPage));
+        await expect(page.getByText("this server's own app")).toBeVisible();
+        await shoot(page, "api-allow-own");
         await gotoShell(page, `${api}/signin/return?step=nothing`);
         await shoot(page, "api-cant-continue");
         await person.close();

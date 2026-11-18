@@ -4,7 +4,7 @@ description: Communicate visually with the user through Mostra. Use whenever sho
 license: Apache-2.0
 compatibility: Needs a shell that runs `mostra` (or `npx` with Node.js 22.19 or later) on macOS, Linux or Windows, x64 or arm64.
 metadata:
-  version: "0.15.1"
+  version: "0.16.0"
 ---
 
 # Mostra
@@ -13,7 +13,7 @@ Mostra turns a React page you write into an **artifact**: a web page a person op
 
 ## Running Mostra
 
-Run `mostra <command>`. When `mostra` isn't on the `PATH`, run `npx -y @mostra/cli@0.15.1 <command>` everywhere this Skill says `mostra`; the first run downloads Mostra's own runtime (no global Node.js needed beyond `npx`). Every command takes `--json` (one JSON envelope on stdout, logs on stderr) and `--help`. `mostra docs <topic>` prints the reference, including every diagnostic code's page (`mostra docs MOSTRA_FIELD_DUPLICATE_ID`). `mostra list` lists the artifacts you've published, and `mostra status` shows the running instance.
+Run `mostra <command>`. When `mostra` isn't on the `PATH`, run `npx -y @mostra/cli@0.16.0 <command>` everywhere this Skill says `mostra`; the first run downloads Mostra's own runtime (no global Node.js needed beyond `npx`). Every command takes `--json` (one JSON envelope on stdout, logs on stderr) and `--help`. `mostra docs <topic>` prints the reference, including every diagnostic code's page (`mostra docs MOSTRA_FIELD_DUPLICATE_ID`). `mostra list` lists the artifacts you've published, and `mostra status` shows the running instance.
 
 When Mostra's tools are in your tool list (`artifact_create`, `artifact_verify` and the rest), use them instead: each step below has its tool, and everything else here holds unchanged. See [references/mcp.md](references/mcp.md).
 
@@ -80,6 +80,7 @@ Each step ends when its check holds. Don't hand a link out before step 4 passes.
 | Several pages, packages, MDX, images | `pages/`, any npm import, `index.mdx`, `public/` | [page.md](references/page.md) |
 | Charts, tables, animation, UI primitives | the preinstalled libraries | [libraries.md](references/libraries.md) |
 | Someone else's component, exporter or command | `mostra add <item>` (shadcn registry items), `mostra plugin add <package>` | [plugins.md](references/plugins.md) |
+| Show what Mostra can do ("Should I use Mostra?") | one live page for the person's own work, published, answered and grown with them | [walkthrough.md](references/walkthrough.md) |
 
 ## Rules verify enforces
 
@@ -122,5 +123,6 @@ Read the one you need when you need it.
 | [references/libraries.md](references/libraries.md) | Using charts, tables, motion or UI primitives, or an import fails |
 | [references/plugins.md](references/plugins.md) | Adding a shadcn registry item or a plugin, a license asks for an acknowledgment, or you write a plugin |
 | [references/mcp.md](references/mcp.md) | You work through Mostra's tools (`artifact_create` and the rest) instead of the `mostra` command |
+| [references/walkthrough.md](references/walkthrough.md) | Show what Mostra can do: the person asks whether to use Mostra, or what it can do |
 
 Three complete artifacts that pass verify, to copy from: [assets/examples/decision/](assets/examples/decision/) (a choice with a reason), [assets/examples/inbox/](assets/examples/inbox/) (drafted replies with real Send actions) and [assets/examples/dashboard/](assets/examples/dashboard/) (live data and a shared list). The same guide is `mostra docs guide`, and each reference `mostra docs guide/<name>`.

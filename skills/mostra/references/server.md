@@ -112,7 +112,7 @@ Import these from `@mostra/server` inside a `"use server"` function or a live so
 | `log(line)` | Adds a line to the run's log (`console.log` goes there too) |
 | `abortSignal` | Aborts when the run is cancelled; pass it to `fetch` and child processes |
 | `secret(name)` | Reads a secret |
-| `viewer()` | The person who called: `{ id, name? }` |
+| `viewer()` | The person who called: `{ id, name? }`, or `undefined` where no one called (a live source) |
 | `signal(name, payload?)` | Raises a signal you can `mostra wait <dir> --until signal:<name>` for |
 | `emit("host.<name>", payload?)` | An event for the program hosting Mostra; pages never see it |
 | `state.get(id)`, `state.set(id, value)`, `state.patch(ops)` | Reads and writes the artifact's shared fields ([long-lived.md](long-lived.md)) |

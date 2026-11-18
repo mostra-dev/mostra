@@ -60,6 +60,193 @@ const unit = (file: string, ...filter: string[]): string[] => [
 const e2e = (...grep: string[]): string[] => (grep.length > 0 ? ["-g", grep.join("|")] : []);
 
 const SEEDS: readonly Seed[] = [
+  // MT-05: who signs in, and what an idle home writes. Each request's check goes red on a violation
+  // planted where it is enforced (`--only MT-05`, `--name "12:"` for one request).
+  {
+    requirement: "MT-05",
+    name: "11: an operator's own client is named as it names itself, unverified",
+    file: "src/server/oauth-clients.ts",
+    from: `        const name = "error" in found ? undefined : vouched.get(found.id);`,
+    to: `        const name = "error" in found ? undefined : vouched.get("");`,
+    check: integration("oauth.test.ts", "operator's own client"),
+  },
+  {
+    requirement: "MT-05",
+    name: "11: an operator's own client skips the consent of an account that never gave it",
+    file: "src/server/authorize.ts",
+    from: "        : !auth.consented(signed.accountId, client.id);",
+    to: '        : client.trust !== "operator" && !auth.consented(signed.accountId, client.id);',
+    check: integration("oauth.test.ts", "operator's own client"),
+  },
+  {
+    requirement: "MT-05",
+    name: "11: a client ID that isn't written as its URL normalizes it is taken",
+    file: "src/server/config.ts",
+    from: "        url.href === value &&\n",
+    to: "",
+    check: unit("server-config.test.ts", "operator's own clients"),
+  },
+  {
+    requirement: "MT-05",
+    name: "11: one client named by two entries is taken",
+    file: "src/server/config.ts",
+    from: "  if (twice >= 0) {",
+    to: "  if (twice >= clients.length) {",
+    check: unit("server-config.test.ts", "operator's own clients"),
+  },
+  {
+    requirement: "MT-05",
+    name: "12: GitHub sign-in asks for no scope",
+    file: "src/server/providers.ts",
+    from: `      url.searchParams.set("scope", GITHUB_SCOPE);`,
+    to: `      url.searchParams.set("scope", "");`,
+    check: integration("signin-facts.test.ts", "verified primary address"),
+  },
+  {
+    requirement: "MT-05",
+    name: "12: the first verified address is taken, primary or not",
+    file: "src/server/providers.ts",
+    from: "        entry?.primary === true &&\n",
+    to: "",
+    check: integration("signin-facts.test.ts", "verified primary address"),
+  },
+  {
+    requirement: "MT-05",
+    name: "12: a primary address GitHub never verified is taken as verified",
+    file: "src/server/providers.ts",
+    from: "        entry.verified === true &&\n",
+    to: "",
+    check: integration("signin-facts.test.ts", "verified primary address"),
+  },
+  {
+    requirement: "MT-05",
+    name: "12: the address list is asked for though the person declined its scope",
+    file: "src/server/providers.ts",
+    from: "      const primary = grantsAddresses(token.scope)",
+    to: "      const primary = grantsAddresses(undefined)",
+    check: integration("signin-facts.test.ts", "scope was declined"),
+  },
+  {
+    requirement: "MT-05",
+    name: "12: an address list that fails fails the sign-in",
+    file: "src/server/providers.ts",
+    from: `    if (!answer.ok) {
+      // Read to the end, so the connection is free for the next request.
+      await answer.body?.cancel().catch(() => undefined);
+      log.warn("signin.github_emails_unavailable", { provider, status: answer.status });
+      return undefined;
+    }`,
+    to: `    if (!answer.ok) {
+      throw new Error("GitHub's address list failed.");
+    }`,
+    also: [
+      {
+        file: "src/server/providers.ts",
+        from: `  } catch (error) {
+    log.warn("signin.github_emails_unavailable", {`,
+        to: `  } catch (error) {
+    if ((error as Error).message.startsWith("GitHub's")) throw error;
+    log.warn("signin.github_emails_unavailable", {`,
+      },
+    ],
+    check: integration("signin-facts.test.ts", "scope was declined"),
+  },
+  {
+    requirement: "MT-05",
+    name: "12: an address list that never answers holds the sign-in past its bound",
+    file: "src/server/providers.ts",
+    from: "      signal: AbortSignal.timeout(left),\n",
+    to: "",
+    check: integration("signin-facts.test.ts", "scope was declined"),
+  },
+  {
+    requirement: "MT-05",
+    name: "13: an open home writes its marks at every tick, moved or not",
+    file: "src/server/data.ts",
+    from: `        recordCursor(id, entry.ledger, entry.incarnation?.() ?? "", "changed");`,
+    to: `        recordCursor(id, entry.ledger, entry.incarnation?.() ?? "");`,
+    check: integration("idle-marks.test.ts", "no transaction"),
+  },
+  {
+    requirement: "MT-05",
+    name: "13: a tick leaves an incarnation the home took while open unwritten",
+    file: "src/server/data.ts",
+    from: "home_cursor.incarnation IS NOT excluded.incarnation",
+    to: "0",
+    check: unit("data-marks.test.ts", "new incarnation"),
+  },
+  {
+    requirement: "MT-05",
+    name: "13: a tick leaves a moved head unwritten",
+    file: "src/server/data.ts",
+    from: "home_cursor.high_cursor IS NOT excluded.high_cursor",
+    to: "0",
+    check: unit("data-marks.test.ts", "head moves"),
+  },
+  {
+    requirement: "MT-05",
+    name: "12: the directory keeps the address an operator's sign-in carried (D176, M77)",
+    file: "src/server/auth.ts",
+    from: "linked_at, verified_by, verified_recorded_at)\n         VALUES (?, ?, ?, ?, ?, ?, ?)",
+    to: "linked_at, verified_by, verified_recorded_at, email)\n         VALUES (?, ?, ?, ?, ?, ?, ?, 'ada@example.org')",
+    check: integration("signin-facts.test.ts", "verified primary address, though private"),
+  },
+  {
+    requirement: "MT-05",
+    name: "12: the directory's migration 7 leaves the addresses written before (D176, M77)",
+    file: "src/server/directory.ts",
+    from: "      db.exec(`UPDATE identity SET email = NULL WHERE email IS NOT NULL;`);",
+    to: "      db.exec(`SELECT 1;`);",
+    check: unit("directory-address.test.ts", "clears the addresses"),
+  },
+  {
+    requirement: "MT-05",
+    name: "13: a tick leaves a relay mark that moved alone unwritten (Opus review 5)",
+    file: "src/server/data.ts",
+    from: "home_cursor.relay_high IS NOT excluded.relay_high",
+    to: "0",
+    check: unit("data-marks.test.ts", "relay mark that moved alone"),
+  },
+  {
+    requirement: "MT-05",
+    name: "12: the address list runs past the sign-in's bound after a slow code exchange (Opus review 1)",
+    file: "src/server/providers.ts",
+    from: "  const left = Math.min(GITHUB_EMAILS_TIMEOUT_MS, deadline - Date.now());",
+    to: "  const left = GITHUB_EMAILS_TIMEOUT_MS + 0 * deadline;",
+    check: integration("signin-facts.test.ts", "scope was declined"),
+  },
+  {
+    requirement: "MT-05",
+    name: "12: an exchange's answer without `scope` is taken as declining the address scope (Opus review 8)",
+    file: "src/server/providers.ts",
+    from: `  if (typeof scope !== "string") return true;`,
+    to: `  if (typeof scope !== "string") return false;`,
+    check: integration("signin-facts.test.ts", "scope was declined"),
+  },
+  {
+    requirement: "MT-05",
+    name: "12: a refused address list logs the request's token (Opus review 8)",
+    file: "src/server/providers.ts",
+    from: `      log.warn("signin.github_emails_unavailable", { provider, status: answer.status });`,
+    to: `      log.warn("signin.github_emails_unavailable", { provider, status: answer.status, sent: headers.authorization });`,
+    check: integration("signin-facts.test.ts", "scope was declined"),
+  },
+  {
+    requirement: "MT-05",
+    name: "11: an operator's client on an address is taken (Opus review 2)",
+    file: "src/server/config.ts",
+    from: `        isIP(url.hostname.replace(/^\\[|\\]$/g, "")) === 0`,
+    to: "        true",
+    check: unit("server-config.test.ts", "operator's own clients"),
+  },
+  {
+    requirement: "MT-05",
+    name: "11: an operator's client on a user-content domain is taken (Opus review 2)",
+    file: "src/server/config.ts",
+    from: "  if (tenant >= 0) {",
+    to: "  if (tenant >= clients.length) {",
+    check: unit("server-config.test.ts", "operator's own clients"),
+  },
   // MT-03: the operator ports as specified, and what sign-in and metering lack. Each item's check
   // goes red on a violation planted where it is enforced (`--only MT-03`, `--name "1:"` for one).
   // UX-01 (D171): the server's own pages keep their rules through the design pass.
@@ -3796,6 +3983,82 @@ const SEEDS: readonly Seed[] = [
     to: "      if (current.length === expected.length) continue;",
     check: integration("publish-faults.test.ts", "completes the creation"),
   },
+  // MT-04 (D174 item 5): the walkthrough names only what the release has. Each seed writes
+  // something the CLI's help, the protocol, the bundled reference, the MCP server or
+  // `@mostra/react` lacks; the Skill's checks in the CLI catch it.
+  ...(
+    [
+      [
+        "a command the CLI lacks",
+        "mostra roster add <dir> <your-person>",
+        "mostra roster invite <dir> <your-person>",
+        "shows only commands",
+      ],
+      [
+        "a flag value outside its choices",
+        "mostra verify <dir> --screenshots always",
+        "mostra verify <dir> --screenshots every-time",
+        "shows only commands",
+      ],
+      ["a flag no command takes", "unless `--ttl` says", "unless `--expires` says", "names only"],
+      [
+        "a wait condition mostra wait refuses",
+        "--until submitted:all --timeout 2m",
+        "--until submitted:everyone --timeout 2m",
+        "names only",
+      ],
+      [
+        "a tool the MCP server lacks",
+        "call `artifact_open` once",
+        "call `artifact_share` once",
+        "names only",
+      ],
+      ["a hook @mostra/react lacks", "(`useRespondents`)", "(`useRespondent`)", "names only"],
+      [
+        "a docs topic the reference lacks",
+        "or `mostra docs guide`.",
+        "or `mostra docs guides`.",
+        "names only",
+      ],
+    ] as const
+  ).map(
+    ([name, from, to, test]): Seed => ({
+      requirement: "MT-04",
+      name: `the walkthrough names ${name}`,
+      file: "../../skills/mostra/references/walkthrough.md",
+      from,
+      to,
+      check: ["--project", "unit", "test/unit/skill.test.ts", "-t", test],
+      cwd: "../cli",
+    }),
+  ),
+  {
+    requirement: "MT-04",
+    name: "SKILL.md's references table loses the walkthrough",
+    file: "../../skills/mostra/SKILL.md",
+    from: "| [references/walkthrough.md](references/walkthrough.md) |",
+    to: "| references/walkthrough.md |",
+    check: ["--project", "unit", "test/unit/skill.test.ts", "-t", "resolves every relative link"],
+    cwd: "../cli",
+  },
+  {
+    requirement: "MT-04",
+    name: "SKILL.md's task table loses the walkthrough",
+    file: "../../skills/mostra/SKILL.md",
+    from: '| Show what Mostra can do ("Should I use Mostra?") | one live page for the person\'s own work, published, answered and grown with them | [walkthrough.md](references/walkthrough.md) |\n',
+    to: "",
+    check: ["--project", "unit", "test/unit/skill.test.ts", "-t", "resolves every relative link"],
+    cwd: "../cli",
+  },
+  {
+    requirement: "MT-04",
+    name: "mostra docs serves no guide/walkthrough",
+    file: "../mcp/src/docs.ts",
+    from: '      .filter((entry) => entry.endsWith(".md"))',
+    to: '      .filter((entry) => entry.endsWith(".md") && entry !== "walkthrough.md")',
+    check: integration("contract.test.ts", "docs"),
+    cwd: "../cli",
+  },
   {
     requirement: "review-5",
     name: "imports from outside the artifact are built",
@@ -4494,6 +4757,25 @@ const SEEDS: readonly Seed[] = [
     from: '        channel: "shell",',
     to: '        channel: "artifact",',
     check: e2e("a field saves as the viewer types"),
+    e2e: true,
+  },
+  // #182: on a phone the trusted Submit stays whole and on the screen beside a long Choose.
+  {
+    requirement: "SH-02",
+    name: "#182: a long Choose pushes the trusted Submit off a phone's bar",
+    file: "../shell/src/shell.css",
+    from: "  .mostra-actionbar[data-mostra-dock] .mostra-trusted .mostra-button {\n    flex: 0 1 auto;\n    min-inline-size: 0;\n  }",
+    to: "  .mostra-actionbar[data-mostra-dock] .mostra-trusted .mostra-button {\n    flex: none;\n  }",
+    check: e2e("a long Choose label leaves the Submit on the screen"),
+    e2e: true,
+  },
+  {
+    requirement: "SH-02",
+    name: "#182: a control's words take the point that is the trusted Submit's",
+    file: "../shell/src/shell.css",
+    from: "  text-overflow: ellipsis;\n  pointer-events: none;\n}",
+    to: "  text-overflow: ellipsis;\n}",
+    check: e2e("synthetic clicks, overlays"),
     e2e: true,
   },
   {

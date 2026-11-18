@@ -1,5 +1,24 @@
 # @mostra/cli
 
+## 0.16.0
+
+### Patch Changes
+
+- Updated dependencies []:
+  - @mostra/sdk@0.16.0
+  - @mostra/mcp@0.16.0
+  - @mostra/protocol@0.16.0
+
+## 0.15.2
+
+### Patch Changes
+
+- [#181](https://github.com/mostra-dev/mostra/pull/181) [`c708430`](https://github.com/mostra-dev/mostra/commit/c70843042c25e6ee755b508ba90afaf0bd137e81) Thanks [@dev-mirzabicer](https://github.com/dev-mirzabicer)! - The Agent Skill gains a walkthrough, `mostra docs guide/walkthrough` (D174): when a person asks "Should I use Mostra?" or "Show me what Mostra can do", the agent builds, publishes and grows one live page for their own work, with a live number, questions two people answer from their own links, who is here and who answered, a choice and a button that does something real. `SKILL.md` points at it from its task and references tables, and `references/server.md` says `viewer()` is `undefined` where no one called.
+- Updated dependencies []:
+  - @mostra/sdk@0.15.2
+  - @mostra/mcp@0.15.2
+  - @mostra/protocol@0.15.2
+
 ## 0.15.1
 
 ### Patch Changes

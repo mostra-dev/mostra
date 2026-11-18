@@ -72,6 +72,7 @@ describe("what the CLI's detached processes get", () => {
       "MOSTRA_TEST_METER_WINDOW_MS",
       "MOSTRA_TEST_HELD_SNAPSHOT_MS",
       "MOSTRA_TEST_SESSION_TOUCH_MS",
+      "MOSTRA_TEST_CURSOR_MARK_MS",
       "MOSTRA_TEST_ROTATION_GRACE_MS",
       "MOSTRA_TEST_CIMD_ORIGIN",
       "MOSTRA_TEST_OIDC_INSECURE",

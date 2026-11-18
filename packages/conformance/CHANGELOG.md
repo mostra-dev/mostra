@@ -1,5 +1,21 @@
 # @mostra/conformance
 
+## 0.16.0
+
+### Patch Changes
+
+- Updated dependencies []:
+  - @mostra/sdk@0.16.0
+  - @mostra/protocol@0.16.0
+
+## 0.15.2
+
+### Patch Changes
+
+- Updated dependencies []:
+  - @mostra/sdk@0.15.2
+  - @mostra/protocol@0.15.2
+
 ## 0.15.1
 
 ### Patch Changes

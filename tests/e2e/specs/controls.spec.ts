@@ -559,3 +559,53 @@ test.describe("under epochs, a new round is open (#118)", () => {
     }
   });
 });
+
+test.describe("on a phone, the trusted controls stay whole and pressable (#182)", () => {
+  for (const width of [390, 320]) {
+    test(`a long Choose label leaves the Submit on the screen, ${width} px wide`, async ({
+      browser,
+    }, info) => {
+      const client = await Client.connect(run.socket);
+      const context = await browser.newContext({ viewport: { width, height: 760 } });
+      try {
+        const page = await context.newPage();
+        const own = await publishOwn(client, run.home, info, { fixture: "choice-long" });
+        const frame = await openInShell(
+          page,
+          await linkFor(client, own.artifactId, viewerName(info)),
+        );
+        await frame.getByTestId("why").fill("The review is on Thursday.");
+        await saved(page);
+        const label = "Finish the Harbor Coffee mockups for the review";
+        const choose = page.locator("[data-mostra-choose]");
+        const submit = page.locator("#mostra-submit");
+        // The Choose button names the whole candidate to assistive technology, whatever it shows.
+        await expect(choose).toHaveAccessibleName(new RegExp(label));
+        await expect(submit).toHaveText("Send my answers");
+        for (const control of [choose, submit]) {
+          const box = await control.boundingBox();
+          expect(box, "the control is rendered").not.toBeNull();
+          expect(box?.x ?? -1).toBeGreaterThanOrEqual(0);
+          expect((box?.x ?? 0) + (box?.width ?? 0)).toBeLessThanOrEqual(width);
+        }
+        // Nothing of the bar reaches past the screen's edge, so nothing needs scrolling to.
+        const overflow = await page.evaluate(() => {
+          const bar = document.querySelector(".mostra-actionbar");
+          return bar ? bar.scrollWidth - bar.clientWidth : -1;
+        });
+        expect(overflow).toBeLessThanOrEqual(0);
+        await info.attach(`bar at ${width} px`, {
+          body: await page.screenshot(),
+          contentType: "image/png",
+        });
+        await choose.click();
+        await expect(choose).toHaveAccessibleName(new RegExp(label));
+        await submit.click();
+        await expect(page.locator("[data-mostra-receipt]")).toBeVisible({ timeout: 15_000 });
+      } finally {
+        await context.close();
+        client.close();
+      }
+    });
+  }
+});
