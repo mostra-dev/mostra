@@ -52,6 +52,15 @@ async function failure(promise: Promise<unknown>): Promise<string> {
   throw new Error("expected a failure");
 }
 
+function alive(pid: number): boolean {
+  try {
+    process.kill(pid, 0);
+    return true;
+  } catch (error) {
+    return (error as NodeJS.ErrnoException).code === "EPERM";
+  }
+}
+
 /** Every name in the cache's bundles directory. */
 function cached(env: Record<string, string>): string[] {
   const bundles = join(env["MOSTRA_CACHE_DIR"] as string, "bundles");
@@ -223,6 +232,61 @@ describe("installing a pinned bundle (RT-01)", () => {
     });
     expect(await readSetup(bundle)).toBeDefined();
   });
+
+  // Setup waited for the installer's output to close, which a process it started can hold open
+  // long after it exited: the bundle's smoke test once stalled until its job's limit (#124).
+  it("finishes when the browser's installer exits, though a process it started still holds its output (#124)", async () => {
+    const synthetic = await syntheticBundle(dir.path);
+    const release = pathToFileURL(dir.path).href;
+    const holderFile = join(dir.path, "holder.pid");
+    const env = pinsEnv(dir.path, synthetic, release, { FAKE_BROWSER_LINGER_PID_FILE: holderFile });
+    let holder = 0;
+    try {
+      const started = Date.now();
+      const bundle = await installPinned(synthetic.pins(release), {
+        env,
+        platform: bundlePlatform(),
+      });
+      expect(await readSetup(bundle)).toBeDefined();
+      holder = Number(readFileSync(holderFile, "utf8"));
+      expect(alive(holder), "the holder of the installer's output is still running").toBe(true);
+      expect(Date.now() - started).toBeLessThan(20_000);
+    } finally {
+      if (holder > 0) process.kill(holder);
+    }
+  }, 60_000);
+
+  it.runIf(!WINDOWS)(
+    "ends an installer that outlasts the limit and ignores the request to end (#124)",
+    async () => {
+      const synthetic = await syntheticBundle(dir.path);
+      const release = pathToFileURL(dir.path).href;
+      const log = join(dir.path, "installs.log");
+      const env = pinsEnv(dir.path, synthetic, release, {
+        FAKE_INSTALL_LOG: log,
+        FAKE_BROWSER_HANG: "1",
+      });
+      vi.useFakeTimers({ toFake: ["setTimeout", "clearTimeout"] });
+      try {
+        const install = failure(
+          installPinned(synthetic.pins(release), { env, platform: bundlePlatform() }),
+        );
+        // vi.waitFor keeps real timers: the installer is running and has said so.
+        await vi.waitFor(() => expect(existsSync(log)).toBe(true), {
+          timeout: 30_000,
+          interval: 20,
+        });
+        await new Promise((done) => setImmediate(done));
+        vi.advanceTimersByTime(15 * 60_000);
+        // It ignores SIGTERM; ten seconds later it is killed.
+        vi.advanceTimersByTime(10_000);
+        expect(await install).toBe("MOSTRA_ENV_BUNDLE_DOWNLOAD_FAILED");
+      } finally {
+        vi.useRealTimers();
+      }
+    },
+    60_000,
+  );
 
   it("works offline from the cache, and says so plainly when the cache lacks the bundle", async () => {
     const synthetic = await syntheticBundle(dir.path);

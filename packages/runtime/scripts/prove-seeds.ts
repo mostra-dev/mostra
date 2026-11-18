@@ -2101,6 +2101,16 @@ const SEEDS: readonly Seed[] = [
   },
   {
     requirement: "RT-12",
+    name: "the kit hands taskkill the PID of a shell that has exited, which Windows may have given another process (#140)",
+    file: "../conformance/src/harness/client.ts",
+    from: "        if (this.#end === undefined) {",
+    to: "        if (true) {",
+    check: unit("close.test.ts", "never hands taskkill"),
+    cwd: "../conformance",
+    platform: "win32",
+  },
+  {
+    requirement: "RT-12",
     name: "a Windows bundle copied by a tool that follows junctions can't be set up (Opus review of WP-W3, finding 4)",
     file: "../sdk/src/bundle/links.ts",
     from: "    if (!current.isDirectory() || !(await sameTree(at, target))) {",

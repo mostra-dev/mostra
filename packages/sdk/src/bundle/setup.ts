@@ -240,7 +240,19 @@ export function scrubSecrets(text: string, env: Environment): string {
   return out;
 }
 
-/** Runs the bundle's Playwright to fetch the pinned browser; at most 15 minutes. */
+/** How long the browser's fetch may take before setup ends it. */
+const BROWSER_FETCH_LIMIT_MS = 15 * 60_000;
+/** How long an installer that was asked to end may take before it is killed. */
+const BROWSER_FETCH_KILL_MS = 10_000;
+/** How long the installer's output may take to close after it has exited. */
+const BROWSER_FETCH_DRAIN_MS = 2_000;
+
+/**
+ * Runs the bundle's Playwright to fetch the pinned browser; at most 15 minutes. Its result is the
+ * installer's exit, not its output closing: a process it started that outlives it holding its
+ * output (Playwright fetches in a child process of its own) must not hold setup forever (#124).
+ * Past the limit the installer is asked to end, then killed.
+ */
 async function installBrowser(bundle: Bundle, options: SetupOptions): Promise<void> {
   const { root, info } = bundle;
   const output: string[] = [];
@@ -254,17 +266,45 @@ async function installBrowser(bundle: Bundle, options: SetupOptions): Promise<vo
         stdio: ["ignore", "pipe", "pipe"],
         windowsHide: true,
         ...(options.signal ? { signal: options.signal } : {}),
-        timeout: 15 * 60_000,
       },
     );
+    let timedOut = false;
+    let kill: ReturnType<typeof setTimeout> | undefined;
+    const limit = setTimeout(() => {
+      timedOut = true;
+      child.kill("SIGTERM");
+      kill = setTimeout(() => child.kill("SIGKILL"), BROWSER_FETCH_KILL_MS);
+    }, BROWSER_FETCH_LIMIT_MS);
+    let settled = false;
+    const finish = (result: number | string): void => {
+      if (settled) return;
+      settled = true;
+      clearTimeout(limit);
+      clearTimeout(kill);
+      resolve(
+        timedOut ? `it didn't finish within ${BROWSER_FETCH_LIMIT_MS / 60_000} minutes` : result,
+      );
+    };
     const keep = (chunk: Buffer): void => {
       output.push(chunk.toString("utf8"));
       if (output.length > 40) output.shift();
     };
     child.stdout.on("data", keep);
     child.stderr.on("data", keep);
-    child.on("error", (error) => resolve(error.message));
-    child.on("close", (exit, signal) => resolve(exit ?? signal ?? "unknown"));
+    child.on("error", (error) => finish(error.message));
+    child.on("exit", (exit, signal) => {
+      const result = exit ?? signal ?? "unknown";
+      // What it printed last is still on its way: its output gets a moment to close, then is let go.
+      const drained = setTimeout(() => {
+        child.stdout.destroy();
+        child.stderr.destroy();
+        finish(result);
+      }, BROWSER_FETCH_DRAIN_MS);
+      child.once("close", () => {
+        clearTimeout(drained);
+        finish(result);
+      });
+    });
   });
   if (code === 0) return;
   // Playwright prints the URLs it fetches, and a mirror's or proxy's may carry credentials
