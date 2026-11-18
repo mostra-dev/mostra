@@ -355,6 +355,25 @@ export function button(
   return html`<button class="m-button${options.primary ? " m-primary" : ""}"${options.name ? html` name="${options.name}"` : ""}${options.value !== undefined ? html` value="${options.value}"` : ""}>${label}</button>`;
 }
 
+/**
+ * Who is signed in, with one small action beside it as a form of its own: "Signed in as Ada · Sign
+ * out" on a server's pages (MT-06). The form posts `fields` (hidden) to `action`; the page's own
+ * policy (`form-action`) decides where it may go.
+ */
+export function signedInLine(
+  who: HtmlValue,
+  form: {
+    readonly action: string;
+    readonly fields: Readonly<Record<string, string>>;
+    readonly label: HtmlValue;
+  },
+): SafeHtml {
+  const hidden = Object.entries(form.fields).map(
+    ([name, value]) => html`<input type="hidden" name="${name}" value="${value}">`,
+  );
+  return html`<form class="m-signed-in" method="post" action="${form.action}">${hidden}<span class="m-signed-in-who">${who}</span><span class="m-signed-in-dot" aria-hidden="true"> · </span><button class="m-link-button">${form.label}</button></form>`;
+}
+
 /** A labelled text field. */
 export function field(options: {
   readonly label: HtmlValue;
@@ -485,6 +504,10 @@ a.m-runs:hover .m-runs-invite { text-decoration: underline; }
 .m-grants li { position: relative; padding-inline-start: 22px; }
 .m-grants li::before { content: ""; position: absolute; inset-inline-start: 2px; inset-block-start: 0.55em; inline-size: 8px; block-size: 8px; border-radius: 50%; background: var(--primary); }
 .m-fine { font-size: 0.875rem; color: var(--muted-foreground); margin-block: 1.5rem 0; }
+.m-signed-in { display: flex; flex-wrap: wrap; align-items: baseline; gap: 0 4px; font-size: 0.875rem; color: var(--muted-foreground); margin: 0 0 1.25rem; }
+.m-signed-in-who strong { color: var(--foreground); font-weight: 600; }
+.m-link-button { font: inherit; font-weight: 600; color: var(--primary); background: none; border: 0; padding: 0; min-block-size: 24px; cursor: pointer; text-decoration: underline; text-underline-offset: 0.18em; text-decoration-thickness: 1px; }
+@media (pointer: coarse) { .m-link-button { min-block-size: 44px; } }
 .m-alert { padding: 12px 14px; border-radius: var(--radius); background: var(--muted); margin-block: 0 1.25rem; }
 .m-alert-problem { color: var(--destructive); background: color-mix(in oklch, var(--destructive) 8%, var(--card)); }
 .m-code { font: 500 1.5rem/1.2 var(--font-mono); letter-spacing: 0.08em; margin: 0 0 1.25rem; }

@@ -42,6 +42,7 @@ export {
   type PageWords,
   readAppearance,
   safeHref,
+  signedInLine,
 } from "./pages.ts";
 export {
   APPEARANCES,

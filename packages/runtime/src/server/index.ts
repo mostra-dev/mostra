@@ -441,6 +441,9 @@ export async function startServer(options: ServerOptions): Promise<RemoteServer>
     providers,
     ownerName: (homeId) => ownerOf(homeId).name,
     log,
+    ...(Number(options.env["MOSTRA_TEST_SIGNIN_SESSION_MS"]) > 0
+      ? { sessionMs: Number(options.env["MOSTRA_TEST_SIGNIN_SESSION_MS"]) }
+      : {}),
   });
   authorizer = authorize;
   const mcp = createRemoteMcp({

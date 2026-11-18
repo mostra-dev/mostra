@@ -13,7 +13,9 @@
  * it is cached as its `Cache-Control` allows (at least a minute, at most a day).
  *
  * A redirect URI matches exactly, except that the port is ignored for `http://127.0.0.1`,
- * `http://[::1]` and `http://localhost` (RFC 8252 §7.3; Claude Code's loopback callback).
+ * `http://[::1]` and `http://localhost` (RFC 8252 §7.3; Claude Code's loopback callback). A client
+ * may also name where a sign-out sends the person back (`post_logout_redirect_uris`, MT-06), each
+ * registrable as a redirect URI is and matched exactly.
  */
 import { randomBytes } from "node:crypto";
 import { lookup } from "node:dns/promises";
@@ -37,6 +39,12 @@ export interface OAuthClient {
   readonly kind: "metadata" | "registered" | "shell" | "cli";
   readonly name: string;
   readonly redirectUris: readonly string[];
+  /**
+   * Where a sign-out it asks for may send the person back to (`post_logout_redirect_uris`, OpenID
+   * Connect RP-Initiated Logout 1.0 §3.1, MT-06): matched exactly, as RP-Initiated Logout requires;
+   * none for a client that registered none.
+   */
+  readonly postLogoutRedirectUris: readonly string[];
   /**
    * Who stands behind its name: the server itself (`first-party`: the CLI and the hosted shells),
    * the server's operator (`operator`: a metadata-document client `operatorClients` names, called
@@ -185,6 +193,15 @@ function redirectRegistrable(uri: string): boolean {
   }
 }
 
+/** The addresses in a client's list that may be registered (as {@link redirectRegistrable}). */
+function registrable(list: unknown): string[] {
+  return Array.isArray(list)
+    ? list
+        .filter((uri): uri is string => typeof uri === "string" && redirectRegistrable(uri))
+        .slice(0, 10)
+    : [];
+}
+
 /** Options for {@link createClients}. */
 export interface ClientsOptions {
   readonly directory: Ledger;
@@ -213,6 +230,12 @@ export interface Clients {
   used(clientId: string): void;
   /** The client ID of a domain's hosted shell. */
   shellClientId(shellOrigin: string): string;
+  /**
+   * The origin of a client's own pages, as a browser's `Origin` names it: its metadata document's
+   * origin (MT-06; the operator's own clients sign people out from there). A test's loopback
+   * metadata origin (`MOSTRA_TEST_CIMD_ORIGIN`) is its `http:` origin.
+   */
+  pagesOrigin(client: OAuthClient): string | undefined;
 }
 
 /** Whether a client ID names a metadata document: an https URL with a path. */
@@ -353,6 +376,7 @@ export function createClients(options: ClientsOptions): Clients {
       client_id?: unknown;
       client_name?: unknown;
       redirect_uris?: unknown;
+      post_logout_redirect_uris?: unknown;
     };
     try {
       document = JSON.parse(answer.body) as typeof document;
@@ -384,6 +408,7 @@ export function createClients(options: ClientsOptions): Clients {
           ? document.client_name.trim().slice(0, 128)
           : url.hostname,
       redirectUris: redirects,
+      postLogoutRedirectUris: registrable(document.post_logout_redirect_uris),
       trust: "self-named",
     };
     fetched.set(url.href, { client, until: now() + answer.maxAge * 1000 });
@@ -393,7 +418,11 @@ export function createClients(options: ClientsOptions): Clients {
         `INSERT INTO oauth_client (id, kind, metadata_json, created_at) VALUES (?, 'metadata', ?, ?)
            ON CONFLICT (id) DO UPDATE SET metadata_json = excluded.metadata_json`,
         client.id,
-        JSON.stringify({ client_name: client.name, redirect_uris: client.redirectUris }),
+        JSON.stringify({
+          client_name: client.name,
+          redirect_uris: client.redirectUris,
+          post_logout_redirect_uris: client.postLogoutRedirectUris,
+        }),
         new Date(now()).toISOString(),
       ),
     );
@@ -405,6 +434,16 @@ export function createClients(options: ClientsOptions): Clients {
   return {
     shellClientId,
 
+    pagesOrigin(client) {
+      const url = client.kind === "metadata" ? metadataClientId(client.id) : undefined;
+      if (!url) return undefined;
+      // A test's documents come from a loopback origin over http, which the server reads as https.
+      if (testOrigin !== undefined && url.origin === testOrigin.replace(/^http:/, "https:")) {
+        return testOrigin;
+      }
+      return url.origin;
+    },
+
     async find(clientId) {
       if (clientId === "mostra-cli") {
         return {
@@ -412,6 +451,7 @@ export function createClients(options: ClientsOptions): Clients {
           kind: "cli",
           name: "Mostra CLI",
           redirectUris: [],
+          postLogoutRedirectUris: [],
           trust: "first-party",
         };
       }
@@ -431,6 +471,7 @@ export function createClients(options: ClientsOptions): Clients {
           kind: "shell",
           name: "Mostra",
           redirectUris: [`${origin}/_mostra/signin`],
+          postLogoutRedirectUris: [],
           trust: "first-party",
         };
       }
@@ -451,12 +492,14 @@ export function createClients(options: ClientsOptions): Clients {
       const metadata = JSON.parse(row.metadata_json) as {
         client_name?: string;
         redirect_uris: string[];
+        post_logout_redirect_uris?: string[];
       };
       return {
         id: clientId,
         kind: "registered",
         name: metadata.client_name ?? "An unnamed client",
         redirectUris: metadata.redirect_uris,
+        postLogoutRedirectUris: metadata.post_logout_redirect_uris ?? [],
         trust: "self-named",
       };
     },
@@ -465,6 +508,7 @@ export function createClients(options: ClientsOptions): Clients {
       sweep();
       const body = (typeof metadata === "object" && metadata !== null ? metadata : {}) as {
         redirect_uris?: unknown;
+        post_logout_redirect_uris?: unknown;
         client_name?: unknown;
         token_endpoint_auth_method?: unknown;
         grant_types?: unknown;
@@ -481,6 +525,25 @@ export function createClients(options: ClientsOptions): Clients {
           error: "invalid_redirect_uri",
           description:
             "redirect_uris must list https: addresses, or http: on 127.0.0.1, [::1] or localhost.",
+        };
+      }
+      const signedOut =
+        body.post_logout_redirect_uris === undefined
+          ? []
+          : Array.isArray(body.post_logout_redirect_uris)
+            ? body.post_logout_redirect_uris.filter((uri): uri is string => typeof uri === "string")
+            : undefined;
+      if (
+        signedOut === undefined ||
+        signedOut.length > 10 ||
+        !signedOut.every(redirectRegistrable) ||
+        (Array.isArray(body.post_logout_redirect_uris) &&
+          signedOut.length !== body.post_logout_redirect_uris.length)
+      ) {
+        return {
+          error: "invalid_client_metadata",
+          description:
+            "post_logout_redirect_uris must list at most ten https: addresses, or http: on 127.0.0.1, [::1] or localhost.",
         };
       }
       if (
@@ -501,7 +564,11 @@ export function createClients(options: ClientsOptions): Clients {
         db.run(
           "INSERT INTO oauth_client (id, kind, metadata_json, created_at, last_used_at) VALUES (?, 'registered', ?, ?, ?)",
           id,
-          JSON.stringify({ client_name: name, redirect_uris: redirects }),
+          JSON.stringify({
+            client_name: name,
+            redirect_uris: redirects,
+            ...(signedOut.length > 0 ? { post_logout_redirect_uris: signedOut } : {}),
+          }),
           at.toISOString(),
           at.toISOString(),
         ),
@@ -512,6 +579,7 @@ export function createClients(options: ClientsOptions): Clients {
         client_id_issued_at: Math.floor(at.getTime() / 1000),
         ...(name !== undefined ? { client_name: name } : {}),
         redirect_uris: redirects,
+        ...(signedOut.length > 0 ? { post_logout_redirect_uris: signedOut } : {}),
         token_endpoint_auth_method: "none",
         grant_types: ["authorization_code", "refresh_token"],
         response_types: ["code"],

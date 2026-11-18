@@ -19,7 +19,7 @@ import Database from "better-sqlite3";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
 import { Browser, openLink } from "../browser-client.ts";
 import { GatewayHome, ok } from "../gateway-home.ts";
-import { ApiBrowser } from "../oauth-support.ts";
+import { ApiBrowser, pageForm } from "../oauth-support.ts";
 import { type Call, control } from "../operator-support.ts";
 import {
   type FakeGitHub,
@@ -154,7 +154,7 @@ describe("sign-in's facts, the verifier on each identity and GitHub's verified a
       who,
       await who.ask("GET", (link as RegExpExecArray)[1]?.replace(/&amp;/g, "&") ?? ""),
     );
-    const csrf = /name="csrf" value="([^"]+)"/.exec(approval.body)?.[1];
+    const csrf = pageForm(approval, "/device").fields["csrf"];
     expect(csrf, approval.body).toBeDefined();
     const approved = await who.ask("POST", "/device", {
       csrf: csrf as string,

@@ -13,7 +13,7 @@ import { randomBytes } from "node:crypto";
 import { createServer, type Server } from "node:http";
 import type { AddressInfo } from "node:net";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
-import { ApiBrowser, located, pkce } from "../oauth-support.ts";
+import { ApiBrowser, located, pageForm, pkce } from "../oauth-support.ts";
 import {
   freePort,
   type Reply,
@@ -121,9 +121,8 @@ describe("the authorization server for MCP clients (MC-04)", () => {
   /** Approves on the consent page a reply shows; answers the redirect to the client. */
   const approve = async (who: ApiBrowser, consent: Reply): Promise<URL> => {
     expect(consent.status, consent.body).toBe(200);
-    const action = /action="([^"]+)"/.exec(consent.body)?.[1]?.replace(/&amp;/g, "&") as string;
-    const csrf = /name="csrf" value="([^"]+)"/.exec(consent.body)?.[1] as string;
-    return located(await who.ask("POST", action, { csrf, decision: "approve" }));
+    const { action, fields } = pageForm(consent, "/oauth/authorize/continue");
+    return located(await who.ask("POST", action, { ...fields, decision: "approve" }));
   };
 
   const token = (fields: Record<string, string>) =>
