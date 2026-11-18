@@ -7712,6 +7712,15 @@ const SEEDS: readonly Seed[] = [
     to: "  return undefined;",
     check: unit("app-dispatch.test.ts", "checks the session and the route's scope"),
   },
+  {
+    requirement: "MC-03",
+    name: "a page whose host has no app-only tools keeps its answers in memory only (Opus 12)",
+    file: "../react/src/runtime/mcp-app.ts",
+    from: "      local: storage ?? memoryStorage(),",
+    to: "      local: memoryStorage(),",
+    check: [...e2e("without the app-only tools"), "--project", "chromium"],
+    e2e: true,
+  },
 ];
 
 const runtime = join(dirname(fileURLToPath(import.meta.url)), "..");

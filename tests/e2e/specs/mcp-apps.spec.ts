@@ -353,6 +353,14 @@ test.describe("what a chat host's frame lacks says so (MC-03)", () => {
       ).toBeVisible();
       await expect(bar(view).getByRole("button", { name: "Open the full page" })).toBeVisible();
       await expect(bar(view).getByRole("button", { name: "Submit" })).toBeHidden();
+      // What it says holds: an answer stays in this browser when the page is opened again
+      // (review finding Opus 12), in the artifact's own keys (D175 item 6).
+      await view.getByTestId("name").fill("Kept here");
+      await view.getByTestId("name").blur();
+      const again = await openInline(await page.context().newPage(), own.artifactId, {
+        refuseTools: true,
+      });
+      await expect(again.view.getByTestId("name")).toHaveValue("Kept here");
     } finally {
       client.close();
     }
