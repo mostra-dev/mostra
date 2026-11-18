@@ -696,13 +696,13 @@ export function createAuthorize(options: AuthorizeOptions): Authorize {
       ...(prompts.includes("consent") ? { consent: true as const } : {}),
     } satisfies AuthorizeRecord);
     const signed = sessionAccount(request);
-    const resume = `/oauth/authorize/continue?authorize=${handle}`;
-    // With `prompt=login`, a session the browser has is shown with its "Sign out", never used.
-    if (signed && !prompts.includes("login")) {
+    // With `prompt=login`, the session the browser has is shown with its "Sign out", never used:
+    // `proceed` continues only with a sign-in made for this request.
+    if (signed) {
       await proceed(request, response, handle, signed);
       return;
     }
-    await signInPage(response, resume, undefined, signed ? signedIn(signed, resume) : undefined);
+    await signInPage(response, `/oauth/authorize/continue?authorize=${handle}`);
   };
 
   // ── signing out (MT-06) ─────────────────────────────────────────────────────────────────
