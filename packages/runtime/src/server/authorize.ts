@@ -828,7 +828,7 @@ export function createAuthorize(options: AuthorizeOptions): Authorize {
         origin !== undefined &&
         clients.pagesOrigin(client) === origin;
       if (!operator) {
-        log.warn("signin.signout_refused", {});
+        log.warn("signin.signout_refused", { origin: (origin ?? "(none)").slice(0, 200) });
         problem(
           response,
           403,
