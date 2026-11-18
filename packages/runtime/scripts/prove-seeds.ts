@@ -2903,8 +2903,8 @@ const SEEDS: readonly Seed[] = [
     requirement: "HY-03",
     name: "scopes aren't enforced",
     file: "src/gateway/routes.ts",
-    from: "        if (!allowed) {",
-    to: "        if (allowed === false && needed === undefined) {",
+    from: "        if (denied) return refuse(checks, denied, meta);",
+    to: "        void denied;",
     check: hygiene("per-scope tokens"),
   },
   {
@@ -7090,8 +7090,8 @@ const SEEDS: readonly Seed[] = [
     requirement: "MC-02",
     name: "the app channel skips the link's scopes",
     file: "src/gateway/app.ts",
-    from: "        : scopeAllows(session.grant.scopes, needed);",
-    to: "        : true;",
+    from: "  if (denied) return refused(denied);",
+    to: "  void denied;",
     check: integration("mcp-apps.test.ts", "applies the link's scopes"),
   },
   {
@@ -7703,6 +7703,14 @@ const SEEDS: readonly Seed[] = [
     to: '  "  var native = undefined;",',
     check: ["test/exporter.test.ts", "-t", "data: files from memory"],
     cwd: "../../plugins/mcp-app",
+  },
+  {
+    requirement: "HY-03",
+    name: "the one scope rule both channels apply lets every scope through (Opus 15)",
+    file: "src/gateway/routes.ts",
+    from: "  if (allowed) return undefined;",
+    to: "  return undefined;",
+    check: unit("app-dispatch.test.ts", "checks the session and the route's scope"),
   },
 ];
 

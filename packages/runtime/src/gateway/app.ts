@@ -14,12 +14,11 @@ import {
   createDiagnostic,
   type Refusal,
   refusal,
-  scopeAllows,
 } from "@mostra/protocol";
 import type { Log } from "../log.ts";
 import type { Capabilities } from "./capabilities.ts";
 import { isRefusal } from "./http.ts";
-import type { RouteContext, RouteSpec } from "./routes.ts";
+import { type RouteContext, type RouteSpec, scopeRefusal } from "./routes.ts";
 
 /** The origin an app session is bound to: none of a browser's, so no browser can present it. */
 export const APP_SESSION_ORIGIN = "mostra-app:";
@@ -132,22 +131,9 @@ export async function dispatchAppRequest(
     }
     routeParams["run"] = params.runId;
   }
-  // The scope, as the HTTP runner checks it (routes.ts, step 5).
-  const needed = spec.scope?.(routeParams);
-  const allowed =
-    needed === undefined
-      ? true
-      : needed === "any-action"
-        ? session.grant.scopes.some((scope) => scope.startsWith("action:"))
-        : scopeAllows(session.grant.scopes, needed);
-  if (!allowed) {
-    return refused(
-      refusal(
-        "MOSTRA_HYGIENE_SCOPE_DENIED",
-        `This link doesn't carry the ${needed === "any-action" ? "action" : needed} scope.`,
-      ),
-    );
-  }
+  // The scope, by the HTTP runner's own rule (routes.ts, step 5).
+  const denied = scopeRefusal(spec, routeParams, session.grant.scopes);
+  if (denied) return refused(denied);
   if (!spec.handler) {
     return refused(
       refusal(
