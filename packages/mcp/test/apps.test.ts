@@ -338,17 +338,32 @@ describe("MCP Apps through the MCP server (D175, MC-02)", () => {
       },
       append: (element: { textContent: string; tag: string }) => said.push(element),
     };
+    const node = () => ({ childNodes: [], attributes: [], replaceChildren: () => undefined });
+    const win: Record<string, unknown> = {
+      parent,
+      addEventListener: (_type: string, listener: (event: unknown) => void) =>
+        listeners.push(listener),
+      removeEventListener: () => undefined,
+    };
     runInNewContext(script, {
-      window: {
-        parent,
-        addEventListener: (_type: string, listener: (event: unknown) => void) =>
-          listeners.push(listener),
-        removeEventListener: () => undefined,
+      window: win,
+      DOMParser: class {
+        parseFromString() {
+          return { documentElement: { attributes: [] }, head: node(), body: node() };
+        }
       },
       document: {
         getElementById: () => status,
         createElement: (tag: string) => ({ tag, textContent: "", addEventListener: () => {} }),
-        documentElement: { getBoundingClientRect: () => ({ height: 40 }), style: {} },
+        documentElement: {
+          getBoundingClientRect: () => ({ height: 40 }),
+          style: {},
+          setAttribute: () => undefined,
+        },
+        head: node(),
+        body: { ...node(), setAttribute: () => undefined, append: () => undefined },
+        importNode: (value: unknown) => value,
+        createComment: () => ({}),
       },
       setTimeout: (fn: () => void, ms: number) => timers.push({ fn, ms }),
       Map,
@@ -373,10 +388,41 @@ describe("MCP Apps through the MCP server (D175, MC-02)", () => {
         method: "ui/notifications/tool-result",
         params: { content: [], structuredContent: { mostra } },
       });
-    return { sent, said, timers, initialize, result, settle };
+    return { sent, said, timers, initialize, result, settle, deliver, win };
   }
 
   const HANDLES = { artifactId: ARTIFACT, versionId: VERSION, version: 2, url: LINK };
+
+  it("keeps for the page a host context change that arrives after the handoff, before the page claims it (R02 finding 19)", async () => {
+    const loader = await loaderInVm();
+    await loader.initialize({ serverResources: {}, serverTools: {} });
+    await loader.result(HANDLES);
+    const read = loader.sent.find((message) => message.method === "resources/read");
+    await loader.deliver({
+      jsonrpc: "2.0",
+      id: read?.id,
+      result: {
+        contents: [
+          {
+            uri: `ui://mostra/view/${VERSION}`,
+            mimeType: "text/html;profile=mcp-app",
+            text: "<!doctype html><title>page</title>",
+          },
+        ],
+      },
+    });
+    const handoff = loader.win["__mostraMcpApp"] as
+      | { claim(): { data: { method?: string; params?: unknown } }[] }
+      | undefined;
+    expect(handoff).toBeDefined();
+    const change = {
+      jsonrpc: "2.0",
+      method: "ui/notifications/host-context-changed",
+      params: { theme: "dark" },
+    };
+    await loader.deliver(change);
+    expect(handoff?.claim().map((kept) => kept.data)).toEqual([change]);
+  });
 
   it("never reads or opens one person's own link, and offers no way into it (R02 finding 2)", async () => {
     const loader = await loaderInVm();

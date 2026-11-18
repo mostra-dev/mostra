@@ -7721,6 +7721,15 @@ const SEEDS: readonly Seed[] = [
     check: [...e2e("without the app-only tools"), "--project", "chromium"],
     e2e: true,
   },
+  {
+    requirement: "MC-02",
+    name: "a host context change after the loader's handoff is lost, never reaching the page (Fable 19)",
+    file: "../mcp/src/loader.ts",
+    from: "        if (offered) kept.push({ data, origin: event.origin, source: event.source });",
+    to: "        if (false) kept.push({ data, origin: event.origin, source: event.source });",
+    check: ["test/apps.test.ts", "-t", "R02 finding 19"],
+    cwd: "../mcp",
+  },
 ];
 
 const runtime = join(dirname(fileURLToPath(import.meta.url)), "..");
