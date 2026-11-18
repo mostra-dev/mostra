@@ -25,6 +25,7 @@ import { existsSync, mkdirSync, readdirSync, readFileSync, rmSync } from "node:f
 import { dirname, join, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 import { parseArgs } from "node:util";
+import { workspacePackages } from "./workspace.ts";
 
 const ROOT = resolve(dirname(fileURLToPath(import.meta.url)), "..", "..", "..");
 const { values, positionals } = parseArgs({
@@ -55,25 +56,10 @@ interface Member {
 
 /**
  * Each workspace package's directory, by name, under `packages/` or `plugins/` (a first-party
- * plugin, D175 item 2), read from its manifest rather than guessed from its name.
+ * plugin, D175 item 2), read from its manifest rather than guessed from its name (`workspace.ts`).
  */
 function packageDirs(): Map<string, string> {
-  const dirs = new Map<string, string>();
-  for (const folder of ["packages", "plugins"]) {
-    if (!existsSync(join(ROOT, folder))) continue;
-    for (const dir of readdirSync(join(ROOT, folder))) {
-      const path = join(ROOT, folder, dir);
-      try {
-        const { name } = JSON.parse(readFileSync(join(path, "package.json"), "utf8")) as {
-          name: string;
-        };
-        dirs.set(name, path);
-      } catch {
-        // not a package
-      }
-    }
-  }
-  return dirs;
+  return workspacePackages(ROOT);
 }
 
 /** The fixed release group, from `.changeset/config.json`, with each package's manifest. */
