@@ -34,6 +34,7 @@ export {
   fine,
   type Identity,
   linkButton,
+  localPath,
   PAGE_WORDS,
   type PageAsset,
   type PageContent,
@@ -43,6 +44,7 @@ export {
   type PageWords,
   readAppearance,
   safeHref,
+  signedInLine,
 } from "./pages.ts";
 export {
   APPEARANCES,

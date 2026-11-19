@@ -13,6 +13,7 @@
  */
 import { spawn } from "node:child_process";
 import { mkdirSync, writeFileSync } from "node:fs";
+import { request } from "node:http";
 import { createServer } from "node:net";
 import { join } from "node:path";
 import { type Browser, expect, type Page, test } from "@playwright/test";
@@ -22,6 +23,7 @@ import {
   publishOwn,
   saved,
   settled,
+  shellReady,
   viewerName,
 } from "../support/client.ts";
 import { BIN, Client, removeTree, startDaemon } from "../support/mostra.ts";
@@ -240,6 +242,195 @@ test.describe("a hosted link (RM-02, §18.4)", () => {
       "account",
     );
     await expect(page.locator("[data-mostra-viewer]")).toContainText("Signed in as Grace");
+  });
+
+  test("signs out of the page and of the server's sign-in: the route's anonymous viewer answers, and the next Sign in asks the provider (MT-06)", async ({
+    page,
+    browser,
+  }, info) => {
+    test.setTimeout(240_000);
+    if (!client || !daemon) throw new Error("not started");
+    await ensureSignedIn(browser);
+    const own = await publishOwn(client, daemon.home, info);
+    const share = await client.call<{ url: string }>("share/start", {
+      artifact: { artifactId: own.artifactId },
+      via: "remote",
+    });
+    await openInShell(page, share.url);
+    const routeId = new URL(page.url()).pathname.split("/")[2] as string;
+    // The frame's session secret, as its service worker keeps it in the frame origin's storage.
+    const frameSecret = (): Promise<string | undefined> =>
+      page
+        .frameLocator("iframe.mostra-frame")
+        .locator("body")
+        .evaluate(
+          () =>
+            new Promise<string | undefined>((resolve) => {
+              const open = indexedDB.open("mostra-frame", 1);
+              open.onerror = () => resolve(undefined);
+              open.onsuccess = () => {
+                const read = open.result
+                  .transaction("session", "readonly")
+                  .objectStore("session")
+                  .get("secret");
+                read.onsuccess = () => resolve(read.result as string | undefined);
+                read.onerror = () => resolve(undefined);
+              };
+            }),
+        );
+    const frameOrigin = new URL(
+      (await page.locator("iframe.mostra-frame").getAttribute("src")) ?? "",
+    ).origin;
+    /** A request to the frame's origin from outside any page (what a stolen secret could do). */
+    const ask = (method: string, path: string, headers: Record<string, string>, body?: string) =>
+      new Promise<number>((resolve, reject) => {
+        const asked = request(
+          {
+            host: "127.0.0.1",
+            port,
+            method,
+            path,
+            headers: { host: new URL(frameOrigin).host, ...headers },
+          },
+          (answer) => {
+            answer.resume();
+            resolve(answer.statusCode ?? 0);
+          },
+        );
+        asked.on("error", reject);
+        asked.end(body);
+      });
+    const frameSession = (secret: string) =>
+      ask("GET", "/_mostra/session", { "x-mostra-frame": secret });
+    const enter = (ticket: string) =>
+      ask(
+        "POST",
+        "/_mostra/enter",
+        { origin: frameOrigin, "content-type": "application/json" },
+        JSON.stringify({ ticket }),
+      );
+    /** A frame ticket the page's shell session asks for now (a reload or a re-entry in flight). */
+    const mintTicket = async (): Promise<string> => {
+      const src = await page.evaluate(async (route) => {
+        const secret = localStorage.getItem(`mostra.session.${route}`) ?? "";
+        const base = `/a/${route}/_mostra`;
+        const shell = { "x-mostra-shell": secret };
+        const facts = (await (await fetch(`${base}/session`, { headers: shell })).json()) as {
+          csrf: string;
+        };
+        const ticket = (await (
+          await fetch(`${base}/ticket`, {
+            method: "POST",
+            headers: { ...shell, "x-mostra-csrf": facts.csrf, "content-type": "application/json" },
+            body: "{}",
+          })
+        ).json()) as { src: string };
+        return ticket.src;
+      }, routeId);
+      return new URL(src).hash.replace(/^#t=/, "");
+    };
+    /** Signs in from the chip through the development provider, as `name`. */
+    const signInAs = async (name: string): Promise<void> => {
+      await page.locator("[data-mostra-sign-in]").click();
+      await page.getByRole("link", { name: "Continue with Development" }).click();
+      await page.locator("input[name=name]").fill(name);
+      await page.getByRole("button", { name: "Continue" }).click();
+      await expect(page.getByText(`Continue as ${name} to answer Ada's page?`)).toBeVisible();
+      await page.getByRole("button", { name: "Continue" }).click();
+      await expect(page.locator("[data-mostra-viewer]")).toContainText(`Signed in as ${name}`);
+      await shellReady(page);
+    };
+
+    // Anonymous first: once the page signs in, the frame enters again as the account, and the
+    // frame session it held as the anonymous viewer ends with that entry (a frame's entry with the
+    // same link as another viewer ends the session it held).
+    const anonymousBefore = await frameSecret();
+    expect(anonymousBefore).toBeTruthy();
+    await signInAs("Hedy");
+    const hedy = viewerName(info, "-hedy");
+    await page.frameLocator("iframe.mostra-frame").getByTestId("name").fill(hedy);
+    await saved(page);
+    const hedySecret = (await frameSecret()) as string;
+    expect(hedySecret).toBeTruthy();
+    expect(hedySecret).not.toBe(anonymousBefore);
+    expect(await frameSession(anonymousBefore as string)).toBe(401);
+    expect(await frameSession(hedySecret)).toBe(200);
+    // A frame ticket asked for while Hedy is signed in: it must open nothing once the page signed
+    // out (MT-06's review, 1).
+    const staleTicket = await mintTicket();
+    expect(staleTicket).not.toBe("");
+
+    // "Sign out" in the chip: the page lets go of Hedy at once (her frame sessions end, the ticket
+    // of before enters nothing), then shows the API origin's "Sign out?" page.
+    await page.locator("[data-mostra-sign-out]").click();
+    await expect(page.getByRole("heading", { name: "Sign out?" })).toBeVisible();
+    expect(await frameSession(hedySecret)).toBe(401);
+    expect(await enter(staleTicket)).toBe(401);
+    // The person leaves that page without pressing it, back to the page: anonymous, with nothing
+    // of Hedy's draft; what they submit is the anonymous viewer's.
+    await page.goBack();
+    await page.waitForURL((url) => url.pathname === `/a/${routeId}`);
+    await shellReady(page);
+    await expect(page.locator("[data-mostra-viewer]")).toHaveAttribute(
+      "data-mostra-viewer",
+      "anonymous",
+    );
+    const anonymous = page.frameLocator("iframe.mostra-frame");
+    await expect(anonymous.getByTestId("name")).toHaveValue("");
+    const someone = viewerName(info, "-someone");
+    await anonymous.getByTestId("name").fill(someone);
+    await saved(page);
+    await page.locator("#mostra-submit").click();
+    await expect(page.locator("[data-mostra-receipt]")).toHaveAttribute(
+      "data-mostra-receipt",
+      "sent",
+    );
+    const waited = await client.call<{ status: string }>("wait", {
+      artifact: { artifactId: own.artifactId },
+      until: "submitted",
+      timeoutMs: 20_000,
+    });
+    expect(waited.status).toBe("satisfied");
+    const results = await client.call<{
+      answers: Record<string, unknown>;
+      submission: { viewer: { kind: string } };
+    }>("results/get", { artifact: { artifactId: own.artifactId } });
+    expect(results.answers["name"]).toBe(someone);
+    expect(results.submission.viewer.kind).toBe("anonymous");
+    // A ticket asked for now enters, as the anonymous viewer: the refusal above was the viewer's.
+    expect(await enter(await mintTicket())).toBe(200);
+
+    // The API origin still has Hedy signed in, so the page's next "Sign in" asks the person to
+    // name themselves again, with "Signed in as Hedy · Sign out" beside it; that line's button
+    // ends the sign-in there, and someone else signs in as themselves.
+    await page.locator("[data-mostra-sign-in]").click();
+    await expect(page.getByText("Continue as Hedy to answer Ada's page?")).toBeVisible();
+    await expect(page.locator("form.m-signed-in")).toContainText("Signed in as Hedy");
+    await page.locator("form.m-signed-in").getByRole("button", { name: "Sign out" }).click();
+    await expect(page.getByRole("heading", { name: "You're signed out" })).toBeVisible();
+    await page.getByRole("link", { name: "Sign in" }).click();
+    await page.getByRole("link", { name: "Continue with Development" }).click();
+    await page.locator("input[name=name]").fill("Ines");
+    await page.getByRole("button", { name: "Continue" }).click();
+    await expect(page.getByText("Continue as Ines to answer Ada's page?")).toBeVisible();
+    await page.getByRole("button", { name: "Continue" }).click();
+    await expect(page.locator("[data-mostra-viewer]")).toContainText("Signed in as Ines");
+    await shellReady(page);
+
+    // The whole sign-out: the chip, then the API origin's one button, and back to the page,
+    // anonymous; the next "Sign in" asks for a provider, since nobody is signed in there any more.
+    await page.locator("[data-mostra-sign-out]").click();
+    await expect(page.getByRole("heading", { name: "Sign out?" })).toBeVisible();
+    await page.getByRole("button", { name: "Sign out" }).click();
+    await page.waitForURL((url) => url.pathname === `/a/${routeId}`);
+    await shellReady(page);
+    await expect(page.locator("[data-mostra-viewer]")).toHaveAttribute(
+      "data-mostra-viewer",
+      "anonymous",
+    );
+    await page.locator("[data-mostra-sign-in]").click();
+    await expect(page.getByRole("link", { name: "Continue with Development" })).toBeVisible();
+    await expect(page.getByText("Continue as Ines")).toHaveCount(0);
   });
 
   test("sends each route its own anonymous key, and never the browser's own secret (HY-08)", async ({

@@ -1,7 +1,8 @@
 /**
  * The API origin's own pages (INTERFACES §18.5, D171): sign-in with its providers, the development
  * provider's name page, linking a machine (the device grant), consent for a chat app, a page's
- * "Answer as yourself", and every "Sign-in can't continue". They are `@mostra/themes`' pages in the
+ * "Answer as yourself", signing out (MT-06), and every "Sign-in can't continue". Every page that
+ * shows who is signed in carries "Signed in as Ada · Sign out". They are `@mostra/themes`' pages in the
  * operator's theme and name, with no script; every word they say is in `API_PAGE_WORDS`, and every
  * name a provider, a client or a person supplies lands as text.
  */
@@ -15,11 +16,15 @@ import {
   html,
   linkButton,
   type SafeHtml,
+  signedInLine,
 } from "@mostra/themes";
 import type { ServerPages } from "../gateway/index.ts";
 
 /** Where a person's appearance switch posts on the API origin (D171). */
 export const APPEARANCE_PATH = "/_mostra/appearance";
+
+/** Where the API origin's sign-out is (MT-06): the page with its button, and its form's target. */
+export const SIGNOUT_PATH = "/signout";
 
 /** Every word the API origin's pages say (D149: Mirza reviews them). */
 export const API_PAGE_WORDS = {
@@ -35,7 +40,6 @@ export const API_PAGE_WORDS = {
   continue: "Continue",
   cantContinue: "Sign-in can't continue",
   deviceTitle: "Link this machine",
-  deviceSignedInAs: (name: string): SafeHtml => html`Signed in as <strong>${name}</strong>.`,
   deviceWarning:
     "Approving links a machine to your account. That machine's Mostra can then host pages under your account and receives their answers. Continue only if you started this sign-in yourself, on that machine.",
   deviceCode: "The code that machine shows",
@@ -59,6 +63,17 @@ export const API_PAGE_WORDS = {
   allow: "Allow",
   cancel: "Cancel",
   yourAccount: "your account",
+  signedInAs: (name: string): SafeHtml => html`Signed in as <strong>${name}</strong>`,
+  signOut: "Sign out",
+  signOutTitle: "Sign out?",
+  signOutLede: (name: string): SafeHtml =>
+    html`This browser is signed in here as <strong>${name}</strong> until you sign out.`,
+  signOutAsks: (client: SafeHtml, host: string): SafeHtml =>
+    html`${client} asks to sign you out here, then sends you back to <strong>${host}</strong>.`,
+  staySignedInHint: "To stay signed in, close this page.",
+  signedOutTitle: "You're signed out",
+  signedOutDetail: "You can close this page.",
+  signInAgain: "Sign in",
 } as const;
 
 /** The marks of providers a person recognises, by provider ID. Others show their label alone. */
@@ -75,6 +90,16 @@ export interface PageRequest {
   readonly path: string;
 }
 
+/**
+ * Who a page shows as signed in, and its "Sign out" (MT-06): the form's CSRF token, derived from
+ * the browser's session, and where the person continues once signed out (a path of this origin).
+ */
+export interface SignedIn {
+  readonly name: string;
+  readonly csrf: string;
+  readonly next: string;
+}
+
 /** The API origin's pages, as HTML. */
 export interface ApiPages {
   readonly name: string | null;
@@ -83,25 +108,54 @@ export interface ApiPages {
     providers: readonly { readonly id: string; readonly label: string }[],
     next: string,
     message?: string,
+    signedIn?: SignedIn,
   ): string;
   developmentName(request: PageRequest, providerId: string, state: string): string;
   problem(request: PageRequest, message: string): string;
-  answerAs(request: PageRequest, form: ConsentForm, who: string, owner: string | undefined): string;
+  answerAs(
+    request: PageRequest,
+    form: ConsentForm,
+    signedIn: SignedIn,
+    owner: string | undefined,
+  ): string;
   allow(
     request: PageRequest,
     form: ConsentForm,
     client: { readonly name: string; readonly trust: "first-party" | "operator" | "self-named" },
-    who: string,
+    signedIn: SignedIn,
     redirectHost: string,
     loopback: boolean,
   ): string;
+  /**
+   * `GET /signout` with a session: one button that signs this browser out, and when a client asked
+   * for it, which one and where the person goes back to.
+   */
+  signOut(
+    request: PageRequest,
+    options: {
+      readonly name: string;
+      readonly csrf: string;
+      readonly fields: Readonly<Record<string, string>>;
+      readonly client?:
+        | {
+            readonly name: string;
+            readonly trust: "first-party" | "operator" | "self-named";
+            readonly back: string;
+          }
+        | undefined;
+    },
+  ): string;
+  /** "You're signed out", with the way back into a sign-in in progress when there is one. */
+  signedOut(request: PageRequest, next: string | undefined): string;
   deviceForm(
     request: PageRequest,
     options: {
       readonly code: string;
       readonly message?: string | undefined;
       readonly development?: { readonly id: string; readonly label: string } | undefined;
-      readonly signedIn?: { readonly name: string; readonly csrf: string } | undefined;
+      readonly signedIn?:
+        | { readonly name: string; readonly csrf: string; readonly signOut: SignedIn }
+        | undefined;
     },
   ): string;
   deviceDone(request: PageRequest, message: string): string;
@@ -122,9 +176,33 @@ export function createApiPages(server: ServerPages, name: string | null): ApiPag
       button(approve, { name: "decision", value: "approve", primary: true }),
       button(W.cancel, { name: "decision", value: "deny" }),
     );
+  /** "Signed in as Ada · Sign out": a form of its own, posting to this origin's sign-out. */
+  const signedInLineOf = (signedIn: SignedIn | undefined): SafeHtml | "" =>
+    signedIn
+      ? signedInLine(W.signedInAs(signedIn.name), {
+          action: SIGNOUT_PATH,
+          fields: { csrf: signedIn.csrf, next: signedIn.next },
+          label: W.signOut,
+        })
+      : "";
+  /** Whose word a client's name is: the operator's, the client's own, or (first-party) the server's. */
+  const clientNamed = (client: {
+    readonly name: string;
+    readonly trust: "first-party" | "operator" | "self-named";
+  }): SafeHtml => {
+    const hint =
+      client.trust === "operator"
+        ? W.operatorClient
+        : client.trust === "self-named"
+          ? W.unverifiedName
+          : undefined;
+    return hint === undefined
+      ? html`<strong>${client.name}</strong>`
+      : html`<strong>${client.name}</strong> <span class="m-hint">(${hint})</span>`;
+  };
   return {
     name,
-    signIn(request, providers, next, message) {
+    signIn(request, providers, next, message, signedIn) {
       const list = providers.map((provider, index) =>
         linkButton(
           `/signin/${encodeURIComponent(provider.id)}/start?next=${encodeURIComponent(next)}`,
@@ -141,7 +219,7 @@ export function createApiPages(server: ServerPages, name: string | null): ApiPag
         kind: "task",
         title: W.signInTitle(name),
         lede: W.signInLede,
-        body: html`${message ? alert(message) : ""}${
+        body: html`${signedInLineOf(signedIn)}${message ? alert(message) : ""}${
           list.length > 0
             ? html`<div class="m-list">${list}</div>${fine(W.neverPassword)}`
             : alert(W.noProviders, "note")
@@ -168,32 +246,41 @@ export function createApiPages(server: ServerPages, name: string | null): ApiPag
         ...request,
       });
     },
-    answerAs(request, form, who, owner) {
+    answerAs(request, form, signedIn, owner) {
       return pages.render({
         kind: "task",
         title: W.answerTitle,
-        lede: W.answerAs(who, owner ?? W.thisPerson),
-        body: html`<p>${W.answerDetail}</p><form method="post" action="${form.action}"><input type="hidden" name="csrf" value="${form.csrf}">${consentButtons(W.continue)}</form>`,
+        lede: W.answerAs(signedIn.name, owner ?? W.thisPerson),
+        body: html`${signedInLineOf(signedIn)}<p>${W.answerDetail}</p><form method="post" action="${form.action}"><input type="hidden" name="csrf" value="${form.csrf}">${consentButtons(W.continue)}</form>`,
         ...request,
       });
     },
-    allow(request, form, client, who, redirectHost, loopback) {
-      // Whose word the name is: the operator's, the client's own, or (first-party) the server's.
-      const hint =
-        client.trust === "operator"
-          ? W.operatorClient
-          : client.trust === "self-named"
-            ? W.unverifiedName
-            : undefined;
-      const clientName =
-        hint === undefined
-          ? html`<strong>${client.name}</strong>`
-          : html`<strong>${client.name}</strong> <span class="m-hint">(${hint})</span>`;
+    allow(request, form, client, signedIn, redirectHost, loopback) {
       return pages.render({
         kind: "task",
         title: W.allowTitle(client.name),
-        lede: W.asksToUse(clientName, who),
-        body: html`<ul class="m-grants">${W.grants.map((grant) => html`<li>${grant}</li>`)}</ul><p>${W.sendsBackTo(redirectHost)}</p>${loopback ? alert(W.loopback) : ""}<form method="post" action="${form.action}"><input type="hidden" name="csrf" value="${form.csrf}">${consentButtons(W.allow)}</form>`,
+        lede: W.asksToUse(clientNamed(client), signedIn.name),
+        body: html`${signedInLineOf(signedIn)}<ul class="m-grants">${W.grants.map((grant) => html`<li>${grant}</li>`)}</ul><p>${W.sendsBackTo(redirectHost)}</p>${loopback ? alert(W.loopback) : ""}<form method="post" action="${form.action}"><input type="hidden" name="csrf" value="${form.csrf}">${consentButtons(W.allow)}</form>`,
+        ...request,
+      });
+    },
+    signOut(request, options) {
+      const hidden = Object.entries({ ...options.fields, csrf: options.csrf }).map(
+        ([name, value]) => html`<input type="hidden" name="${name}" value="${value}">`,
+      );
+      return pages.render({
+        kind: "task",
+        title: W.signOutTitle,
+        lede: W.signOutLede(options.name),
+        body: html`${options.client ? html`<p>${W.signOutAsks(clientNamed(options.client), options.client.back)}</p>` : ""}<form method="post" action="${SIGNOUT_PATH}">${hidden}${actions(button(W.signOut, { primary: true }))}</form>${options.client ? fine(W.staySignedInHint) : ""}`,
+        ...request,
+      });
+    },
+    signedOut(request, next) {
+      return pages.render({
+        kind: "notice",
+        title: W.signedOutTitle,
+        body: html`<p>${W.signedOutDetail}</p>${next !== undefined ? actions(linkButton(next, W.signInAgain, { primary: true })) : ""}`,
         ...request,
       });
     },
@@ -234,8 +321,7 @@ export function createApiPages(server: ServerPages, name: string | null): ApiPag
       return pages.render({
         kind: "task",
         title: W.deviceTitle,
-        ...(signedIn ? { lede: W.deviceSignedInAs(signedIn.name) } : {}),
-        body: html`${options.message ? alert(options.message) : ""}${alert(W.deviceWarning, "note")}${form}`,
+        body: html`${signedInLineOf(signedIn?.signOut)}${options.message ? alert(options.message) : ""}${alert(W.deviceWarning, "note")}${form}`,
         ...request,
       });
     },

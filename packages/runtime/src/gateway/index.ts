@@ -1835,6 +1835,11 @@ export function createGateway(options: GatewayOptions): Gateway {
       ) {
         capabilities.enterVersion(existing.id, redeemed.versionId);
       } else {
+        // The frame's session of the same link for another viewer (its shell signed out, or the
+        // host named someone else) ends here: nothing acts as that viewer from this frame (MT-06).
+        if (!isRefusal(existing) && existing.grant.tokenId === redeemed.tokenId) {
+          capabilities.endSession(existing.id);
+        }
         const session = capabilities.createSession({
           tokenId: redeemed.tokenId,
           origin: origin(),
@@ -1901,6 +1906,15 @@ export function createGateway(options: GatewayOptions): Gateway {
         capabilities.enterVersion(existing.id, redeemed.versionId);
         secret = kept;
       } else {
+        // The session the frame kept, of the same link for another viewer (its hosted page signed
+        // out, MT-06), ends here: its secret, still in the frame origin's storage, opens nothing.
+        if (
+          existing !== undefined &&
+          !isRefusal(existing) &&
+          existing.grant.tokenId === redeemed.tokenId
+        ) {
+          capabilities.endSession(existing.id);
+        }
         const session = capabilities.createSession({
           tokenId: redeemed.tokenId,
           origin: origin(),

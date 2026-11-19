@@ -165,3 +165,39 @@ describe("an operator's own clients (MT-05)", () => {
     }
   });
 });
+
+describe("an operator's metering window (MT-06, #203)", () => {
+  /** Reads `MOSTRA_SERVER_METERING`; its error's message. */
+  const metering = (value: unknown): string | undefined => {
+    try {
+      const config = readServerConfig(undefined, {
+        MOSTRA_SERVER_API_ORIGIN: base.apiOrigin,
+        MOSTRA_SERVER_DOMAINS: JSON.stringify(base.domains),
+        MOSTRA_SERVER_METERING: JSON.stringify(value),
+      });
+      expect(config.metering).toEqual(value);
+      return undefined;
+    } catch (error) {
+      if (!(error instanceof RpcError)) throw error;
+      return `${error.diagnostic.code}: ${error.diagnostic.message}`;
+    }
+  };
+
+  it("takes whole minutes that divide an hour", () => {
+    for (const seconds of [60, 120, 180, 240, 300, 360, 600, 720, 900, 1_200, 1_800, 3_600]) {
+      expect(metering({ windowSeconds: seconds }), String(seconds)).toBeUndefined();
+    }
+    expect(metering({})).toBeUndefined();
+  });
+
+  it("refuses one under a minute, one that straddles an hour, is longer, isn't whole, or isn't a number, naming the key", () => {
+    // Under a minute an idle server would write its directory several times a minute, the opposite
+    // of what the setting is for (MT-06's review, 8); 1, 2 and 45 divide an hour all the same.
+    for (const seconds of [0, 1, 2, 45, -60, 7, 90, 45 * 60, 7_200, 90.5, "600", null]) {
+      expect(metering({ windowSeconds: seconds }), String(seconds)).toMatch(
+        /^MOSTRA_REMOTE_CONFIG_INVALID: .*`metering\.windowSeconds`/,
+      );
+    }
+    expect(metering({ window: 600 })).toMatch(/^MOSTRA_REMOTE_CONFIG_INVALID: .*`metering`/);
+  });
+});
