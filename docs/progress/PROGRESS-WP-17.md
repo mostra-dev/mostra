@@ -1,6 +1,6 @@
 # WP-17 progress: MCP Apps export
 
-**Status:** Accepted by Mirza on 2026-11-18 (M80: "You absolutely have my acceptance!"), with D175 and the package's agent-facing prose (D149), after its reviews (Opus, Fable) and the Claude Desktop check; to be merged through the merge queue and released. Owns MC-02 and MC-03 ([specification](../design/work-packages/WP-17.md)), with #139 and #157 on its milestone.
+**Status:** Accepted by Mirza on 2026-11-18 (M80: "You absolutely have my acceptance!"), with D175 and the package's agent-facing prose (D149), after its reviews (Opus, Fable) and the Claude Desktop check; merged to `main` through the merge queue as `755d60f` (#185) and released as Mostra 0.17.0 (#211), `@mostra/plugin-mcp-app` among its packages for the first time. Owns MC-02 and MC-03 ([specification](../design/work-packages/WP-17.md)), with #139 and #157 on its milestone.
 
 ## Baseline
 
@@ -129,3 +129,25 @@ Two independent reviews of `git diff 8165633...wp/17-mcp-apps` under D172 item 0
 - **VS Code, claude.ai and ChatGPT inline**: not run, by Mirza's decision (M79): they would check those hosts' MCP Apps, not Mostra. The cloud path is `remote-mcp-apps.test.ts`'s, over the real remote endpoint with OAuth; WP-30's MC-04 row says so.
 - **A chat host's own CSP and frame**: the reference host enforces the spec's policy as ext-apps' does; each real host's differs, recorded per host with the external checks.
 - **The verify run kept by the remote server** is joined across requests in `@mostra/mcp`'s test, not in a remote suite: a remote verify past 45 s on a real owner wasn't forced.
+
+## Issues at the closeout
+
+| Issue | State | What was done |
+|---|---|---|
+| #139 | Closed | Fixed in #185 (D175 item 9, above); the `WP-17` milestone is closed with no issue on it |
+| #157 | Closed | Fixed in #185 (D175 item 10, above) |
+| #210 | Open, no milestone | Filed: macOS jobs that never got a runner were cancelled, failing `ci-ok` and twice dropping #185 from the merge queue; each passed once re-run while nothing else held the macOS runners |
+| #194 | Open, WP-20 | Filed: `surfaces.spec.ts`'s keyboard-only case lost its focus once on macOS Chromium |
+| #95, #111, #132, #152, #178, #189 | #132 closed; the others open | Their occurrences in this package's runs recorded on each: #95 (`gateway.test.ts`'s client-only version), #111 (RT-03's first-need worker), #189 (the 16-daemon race), all three in one Windows x64 merge-queue run whose predecessor passed the same code; #178 (RM-08's burst on Windows x64, with a local comparison showing no change from `main`); #152 (the hosted frame left unpainted, WP-20's milestone, with the Firefox trace); #132's `ERR_NO_BUFFER_SPACE` met once more and ended at its root (every spec loads the shell through `gotoShell`, and a repository rule holds them to it) |
+
+## Commits and publication
+
+- **Range:** `8165633..755d60f` on `main`: the branch `wp/17-mcp-apps` (101 signed-off commits, the last `be0a22b`, with one merge of `main`, `ca7451c`) and the merge commit `755d60f` (#185); then the version pull request #211 (`b5671a8`); then this closeout.
+- **CI:** #185's last full run (`ci:full`, 44328695543) green on every leg once its starved macOS jobs ran; its merge-queue runs met #210 twice and the Windows x64 flakes above once before 44412731615 passed every job. #211's queue run 44510994271 green.
+- **Publication:** Mostra 0.17.0 by the `Release` workflow (run 44517983154, on `b5671a8`, every job green): the immutable GitHub release `v0.17.0` with the six bundles, their records, `SHA256SUMS` and attestations (13 assets); every package of the release group on npm at 0.17.0 with SLSA provenance, `@mostra/plugin-mcp-app` for the first time through the trusted publisher Mirza set up (`tools/release/npm-setup.sh @mostra/plugin-mcp-app`), the six contracts unchanged at 0.1.0; the `mostra-host` crate 0.17.0; the plugin repository's `v0.17.0`; the server image `ghcr.io/mostra-dev/mostra-server:0.17.0` and `latest`. The docs site doesn't exist yet (WP-26), so nothing deploys.
+- **The release from outside** (2026-11-19, this Mac, a scratch home, the CLI as npm serves it: `npx -y @mostra/cli@0.17.0`, its bundle downloaded and checked against its pins): `mostra new`, then `mostra publish` (version `ver_J0TX6PDZMS08GSH1SSXKG0PTPT`); `mostra plugin list --global` lists `@mostra/plugin-mcp-app` 0.17.0 at scope `bundled` with nothing installed; `mostra export lunch --as mcp-app --out app` writes `index.html` (802 KB, `<meta name="mostra-target" content="mcp-app">`) and `mcp-app.json` (`ui://mostra/view/ver_J0TX6PDZMS08GSH1SSXKG0PTPT`, `text/html;profile=mcp-app`, `prefersBorder: true`). Observed on the way: the same run with its home, bundle and browser on the external disk (`/Volumes/Active`) while the machine's load stood near 12 timed out in verify's render (`MOSTRA_VERIFY_TIMEOUT`, 120 s); on the internal disk it passed, as the release's six smoke tests did on their own machines.
+- **Remaining dirty paths:** none in the repository. Outside it: Claude Desktop's configuration keeps the `mostra-wp17` server of the external check (its earlier file at `~/.jcode/scratch/wp17/claude_desktop_config.backup.json`), with its home `~/.mostra-wp17` and workspace `~/mostra-wp17-artifacts`; the Cargo target and the release check's homes in `/Volumes/Active/mostra-wp17/`; the session's scripts, probes and review texts in `~/.jcode/scratch/wp17/`. Mostra HQ was not written to (D127).
+
+## Next
+
+WP-18, Kit I: design system, tokens and forms (`docs/design/work-packages/WP-18.md`), in a fresh session from `docs/design/work-packages/PROMPT.md` with `WORK PACKAGE: WP-18`; its token system starts from the MCP Apps variable table WP-17 put in `@mostra/themes` (`HOST_TOKENS`, D175 item 6). The maintenance unit MT-06 (signing out, #208) runs beside it.
