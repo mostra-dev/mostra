@@ -248,11 +248,15 @@ the bundle's entry point (D85); it never runs artifact code (RT-02).
   (`server/oauth-clients.ts`, MT-05). A person signs out of the API origin by a `POST /signout`
   only its own pages (their `Origin` and the session's CSRF token) or an operator's own app (its
   pages' exact `Origin`) can send, never by a `GET`, and goes back only to an address the client
-  registered; a hosted page's sign-out puts its session back on the route's anonymous viewer, and
-  a frame entering as another viewer ends the session it held (`server/authorize.ts`,
+  registered; a hosted page's sign-out puts its session back on the route's anonymous viewer and
+  ends the account's frame sessions on that link, a frame ticket is good only while its shell
+  session acts as the viewer it was minted for, and a frame entering as another viewer ends the
+  session it held (`gateway/capabilities.ts`, `server/authorize.ts`,
   `server/hosted-pages.ts`, MT-06). Expired sign-ins are removed by a sweep on its own timer, never
   inside a request (`server/sweep.ts`), and metering windows start on multiples of the operator's
-  `metering.windowSeconds` (`server/metering.ts`, MT-06).
+  `metering.windowSeconds` (`server/metering.ts`, MT-06). Every path of the API origin a page draws
+  or a form continues at passes `localPath` (`@mostra/themes`), which refuses one a browser would
+  read as another origin.
 - **The shell and every artifact are separate origins (SH-01).** The shell page may be framed by
   nothing and sends `Cross-Origin-Opener-Policy: same-origin`, so no popup of a frame can navigate
   it; an artifact document may be framed only by its shell (D98 items 4 and 7).
