@@ -58,6 +58,8 @@ MT-06 owns no requirement (D152): one row per item of its scope, each checked th
 
 - **After the Opus review's fixes, with `main` merged in** (WP-17 and Mostra 0.17.0, `b725f3a`, a merge commit): the static gates and the build (format-lint, types, build, boundaries, api, docs; the repository lint's new rule that every spec loads its pages through `gotoShell` applied to `signout.spec.ts`); the runtime's unit suite (58 files, 395 passed); the `remote-access` group (12 files, 83 passed); `identity.test.ts` and `idle-marks.test.ts` (13 passed); `hosted.spec.ts` and `signout.spec.ts` in Chromium, Firefox and WebKit (9 of 9 each), and `surfaces.spec.ts` with them before the merge (14 of 14 each); `@mostra/themes`' and `@mostra/shell`'s units; all 37 MT-06 seeds red when planted and green when restored, and `--anchors` plants all 936.
 
+- **CI with `ci:full` after the review's fixes and the merge**, run 44571655330 on `0c5bd5a`: green on every job after one re-run of the legs that didn't pass, `e2e (windows-x64, firefox, 2/2)` (`mcp-apps.spec.ts`'s "a link without the review scope gets no Choose", a WP-17 case in code MT-06 doesn't touch, filed as #214) and three macOS jobs GitHub never gave a runner (#210).
+
 ## Reviews (D80, D172 item 0)
 
 - **The session's own review** of its full diff (`8f506ab`): a sign-out from an app the operator doesn't vouch for no longer fetches that app's metadata document before refusing it (`Clients.vouches`, a unit case, an integration assertion, a seed); a hosted page whose frame can't enter again after its sign-out loads again rather than keep a frame session that acted as the account; `prompt=login` is judged in one place.
