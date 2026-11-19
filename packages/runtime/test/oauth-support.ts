@@ -113,12 +113,35 @@ export function authorizeUrl(
   })}`;
 }
 
+/**
+ * The form on a page whose `action` starts with `prefix`: its target and hidden fields. A page that
+ * shows who is signed in has a second form, its "Sign out" (MT-06), so a form is found by where it
+ * posts, never by being first.
+ */
+export function pageForm(
+  page: Reply,
+  prefix: string,
+): { readonly action: string; readonly fields: Record<string, string> } {
+  const decoded = (text: string) => text.replace(/&#38;|&amp;/g, "&");
+  for (const form of page.body.matchAll(/<form[^>]*action="([^"]+)"[^>]*>([\s\S]*?)<\/form>/g)) {
+    const action = decoded(form[1] as string);
+    if (!action.startsWith(prefix)) continue;
+    const fields: Record<string, string> = {};
+    for (const input of (form[2] as string).matchAll(
+      /<input type="hidden" name="([^"]+)" value="([^"]*)">/g,
+    )) {
+      fields[input[1] as string] = decoded(input[2] as string);
+    }
+    return { action, fields };
+  }
+  throw new Error(`no form posting to ${prefix} on the page: ${page.body}`);
+}
+
 /** Approves on the consent page a reply shows; the redirect to the client. */
 export async function approve(who: ApiBrowser, consent: Reply): Promise<URL> {
   expect(consent.status, consent.body).toBe(200);
-  const action = /action="([^"]+)"/.exec(consent.body)?.[1]?.replace(/&amp;/g, "&") as string;
-  const csrf = /name="csrf" value="([^"]+)"/.exec(consent.body)?.[1] as string;
-  return located(await who.ask("POST", action, { csrf, decision: "approve" }));
+  const { action, fields } = pageForm(consent, "/oauth/authorize/continue");
+  return located(await who.ask("POST", action, { ...fields, decision: "approve" }));
 }
 
 /** A form to the token endpoint. */
@@ -174,7 +197,7 @@ export async function ownerSignInThroughPage(
   const page = await who.ask("GET", `/device?user_code=${encodeURIComponent(userCode)}`);
   const back = await signIn(who, page, name);
   const approval = await who.ask("GET", `${back.pathname}${back.search}`);
-  const csrf = /name="csrf" value="([^"]+)"/.exec(approval.body)?.[1];
+  const csrf = pageForm(approval, "/device").fields["csrf"];
   expect(csrf, approval.body).toBeDefined();
   const approved = await who.ask("POST", "/device", {
     csrf: csrf as string,

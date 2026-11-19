@@ -211,6 +211,9 @@ export const HOSTED_WORDS = {
   nameHint: "Shown to the person who sent this page, as not verified.",
   namedUnverified: (name: string): string => `${name} (not verified)`,
   signInFailed: "Sign-in didn't finish. Open the page again and try once more.",
+  /** Signing out of this page (MT-06): it goes back to answering without a name. */
+  signOut: "Sign out",
+  signOutFailed: "Signing out didn't finish. Try once more.",
   signingIn: "Signing you in…",
   /** The shell couldn't store its session (a sibling page filled the site's storage). */
   storageFull:

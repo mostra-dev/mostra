@@ -272,11 +272,29 @@ export function signInStart(
   apiBase: string,
   csrf: string,
   challenge: string,
+  prompt?: "consent",
 ): Promise<{ readonly url: string; readonly state: string }> {
   return call(`${apiBase}/session/signin/start`, {
     method: "POST",
     headers: { ...JSON_HEADERS, "x-mostra-csrf": csrf },
-    body: JSON.stringify({ challenge }),
+    body: JSON.stringify({ challenge, ...(prompt !== undefined ? { prompt } : {}) }),
+  });
+}
+
+/**
+ * Signs this page out (MT-06): its session goes back to this browser's anonymous viewer for the
+ * route, named by the route's own key (`browser`, never the browser's secret); the API origin's
+ * sign-in is untouched.
+ */
+export function signOutViewer(
+  apiBase: string,
+  csrf: string,
+  browser: string | undefined,
+): Promise<{ readonly viewer: unknown; readonly signOut?: string }> {
+  return call(`${apiBase}/session/signout`, {
+    method: "POST",
+    headers: { ...JSON_HEADERS, "x-mostra-csrf": csrf },
+    body: JSON.stringify(browser !== undefined ? { browser } : {}),
   });
 }
 

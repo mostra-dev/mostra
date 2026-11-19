@@ -148,6 +148,9 @@ export function linkButton(href: string, label: HtmlValue, options?: {
 }): SafeHtml;
 
 // @public
+export function localPath(path: string | null | undefined): string | undefined;
+
+// @public
 export function luminance(hex: string): number;
 
 // @public
@@ -297,6 +300,13 @@ export interface SafeHtml {
     readonly [SAFE]: true;
     readonly value: string;
 }
+
+// @public
+export function signedInLine(who: HtmlValue, form: {
+    readonly action: string;
+    readonly fields: Readonly<Record<string, string>>;
+    readonly label: HtmlValue;
+}): SafeHtml;
 
 // @public
 export interface Stage {

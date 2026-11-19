@@ -734,6 +734,15 @@ export class Capabilities {
         );
   }
 
+  /**
+   * Ends a session now: a frame session its frame replaced by entering as another viewer (a hosted
+   * page signed out, MT-06), so nothing acts as the viewer it was any more.
+   */
+  endSession(sessionId: string): void {
+    this.#touched.delete(sessionId);
+    this.#ledger.write((db) => db.run("DELETE FROM session WHERE id = ?", sessionId));
+  }
+
   /** Records the version a frame session entered (D98 item 5). */
   enterVersion(sessionId: string, versionId: string): void {
     this.#ledger.write((db) =>
@@ -799,8 +808,8 @@ export class Capabilities {
       );
     }
     const shellSession = this.#ledger.read((db) =>
-      db.get<{ token_id: string }>(
-        "SELECT token_id FROM session WHERE id = ?",
+      db.get<{ token_id: string; viewer_id: string | null }>(
+        "SELECT token_id, viewer_id FROM session WHERE id = ?",
         entry.shellSessionId,
       ),
     );
@@ -815,6 +824,15 @@ export class Capabilities {
       return refusal(
         "MOSTRA_HYGIENE_TOKEN_REVOKED",
         "The link behind this frame was revoked or has expired.",
+      );
+    }
+    // The frame acts as its shell session's viewer now, not as the one it had when the ticket was
+    // minted: a page signed out since (MT-06) can't have a ticket of before bring the account back.
+    const now = grant.viewerId ?? shellSession.viewer_id ?? undefined;
+    if (now !== entry.viewerId) {
+      return refusal(
+        "MOSTRA_HYGIENE_SESSION_MISSING",
+        "The shell session that asked for this frame ticket acts as someone else now.",
       );
     }
     const { expires: _expires, ...rest } = entry;

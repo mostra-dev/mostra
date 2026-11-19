@@ -75,7 +75,16 @@ from `dist/`, found beside the runtime package or through `MOSTRA_SHELL_DIR`.
   `X-Mostra-Shell`; each route gets its own anonymous key, `HMAC-SHA-256` of one browser secret
   that never leaves storage. `src/chrome.tsx` draws the sender line, "Never enter passwords", the
   viewer chip and sign-in (PKCE from a click, bound to the route), the report control, the paused
-  notice and the interstitial, every tenant or operator string as text, never as markup.
+  notice and the interstitial, every tenant or operator string as text, never as markup. A
+  signed-in viewer's "Sign out" (MT-06) saves what the frame holds, puts the route's session back
+  on this browser's anonymous viewer for the route (its derived key, never the browser secret; the
+  server ends the account's frame sessions with it), then sends the person on to the API origin's
+  "Sign out?" page with a `state` it keeps in the tab, so the browser's sign-in there ends too, and
+  `/_mostra/signed-out` brings them back to the page (`ViewerPage`'s `signOutPage`,
+  `keepSignOut`, `takeSignOut`). The route keeps a flag until the next sign-in finishes, which asks
+  the person to name themselves again (`prompt: "consent"`) should the API origin's session stay.
+  A hosted shell the browser brings back from its back/forward cache loads again, so it never shows
+  a viewer since signed out.
 - **Same-origin only.** The gateway serves this page with a `'self'`-only Content-Security-Policy
   and `frame-ancestors 'none'`. Keep the build free of inline scripts and styles and of every
   third-party URL.
