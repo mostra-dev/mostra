@@ -12,6 +12,7 @@ import {
   RELEASE_NAMES,
   RETRIED,
   select,
+  summaryText,
   verdict,
   WAIT_MINUTES,
   waitMs,
@@ -199,6 +200,27 @@ describe("the legs GitHub gave no runner (#210)", () => {
     expect(waitMs([at("2026-11-18T17:57:00Z"), at("2026-11-18T17:30:00Z")], now)).toBe(7 * 60_000);
     expect(waitMs([at("2026-11-18T17:30:00Z")], now)).toBe(0);
     expect(waitMs([at("2026-11-18T18:00:00Z")], now)).toBe(WAIT_MINUTES * 60_000);
+  });
+
+  it("summarizes from the plan's legs alone, never a name the API listed", () => {
+    const selection = select(pull.plan, beforeCiOk(pull), notes(pull));
+    expect(summaryText(selection)).toBe(
+      [
+        "### Legs GitHub gave no runner (#210)",
+        "",
+        "Retried after a wait:",
+        "",
+        "- conformance (macos)",
+        "- integration (macos, remote)",
+        "- integration (macos, verify-failures)",
+        "- e2e (macos, chromium)",
+        "- release rehearsal: smoke (darwin-arm64)",
+        "",
+      ].join("\n"),
+    );
+    const blocked = select(queue.plan, beforeCiOk(queue), notes(queue));
+    expect(summaryText(blocked)).toContain("Nothing retried: 2 other job(s) failed");
+    expect(summaryText(blocked)).not.toContain("windows-remote");
   });
 
   it("matches GitHub's own words", () => {

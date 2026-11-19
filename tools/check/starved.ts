@@ -271,6 +271,39 @@ export function outputLines(selection: Selection): string[] {
   ];
 }
 
+/**
+ * The run's summary of a selection, from the plan's legs and counts alone: a job's name as the
+ * API lists it is never written to a file (the log has it).
+ */
+export function summaryText(selection: Selection): string {
+  const legs = RETRIED.flatMap((name) => selection.retry[name].map((leg) => legName(name, leg)));
+  const release = selection.release;
+  const parts = release
+    ? [
+        ...release.bundle.map((leg) => `bundle (${leg["platform"]})`),
+        ...release.smoke.map((leg) => `smoke (${leg["platform"]})`),
+        ...(release.packages ? ["packages"] : []),
+        ...release.npmSmoke.map((leg) => `npm-smoke (${leg["platform"]})`),
+        ...(release.oldNode ? ["npm-old-node"] : []),
+        ...(release.image ? ["image"] : []),
+      ]
+    : [];
+  const lines = ["### Legs GitHub gave no runner (#210)", ""];
+  if (selection.blocked.length > 0)
+    lines.push(
+      `Nothing retried: ${selection.blocked.length} other job(s) failed for their own reasons, so ci-ok fails anyway (the job's log names them).`,
+    );
+  else if (selection.eligible.length === 0) lines.push("None.");
+  else
+    lines.push(
+      "Retried after a wait:",
+      "",
+      ...legs.map((name) => `- ${name}`),
+      ...(parts.length > 0 ? [`- release rehearsal: ${parts.join(", ")}`] : []),
+    );
+  return `${lines.join("\n")}\n`;
+}
+
 /** A job's result in `toJSON(needs)`. */
 export interface Need {
   readonly result: string;
@@ -397,23 +430,15 @@ async function main(): Promise<void> {
       );
   }
   const selection = select(plan, jobs, annotations);
-  const report = [
-    "### Legs GitHub gave no runner (#210)",
-    "",
-    selection.starved.length === 0
-      ? "None."
-      : selection.starved.map((job) => `- ${job.name}, cancelled ${job.completed_at}`).join("\n"),
-    "",
-    selection.blocked.length > 0
-      ? `Not retried: other jobs failed, so \`ci-ok\` fails anyway:\n\n${selection.blocked.map((line) => `- ${line}`).join("\n")}`
-      : selection.eligible.length > 0
-        ? `Retried after a wait: ${selection.eligible.join(", ")}.`
-        : "",
-    "",
-  ].join("\n");
-  console.log(report);
+  // The log names what the API listed; the run's summary (a file) only what the plan named.
+  console.log(
+    [
+      ...selection.starved.map((job) => `starved: ${job.name}, cancelled ${job.completed_at}`),
+      ...selection.blocked.map((line) => `not retried, because of ${line}`),
+    ].join("\n") || "No leg GitHub gave no runner.",
+  );
   const summary = process.env["GITHUB_STEP_SUMMARY"];
-  if (summary) appendFileSync(summary, report);
+  if (summary) appendFileSync(summary, summaryText(selection));
   if (selection.eligible.length > 0 && !values["no-wait"]) {
     const ms = waitMs(selection.starved, Date.now());
     console.log(`Waiting ${Math.round(ms / 1000)} s before the retry.`);
