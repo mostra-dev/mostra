@@ -1,5 +1,12 @@
 # create-mostra
 
+## 0.18.0
+
+### Patch Changes
+
+- Updated dependencies []:
+  - @mostra/cli@0.18.0
+
 ## 0.17.0
 
 ### Patch Changes
