@@ -1,5 +1,12 @@
 # @mostra/verify
 
+## 0.18.0
+
+### Patch Changes
+
+- Updated dependencies []:
+  - @mostra/protocol@0.18.0
+
 ## 0.17.0
 
 ### Patch Changes
