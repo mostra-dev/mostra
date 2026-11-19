@@ -1,5 +1,13 @@
 # @mostra/plugin-mcp-app
 
+## 0.18.0
+
+### Patch Changes
+
+- Updated dependencies [[`7bfa75a`](https://github.com/mostra-dev/mostra/commit/7bfa75ac39f3339179308d2938b49dc190471b39)]:
+  - @mostra/themes@0.18.0
+  - @mostra/protocol@0.18.0
+
 ## 0.17.0
 
 ### Minor Changes

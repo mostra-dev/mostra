@@ -1,5 +1,14 @@
 # @mostra/cli
 
+## 0.18.0
+
+### Patch Changes
+
+- Updated dependencies []:
+  - @mostra/sdk@0.18.0
+  - @mostra/mcp@0.18.0
+  - @mostra/protocol@0.18.0
+
 ## 0.17.0
 
 ### Patch Changes
