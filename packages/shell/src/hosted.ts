@@ -170,6 +170,49 @@ export function takeSignIn(): PendingSignIn | undefined {
 }
 
 const SIGNED_OUT_KEY = (routeId: string): string => `mostra.signed-out.${routeId}`;
+const SIGNOUT_KEY = "mostra.signout";
+
+/**
+ * A page's sign-out on its way through the API origin's own (MT-06): the page to come back to and
+ * the `state` the API origin sends back with the person, kept in this tab only.
+ */
+interface PendingSignOut {
+  readonly routeId: string;
+  readonly state: string;
+  readonly back: string;
+}
+
+/**
+ * Keeps a sign-out in progress and answers the address to send the person to (the API origin's
+ * sign-out page with this sign-out's `state`), or `undefined` when the tab can't keep it.
+ */
+export function keepSignOut(routeId: string, signOut: string, back: string): string | undefined {
+  const state = base64url(crypto.getRandomValues(new Uint8Array(16)));
+  try {
+    globalThis.sessionStorage?.setItem(SIGNOUT_KEY, JSON.stringify({ routeId, state, back }));
+    if (globalThis.sessionStorage?.getItem(SIGNOUT_KEY) === null) return undefined;
+  } catch {
+    return undefined;
+  }
+  const url = new URL(signOut);
+  url.searchParams.set("state", state);
+  return url.href;
+}
+
+/** Takes the sign-out in progress, once: the page to go back to when the `state` is its own. */
+export function takeSignOut(state: string | null): string | undefined {
+  let pending: PendingSignOut | undefined;
+  try {
+    const text = globalThis.sessionStorage?.getItem(SIGNOUT_KEY) ?? null;
+    globalThis.sessionStorage?.removeItem(SIGNOUT_KEY);
+    pending = text === null ? undefined : (JSON.parse(text) as PendingSignOut);
+  } catch {
+    pending = undefined;
+  }
+  if (!pending || state === null || state !== pending.state) return undefined;
+  // Back to a page of this origin only.
+  return pending.back.startsWith("/a/") ? pending.back : `/a/${pending.routeId}`;
+}
 
 /**
  * Notes that this page was signed out in this browser (MT-06), so its next sign-in asks the person

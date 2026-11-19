@@ -290,7 +290,7 @@ export function signOutViewer(
   apiBase: string,
   csrf: string,
   browser: string | undefined,
-): Promise<{ readonly viewer: unknown }> {
+): Promise<{ readonly viewer: unknown; readonly signOut?: string }> {
   return call(`${apiBase}/session/signout`, {
     method: "POST",
     headers: { ...JSON_HEADERS, "x-mostra-csrf": csrf },

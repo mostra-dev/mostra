@@ -33,6 +33,7 @@ export {
   fine,
   type Identity,
   linkButton,
+  localPath,
   PAGE_WORDS,
   type PageAsset,
   type PageContent,

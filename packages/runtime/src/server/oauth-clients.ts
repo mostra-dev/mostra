@@ -482,7 +482,8 @@ export function createClients(options: ClientsOptions): Clients {
           kind: "shell",
           name: "Mostra",
           redirectUris: [`${origin}/_mostra/signin`],
-          postLogoutRedirectUris: [],
+          // Where a page's sign-out comes back to, after the API origin's own (MT-06).
+          postLogoutRedirectUris: [`${origin}/_mostra/signed-out`],
           trust: "first-party",
         };
       }

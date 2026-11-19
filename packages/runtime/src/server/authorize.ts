@@ -32,7 +32,7 @@ import {
   type SignInIdentity,
   SignInIdentity as SignInIdentitySchema,
 } from "@mostra/protocol/operator";
-import { readAppearance } from "@mostra/themes";
+import { localPath, readAppearance } from "@mostra/themes";
 import { type ServerPages, themePageCsp } from "../gateway/index.ts";
 import type { Ledger } from "../ledger/index.ts";
 import type { Log } from "../log.ts";
@@ -133,6 +133,12 @@ export interface Authorize {
     challenge: string,
     prompt?: "consent",
   ): { readonly url: string; readonly state: string };
+  /**
+   * Where a hosted page's sign-out sends the person next (MT-06): the API origin's page with one
+   * button, as the domain's hosted shell's client, back to the shell's `/_mostra/signed-out`, so
+   * the browser's sign-in here ends too and the next person signs in through their provider.
+   */
+  viewerSignOutUrl(shellOrigin: string): string;
   /** Finishes a page's sign-in: the code, for the same route and session only. */
   finishViewerSignin(input: {
     readonly state: string;
@@ -380,8 +386,7 @@ export function createAuthorize(options: AuthorizeOptions): Authorize {
   };
 
   /** Where a finished sign-in continues: an address of the API origin only. */
-  const safeNext = (next: string | null): string =>
-    next?.startsWith("/") && !next.startsWith("//") ? next : "/";
+  const safeNext = (next: string | null): string => localPath(next) ?? "/";
 
   /** A resolved identity: a session and on to `next`, a step, or why not. */
   const resolved = async (
@@ -743,8 +748,7 @@ export function createAuthorize(options: AuthorizeOptions): Authorize {
     [...new Set(params.keys())].find((key) => params.getAll(key).length > 1);
 
   /** A path of this origin to continue at, else none. */
-  const ownPath = (next: string | null): string | undefined =>
-    next?.startsWith("/") && !next.startsWith("//") && !next.startsWith("/\\") ? next : undefined;
+  const ownPath = (next: string | null): string | undefined => localPath(next);
 
   /** `GET /signout`: a page with one button, or nothing to do; it ends nothing (D98). */
   const signOutPage = async (
@@ -783,7 +787,11 @@ export function createAuthorize(options: AuthorizeOptions): Authorize {
         name: signedIn(signed, "/").name,
         csrf: csrf(signed.hash, "signout"),
         fields,
-        ...(target.client !== undefined && target.back !== undefined
+        // A hosted page's own sign-out (its shell, first-party) goes back to that page: nothing to
+        // name. Any other client is named, with the host it sends the person back to.
+        ...(target.client !== undefined &&
+        target.back !== undefined &&
+        target.client.kind !== "shell"
           ? {
               client: {
                 name: target.client.name,
@@ -886,6 +894,13 @@ export function createAuthorize(options: AuthorizeOptions): Authorize {
       // A page signed out here asks "Answer as yourself" again, whoever is signed in (MT-06).
       if (prompt === "consent") url.searchParams.set("prompt", "consent");
       return { url: url.href, state };
+    },
+
+    viewerSignOutUrl(shellOrigin) {
+      const url = new URL(`${apiOrigin}${SIGNOUT_PATH}`);
+      url.searchParams.set("client_id", clients.shellClientId(shellOrigin));
+      url.searchParams.set("post_logout_redirect_uri", `${shellOrigin}/_mostra/signed-out`);
+      return url.href;
     },
 
     finishViewerSignin(input) {

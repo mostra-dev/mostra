@@ -84,6 +84,8 @@ export interface HostedPagesOptions {
     }) =>
       | { readonly accountId: string; readonly name?: string; readonly provider?: string }
       | { readonly refused: string };
+    /** The API origin's sign-out page a page's sign-out sends the person on to (MT-06). */
+    readonly signOutUrl?: (shellOrigin: string) => string;
   };
   /** Told each view the server admitted, for metering (`views`). */
   readonly viewed?: (input: { readonly artifactId: string; readonly viewerId: string }) => void;
@@ -339,10 +341,13 @@ export function hostedPages(
     /**
      * Signing out of this page (MT-06): the route's shell session goes back to the route's
      * anonymous viewer, by the browser's key for this route (`browser`, as at the session's
-     * exchange, D165 item 8), or a fresh one when the shell has none. What the account drafted and
-     * submitted stays the account's. A link minted for a named person keeps acting as that person
-     * (D104): there, nothing changes. The API origin's own sign-in is untouched (the shell has no
-     * credential there).
+     * exchange, D165 item 8), or a fresh one when the shell has none, and the frame sessions of this
+     * link that acted as the account end with it (their secrets, still in the browser, open
+     * nothing; another browser's frame of the same account enters again by its own shell). What the
+     * account drafted and submitted stays the account's. A link minted for a named person keeps
+     * acting as that person (D104): there, nothing changes. The answer names the API origin's own
+     * sign-out page (`signOut`), where the shell sends the person on, so the browser's sign-in
+     * there ends too and the next person at it signs in through their provider (MT-06's review).
      */
     const signout = async (context: RouteContext): Promise<Response> => {
       const body = await readJsonObject(context.request, 4 * 1024);
@@ -362,17 +367,35 @@ export function hostedPages(
         );
       }
       const session = context.session;
+      const shellOrigin = context.request.headers.get("origin") ?? "";
+      const signOut =
+        options.signin?.signOutUrl !== undefined && shellOrigin !== ""
+          ? { signOut: options.signin.signOutUrl(shellOrigin) }
+          : {};
       if (session.grant.viewerId !== undefined) {
-        return jsonResponse({ viewer: interaction.viewer(session.grant.viewerId) });
+        return jsonResponse({ viewer: interaction.viewer(session.grant.viewerId), ...signOut });
       }
+      const was = session.viewerId;
       const viewerId = interaction.viewerForAnonymous(
         typeof browser === "string" ? browser : `session:${randomBytes(16).toString("hex")}`,
       );
-      ledger.write((db) =>
-        db.run("UPDATE session SET viewer_id = ? WHERE id = ?", viewerId, session.id),
-      );
-      log.info("hosted.signed_out", { routeId: options.routeOf(context.artifactId as string)?.id });
-      return jsonResponse({ viewer: interaction.viewer(viewerId) });
+      const ended = ledger.write((db) => {
+        db.run("UPDATE session SET viewer_id = ? WHERE id = ?", viewerId, session.id);
+        // The frames that acted as the account on this link: their sessions end now, whether or
+        // not the frame ever enters again (the tab closed at once, the network dropped).
+        return was === undefined || was === viewerId
+          ? 0
+          : db.run(
+              "DELETE FROM session WHERE token_id = ? AND viewer_id = ? AND mode = 'worker'",
+              session.grant.tokenId,
+              was,
+            ).changes;
+      });
+      log.info("hosted.signed_out", {
+        routeId: options.routeOf(context.artifactId as string)?.id,
+        frames: ended,
+      });
+      return jsonResponse({ viewer: interaction.viewer(viewerId), ...signOut });
     };
 
     /** The code back from the authorization server: the session acts as the account from now on. */

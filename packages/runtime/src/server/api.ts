@@ -12,7 +12,7 @@ import { join } from "node:path";
 import type { Duplex } from "node:stream";
 import { createDiagnostic, type Diagnostic } from "@mostra/protocol";
 import type { CredentialResource } from "@mostra/protocol/operator";
-import { appearanceCookie } from "@mostra/themes";
+import { appearanceCookie, localPath } from "@mostra/themes";
 import { type WebSocket, WebSocketServer } from "ws";
 import { type ServerPages, themePageCsp } from "../gateway/index.ts";
 import type { Log } from "../log.ts";
@@ -562,8 +562,8 @@ export function createApi(options: ApiOptions): Api {
         const body = request.headers.origin === apiOrigin ? await form(request) : undefined;
         const chosen = body?.get("appearance");
         const next = body?.get("next") ?? "/";
-        const back =
-          next.startsWith("/") && !next.startsWith("//") && !next.startsWith("/\\") ? next : "/";
+        // A path of this origin only: one a browser reads as another origin goes nowhere (MT-06).
+        const back = localPath(next) ?? "/";
         response.writeHead(303, {
           ...BASE_HEADERS,
           location: back,

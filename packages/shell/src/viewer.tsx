@@ -66,6 +66,7 @@ import { frameEntries } from "./entries.ts";
 import {
   hosted,
   interstitialPassed,
+  keepSignOut,
   markSignedOut,
   passInterstitial,
   routeBrowserKey,
@@ -937,9 +938,23 @@ export function ViewerPage(props: {
     const routeId = target.routeId;
     if (routeId === undefined) return;
     await flushFrame("switch");
-    await signOutViewer(target.apiBase, session.csrf, await routeBrowserKey(routeId));
+    const answer = await signOutViewer(
+      target.apiBase,
+      session.csrf,
+      await routeBrowserKey(routeId),
+    );
     markSignedOut(routeId);
     mark("", { shellSignedOut: "yes" });
+    // On to the API origin's own sign-out, so this browser's sign-in there ends too and the next
+    // person signs in through their provider, then back to this page (MT-06's review).
+    const away =
+      answer.signOut !== undefined
+        ? keepSignOut(routeId, answer.signOut, location.pathname)
+        : undefined;
+    if (away !== undefined) {
+      location.assign(away);
+      return;
+    }
     // Every ticket asked for now is the anonymous viewer's; one the frame's greeting dropped is
     // asked for again, so the frame never stays the account's.
     for (let attempt = 0; attempt < 3; attempt += 1) {

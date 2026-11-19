@@ -258,10 +258,11 @@ const Config: z.ZodType<RemoteServerConfig> & { readonly shape: Record<string, u
       .strictObject({
         windowSeconds: z
           .int()
-          .min(1)
+          .min(60)
           .max(3_600)
-          .refine((seconds) => 3_600 % seconds === 0, {
-            message: "must divide an hour evenly (60, 120, 300, 600, 900, 1200, 1800 or 3600)",
+          .refine((seconds) => seconds % 60 === 0 && 3_600 % seconds === 0, {
+            message:
+              "must be whole minutes that divide an hour (60, 120, 180, 240, 300, 360, 600, 720, 900, 1200, 1800 or 3600)",
           })
           .optional(),
       })

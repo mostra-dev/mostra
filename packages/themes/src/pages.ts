@@ -182,7 +182,7 @@ export function appearanceCookie(appearance: Appearance, secure: boolean): strin
  */
 export function safeHref(href: string | undefined): string | undefined {
   if (href === undefined || href === "") return undefined;
-  if (href.startsWith("/") && !href.startsWith("//") && !href.startsWith("/\\")) return href;
+  if (href.startsWith("/")) return localPath(href);
   try {
     const url = new URL(href);
     if (url.protocol === "https:") return url.href;
@@ -193,6 +193,21 @@ export function safeHref(href: string | undefined): string | undefined {
     return undefined;
   }
   return undefined;
+}
+
+/**
+ * A path of the page's own origin, as written, or `undefined` when a browser could read it as
+ * another origin: it starts with one `/` and holds no backslash (read as `/`) and no control
+ * character, which the URL parser drops anywhere (a tab between two slashes makes `//host`).
+ */
+export function localPath(path: string | null | undefined): string | undefined {
+  if (path === undefined || path === null) return undefined;
+  if (!path.startsWith("/") || path.startsWith("//")) return undefined;
+  for (const character of path) {
+    const code = character.charCodeAt(0);
+    if (character === "\\" || code < 0x20 || code === 0x7f) return undefined;
+  }
+  return path;
 }
 
 /** A file of this package (a face, a mark), wherever the package is installed. */

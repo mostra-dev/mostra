@@ -252,10 +252,16 @@ export function createMeter(options: MeterOptions): Meter {
     add,
     viewerKey: (subject) =>
       createHmac("sha256", monthKey()).update(`mostra viewer ${subject}`).digest("base64url"),
-    flush: () => close(now()),
+    // A window whose boundary passed is closed at its boundary first, and windows missed whole
+    // say nothing, so the last batch never straddles a boundary nor counts a sleep (MT-06's review).
+    flush: () => {
+      catchUp();
+      close(now());
+    },
     stop() {
       stopped = true;
       if (timer) clearTimeout(timer);
+      catchUp();
       close(now());
     },
   };

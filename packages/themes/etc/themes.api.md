@@ -142,6 +142,9 @@ export function linkButton(href: string, label: HtmlValue, options?: {
 }): SafeHtml;
 
 // @public
+export function localPath(path: string | null | undefined): string | undefined;
+
+// @public
 export function luminance(hex: string): number;
 
 // @public

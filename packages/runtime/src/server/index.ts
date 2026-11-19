@@ -221,6 +221,7 @@ export async function startServer(options: ServerOptions): Promise<RemoteServer>
       start: (signin, challenge, prompt) =>
         (authorizer as Authorize).startViewerSignin(signin, challenge, prompt),
       finish: (input) => (authorizer as Authorize).finishViewerSignin(input),
+      signOutUrl: (shellOrigin) => (authorizer as Authorize).viewerSignOutUrl(shellOrigin),
     },
     signInOffered: () =>
       (config.identityProviders?.length ?? 0) > 0 || (operator?.has.identity ?? false),
@@ -669,7 +670,11 @@ export async function startServer(options: ServerOptions): Promise<RemoteServer>
       }
       // Where a page's sign-in returns (INTERFACES §18.4): the shell's own page, which finishes it
       // for the route that started it. It reads only the fragment and query it was sent.
-      if (path === "/_mostra/signin" && (request.method === "GET" || request.method === "HEAD")) {
+      // Where a page's sign-out comes back to once the API origin's own is done (MT-06): the same.
+      if (
+        (path === "/_mostra/signin" || path === "/_mostra/signed-out") &&
+        (request.method === "GET" || request.method === "HEAD")
+      ) {
         if (shellDir === undefined) {
           notServed(response);
           return;
