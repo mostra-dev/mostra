@@ -34,9 +34,16 @@
       "project": ["*.mjs"]
     },
     "tests/*": {
-      "entry": ["*.config.ts", "**/*.spec.ts", "global-setup.ts"],
+      "entry": ["*.config.ts", "**/*.spec.ts", "global-setup.ts", "support/mcp-apps-host-page.ts"],
       "project": ["**/*.ts"],
-      "ignoreDependencies": ["@mostra/cli", "@mostra/runtime", "@mostra/server", "@mostra/shell"],
+      "ignoreDependencies": [
+        "@mostra/cli",
+        "@mostra/runtime",
+        "@mostra/server",
+        "@mostra/shell",
+        "@modelcontextprotocol/core",
+        "zod"
+      ],
       "ignore": ["fixtures/**"]
     },
     "packages/runtime": {
@@ -48,6 +55,7 @@
         "pnpm",
         "@mostra/contract-cli-command",
         "@mostra/contract-exporter",
+        "@mostra/plugin-mcp-app",
         "@mostra/shell",
         "@mostra/verify",
         "@mostra/warm",
@@ -74,6 +82,7 @@
       "project": ["scripts/**/*.ts"],
       "ignoreDependencies": [
         "@mostra/cli",
+        "@mostra/plugin-mcp-app",
         "@mostra/runtime",
         "@mostra/shell",
         "@mostra/verify",

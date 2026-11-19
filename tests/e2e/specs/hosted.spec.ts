@@ -16,7 +16,14 @@ import { mkdirSync, writeFileSync } from "node:fs";
 import { createServer } from "node:net";
 import { join } from "node:path";
 import { type Browser, expect, type Page, test } from "@playwright/test";
-import { openInShell, publishOwn, saved, settled, viewerName } from "../support/client.ts";
+import {
+  gotoShell,
+  openInShell,
+  publishOwn,
+  saved,
+  settled,
+  viewerName,
+} from "../support/client.ts";
 import { BIN, Client, removeTree, startDaemon } from "../support/mostra.ts";
 
 function freePort(): Promise<number> {
@@ -84,7 +91,7 @@ test.describe("a hosted link (RM-02, §18.4)", () => {
       verificationUri: string;
       userCode: string;
     }>("remote/login", { server: `http://api.localhost:${port}` });
-    await page.goto(login.verificationUriComplete ?? login.verificationUri);
+    await gotoShell(page, login.verificationUriComplete ?? login.verificationUri);
     await expect(page.getByText("Approving links a machine to your account")).toBeVisible();
     await page.locator("input[name=user_code]").fill(login.userCode);
     await page.locator("input[name=name]").fill("Ada");

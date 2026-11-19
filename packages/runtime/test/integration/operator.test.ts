@@ -553,6 +553,38 @@ describe("operator ports (HO-09)", () => {
     expect((await mcpCall(token)).status).toBe(200);
   }, 120_000);
 
+  it("counts a page opened inline in a chat host as a view, as a browser's is (review finding R02-16)", async () => {
+    await operator.set({ metering: "ok" });
+    const { receipt, answer: shared } = await share();
+    const url = ok<{ url: string }>(shared).url;
+    const token = await mcpAccessToken(port, "Ada");
+    // The inline page's first call: its view, opened through the app channel, as the account.
+    const opened = await send(port, `api.localhost:${port}`, "/mcp", {
+      method: "POST",
+      headers: {
+        authorization: `Bearer ${token}`,
+        "content-type": "application/json",
+        accept: "application/json, text/event-stream",
+      },
+      body: JSON.stringify({
+        jsonrpc: "2.0",
+        id: 2,
+        method: "tools/call",
+        params: { name: "app_open", arguments: { artifactId: receipt.artifactId, url } },
+      }),
+    });
+    expect(opened.status, opened.body).toBe(200);
+    expect(opened.body).toContain('"session"');
+    await eventually(
+      async () =>
+        (await operator.calls("metering"))
+          .flatMap((call) => call.payload["counters"] as { name: string; artifactId?: string }[])
+          .some((counter) => counter.name === "views" && counter.artifactId === receipt.artifactId),
+      30_000,
+      "the inline view counted",
+    );
+  }, 120_000);
+
   it("suspends an account on the operator's word: its MCP calls, refreshes and binding (Fable review, 6)", async () => {
     const token = await mcpAccessToken(port, "Ada");
     expect((await mcpCall(token)).status).toBe(200);
@@ -863,7 +895,9 @@ describe("operator ports (HO-09)", () => {
           fetch: loopbackFetch,
         }),
       );
-      expect((await client.listTools()).tools.length).toBe(13);
+      // The model's thirteen, beside a page's own app-only tools (D175 item 5).
+      const listed = (await client.listTools()).tools;
+      expect(listed.filter((tool) => !tool.name.startsWith("app_")).length).toBe(13);
       await client.close();
       expect(
         (await operator.calls("accounts.authenticate")).map((call) => call.payload["resource"]),

@@ -47,6 +47,7 @@ import type { Environment, Log } from "../log.ts";
 import { type Api, createApi } from "./api.ts";
 import { type Authorization, createAuthorization } from "./auth.ts";
 import { type Authorize, createAuthorize } from "./authorize.ts";
+import { chatHostPolicies, createRender } from "./chat-hosts.ts";
 import { clientAddresses, RateLimiter } from "./clients.ts";
 import type { RemoteServerConfig } from "./config.ts";
 import { type DataDirectory, type HomeAssembler, openDataDirectory } from "./data.ts";
@@ -438,6 +439,15 @@ export async function startServer(options: ServerOptions): Promise<RemoteServer>
     meter,
     home: async (id) => (await data.home(id)).assembled,
     ensureHome: (accountId) => (auth as Authorization).ensureHome(accountId),
+    // D160: the operator's answer for the chat host, else the configuration's, else an app.
+    render: createRender({
+      client: async (clientId) => {
+        const client = await oauthClients.find(clientId);
+        return "id" in client ? client : undefined;
+      },
+      ask: (client) => operator.chatHost(client),
+      configured: chatHostPolicies(config.chatHosts, log),
+    }),
   });
   api = createApi({
     server: apiPages,

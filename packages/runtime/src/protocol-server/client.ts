@@ -108,10 +108,18 @@ export async function attachInProcess(
   client: ClientInfo,
   attributes: Readonly<Record<string, unknown>> = {},
   timeoutMs = 5000,
+  /** Notifications this client accepts (`mostra/initialize`), and what hears them. */
+  listen?: {
+    readonly notifications: readonly string[];
+    readonly onNotification: (method: string, params: unknown) => void;
+  },
 ): Promise<{ client: SocketClient; result: MostraInitializeResult }> {
   const toServer = new PassThrough();
   const toClient = new PassThrough();
-  const peer = new RpcPeer({ send: (message) => void writeLine(toServer, message) });
+  const peer = new RpcPeer({
+    send: (message) => void writeLine(toServer, message),
+    ...(listen ? { onNotification: listen.onNotification } : {}),
+  });
   let markClosed: () => void = () => {};
   const closed = new Promise<void>((done) => {
     markClosed = done;
@@ -137,7 +145,12 @@ export async function attachInProcess(
   try {
     const result = await peer.call(
       mostraInitializeMethod,
-      { client, revisions: [...HOST_PROTOCOL_REVISIONS], capabilities: {}, ports: [] },
+      {
+        client,
+        revisions: [...HOST_PROTOCOL_REVISIONS],
+        capabilities: listen ? { notifications: [...listen.notifications] } : {},
+        ports: [],
+      },
       { timeoutMs },
     );
     return { client: connection, result };

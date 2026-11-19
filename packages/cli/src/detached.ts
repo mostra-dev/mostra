@@ -6,7 +6,7 @@
  * absolute first, so it still names what it named for the command (Opus review of WP-W2,
  * finding 3).
  */
-import { isAbsolute, parse, resolve } from "node:path";
+import { delimiter, isAbsolute, parse, resolve } from "node:path";
 
 /**
  * The variables whose values are paths: Mostra's own, as the runtime, the SDK and the CLI read
@@ -36,6 +36,12 @@ export const PATH_VARIABLES: readonly string[] = [
   "MOSTRA_MCP_WORKSPACE",
 ];
 
+/**
+ * The variables whose values are lists of paths, separated by the platform's path delimiter
+ * (`:`, or `;` on Windows): each entry is made absolute on its own.
+ */
+export const PATH_LIST_VARIABLES: readonly string[] = ["MOSTRA_BUNDLED_PLUGINS"];
+
 /** `env` with every relative path variable resolved against `cwd`. */
 export function detachedEnvironment(
   env: Readonly<Record<string, string | undefined>>,
@@ -47,6 +53,14 @@ export function detachedEnvironment(
     if (value !== undefined && value !== "" && !isAbsolute(value)) {
       result[name] = resolve(cwd, value);
     }
+  }
+  for (const name of PATH_LIST_VARIABLES) {
+    const value = result[name];
+    if (value === undefined || value === "") continue;
+    result[name] = value
+      .split(delimiter)
+      .map((entry) => (entry === "" || isAbsolute(entry) ? entry : resolve(cwd, entry)))
+      .join(delimiter);
   }
   return result;
 }

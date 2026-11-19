@@ -12,6 +12,7 @@ import { brokenLinks } from "../docs/links.ts";
 import { runSync } from "../lib/repo.ts";
 import { listPackages } from "../lib/workspace.ts";
 import {
+  e2eLoadProblems,
   privilegedImportProblems,
   releaseGroupProblems,
   workflowProblems,
@@ -311,6 +312,22 @@ describe("commit messages", () => {
     expect(checkMessage(commit("Merge branch 'main' into wp/02-x"))).toEqual([
       "missing the DCO sign-off: commit with `git commit -s` (Signed-off-by: Name <email>)",
     ]);
+  });
+});
+
+describe("browser specs' page loads (#132)", () => {
+  it("refuses a bare page.goto of a page, and lets gotoShell and about:blank through", () => {
+    const spec = [
+      "await gotoShell(page, link.url);",
+      'await page.goto("about:blank");',
+      "await page.goto(served.url);",
+      '  await page.goto(`${host}/a`, { waitUntil: "load" });',
+    ].join("\n");
+    const problems = e2eLoadProblems("tests/e2e/specs/x.spec.ts", spec);
+    expect(problems).toHaveLength(2);
+    expect(problems[0]).toContain("tests/e2e/specs/x.spec.ts:3:");
+    expect(problems[1]).toContain("tests/e2e/specs/x.spec.ts:4:");
+    expect(problems[0]).toContain("gotoShell");
   });
 });
 

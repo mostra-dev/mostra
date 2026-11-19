@@ -16,6 +16,7 @@ export {
   themeStylesheet,
   variableOf,
 } from "./css.ts";
+export { HOST_TOKENS, hostTokenValues } from "./host.ts";
 export { escapeHtml, type HtmlValue, html, isSafeHtml, type SafeHtml, text } from "./html.ts";
 export { type Mail, type MailContent, type MailIdentity, renderMail } from "./mail.ts";
 export {

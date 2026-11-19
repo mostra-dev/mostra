@@ -7,6 +7,7 @@
 - Files and directories
 - Waiting and results
 - Links for people
+- Shown inside the chat
 - Through a Mostra server in a chat app
 - Long-lived pages
 - Adding the server to a client
@@ -21,7 +22,7 @@ Use Mostra's tools when they're in your tool list (`artifact_create`, `artifact_
 |---|---|---|
 | Create | `mostra new <dir>` | `artifact_create` with a `title` (and a `dir`, or one is made for you) |
 | Write | your own file tools | `artifact_write` (whole files), `artifact_patch` (exact replacements or a unified diff) |
-| Verify | `mostra verify <dir>` | `artifact_verify`; `screenshots: "always"` returns both screenshots as images |
+| Verify | `mostra verify <dir>` | `artifact_verify`; `screenshots: "always"` returns both screenshots as images; `status: "running"` means call it again with the same arguments |
 | Publish | `mostra publish <dir>` | `artifact_publish`; its `url` is the default link |
 | Hand out the link | `mostra open <dir> --browser` | `artifact_open` |
 | Wait | `mostra wait <dir> --until submitted` | `artifact_wait` with `until: "submitted"` |
@@ -41,6 +42,8 @@ When you also have your own file tools on the same computer, use whichever you l
 
 ## Waiting and results
 
+`artifact_verify` waits about 45 seconds for its verdict. When verify takes longer it returns `status: "running"` with the stage it reached: call it again with the same arguments, which waits for the same run rather than starting another.
+
 `artifact_wait` waits at most 50 seconds per call. When it returns `still_waiting`, nothing is lost: call it again with `after` set to the `cursor` it returned, or do other work and check later. Under `once`, a wait for `submitted` returns at once when the person already submitted. `artifact_results` returns the latest submission; `MOSTRA_SUBMIT_NOT_FOUND` means nobody has submitted yet. A page with the `none` policy never has one: read its shared state with `state_get`, and wait for its signals with `until: "signal:<name>"`, whose event carries the payload the page sent (`event.payload.payload`).
 
 ## Links for people
@@ -48,6 +51,15 @@ When you also have your own file tools on the same computer, use whichever you l
 `artifact_open` returns the artifact's default link. A link made without `viewer` is shared by everyone who holds it: they edit one draft and have one `once` submission between them. For several people, call `artifact_open` once per person with `viewer: { ref, name }` and give each their own link (with `{ policy: "once", scope: "per-viewer" }` each submits once). `ttl`, `scopes` and `version` make a new link that expires, allows less, or opens one version, as in [sharing.md](sharing.md). `open: true` also opens the link in a browser on this computer, for the person sitting at it.
 
 A local server's links open on this computer only: to reach someone elsewhere, share the page as [sharing.md](sharing.md) shows. Through a Mostra server (a chat app's connector), links open anywhere: `artifact_publish` and `artifact_open` return the hosted link, `https://` and a server's address ending in `/a/rte_…`.
+
+## Shown inside the chat
+
+Where the chat app shows apps (Claude, ChatGPT, VS Code and others), `artifact_open` also shows the page right in the conversation: the person answers there, and the answers are saved and come back to you exactly as from the full page, since both use the same link and draft. Below the page Mostra adds a bar with the save state, Submit and "Open the full page". A chat app's frame can't do everything a browser tab can: comments on the page, who else is here, frames of other sites and anything loaded from an origin the chat app blocks show on the full page instead, and the page says so. When a page needs those, give the person the link from `artifact_open` too.
+
+Three things to know when a page will be shown inline:
+- Inside the chat, a page loads nothing from other sites: put its images and data in the artifact (`public/`, or imported files), which travel with it.
+- A plain server call stops after 45 seconds there. Work that takes longer belongs in an action run (`useAction`), which keeps going and reports its progress.
+- A link made for one person (`artifact_open` with `viewer`) isn't shown inline, since it would act as that person: hand it to them.
 
 ## Through a Mostra server in a chat app
 
@@ -59,10 +71,10 @@ A chat app's connector reaches the person's own computer through their Mostra se
 
 ## Adding the server to a client
 
-A client starts the server as `mostra mcp` over stdio, or `npx -y @mostra/cli@0.16.0 mcp` where `mostra` isn't installed. Its configuration names that command, for example:
+A client starts the server as `mostra mcp` over stdio, or `npx -y @mostra/cli@0.17.0 mcp` where `mostra` isn't installed. Its configuration names that command, for example:
 
 ```json
-{ "mcpServers": { "mostra": { "command": "npx", "args": ["-y", "@mostra/cli@0.16.0", "mcp"] } } }
+{ "mcpServers": { "mostra": { "command": "npx", "args": ["-y", "@mostra/cli@0.17.0", "mcp"] } } }
 ```
 
 For a client that speaks only HTTP, `mostra mcp --http` serves Streamable HTTP on `127.0.0.1` and prints its URL and a token on stderr; every request sends `Authorization: Bearer <token>` (set `MOSTRA_MCP_TOKEN` to choose it). `--workspace <dir>` chooses where new artifacts go.

@@ -94,6 +94,14 @@ export class TeamClient {
     return this.#transport?.respondents !== undefined && this.#viewId !== undefined;
   }
 
+  /**
+   * Whether presence works here: a transport that carries it, for a view. An MCP Apps host relays
+   * requests, not ten updates a second, so a page inline has none (D175 item 7).
+   */
+  get presenceAvailable(): boolean {
+    return this.#transport?.presence !== undefined && this.#viewId !== undefined;
+  }
+
   subscribe = (listener: () => void): (() => void) => {
     this.#listeners.add(listener);
     return () => this.#listeners.delete(listener);

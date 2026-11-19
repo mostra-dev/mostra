@@ -97,7 +97,14 @@ describe("plugins through mostra (D30)", () => {
     expect(readFileSync(join(out, "words.txt"), "utf8")).toContain('{"size":"letter"}');
 
     const listed = await json(["plugin", "list", "--global"]);
-    expect(listed.value.result).toMatchObject({ plugins: [{ package: "mostra-fixture-words" }] });
+    // The home's own, then the plugin every home has (D175 item 3).
+    expect(listed.value.result).toMatchObject({
+      plugins: [
+        { package: "mostra-fixture-words", scope: "home" },
+        { package: "@mostra/plugin-mcp-app", scope: "bundled" },
+      ],
+    });
+    expect((listed.value.result as { plugins: unknown[] }).plugins).toHaveLength(2);
     const removed = await json(["plugin", "remove", "mostra-fixture-words", "--global"]);
     expect(removed.ran.code).toBe(0);
     expect((await json(["words", "count", "a"])).value.error?.code).toBe(

@@ -15,12 +15,14 @@ import { readFile } from "node:fs/promises";
 import { isAbsolute, join, relative, resolve } from "node:path";
 import { defaultWorkspaceRoot, localWorkspace } from "@mostra/mcp";
 import {
+  ARTIFACT_PROGRESS,
   artifactCreateMethod,
   artifactGetMethod,
   artifactPublishMethod,
   artifactVerifyMethod,
   createDiagnostic,
   portRelayAuthorMethod,
+  type RelayAuthorProgressParams,
   RpcError,
   shareStartMethod,
 } from "@mostra/protocol";
@@ -37,6 +39,11 @@ export interface OwnerAuthorOptions {
   readonly protocol: () => ProtocolServer | undefined;
   /** The servers an artifact is hosted on now. */
   readonly hostedOn: (artifactId: string) => readonly string[];
+  /**
+   * Sends a relayed verify's stage back to the server that asked (`relay/author.progress`,
+   * #157), best effort.
+   */
+  readonly progress?: (server: string, params: RelayAuthorProgressParams) => void;
 }
 
 /** Answers `port/relay.author` from the server `server`. */
@@ -94,6 +101,7 @@ export function createOwnerAuthor(options: OwnerAuthorOptions): OwnerAuthor {
       Awaited<ReturnType<typeof attachInProcess>>["client"]["peer"]["call"]
     >[0],
     params: P,
+    listen?: Parameters<typeof attachInProcess>[4],
   ): Promise<R> => {
     const protocol = options.protocol();
     if (protocol === undefined) {
@@ -103,10 +111,13 @@ export function createOwnerAuthor(options: OwnerAuthorOptions): OwnerAuthor {
         }),
       );
     }
-    const { client } = await attachInProcess(protocol, {
-      name: "mostra-remote-author",
-      version: options.runtimeVersion,
-    });
+    const { client } = await attachInProcess(
+      protocol,
+      { name: "mostra-remote-author", version: options.runtimeVersion },
+      {},
+      5000,
+      listen,
+    );
     try {
       return (await client.peer.call(method, params as never)) as R;
     } finally {
@@ -128,6 +139,11 @@ export function createOwnerAuthor(options: OwnerAuthorOptions): OwnerAuthor {
       case "workspace/read": {
         const content = await workspace.read(dirOf(given["dir"]), String(given["path"] ?? ""));
         return content === undefined ? {} : { content: Buffer.from(content).toString("base64") };
+      }
+      case "workspace/fingerprint": {
+        // The owner's files are the source a relayed verify runs on (#157, Opus 6, Fable 4).
+        const fingerprint = await workspace.fingerprint?.(dirOf(given["dir"]));
+        return fingerprint === undefined ? {} : { fingerprint };
       }
       case "workspace/apply": {
         const write = Array.isArray(given["write"]) ? given["write"] : [];
@@ -186,7 +202,36 @@ export function createOwnerAuthor(options: OwnerAuthorOptions): OwnerAuthor {
       }
       case "artifact/verify": {
         const source = given["source"] as { path?: unknown } | undefined;
-        return local(artifactVerifyMethod, { ...given, source: { path: dirOf(source?.path) } });
+        // Its stages go back as they start, so a chat host's agent hears where verify is (#157).
+        const token = given["progressToken"];
+        const listen =
+          typeof token === "string" && options.progress !== undefined
+            ? {
+                notifications: [ARTIFACT_PROGRESS],
+                onNotification: (method: string, raw: unknown) => {
+                  if (method !== ARTIFACT_PROGRESS) return;
+                  const progress = raw as {
+                    progressToken?: unknown;
+                    stage?: unknown;
+                    fraction?: unknown;
+                  };
+                  if (progress.progressToken !== token || typeof progress.stage !== "string")
+                    return;
+                  options.progress?.(server, {
+                    progressToken: token,
+                    stage: progress.stage,
+                    ...(typeof progress.fraction === "number"
+                      ? { fraction: progress.fraction }
+                      : {}),
+                  });
+                },
+              }
+            : undefined;
+        return local(
+          artifactVerifyMethod,
+          { ...given, source: { path: dirOf(source?.path) } },
+          listen,
+        );
       }
       case "artifact/publish": {
         const source = given["source"] as { path?: unknown } | undefined;

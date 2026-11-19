@@ -556,6 +556,16 @@ describe("links work only at the address they were made for (D97 item 10)", () =
       expect(`${stolen.status} ${stolen.json<{ code: string }>().code}`).toBe(
         "410 MOSTRA_HYGIENE_TOKEN_REVOKED",
       );
+      // Nor does the app channel, which has no address of its own: a link opens inline only
+      // while the home serves the address it was made for (D175 item 4, review finding R01-4).
+      expect(
+        refused(
+          await gateway.client.call("app/open", {
+            artifactId: receipt.artifactId,
+            token: old.secret,
+          }),
+        ),
+      ).toBe("MOSTRA_HYGIENE_TOKEN_REVOKED");
       // The receipt of the next publish carries a default link at the new address.
       const again = ok<Receipt>(
         await gateway.client.call(
@@ -566,6 +576,13 @@ describe("links work only at the address they were made for (D97 item 10)", () =
       );
       expect(again.url.startsWith(`${status.gateway.shell}/`)).toBe(true);
       expect((await openLink(new Browser(), again.url)).page.status).toBe(200);
+      const inline = ok<{ session: string }>(
+        await gateway.client.call("app/open", {
+          artifactId: receipt.artifactId,
+          token: parseLink(again.url).secret,
+        }),
+      );
+      expect(inline.session).toHaveLength(26);
     } finally {
       squatter.close();
       await gateway.stop();
