@@ -356,6 +356,12 @@ describe("the retry twins in ci.yml (#210)", () => {
     );
     expect([...(starved.needs as string[])].sort()).toEqual(gates.sort());
     expect(starved.if).toContain("!cancelled()");
+    // Job-level permissions replace the workflow's, so its checkout needs its own.
+    expect((starved as { permissions?: Record<string, string> }).permissions).toEqual({
+      contents: "read",
+      actions: "read",
+      checks: "read",
+    });
     for (const result of ["abandoned", "cancelled", "failure"])
       expect(starved.if).toContain(`contains(needs.*.result, '${result}')`);
   });

@@ -655,6 +655,7 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 20
     permissions:
+      contents: read # its checkout
       actions: read # this run's jobs
       checks: read # their annotations
     outputs:
