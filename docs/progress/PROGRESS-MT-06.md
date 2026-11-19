@@ -1,6 +1,6 @@
 # MT-06 progress: signing out
 
-**Status:** Accepted by Mirza on 2026-11-19 (M84: "You absolutely have my acceptance!") with D177 and the unit's words (D149), after the Claude Opus review and its fixes and a green full CI run; to merge through the merge queue and release as Mostra 0.18.0. A maintenance unit beside WP-17 and WP-18 ([specification](../design/work-packages/MT-06.md)); it owns no requirement of its own (D152), and the checks it adds extend HY-08's (sign-in and sessions) and MC-04's (the authorization server) rows. Its scope is the GitHub milestone `MT-06`: #204 (signing out) and #203 (the metering window).
+**Status:** Done. Accepted by Mirza on 2026-11-19 (M84: "You absolutely have my acceptance!") with D177 and the unit's words (D149), after the Claude Opus review and its fixes and a green full CI run; merged to `main` through the merge queue as `35fbf57` (#208) and released as Mostra 0.18.0 (#216). A maintenance unit beside WP-17 and WP-18 ([specification](../design/work-packages/MT-06.md)); it owns no requirement of its own (D152), and the checks it adds extend HY-08's (sign-in and sessions) and MC-04's (the authorization server) rows. Its scope was the GitHub milestone `MT-06`: #204 (signing out) and #203 (the metering window), both closed.
 
 ## Baseline
 
@@ -107,3 +107,28 @@ The review's "found sound" list (the `POST /signout` Origin gate, exact return a
 - **`prompt=consent` is implemented** beside `login` (D177 item 3): refusing it would refuse every MCP client built on the MCP SDKs.
 - **The sweep also removes expired device codes and access and refresh tokens** (D177 item 5).
 - **The operator's one-click sign-out is a form posted straight to the server**, not passed on by a 307 (D177 item 2, VERIFIED_FACTS).
+
+## Commits and publication
+
+- **Range:** `41d0c27..35fbf57` on `main`: the 84 signed-off commits of `mt/06-sign-out` (last `ab5a410`, with the merge of `main` after WP-17, `b725f3a`) and the merge commit `35fbf57` ([#208](https://github.com/mostra-dev/mostra/pull/208)), then the version pull request [#216](https://github.com/mostra-dev/mostra/pull/216) (`7f9ef2e`, `chore(release): Mostra 0.18.0`); then this closeout.
+- **CI:** #208's last pull-request run 44587363699 green after one re-run of `unit (windows-x64)`, whose Vitest fork exited with code 1 in `imports.test.ts` with every test passing (recorded on #95); its merge-queue run 44600387602 green. #216's merge-queue run 44618258383 green.
+- **Publication:** Mostra 0.18.0 by the `Release` workflow (run 44625238103, on `7f9ef2e`, every job green): the immutable GitHub release `v0.18.0` with its 13 assets; every package of the release group on npm at 0.18.0 with SLSA provenance (`@mostra/runtime`, `protocol`, `cli`, `shell`, `themes`, `sdk` and the rest, checked at the registry), the six contracts unchanged at 0.1.0; the `mostra-host` crate 0.18.0 on crates.io; the plugin's `v0.18.0` in `mostra-dev/mostra-plugin` (`25381fc`); and `ghcr.io/mostra-dev/mostra-server:0.18.0` (index `sha256:8b6ebf07626793cf56413240836ff826d3788b44f282b1b8c5820ec734b02c0d`). From outside: `npm pack @mostra/runtime@0.18.0`'s `bin.js` carries `end_session_endpoint`, `prompt_values_supported` and the hosted route `session/signout`. The docs site doesn't exist yet (WP-26), so nothing deploys.
+- **The requests behind the unit:** each one's tracking issue outside this repository carries a comment naming #208, #216 and what landed, and is marked ready for the operating layer, which takes it next (Next).
+- **Remaining dirty paths:** none in the repository. Outside the tracked tree: the git-ignored `temp/mt06/` (the candidate worktree `temp/mt06/candidate`, logs, edit scripts, the review's prompt and text, the surfaces' screens, the operating layer's edit scripts).
+
+## Issues at the closeout
+
+| Issue | State | What was done |
+|---|---|---|
+| #203, #204 | Closed | Landed in #208, released in 0.18.0, each with its checks and seeds (Evidence) |
+| #214 | Open, no milestone | Filed: `mcp-apps.spec.ts`'s "a link without the review scope gets no Choose" timed out once on Windows Firefox, a WP-17 case in code MT-06 doesn't change |
+| #139 | Open, no milestone | One more sighting in the candidate's local `pnpm check` (`anonymous-volume.test.ts`, cursors out of order) |
+| #95 | Open, no milestone | One more Windows sighting (a Vitest fork exiting with every test green) |
+| #196, #210 | Open, no milestone | Sightings in the full run (the Windows arm64 gateway case; macOS jobs never given a runner) |
+
+The `MT-06` milestone is empty and closed.
+
+## Next
+
+WP-18, Kit I: design system, tokens and forms, from `docs/design/work-packages/PROMPT.md` with `WORK PACKAGE: WP-18`. The operating layer's side of this unit follows the release at once: its pins rise to 0.18.0, its account page's "Sign out" signs a person out of the server's sign-in too, and its cell sets `metering.windowSeconds`.
+
