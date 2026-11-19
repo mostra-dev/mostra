@@ -11,6 +11,15 @@
  * - The server's own consent page (`/oauth/consent`), for every client an account hasn't
  *   approved, never skipped because a provider skipped its own; for a page's sign-in it names
  *   the page's sender instead, once per account and home.
+ * - `prompt` (OpenID Connect Core §3.1.2.1, MT-06): `login` signs the person in through their
+ *   provider again whatever the browser's session, and `consent` asks again for consent given
+ *   before; any other value is refused (`invalid_request`).
+ * - Signing out (`/signout`, MT-06): `POST` ends the browser's session (its row and its cookie),
+ *   from this origin's own pages (their `Origin` and a CSRF token derived from the session) or from
+ *   an operator's own app (`operatorClients`, its pages' exact `Origin`); `GET` is a page with one
+ *   button and ends nothing. A client's sign-out returns only to an address it registered
+ *   (`post_logout_redirect_uris`, OpenID Connect RP-Initiated Logout 1.0). Every page that shows
+ *   who is signed in carries "Signed in as Ada · Sign out".
  *
  * Every in-progress record (an authorization request, a provider sign-in, a first sign-in step)
  * is kept only as the SHA-256 of its handle, lives minutes, is used once, and is bound to the
@@ -23,7 +32,7 @@ import {
   type SignInIdentity,
   SignInIdentity as SignInIdentitySchema,
 } from "@mostra/protocol/operator";
-import { readAppearance } from "@mostra/themes";
+import { localPath, readAppearance } from "@mostra/themes";
 import { type ServerPages, themePageCsp } from "../gateway/index.ts";
 import type { Ledger } from "../ledger/index.ts";
 import type { Log } from "../log.ts";
@@ -31,12 +40,22 @@ import { type Authorization, canonicalResource, hashSecret } from "./auth.ts";
 import { verifierLabel } from "./config.ts";
 import { type Clients, type OAuthClient, redirectAllowed } from "./oauth-clients.ts";
 import type { Operator } from "./operator.ts";
-import { API_PAGE_WORDS, type ApiPages, type PageRequest } from "./pages.ts";
+import {
+  API_PAGE_WORDS,
+  type ApiPages,
+  type PageRequest,
+  SIGNOUT_PATH,
+  type SignedIn,
+} from "./pages.ts";
 
 /** How long an authorization request, a provider sign-in or a step waits. */
 const PENDING_MS = 15 * 60_000;
 /** How long a browser stays signed in to the API origin. */
 const SESSION_MS = 7 * 24 * 60 * 60_000;
+/** The `prompt` values an authorization request may carry (MT-06), advertised in the metadata. */
+export const PROMPT_VALUES: readonly string[] = ["login", "consent"];
+/** The longest `state` a sign-out may carry back to its client. */
+const MAX_STATE = 512;
 /** At most this many first sign-in steps per sign-in (D167). */
 const MAX_STEPS = 3;
 /**
@@ -77,6 +96,8 @@ export interface AuthorizeOptions {
   readonly server: ServerPages;
   readonly pages: ApiPages;
   readonly now?: () => number;
+  /** How long a browser's sign-in lasts (7 days); tests shorten it (`MOSTRA_TEST_SIGNIN_SESSION_MS`). */
+  readonly sessionMs?: number;
 }
 
 /**
@@ -110,7 +131,14 @@ export interface Authorize {
   startViewerSignin(
     signin: ViewerSignin,
     challenge: string,
+    prompt?: "consent",
   ): { readonly url: string; readonly state: string };
+  /**
+   * Where a hosted page's sign-out sends the person next (MT-06): the API origin's page with one
+   * button, as the domain's hosted shell's client, back to the shell's `/_mostra/signed-out`, so
+   * the browser's sign-in here ends too and the next person signs in through their provider.
+   */
+  viewerSignOutUrl(shellOrigin: string): string;
   /** Finishes a page's sign-in: the code, for the same route and session only. */
   finishViewerSignin(input: {
     readonly state: string;
@@ -122,15 +150,30 @@ export interface Authorize {
     | { readonly accountId: string; readonly name?: string; readonly provider?: string }
     | { readonly refused: string };
   /** The browser session's account of a request to the API origin, if signed in. */
-  sessionAccount(
-    request: IncomingMessage,
-  ): { readonly accountId: string; readonly hash: string } | undefined;
+  sessionAccount(request: IncomingMessage): BrowserSession | undefined;
   /** A CSRF token for a signed-in browser's form. */
   csrf(sessionHash: string, purpose: string): string;
+  /**
+   * What a page says of a signed-in browser, with its "Sign out" (MT-06): the account's name, the
+   * sign-out's CSRF token, and where the person continues once signed out (`next`, this origin).
+   */
+  signedIn(session: BrowserSession, next: string): SignedIn;
   /** The providers a sign-in may use now: configured ones, then the operator's. */
   providers(): Promise<readonly { readonly id: string; readonly label: string }[]>;
   /** Starts a sign-in whose end continues at a page of the API origin (the device page). */
-  signInPage(response: ServerResponse, next: string, message?: string): Promise<void>;
+  signInPage(
+    response: ServerResponse,
+    next: string,
+    message?: string,
+    signedIn?: SignedIn,
+  ): Promise<void>;
+}
+
+/** A browser's sign-in on the API origin: its account, its row's hash and when it began. */
+export interface BrowserSession {
+  readonly accountId: string;
+  readonly hash: string;
+  readonly createdAt: number;
 }
 
 const BASE = {
@@ -145,6 +188,7 @@ export function createAuthorize(options: AuthorizeOptions): Authorize {
   const { apiOrigin, directory, auth, clients, operator, log, pages } = options;
   const at = (response: ServerResponse): PageRequest => pageRequest(response);
   const now = options.now ?? (() => Date.now());
+  const sessionMs = options.sessionMs ?? SESSION_MS;
   const secure = apiOrigin.startsWith("https:");
   const sessionCookie = secure ? "__Host-mostra-signin" : "mostra-signin";
   const flowCookie = secure ? "__Host-mostra-flow" : "mostra-flow";
@@ -202,8 +246,9 @@ export function createAuthorize(options: AuthorizeOptions): Authorize {
   // ── in-progress records ─────────────────────────────────────────────────────────────────
 
   const keep = (kind: "provider" | "step" | "authorize", handle: string, data: unknown): void =>
+    // An expired record is swept by the server's periodic sweep (`sweep.ts`, MT-06), never here:
+    // every read checks its expiry itself.
     directory.write((db) => {
-      db.run("DELETE FROM signin WHERE expires_at < ?", iso(now()));
       db.run(
         "INSERT INTO signin (hash, kind, data_json, expires_at) VALUES (?, ?, ?, ?)",
         hashSecret(handle),
@@ -230,33 +275,53 @@ export function createAuthorize(options: AuthorizeOptions): Authorize {
 
   // ── browser sessions ────────────────────────────────────────────────────────────────────
 
-  const sessionAccount = (request: IncomingMessage) => {
+  /** The hash of the session cookie a request carries, when it carries one in its shape. */
+  const sessionHashOf = (request: IncomingMessage): string | undefined => {
     const value = cookies(request).get(sessionCookie);
-    if (value === undefined || !/^[A-Za-z0-9_-]{43}$/.test(value)) return undefined;
-    const hash = hashSecret(value);
+    return value !== undefined && /^[A-Za-z0-9_-]{43}$/.test(value) ? hashSecret(value) : undefined;
+  };
+  const sessionAccount = (request: IncomingMessage): BrowserSession | undefined => {
+    const hash = sessionHashOf(request);
+    if (hash === undefined) return undefined;
     const row = directory.read((db) =>
-      db.get<{ account_id: string; expires_at: string; status: string }>(
-        `SELECT s.account_id, s.expires_at, a.status FROM browser_session s
+      db.get<{ account_id: string; created_at: string; expires_at: string; status: string }>(
+        `SELECT s.account_id, s.created_at, s.expires_at, a.status FROM browser_session s
            JOIN account a ON a.id = s.account_id WHERE s.hash = ?`,
         hash,
       ),
     );
     if (!row || Date.parse(row.expires_at) <= now() || row.status !== "active") return undefined;
-    return { accountId: row.account_id, hash };
+    return { accountId: row.account_id, hash, createdAt: Date.parse(row.created_at) };
   };
-  const startSession = (accountId: string): string => {
+  /**
+   * A new sign-in's session; it replaces the one the browser had (its row goes in the same
+   * transaction), so a browser holds one sign-in at a time and a fresh one (`prompt=login`) leaves
+   * nothing of the last (MT-06).
+   */
+  const startSession = (accountId: string, replacing: string | undefined): string => {
     const value = token();
-    directory.write((db) =>
+    directory.write((db) => {
+      if (replacing !== undefined) db.run("DELETE FROM browser_session WHERE hash = ?", replacing);
       db.run(
         "INSERT INTO browser_session (hash, account_id, created_at, expires_at) VALUES (?, ?, ?, ?)",
         hashSecret(value),
         accountId,
         iso(now()),
-        iso(now() + SESSION_MS),
-      ),
-    );
-    return setCookie(sessionCookie, value, Math.floor(SESSION_MS / 1000));
+        iso(now() + sessionMs),
+      );
+    });
+    return setCookie(sessionCookie, value, Math.floor(sessionMs / 1000));
   };
+  /** The cookies that end a browser's sign-in here: its session's and a sign-in in progress's. */
+  const clearCookies = (): string[] => [
+    setCookie(sessionCookie, "", 0),
+    setCookie(flowCookie, "", 0),
+  ];
+  const signedIn = (session: BrowserSession, next: string): SignedIn => ({
+    name: auth.accountName(session.accountId).name ?? API_PAGE_WORDS.yourAccount,
+    csrf: csrf(session.hash, "signout"),
+    next,
+  });
   const csrf = (sessionHash: string, purpose: string): string =>
     createHash("sha256").update(`mostra csrf ${sessionHash} ${purpose}`).digest("base64url");
 
@@ -304,6 +369,7 @@ export function createAuthorize(options: AuthorizeOptions): Authorize {
     response: ServerResponse,
     next: string,
     message?: string,
+    signed?: SignedIn,
   ): Promise<void> => {
     const list = await providers();
     send(
@@ -314,16 +380,17 @@ export function createAuthorize(options: AuthorizeOptions): Authorize {
         list.map((provider) => ({ id: provider.id, label: provider.label })),
         next,
         message,
+        signed,
       ),
     );
   };
 
   /** Where a finished sign-in continues: an address of the API origin only. */
-  const safeNext = (next: string | null): string =>
-    next?.startsWith("/") && !next.startsWith("//") ? next : "/";
+  const safeNext = (next: string | null): string => localPath(next) ?? "/";
 
   /** A resolved identity: a session and on to `next`, a step, or why not. */
   const resolved = async (
+    request: IncomingMessage,
     response: ServerResponse,
     identity: SignInIdentity,
     verifiedBy: string | undefined,
@@ -364,7 +431,10 @@ export function createAuthorize(options: AuthorizeOptions): Authorize {
     }
     log.info("signin.done", { provider: identity.provider });
     redirect(response, `${apiOrigin}${safeNext(next)}`, {
-      "set-cookie": [startSession(account.accountId), setCookie(flowCookie, "", 0)],
+      "set-cookie": [
+        startSession(account.accountId, sessionHashOf(request)),
+        setCookie(flowCookie, "", 0),
+      ],
     });
   };
 
@@ -379,6 +449,13 @@ export function createAuthorize(options: AuthorizeOptions): Authorize {
     readonly scope: string;
     readonly viewerSignin?: string;
     readonly redirectGiven: boolean;
+    /**
+     * `prompt=login`: when the request was made; only a sign-in at or after it continues it (a
+     * session the browser had before never does, MT-06).
+     */
+    readonly login?: number;
+    /** `prompt=consent`: consent is asked again though it was given before (MT-06). */
+    readonly consent?: true;
   }
   interface ViewerSigninRecord extends ViewerSignin {
     readonly clientId: string;
@@ -402,11 +479,17 @@ export function createAuthorize(options: AuthorizeOptions): Authorize {
     request: IncomingMessage,
     response: ServerResponse,
     handle: string,
-    signed: { accountId: string; hash: string },
+    signed: BrowserSession,
   ): Promise<void> => {
     const pending = read<AuthorizeRecord>("authorize", handle);
     if (!pending) {
       problem(response, 400, "This sign-in expired or was already used; start again from the app.");
+      return;
+    }
+    const resume = `/oauth/authorize/continue?authorize=${handle}`;
+    // `prompt=login`: only a sign-in made for this request continues it (MT-06).
+    if (pending.login !== undefined && signed.createdAt < pending.login) {
+      await signInPage(response, resume, undefined, signedIn(signed, resume));
       return;
     }
     const client = await clients.find(pending.clientId);
@@ -420,9 +503,10 @@ export function createAuthorize(options: AuthorizeOptions): Authorize {
         : undefined;
     const homeId = viewer?.homeId;
     const needsConsent =
-      client.kind === "shell"
+      pending.consent === true ||
+      (client.kind === "shell"
         ? homeId !== undefined && !senderShown(signed.accountId, homeId)
-        : !auth.consented(signed.accountId, client.id);
+        : !auth.consented(signed.accountId, client.id));
     if (needsConsent && request.method !== "POST") {
       consentPage(response, pending, client, handle, signed, homeId);
       return;
@@ -493,10 +577,10 @@ export function createAuthorize(options: AuthorizeOptions): Authorize {
     pending: AuthorizeRecord,
     client: OAuthClient,
     handle: string,
-    signed: { accountId: string; hash: string },
+    signed: BrowserSession,
     homeId: string | undefined,
   ): void => {
-    const who = auth.accountName(signed.accountId).name ?? API_PAGE_WORDS.yourAccount;
+    const who = signedIn(signed, `/oauth/authorize/continue?authorize=${handle}`);
     const redirectHost = new URL(pending.redirectUri).host;
     const loopback = /^(127\.0\.0\.1|\[::1\]|localhost)(:\d+)?$/.test(redirectHost);
     const form = {
@@ -577,6 +661,16 @@ export function createAuthorize(options: AuthorizeOptions): Authorize {
     const scope = ["mostra", ...(scopes.includes("offline_access") ? ["offline_access"] : [])].join(
       " ",
     );
+    // `prompt` (OpenID Connect Core §3.1.2.1): `login` and `consent`, together or alone; a value
+    // this server doesn't implement is refused, never ignored (MT-06).
+    const prompt = query.get("prompt");
+    const prompts = prompt === null ? [] : prompt.split(" ");
+    if (
+      prompt !== null &&
+      (prompts.length === 0 || !prompts.every((value) => PROMPT_VALUES.includes(value)))
+    ) {
+      return fail("invalid_request", `prompt takes ${PROMPT_VALUES.join(" and ")} only.`);
+    }
     let resource = "";
     let viewerSignin: string | undefined;
     if (client.kind === "shell") {
@@ -603,8 +697,12 @@ export function createAuthorize(options: AuthorizeOptions): Authorize {
       scope,
       ...(viewerSignin !== undefined ? { viewerSignin } : {}),
       redirectGiven: query.get("redirect_uri") !== null,
+      ...(prompts.includes("login") ? { login: now() } : {}),
+      ...(prompts.includes("consent") ? { consent: true as const } : {}),
     } satisfies AuthorizeRecord);
     const signed = sessionAccount(request);
+    // With `prompt=login`, the session the browser has is shown with its "Sign out", never used:
+    // `proceed` continues only with a sign-in made for this request.
     if (signed) {
       await proceed(request, response, handle, signed);
       return;
@@ -612,14 +710,176 @@ export function createAuthorize(options: AuthorizeOptions): Authorize {
     await signInPage(response, `/oauth/authorize/continue?authorize=${handle}`);
   };
 
+  // ── signing out (MT-06) ─────────────────────────────────────────────────────────────────
+
+  /**
+   * What a sign-out names: its client, and where it sends the person back (an address the client
+   * registered, matched exactly, with the request's `state`), or why it can't.
+   */
+  const signOutTarget = async (
+    params: URLSearchParams,
+  ): Promise<
+    { readonly client?: OAuthClient; readonly back?: string } | { readonly refused: string }
+  > => {
+    const clientId = params.get("client_id");
+    const back = params.get("post_logout_redirect_uri");
+    const state = params.get("state");
+    if (clientId === null || clientId === "") {
+      return back === null ? {} : { refused: "This sign-out doesn't name its app (client_id)." };
+    }
+    const client = await clients.find(clientId);
+    if ("error" in client) return { refused: client.description };
+    if (back === null) return { client };
+    if (!client.postLogoutRedirectUris.includes(back)) {
+      return {
+        refused: "The address to go back to isn't one this app registered for signing out.",
+      };
+    }
+    if (state !== null && state.length > MAX_STATE) {
+      return { refused: "This sign-out's state is too long." };
+    }
+    const url = new URL(back);
+    if (state !== null) url.searchParams.set("state", state);
+    return { client, back: url.href };
+  };
+
+  /** A request whose parameters name one twice is ambiguous, and refused (RFC 6749 §3.1). */
+  const twice = (params: URLSearchParams): string | undefined =>
+    [...new Set(params.keys())].find((key) => params.getAll(key).length > 1);
+
+  /** A path of this origin to continue at, else none. */
+  const ownPath = (next: string | null): string | undefined => localPath(next);
+
+  /** `GET /signout`: a page with one button, or nothing to do; it ends nothing (D98). */
+  const signOutPage = async (
+    request: IncomingMessage,
+    response: ServerResponse,
+    params: URLSearchParams,
+  ): Promise<void> => {
+    const repeated = twice(params);
+    if (repeated !== undefined) {
+      problem(response, 400, `The request names ${repeated} twice.`);
+      return;
+    }
+    const target = await signOutTarget(params);
+    if ("refused" in target) {
+      problem(response, 400, target.refused);
+      return;
+    }
+    const next = ownPath(params.get("next"));
+    const signed = sessionAccount(request);
+    if (!signed) {
+      // Nothing to end: back to the app that asked, or the page that says so.
+      if (target.back !== undefined) redirect(response, target.back);
+      else send(response, 200, pages.signedOut(at(response), next));
+      return;
+    }
+    const fields: Record<string, string> = {};
+    for (const key of ["client_id", "post_logout_redirect_uri", "state"]) {
+      const value = params.get(key);
+      if (value !== null && target.client !== undefined) fields[key] = value;
+    }
+    if (next !== undefined) fields["next"] = next;
+    send(
+      response,
+      200,
+      pages.signOut(at(response), {
+        name: signedIn(signed, "/").name,
+        csrf: csrf(signed.hash, "signout"),
+        fields,
+        // A hosted page's own sign-out (its shell, first-party) goes back to that page: nothing to
+        // name. Any other client is named, with the host it sends the person back to.
+        ...(target.client !== undefined &&
+        target.back !== undefined &&
+        target.client.kind !== "shell"
+          ? {
+              client: {
+                name: target.client.name,
+                trust: target.client.trust,
+                back: new URL(target.back).host,
+              },
+            }
+          : {}),
+      }),
+      {},
+      target.back !== undefined ? [new URL(target.back).origin] : [],
+    );
+  };
+
+  /**
+   * `POST /signout`: ends this browser's sign-in here, its row and its cookies. From this origin's
+   * own pages with the session's CSRF token, or from an operator's own app (`operatorClients`) by
+   * its pages' exact `Origin`, whose form a browser of another site sends without the cookie: the
+   * cookie is then cleared and its row left to expire. From anywhere else it is refused, and ends
+   * nothing (a forced sign-out is a cross-site request forgery too).
+   */
+  const signOut = async (request: IncomingMessage, response: ServerResponse): Promise<void> => {
+    const form = await readForm(request);
+    const origin = request.headers.origin;
+    if (!form) {
+      problem(response, 400, "This form must be sent from its own page.");
+      return;
+    }
+    const repeated = twice(form);
+    if (repeated !== undefined) {
+      problem(response, 400, `The request names ${repeated} twice.`);
+      return;
+    }
+    const own = origin === apiOrigin;
+    if (!own) {
+      const clientId = form.get("client_id") ?? "";
+      // Only an app the operator vouches for is asked about at all: nothing is fetched for a
+      // sign-out from anywhere else.
+      const client = clients.vouches(clientId) ? await clients.find(clientId) : undefined;
+      const operator =
+        client !== undefined &&
+        !("error" in client) &&
+        client.trust === "operator" &&
+        origin !== undefined &&
+        clients.pagesOrigin(client) === origin;
+      if (!operator) {
+        log.warn("signin.signout_refused", { origin: (origin ?? "(none)").slice(0, 200) });
+        problem(
+          response,
+          403,
+          "Signing out here works from this server's own pages and apps only.",
+        );
+        return;
+      }
+    }
+    const signed = sessionAccount(request);
+    if (own && signed && form.get("csrf") !== csrf(signed.hash, "signout")) {
+      problem(response, 403, "This form must be sent from its own page.");
+      return;
+    }
+    const target = await signOutTarget(form);
+    const hash = sessionHashOf(request);
+    if (hash !== undefined) {
+      directory.write((db) => db.run("DELETE FROM browser_session WHERE hash = ?", hash));
+    }
+    log.info("signin.signed_out", { by: own ? "page" : "client", session: hash !== undefined });
+    const cleared = { "set-cookie": clearCookies() };
+    if (!("refused" in target) && target.back !== undefined) {
+      redirect(response, target.back, cleared);
+      return;
+    }
+    const next = ownPath(form.get("next"));
+    redirect(
+      response,
+      `${apiOrigin}${SIGNOUT_PATH}${next !== undefined ? `?next=${encodeURIComponent(next)}` : ""}`,
+      cleared,
+    );
+  };
+
   return {
     sessionAccount,
     csrf,
+    signedIn,
     signInPage,
     providers: async () =>
       (await providers()).map((provider) => ({ id: provider.id, label: provider.label })),
 
-    startViewerSignin(signin, challenge) {
+    startViewerSignin(signin, challenge, prompt) {
       const state = token();
       const clientId = clients.shellClientId(signin.shellOrigin);
       keep("authorize", state, { ...signin, clientId } satisfies ViewerSigninRecord);
@@ -631,7 +891,16 @@ export function createAuthorize(options: AuthorizeOptions): Authorize {
       url.searchParams.set("mostra_signin", state);
       url.searchParams.set("code_challenge", challenge);
       url.searchParams.set("code_challenge_method", "S256");
+      // A page signed out here asks "Answer as yourself" again, whoever is signed in (MT-06).
+      if (prompt === "consent") url.searchParams.set("prompt", "consent");
       return { url: url.href, state };
+    },
+
+    viewerSignOutUrl(shellOrigin) {
+      const url = new URL(`${apiOrigin}${SIGNOUT_PATH}`);
+      url.searchParams.set("client_id", clients.shellClientId(shellOrigin));
+      url.searchParams.set("post_logout_redirect_uri", `${shellOrigin}/_mostra/signed-out`);
+      return url.href;
     },
 
     finishViewerSignin(input) {
@@ -659,6 +928,14 @@ export function createAuthorize(options: AuthorizeOptions): Authorize {
     async handle(request, response, path) {
       const method = request.method ?? "GET";
       const url = new URL(request.url ?? "/", apiOrigin);
+      if (path === SIGNOUT_PATH && method === "GET") {
+        await signOutPage(request, response, url.searchParams);
+        return true;
+      }
+      if (path === SIGNOUT_PATH && method === "POST") {
+        await signOut(request, response);
+        return true;
+      }
       if (method === "GET" && path === "/oauth/authorize") {
         await authorize(response, url.searchParams, request);
         return true;
@@ -667,7 +944,10 @@ export function createAuthorize(options: AuthorizeOptions): Authorize {
         const handle = url.searchParams.get("authorize") ?? "";
         const signed = sessionAccount(request);
         if (!signed) {
-          await signInPage(response, `/oauth/authorize/continue?authorize=${handle}`);
+          await signInPage(
+            response,
+            `/oauth/authorize/continue?authorize=${encodeURIComponent(handle)}`,
+          );
           return true;
         }
         await proceed(request, response, handle, signed);
@@ -808,7 +1088,15 @@ export function createAuthorize(options: AuthorizeOptions): Authorize {
           );
           return true;
         }
-        await resolved(response, identity, verifierOf(provider), 0, pending.flow, pending.next);
+        await resolved(
+          request,
+          response,
+          identity,
+          verifierOf(provider),
+          0,
+          pending.flow,
+          pending.next,
+        );
         return true;
       }
       if (method === "GET" && path === "/signin/return") {
@@ -823,7 +1111,15 @@ export function createAuthorize(options: AuthorizeOptions): Authorize {
           );
           return true;
         }
-        await resolved(response, step.identity, step.verifiedBy, step.steps, step.flow, step.next);
+        await resolved(
+          request,
+          response,
+          step.identity,
+          step.verifiedBy,
+          step.steps,
+          step.flow,
+          step.next,
+        );
         return true;
       }
       return false;

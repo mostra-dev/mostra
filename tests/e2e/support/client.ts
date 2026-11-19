@@ -121,7 +121,7 @@ export async function openInShell(page: Page, url: string): Promise<FrameLocator
 }
 
 /** Waits until the shell says it is ready, or fails saying what each document renders (#39). */
-async function shellReady(page: Page): Promise<void> {
+export async function shellReady(page: Page): Promise<void> {
   try {
     await expect(page.locator("html")).toHaveAttribute("data-shell", "ready", { timeout: 20_000 });
   } catch (error) {

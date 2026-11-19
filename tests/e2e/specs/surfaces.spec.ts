@@ -262,10 +262,12 @@ test.describe("every surface a person meets (UX-01, D171)", () => {
     await frame.getByTestId("day-Tuesday").focus();
     await page.keyboard.press("Space");
     await expect(page.locator("[data-mostra-save]")).toHaveAttribute("data-mostra-save", "saved");
+    // A trusted control is disabled, so no Tab reaches it, until it is armed (D111's half second
+    // after the controls last changed, as the answer just did): the keyboard reaches it once armed.
+    await expect(page.locator("[data-mostra-trusted][data-mostra-armed]")).toBeVisible();
     await page.locator("#mostra-fold").focus();
     await page.keyboard.press(browserName === "webkit" ? "Alt+Shift+Tab" : "Shift+Tab");
     await expect(page.locator("#mostra-submit")).toBeFocused();
-    await expect(page.locator("[data-mostra-trusted][data-mostra-armed]")).toBeVisible();
     await page.keyboard.press("Enter");
     await expect(page.locator("[data-mostra-receipt]")).toHaveAttribute(
       "data-mostra-receipt",
@@ -498,6 +500,16 @@ test.describe("every surface a person meets (UX-01, D171)", () => {
         await shoot(page, "api-allow-own");
         await gotoShell(page, `${api}/signin/return?step=nothing`);
         await shoot(page, "api-cant-continue");
+        // Signing out (MT-06): the sign-in page asked for afresh with the session shown, the page
+        // with one button, and the page after it.
+        await gotoShell(page, `${authorize(ownClient, accountPage)}&prompt=login`);
+        await expect(page.getByText(`Signed in as ${who}`)).toBeVisible();
+        await shoot(page, "api-signin-signed-in");
+        await gotoShell(page, `${api}/signout`);
+        await shoot(page, "api-sign-out");
+        await page.locator('form[action="/signout"] button').last().click();
+        await expect(page.getByRole("heading", { name: "You're signed out" })).toBeVisible();
+        await shoot(page, "api-signed-out");
         await person.close();
 
         // Linking a machine, not signed in: the development provider's form, and a wrong code.

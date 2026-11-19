@@ -32,8 +32,12 @@ const DEVICE_INTERVAL_S = 5;
 const ROTATION_GRACE_MS = 30_000;
 /** An authorization code lives a minute (OAuth 2.1 §4.1.2: short-lived). */
 const CODE_TTL_MS = 60_000;
-/** How long a used or expired code is kept to recognize its reuse (an hour). */
-const CODE_KEPT_MS = 60 * 60 * 1000;
+/**
+ * How long a used or expired code is kept to recognize its reuse (an hour): a code presented a
+ * second time revokes the grant its first presentation made (D167 item 22), so the sweep removes a
+ * code only once this has passed after its expiry (`sweep.ts`, MT-06).
+ */
+export const CODE_KEPT_MS: number = 60 * 60 * 1000;
 
 /** User codes: eight letters a person can't confuse (RFC 8628 §6.1), shown as `ABCD-EFGH`. */
 const USER_CODE_LETTERS = "BCDFGHJKLMNPQRSTVWXZ";
@@ -975,12 +979,9 @@ export function createAuthorization(options: AuthorizationOptions): Authorizatio
 
     issueCode(grant) {
       const code = secret();
+      // Codes are kept a while after use to recognize a second presentation; the periodic sweep
+      // drops them after that (`sweep.ts`, MT-06), never a request.
       directory.write((db) => {
-        // Codes are kept a while after use to recognize a second presentation, then dropped.
-        db.run(
-          "DELETE FROM token WHERE kind = 'code' AND expires_at < ?",
-          iso(now() - CODE_KEPT_MS),
-        );
         db.run(
           "INSERT INTO token (hash, kind, expires_at, data_json) VALUES (?, 'code', ?, ?)",
           hashSecret(code),

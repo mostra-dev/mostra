@@ -12,20 +12,20 @@ import { join } from "node:path";
 import type { Duplex } from "node:stream";
 import { createDiagnostic, type Diagnostic } from "@mostra/protocol";
 import type { CredentialResource } from "@mostra/protocol/operator";
-import { appearanceCookie } from "@mostra/themes";
+import { appearanceCookie, localPath } from "@mostra/themes";
 import { type WebSocket, WebSocketServer } from "ws";
 import { type ServerPages, themePageCsp } from "../gateway/index.ts";
 import type { Log } from "../log.ts";
 import { BINDING_SUBPROTOCOL, MAX_FRAME_BYTES, serveWebSocket } from "../protocol-server/index.ts";
 import type { Authenticated, Authorization } from "./auth.ts";
-import { type Authorize, pageRequest } from "./authorize.ts";
+import { type Authorize, type BrowserSession, PROMPT_VALUES, pageRequest } from "./authorize.ts";
 import type { ClientAddresses, RateLimiter } from "./clients.ts";
 import type { RemoteServerConfig } from "./config.ts";
 import type { HostedHome } from "./hosted.ts";
 import type { RemoteMcp } from "./mcp.ts";
 import type { Clients } from "./oauth-clients.ts";
 import type { Operator } from "./operator.ts";
-import { API_PAGE_WORDS, APPEARANCE_PATH, createApiPages } from "./pages.ts";
+import { API_PAGE_WORDS, APPEARANCE_PATH, createApiPages, SIGNOUT_PATH } from "./pages.ts";
 
 /** How often an open binding's grant is checked again: a revocation closes it within 60 s. */
 const GRANT_RECHECK_MS = 30_000;
@@ -277,6 +277,8 @@ export function createApi(options: ApiOptions): Api {
     registration_endpoint: `${apiOrigin}/oauth/register`,
     device_authorization_endpoint: `${apiOrigin}/oauth/device`,
     revocation_endpoint: `${apiOrigin}/oauth/revoke`,
+    // Signing out (MT-06): OpenID Connect RP-Initiated Logout 1.0's name for it.
+    end_session_endpoint: `${apiOrigin}${SIGNOUT_PATH}`,
     response_types_supported: ["code"],
     response_modes_supported: ["query"],
     grant_types_supported: [
@@ -290,18 +292,25 @@ export function createApi(options: ApiOptions): Api {
     scopes_supported: ["mostra", "offline_access"],
     client_id_metadata_document_supported: true,
     authorization_response_iss_parameter_supported: true,
+    // `prompt=login` and `prompt=consent` (MT-06); any other value is refused.
+    prompt_values_supported: [...PROMPT_VALUES],
   });
 
   const sessionDevicePage = (
     response: ServerResponse,
     code: string,
-    signed: { accountId: string; hash: string },
+    signed: BrowserSession,
   ): string =>
     pages.deviceForm(pageRequest(response), {
       code,
       signedIn: {
         name: auth.accountName(signed.accountId).name ?? API_PAGE_WORDS.yourAccount,
         csrf: options.authorize.csrf(signed.hash, "device"),
+        // "Signed in as Ada · Sign out", back to this page to sign in as someone else (MT-06).
+        signOut: options.authorize.signedIn(
+          signed,
+          `/device${code !== "" ? `?user_code=${encodeURIComponent(code)}` : ""}`,
+        ),
       },
     });
 
@@ -553,8 +562,8 @@ export function createApi(options: ApiOptions): Api {
         const body = request.headers.origin === apiOrigin ? await form(request) : undefined;
         const chosen = body?.get("appearance");
         const next = body?.get("next") ?? "/";
-        const back =
-          next.startsWith("/") && !next.startsWith("//") && !next.startsWith("/\\") ? next : "/";
+        // A path of this origin only: one a browser reads as another origin goes nowhere (MT-06).
+        const back = localPath(next) ?? "/";
         response.writeHead(303, {
           ...BASE_HEADERS,
           location: back,
