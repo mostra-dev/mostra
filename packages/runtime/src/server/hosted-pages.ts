@@ -108,6 +108,26 @@ function durationMs(text: string): number {
   return Number(text.slice(0, -1)) * unit;
 }
 
+/**
+ * Why the operator holds an artifact or one of its versions under review (D165 item 9): the whole
+ * artifact's quarantine, or this version's; `undefined` when neither is. The one query every
+ * hosted surface asks (its pages, frames and MCP Apps).
+ */
+export function quarantineReasonOf(
+  ledger: Ledger,
+  artifactId: string,
+  versionId: string,
+): string | undefined {
+  return ledger.read(
+    (db) =>
+      db.get<{ reason: string }>(
+        "SELECT reason FROM quarantine WHERE artifact_id = ? AND version_id IN ('', ?) LIMIT 1",
+        artifactId,
+        versionId,
+      )?.reason,
+  );
+}
+
 /** The gateway hooks of one hosted home's pages. */
 export function hostedPages(
   options: HostedPagesOptions,
@@ -126,16 +146,8 @@ export function hostedPages(
   const { ledger, interaction, capabilities, operator, log } = options;
   const now = options.now ?? (() => Date.now());
 
-  /** A route's quarantine: the whole route's, or this version's (D165 item 9). */
   const quarantineOf = (artifactId: string, versionId: string): string | undefined =>
-    ledger.read(
-      (db) =>
-        db.get<{ reason: string }>(
-          "SELECT reason FROM quarantine WHERE artifact_id = ? AND version_id IN ('', ?) LIMIT 1",
-          artifactId,
-          versionId,
-        )?.reason,
-    );
+    quarantineReasonOf(ledger, artifactId, versionId);
 
   const underReview = (): Refusal =>
     refuseWith(

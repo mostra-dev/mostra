@@ -136,16 +136,20 @@ export const LicenseDisclosure: z.ZodType<LicenseDisclosure> = z
       "A license an install brings: its ID and class, the packages under it and where its acknowledgment stands (D31).",
   });
 
-/** Where a plugin is installed: one artifact (recorded in its lockfile) or the whole home. */
-export type PluginScope = "artifact" | "home";
+/**
+ * Where a plugin is installed: one artifact (recorded in its lockfile), the whole home, or the
+ * runtime itself (`bundled`: a first-party plugin every home has, below the home's and an
+ * artifact's own, D175 item 3).
+ */
+export type PluginScope = "artifact" | "home" | "bundled";
 
 /** The Zod schema of the `PluginScope` type. */
 export const PluginScope: z.ZodType<PluginScope> = z
-  .enum(["artifact", "home"])
+  .enum(["artifact", "home", "bundled"])
   .register(wireRegistry, {
     id: "PluginScope",
     description:
-      "Where a plugin is installed: one artifact, or the whole home (exporters and CLI commands).",
+      "Where a plugin is installed: one artifact, the whole home (exporters and CLI commands), or the runtime itself (bundled).",
   });
 
 /** One contribution of a plugin: the contract it implements and its ID. */

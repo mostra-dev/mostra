@@ -220,7 +220,12 @@ interface TokenRow {
 }
 
 /** How a session authenticates (DATA_MODEL §3 `session.mode`). */
-export type SessionMode = "cookie" | "worker" | "header";
+/**
+ * How a session authenticates: a cookie, a worker-mode frame's header (D70), a hosted shell's
+ * header (D165 item 8), or an inline page's app session, sent only in its `app/request` calls
+ * (D175 item 4).
+ */
+export type SessionMode = "cookie" | "worker" | "header" | "app";
 
 interface SessionRow {
   id: string;
@@ -588,12 +593,15 @@ export class Capabilities {
    * holds, every token is refused, a right one too, and the limit is checked here, at the moment
    * of the check, so concurrent guesses can't slip past it. An unknown secret, or one for another
    * artifact, is `MOSTRA_HYGIENE_TOKEN_INVALID`; a revoked or expired one, or one minted for
-   * another shell address, `_TOKEN_REVOKED`. Unknown secrets count towards the limit.
+   * another shell address, `_TOKEN_REVOKED`. Unknown secrets count towards the limit. `shellOrigin`
+   * is the address the link was presented at; for the app channel, which has none, it is whether
+   * the home serves the link's own address now (D175 item 4): a link whose address closed or moved
+   * opens inline no more than in a browser (review finding R01-4).
    */
   presentToken(
     secret: unknown,
     artifactId: string,
-    shellOrigin?: string,
+    shellOrigin?: string | ((origin: string) => boolean),
   ): Grant | (Refusal & { readonly retryAfter?: number }) {
     const limited = this.limited(artifactId);
     if (limited) return limited;
@@ -620,7 +628,13 @@ export class Capabilities {
         row.revoked_at !== null ? "This link was revoked." : "This link has expired.",
       );
     }
-    if (row.shell_origin !== (shellOrigin ?? this.#shellOrigin())) {
+    // A link works only at the address it was minted for (D97 item 10), and on the app channel
+    // only while the home serves that address.
+    const atItsAddress =
+      typeof shellOrigin === "function"
+        ? shellOrigin(row.shell_origin)
+        : row.shell_origin === (shellOrigin ?? this.#shellOrigin());
+    if (!atItsAddress) {
       return refusal(
         "MOSTRA_HYGIENE_TOKEN_REVOKED",
         `This link was made for ${row.shell_origin}, not this address.`,

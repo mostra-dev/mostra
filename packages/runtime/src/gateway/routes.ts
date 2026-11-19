@@ -139,6 +139,31 @@ const NOT_SERVED_YET = (method: string, path: string): Refusal =>
     501,
   );
 
+/**
+ * Step 5 of every route's checks, the one rule both channels apply (the HTTP runner below and the
+ * app channel, `app.ts`; review finding Opus 15): the refusal when a session's scopes lack what
+ * the route needs, else `undefined`. `any-action` means some action scope; the handler checks the
+ * exact function (D96).
+ */
+export function scopeRefusal(
+  route: Pick<RouteSpec, "scope">,
+  params: Readonly<Record<string, string>>,
+  scopes: readonly CapabilityScope[],
+): Refusal | undefined {
+  const needed = route.scope?.(params);
+  const allowed =
+    needed === undefined
+      ? true
+      : needed === "any-action"
+        ? scopes.some((scope) => scope.startsWith("action:"))
+        : scopeAllows(scopes, needed);
+  if (allowed) return undefined;
+  return refusal(
+    "MOSTRA_HYGIENE_SCOPE_DENIED",
+    `This link doesn't carry the ${needed === "any-action" ? "action" : needed} scope.`,
+  );
+}
+
 /** Mounts routes on a listener's Hono app behind the common checks. */
 export function mount(
   app: Hono<HttpEnv>,
@@ -228,23 +253,8 @@ export function mount(
           if (csrf) return refuse(checks, csrf, meta);
         }
         // 5. The scope.
-        const needed = route.scope?.(params);
-        const allowed =
-          needed === undefined
-            ? true
-            : needed === "any-action"
-              ? session.grant.scopes.some((scope) => scope.startsWith("action:"))
-              : scopeAllows(session.grant.scopes, needed);
-        if (!allowed) {
-          return refuse(
-            checks,
-            refusal(
-              "MOSTRA_HYGIENE_SCOPE_DENIED",
-              `This link doesn't carry the ${needed === "any-action" ? "action" : needed} scope.`,
-            ),
-            meta,
-          );
-        }
+        const denied = scopeRefusal(route, params, session.grant.scopes);
+        if (denied) return refuse(checks, denied, meta);
       }
       if (!route.handler) return refuse(checks, NOT_SERVED_YET(request.method, url.pathname), meta);
       return route.handler({

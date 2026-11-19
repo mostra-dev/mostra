@@ -314,6 +314,33 @@ export {
   type TerminalSpec,
 } from "./manifest.ts";
 export {
+  APP_TOOLS,
+  type AppToolName,
+  linkSecret,
+  MCP_APP_HANDOFF,
+  MCP_APP_LOADER_URI,
+  MCP_APP_MIME_TYPE,
+  MCP_APPS_EXTENSION,
+  MCP_APPS_MESSAGES,
+  McpAppHandles,
+  type McpAppHandoff,
+  McpAppResourceMeta,
+  type McpCallToolResult,
+  type McpResourceContents,
+  mcpAppUri,
+  mcpHostContextChanged,
+  mcpLogMessage,
+  mcpResourcesRead,
+  mcpResourceTeardown,
+  mcpToolCancelled,
+  mcpToolInput,
+  mcpToolInputPartial,
+  mcpToolResult,
+  mcpToolsCall,
+  mcpUiInitialize,
+  versionOfMcpAppUri,
+} from "./mcp-apps.ts";
+export {
   type AnyMethod,
   type AnyNotification,
   defineMethod,
@@ -321,6 +348,20 @@ export {
   type MethodDirection,
   type NotificationDefinition,
 } from "./method.ts";
+export { type AppOpenParams, type AppOpenResult, appOpenMethod } from "./methods/app/open.ts";
+export {
+  APP_PAGE_MAX_CHARS,
+  type AppPageParams,
+  type AppPageResult,
+  appPageMethod,
+} from "./methods/app/page.ts";
+export {
+  APP_ROUTES,
+  type AppRequestParams,
+  type AppRequestResult,
+  type AppRoute,
+  appRequestMethod,
+} from "./methods/app/request.ts";
 export {
   type ArtifactCreateParams,
   type ArtifactCreateResult,
@@ -572,6 +613,10 @@ export {
   type PortTrustedControlsPolicyResult,
   portTrustedControlsPolicyMethod,
 } from "./methods/port/trusted-controls-policy.ts";
+export {
+  type RelayAuthorProgressParams,
+  relayAuthorProgressMethod,
+} from "./methods/relay/author-progress.ts";
 export {
   type RelayCallBatchParams,
   type RelayCallBatchResult,

@@ -77,6 +77,23 @@ describe("release versions (D143)", () => {
     expect(crateProblems(root)).toEqual([]);
   });
 
+  it("versions a first-party plugin of the group with it, from plugins/ (D175 item 2)", () => {
+    const root = workspace({ "a.md": '---\n"@mostra/sdk": minor\n---\n\nA feature.\n' });
+    writeFileSync(
+      join(root, ".changeset", "config.json"),
+      JSON.stringify({ fixed: [["@mostra/sdk", "@mostra/cli", "@mostra/plugin-x"]] }),
+    );
+    mkdirSync(join(root, "plugins", "x"), { recursive: true });
+    writeFileSync(
+      join(root, "plugins", "x", "package.json"),
+      `${JSON.stringify({ name: "@mostra/plugin-x", version: "0.1.0" }, null, 2)}\n`,
+    );
+    apply(next(root), root);
+    expect(
+      JSON.parse(readFileSync(join(root, "plugins", "x", "package.json"), "utf8")).version,
+    ).toBe("0.2.0");
+  });
+
   it("rehearses the next patch when npm already has the tree's version and nothing is pending (#69)", () => {
     const root = workspace({});
     expect(rehearsal(() => true, root)).toEqual({ rehearse: true, version: "0.1.1" });

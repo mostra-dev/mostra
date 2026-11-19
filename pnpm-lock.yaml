@@ -230,6 +230,12 @@ catalogs:
     '@modelcontextprotocol/conformance-next':
       specifier: npm:@modelcontextprotocol/conformance@0.2.0-alpha.12
       version: 0.2.0-alpha.12
+    '@modelcontextprotocol/core':
+      specifier: 2.4.0
+      version: 2.4.0
+    '@modelcontextprotocol/ext-apps':
+      specifier: 2.0.4
+      version: 2.0.4
     '@modelcontextprotocol/server':
       specifier: 2.4.0
       version: 2.4.0
@@ -413,6 +419,9 @@ catalogs:
     remark-gfm:
       specifier: 4.0.1
       version: 4.0.1
+    rolldown:
+      specifier: 1.2.14
+      version: 1.2.14
     semver:
       specifier: 7.8.5
       version: 7.8.5
@@ -511,6 +520,9 @@ importers:
       '@mostra/cli':
         specifier: workspace:*
         version: link:../cli
+      '@mostra/plugin-mcp-app':
+        specifier: workspace:*
+        version: link:../../plugins/mcp-app
       '@mostra/protocol':
         specifier: workspace:*
         version: link:../protocol
@@ -902,6 +914,9 @@ importers:
       '@mostra/mcp':
         specifier: workspace:*
         version: link:../mcp
+      '@mostra/plugin-mcp-app':
+        specifier: workspace:*
+        version: link:../../plugins/mcp-app
       '@mostra/protocol':
         specifier: workspace:*
         version: link:../protocol
@@ -1338,8 +1353,48 @@ importers:
         specifier: 'catalog:'
         version: 5.0.5(@types/node@24.19.2)(@vitest/browser-playwright@5.0.5)(@vitest/ui@5.0.5)(vite@8.3.4(@types/node@24.19.2)(jiti@2.7.0)(yaml@2.9.1))
 
+  plugins/mcp-app:
+    dependencies:
+      '@mostra/contract-exporter':
+        specifier: workspace:*
+        version: link:../../packages/contract-exporter
+      '@mostra/protocol':
+        specifier: workspace:*
+        version: link:../../packages/protocol
+      '@mostra/themes':
+        specifier: workspace:*
+        version: link:../../packages/themes
+      rolldown:
+        specifier: 'catalog:'
+        version: 1.2.14
+    devDependencies:
+      '@mostra/tools':
+        specifier: workspace:*
+        version: link:../../tools
+      '@types/node':
+        specifier: 'catalog:'
+        version: 24.19.2
+      tsdown:
+        specifier: 'catalog:'
+        version: 0.23.1(@arethetypeswrong/core@0.18.5)(oxc-resolver@11.24.2)(publint@0.3.25)(typescript@7.0.2)
+      typescript:
+        specifier: 'catalog:'
+        version: 7.0.2
+      vitest:
+        specifier: 'catalog:'
+        version: 5.0.5(@types/node@24.19.2)(@vitest/browser-playwright@5.0.5)(@vitest/ui@5.0.5)(vite@8.3.4(@types/node@24.19.2)(jiti@2.7.0)(yaml@2.9.1))
+
   tests/e2e:
     devDependencies:
+      '@modelcontextprotocol/client':
+        specifier: 'catalog:'
+        version: 2.4.0
+      '@modelcontextprotocol/core':
+        specifier: 'catalog:'
+        version: 2.4.0
+      '@modelcontextprotocol/ext-apps':
+        specifier: 'catalog:'
+        version: 2.0.4(@modelcontextprotocol/client@2.4.0)(@modelcontextprotocol/core@2.4.0)(@modelcontextprotocol/server@2.4.0)(react-dom@19.3.1(react@19.3.1))(react@19.3.1)(zod@4.6.7)
       '@mostra/cli':
         specifier: workspace:*
         version: link:../../packages/cli
@@ -1364,9 +1419,15 @@ importers:
       axe-core:
         specifier: 'catalog:'
         version: 4.14.0
+      rolldown:
+        specifier: 'catalog:'
+        version: 1.2.14
       typescript:
         specifier: 'catalog:'
         version: 7.0.2
+      zod:
+        specifier: 'catalog:'
+        version: 4.6.7
 
   tools:
     dependencies:
@@ -2032,6 +2093,24 @@ packages:
   '@modelcontextprotocol/core@2.4.0':
     resolution: {integrity: sha512-z8QBKqdfXLPzkLQuG4xp8hrVEMm1PZ1IgxMN2sMbJiFiAKOWXnAzogXn2W4aqIBlP1ea6U5yiqVquvUNM1Cj6Q==}
     engines: {node: '>=20'}
+
+  '@modelcontextprotocol/ext-apps@2.0.4':
+    resolution: {integrity: sha512-B+PcbuGiaf0e5I3uy4iO5tS3Abo+5w8JvZFzHMzQdq9yVwP836zJkw2+KCGOQ0r4TM1fuQi4JdnbuWjkS4aBvg==}
+    engines: {node: '>=20'}
+    peerDependencies:
+      '@modelcontextprotocol/client': ^2.0.0
+      '@modelcontextprotocol/core': ^2.0.0
+      '@modelcontextprotocol/server': ^2.0.0
+      react: ^17.0.0 || ^18.0.0 || ^19.0.0
+      react-dom: ^17.0.0 || ^18.0.0 || ^19.0.0
+      zod: ^4.2.0
+    peerDependenciesMeta:
+      '@modelcontextprotocol/server':
+        optional: true
+      react:
+        optional: true
+      react-dom:
+        optional: true
 
   '@modelcontextprotocol/sdk@1.32.2':
     resolution: {integrity: sha512-SWsVtH/0vULSQStoZ6xxH2K09Li8fXYTMC64ZeogCdpZ3XSi1eCPOByV1OpuJxuI3OcmHhosDWYyii07tpPsLw==}
@@ -7770,6 +7849,17 @@ snapshots:
   '@modelcontextprotocol/core@2.4.0':
     dependencies:
       zod: 4.6.7
+
+  '@modelcontextprotocol/ext-apps@2.0.4(@modelcontextprotocol/client@2.4.0)(@modelcontextprotocol/core@2.4.0)(@modelcontextprotocol/server@2.4.0)(react-dom@19.3.1(react@19.3.1))(react@19.3.1)(zod@4.6.7)':
+    dependencies:
+      '@modelcontextprotocol/client': 2.4.0
+      '@modelcontextprotocol/core': 2.4.0
+      '@standard-schema/spec': 1.1.0
+      zod: 4.6.7
+    optionalDependencies:
+      '@modelcontextprotocol/server': 2.4.0
+      react: 19.3.1
+      react-dom: 19.3.1(react@19.3.1)
 
   '@modelcontextprotocol/sdk@1.32.2(supports-color@8.1.1)(zod@4.6.7)':
     dependencies:

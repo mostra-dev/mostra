@@ -18,6 +18,7 @@ import { createServer } from "node:net";
 import { join } from "node:path";
 import { type Browser, expect, type Page, test } from "@playwright/test";
 import {
+  gotoShell,
   openInShell,
   publishOwn,
   saved,
@@ -92,7 +93,7 @@ test.describe("a hosted link (RM-02, §18.4)", () => {
       verificationUri: string;
       userCode: string;
     }>("remote/login", { server: `http://api.localhost:${port}` });
-    await page.goto(login.verificationUriComplete ?? login.verificationUri);
+    await gotoShell(page, login.verificationUriComplete ?? login.verificationUri);
     await expect(page.getByText("Approving links a machine to your account")).toBeVisible();
     await page.locator("input[name=user_code]").fill(login.userCode);
     await page.locator("input[name=name]").fill("Ada");
