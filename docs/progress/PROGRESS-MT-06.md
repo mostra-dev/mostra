@@ -56,6 +56,8 @@ MT-06 owns no requirement (D152): one row per item of its scope, each checked th
 - **CI with `ci:full`** (every leg: Linux, macOS, Windows x64 and arm64, every engine, the six-platform release rehearsal) on #208, run 44392846825 on `2a6b600`: green on every job after one re-run of two legs, `integration (windows-arm64, windows-gateway)` (`gateway.test.ts`'s RT-05 client-only case at its 60 s, #196, recorded there; MT-06 changes nothing it exercises) and `release / smoke (darwin-arm64)`, which GitHub never gave a runner.
 - **After the session's review of its diff:** the static gates; the runtime's unit suite; `signout.test.ts` 8 of 8; the hosted sign-out case in three engines; the surfaces suite in three engines; `prove-seeds.ts --anchors` plants all 846.
 
+- **After the Opus review's fixes, with `main` merged in** (WP-17 and Mostra 0.17.0, `b725f3a`, a merge commit): the static gates and the build (format-lint, types, build, boundaries, api, docs; the repository lint's new rule that every spec loads its pages through `gotoShell` applied to `signout.spec.ts`); the runtime's unit suite (58 files, 395 passed); the `remote-access` group (12 files, 83 passed); `identity.test.ts` and `idle-marks.test.ts` (13 passed); `hosted.spec.ts` and `signout.spec.ts` in Chromium, Firefox and WebKit (9 of 9 each), and `surfaces.spec.ts` with them before the merge (14 of 14 each); `@mostra/themes`' and `@mostra/shell`'s units; all 37 MT-06 seeds red when planted and green when restored, and `--anchors` plants all 936.
+
 ## Reviews (D80, D172 item 0)
 
 - **The session's own review** of its full diff (`8f506ab`): a sign-out from an app the operator doesn't vouch for no longer fetches that app's metadata document before refusing it (`Clients.vouches`, a unit case, an integration assertion, a seed); a hosted page whose frame can't enter again after its sign-out loads again rather than keep a frame session that acted as the account; `prompt=login` is judged in one place.
@@ -95,6 +97,8 @@ The review's "found sound" list (the `POST /signout` Origin gate, exact return a
 
 - **A push skipped the pre-push hook** (`--no-verify`, `0d053d5`): its `--fast` check ran `@mostra/tools`' gate tests (the dossier's generator changed), whose setup timed out at 180 s on this laptop, the class the baseline recorded; the static gates (format-lint, types, boundaries, docs) ran before the push instead, and CI ran everything.
 
+- **`main` was merged into the branch** after WP-17's release (`b725f3a`, a merge commit, nothing rewritten), so MT-06 ships as Mostra 0.18.0.
+- **The Opus review's finding 3 widened item 4 of D177** past the specification ("it doesn't end the API origin's session"): a page's sign-out now goes on to the API origin's "Sign out?" page and back, since a shared computer is exactly where leaving that session behind lets the next person in.
 - **Return addresses are exactly registered ones only** (D177 item 2), where the specification also allowed a redirect URI's origin: RP-Initiated Logout §3 forbids redirecting anywhere not registered for it.
 - **`prompt=consent` is implemented** beside `login` (D177 item 3): refusing it would refuse every MCP client built on the MCP SDKs.
 - **The sweep also removes expired device codes and access and refresh tokens** (D177 item 5).

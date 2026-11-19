@@ -24,6 +24,7 @@ import { createServer, type Server } from "node:http";
 import { createServer as createNetServer } from "node:net";
 import { join } from "node:path";
 import { expect, type Page, test } from "@playwright/test";
+import { gotoShell } from "../support/client.ts";
 import { BIN, removeTree, SCRATCH } from "../support/mostra.ts";
 
 function freePort(): Promise<number> {
@@ -147,7 +148,7 @@ for (const where of [
 
     /** Signs the browser in on the API origin through the development provider. */
     const signIn = async (page: Page, name: string): Promise<void> => {
-      await page.goto(`${api}/signin/dev/start?next=${encodeURIComponent("/signout")}`);
+      await gotoShell(page, `${api}/signin/dev/start?next=${encodeURIComponent("/signout")}`);
       await page.locator("input[name=name]").fill(name);
       await page.getByRole("button", { name: "Continue" }).click();
       // Signed in, the sign-out page offers its one button.
@@ -162,13 +163,13 @@ for (const where of [
       await signIn(page, "Ada");
       const before = await signInCookie(page);
       expect(before).toBeDefined();
-      await page.goto(`${appOrigin}/`);
+      await gotoShell(page, `${appOrigin}/`);
       await page.getByRole("button", { name: "Sign out" }).click();
       await expect(page.getByRole("heading", { name: "Signed out of the app" })).toBeVisible();
       expect(new URL(page.url()).pathname).toBe("/signed-out");
       // The browser holds no sign-in any more, and the server's page says so.
       expect(await signInCookie(page)).toBeUndefined();
-      await page.goto(`${api}/signout`);
+      await gotoShell(page, `${api}/signout`);
       await expect(page.getByRole("heading", { name: "You're signed out" })).toBeVisible();
       // Same site, the cookie came with the form, so the session itself ended: an old copy of the
       // cookie signs nobody in. From another site a browser may send no cookie with the form
@@ -176,7 +177,7 @@ for (const where of [
       // went, its row left to expire and be swept.
       if (where.sameSite) {
         await page.context().addCookies([{ ...(before as NonNullable<typeof before>) }]);
-        await page.goto(`${api}/signout`);
+        await gotoShell(page, `${api}/signout`);
         await expect(page.getByRole("heading", { name: "You're signed out" })).toBeVisible();
         await page.context().clearCookies();
       }
@@ -185,13 +186,13 @@ for (const where of [
     test("a page of another origin posting the same form ends nothing", async ({ page }) => {
       await signIn(page, "Grace");
       const elsewhere = `http://elsewhere.localhost:${appPort}/`;
-      await page.goto(elsewhere);
+      await gotoShell(page, elsewhere);
       await page.getByRole("button", { name: "Sign out" }).click();
       await expect(
         page.getByText("Signing out here works from this server's own pages"),
       ).toBeVisible();
       expect(await signInCookie(page)).toBeDefined();
-      await page.goto(`${api}/signout`);
+      await gotoShell(page, `${api}/signout`);
       await expect(page.getByRole("heading", { name: "Sign out?" })).toBeVisible();
     });
   });
