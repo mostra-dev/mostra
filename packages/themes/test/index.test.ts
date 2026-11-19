@@ -7,6 +7,7 @@ import {
   defineTheme,
   facesStylesheet,
   html,
+  localPath,
   mostra,
   oklch,
   oklchToHex,
@@ -238,9 +239,25 @@ describe("pages", () => {
       "http://evil.example",
       "data:text/html,x",
       "",
+      // The URL parser drops tabs and newlines anywhere, and reads a backslash as a slash: each of
+      // these is another origin to a browser (MT-06's review, 2).
+      "/\t/evil.example",
+      "/\n/evil.example",
+      "/\r/evil.example",
+      "/a\\..\\\\evil.example",
     ]) {
       expect(safeHref(bad)).toBeUndefined();
     }
+    for (const bad of ["/\t/evil.example", "//evil.example", "/\\evil.example", "x", "", null]) {
+      expect(localPath(bad)).toBeUndefined();
+    }
+    for (const bad of ["/\t/evil.example", "/\n/evil.example"]) {
+      expect(new URL(bad, "https://api.example").origin).not.toBe("https://api.example");
+    }
+    expect(localPath("/device?user_code=ABCD-EFGH")).toBe("/device?user_code=ABCD-EFGH");
+    expect(localPath("/oauth/authorize/continue?authorize=x%2Fy")).toBe(
+      "/oauth/authorize/continue?authorize=x%2Fy",
+    );
   });
 
   it("keep a person's appearance in a host-only cookie and read it back", () => {

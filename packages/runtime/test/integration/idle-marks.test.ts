@@ -7,7 +7,7 @@
  * row holds the home's marks. (A restore still rotates the home's incarnation from the marks:
  * `binding.test.ts` and `restore.test.ts`.)
  */
-import { cpSync, writeFileSync } from "node:fs";
+import { cpSync, readdirSync, readFileSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 import { fileURLToPath } from "node:url";
 import { MutationId } from "@mostra/protocol";
@@ -205,11 +205,13 @@ describe("an operator's metering window on a real server (MT-06, #203)", () => {
       port,
       config: testConfig(port, {
         operator: fileURLToPath(new URL("../fixtures/operator.mjs", import.meta.url)),
-        metering: { windowSeconds: windowMs / 1000 },
+        metering: { windowSeconds: 600 },
       }),
       env: {
         MOSTRA_TEST_OPERATOR_PORT: String(controlPort),
         MOSTRA_TEST_OPERATOR_DISPATCH_MS: "50",
+        // Windows of 2 s in place of the setting's ten minutes (the test hook wins).
+        MOSTRA_TEST_METER_WINDOW_MS: String(windowMs),
       },
     });
     try {
@@ -254,6 +256,33 @@ describe("an operator's metering window on a real server (MT-06, #203)", () => {
       } finally {
         directory.close();
       }
+    } finally {
+      await stopServer(server);
+    }
+  }, 60_000);
+});
+
+describe("the operator's metering window reaches the meter (MT-06, #203)", () => {
+  it("runs the meter at the window the configuration names", async () => {
+    const port = await freePort();
+    const controlPort = await freePort();
+    const data = join(tempDir("meter-window-config"), "data");
+    const server = await startServer({
+      data,
+      port,
+      config: testConfig(port, {
+        operator: fileURLToPath(new URL("../fixtures/operator.mjs", import.meta.url)),
+        metering: { windowSeconds: 600 },
+      }),
+      env: { MOSTRA_TEST_OPERATOR_PORT: String(controlPort) },
+    });
+    try {
+      expect(server.status.status, server.stderr()).toBe("started");
+      const logs = join(data, "logs");
+      const log = readdirSync(logs)
+        .map((file) => readFileSync(join(logs, file), "utf8"))
+        .join("");
+      expect(log).toMatch(/"event":"meter\.started","windowMs":600000/);
     } finally {
       await stopServer(server);
     }

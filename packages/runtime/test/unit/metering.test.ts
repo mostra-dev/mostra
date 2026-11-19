@@ -247,6 +247,26 @@ describe("the metering window (MT-06, #203)", () => {
     }
   });
 
+  it("closes a window whose boundary passed at its boundary when it stops, and counts no sleep", () => {
+    const windowMs = 60_000;
+    const { meter, batches } = meterAt(START, windowMs);
+    // The process sleeps two hours, its timer never firing, then stops at once (MT-06's review, 5).
+    vi.setSystemTime(START + 2 * HOUR);
+    meter.stop();
+    const firstBoundary = Date.UTC(2026, 10, 18, 10, 1);
+    expect(batches[0]?.from).toBe(new Date(START).toISOString());
+    expect(batches[0]?.to).toBe(new Date(firstBoundary).toISOString());
+    for (const batch of batches) {
+      const from = Date.parse(batch.from);
+      const to = Date.parse(batch.to);
+      expect(Math.floor(from / HOUR), batch.from).toBe(Math.floor((to - 1) / HOUR));
+      expect(to - from, batch.from).toBeLessThanOrEqual(windowMs);
+    }
+    // The sleep says nothing: 47.6 s before the first boundary, and the 12.4 s into the window the
+    // process woke in.
+    expect(sumOf(batches, "home.activeSeconds")).toBe(60);
+  });
+
   it("writes once per window and sums the same as one-minute windows", async () => {
     const run = async (windowMs: number) => {
       const { meter, batches } = meterAt(START, windowMs);

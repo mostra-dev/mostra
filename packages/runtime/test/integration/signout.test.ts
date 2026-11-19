@@ -341,6 +341,58 @@ describe("signing out of the server's sign-in (MT-06)", () => {
     expect(String(again.headers["location"])).toBe(`${ownBack}?state=s2`);
   });
 
+  it("takes a registration's return addresses only as it takes its redirect URIs, and goes back to them exactly", async () => {
+    const registerWith = (logouts: unknown) =>
+      send(port, `api.localhost:${port}`, "/oauth/register", {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({
+          client_name: "Registered app",
+          redirect_uris: [redirect],
+          post_logout_redirect_uris: logouts,
+          token_endpoint_auth_method: "none",
+        }),
+      });
+    for (const bad of [
+      ["http://client.example/out"],
+      ["javascript:alert(1)"],
+      ["https://client.example/out#x"],
+      ["https://client.example/out", 7],
+      "https://client.example/out",
+      Array.from({ length: 11 }, (_, index) => `https://client.example/out/${index}`),
+    ]) {
+      const refused = await registerWith(bad);
+      expect(refused.status, JSON.stringify(bad)).toBe(400);
+      expect(JSON.parse(refused.body).error, JSON.stringify(bad)).toBe("invalid_client_metadata");
+    }
+    const back = "https://client.example/signed-out";
+    const made = await registerWith([back]);
+    expect(made.status, made.body).toBe(201);
+    const registered = JSON.parse(made.body) as {
+      client_id: string;
+      post_logout_redirect_uris?: string[];
+    };
+    expect(registered.post_logout_redirect_uris).toEqual([back]);
+    const who = await signedIn();
+    const page = await who.ask(
+      "GET",
+      `/signout?${new URLSearchParams({ client_id: registered.client_id, post_logout_redirect_uri: back })}`,
+    );
+    expect(page.status).toBe(200);
+    const out = await who.ask("POST", "/signout", signOutForm(page));
+    expect(String(out.headers["location"])).toBe(back);
+    // An address it didn't register: the page says so, and offers to send the person nowhere.
+    const other = await signedIn();
+    const before = sessions();
+    const elsewhere = await other.ask(
+      "GET",
+      `/signout?${new URLSearchParams({ client_id: registered.client_id, post_logout_redirect_uri: `${back}/x` })}`,
+    );
+    expect(elsewhere.status).toBe(400);
+    expect(elsewhere.body).not.toContain(`${back}/x`);
+    expect(sessions()).toBe(before);
+  });
+
   it("asks the provider again with prompt=login though a session exists, and asks consent again with prompt=consent", async () => {
     const who = await signedIn();
     const asked = github.scopes.length;
@@ -385,6 +437,31 @@ describe("signing out of the server's sign-in (MT-06)", () => {
       expect(answer.searchParams.get("error"), prompt).toBe("invalid_request");
       expect(answer.searchParams.get("code"), prompt).toBeNull();
     }
+  });
+
+  it("never sends a person to another origin from a `next` it was given", async () => {
+    const who = browser();
+    // A tab or newline the URL parser drops, or a backslash it reads as a slash, makes a path
+    // another origin (`/<tab>/evil.example` is `//evil.example`): such a `next` goes nowhere.
+    for (const next of [
+      "/\t/evil.example",
+      "/\n/evil.example",
+      "/\\evil.example",
+      "//evil.example",
+    ]) {
+      const page = await who.ask("GET", `/signout?${new URLSearchParams({ next })}`);
+      expect(page.status, JSON.stringify(next)).toBe(200);
+      // No link or form of the page goes there (the appearance switch keeps the page's own address,
+      // query and all, as a hidden field it checks again when it's used).
+      expect(page.body, JSON.stringify(next)).not.toMatch(/(href|action)="[^"]*evil\.example/);
+      const own = await who.ask("POST", "/signout", { next });
+      expect(String(own.headers["location"]), JSON.stringify(next)).toBe(`${api}/signout`);
+      const switched = await who.ask("POST", "/_mostra/appearance", { appearance: "dark", next });
+      expect(switched.headers["location"], JSON.stringify(next)).toBe("/");
+    }
+    // A path of the origin is kept.
+    const kept = await who.ask("GET", `/signout?${new URLSearchParams({ next: "/device" })}`);
+    expect(kept.body).toContain('href="/device"');
   });
 });
 
