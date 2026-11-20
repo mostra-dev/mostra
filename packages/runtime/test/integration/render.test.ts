@@ -11,6 +11,8 @@ import { extname, join, normalize } from "node:path";
 import { fileURLToPath } from "node:url";
 import { type Browser, chromium, type Page } from "playwright";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
+import { listenShortLived } from "../../src/addressing/index.ts";
+import { silentLog } from "../../src/log.ts";
 import {
   connectTo,
   type DaemonStatus,
@@ -63,7 +65,8 @@ async function publishAndServe(fixture: string, entry = ""): Promise<string> {
     response.end(readFileSync(file));
   });
   servers.push(server);
-  await new Promise<void>((resolve) => server.listen(0, "127.0.0.1", resolve));
+  // Where verify's sandbox listens, away from the ports Chromium on Windows collides on (#95).
+  await listenShortLived(server, "127.0.0.1", silentLog);
   const address = server.address();
   if (address === null || typeof address === "string") throw new Error("no port");
   return `http://127.0.0.1:${address.port}`;

@@ -24,6 +24,24 @@ export const LEASE_FIRST_PORT = 20000;
 export const LEASE_LAST_PORT = 32767;
 /** How many free ports to try before giving up on a lease. */
 const LEASE_ATTEMPTS = 64;
+/**
+ * The lowest port a short-lived listener takes (a `verify` run's or a `mostra dev` session's
+ * sandbox, #95): just above the lease range, so it never takes a port leased to an artifact
+ * whose listener isn't bound yet (D132).
+ */
+export const SHORT_LIVED_FIRST_PORT: number = LEASE_LAST_PORT + 1;
+/**
+ * The highest port a short-lived listener takes: just below the dynamic ranges of Windows and
+ * macOS (49152 to 65535), where connections get their local ports. On Windows, Chromium picks a
+ * connection's local port at random (D157), and one whose four-tuple is still in TIME_WAIT fails
+ * at once with `net::ERR_NO_BUFFER_SPACE`; a listener on a port of the dynamic range meets such a
+ * tuple left by a connection whose local port it was, which a listener outside the range never
+ * does (about five times fewer failures, VERIFIED_FACTS, #95). Linux's ephemeral range (32768 to
+ * 60999) covers these ports, and there a port an outgoing connection holds is passed over.
+ */
+export const SHORT_LIVED_LAST_PORT = 49151;
+/** How many ports a short-lived listener tries before it takes one the system assigns. */
+const SHORT_LIVED_ATTEMPTS = 64;
 
 /** What a lease is for (DATA_MODEL §3 `port_lease.purpose`); `face` from WP-13 (D158). */
 export type LeasePurpose = "shell" | "artifact" | "demo" | "face";
@@ -186,18 +204,43 @@ function tryListen(server: Server, port: number, address: string): Promise<boole
   });
 }
 
+/**
+ * Binds a short-lived listener (#95) to a free port between {@link SHORT_LIVED_FIRST_PORT} and
+ * {@link SHORT_LIVED_LAST_PORT}, tried at random; when none of its tries is free (a machine that
+ * reserves the range), to a port the system assigns, with a warning, rather than not at all.
+ */
+export async function listenShortLived(server: Server, address: string, log: Log): Promise<number> {
+  for (let attempt = 0; attempt < SHORT_LIVED_ATTEMPTS; attempt++) {
+    const port = randomInt(SHORT_LIVED_FIRST_PORT, SHORT_LIVED_LAST_PORT + 1);
+    if (await tryListen(server, port, address)) return port;
+  }
+  log.warn("addressing.short_lived_assigned", {
+    from: SHORT_LIVED_FIRST_PORT,
+    to: SHORT_LIVED_LAST_PORT,
+    attempts: SHORT_LIVED_ATTEMPTS,
+  });
+  if (!(await tryListen(server, 0, address))) {
+    throw bindFailed(`No port is free on ${address}.`);
+  }
+  const bound = server.address();
+  if (bound === null || typeof bound === "string") throw new Error("not a TCP listener");
+  return bound.port;
+}
+
 /** Creates the addressing of one instance over its ledger's `port_lease` table. */
 export function createAddressing(options: {
   readonly ledger: Ledger;
   readonly log: Log;
   readonly bind: BindOptions;
   /**
-   * Listen on ports the operating system assigns and lease none: a `verify` run's short-lived
-   * listeners (D138). Ephemeral ports lie above the lease range (D99), so they never take a port
-   * leased to an artifact whose listener isn't bound yet (D132).
+   * Lease nothing and listen on free ports between {@link SHORT_LIVED_FIRST_PORT} and
+   * {@link SHORT_LIVED_LAST_PORT}: a `verify` run's or a `mostra dev` session's short-lived
+   * listeners (D138, D140). They lie above the lease range (D99), so they never take a port leased
+   * to an artifact whose listener isn't bound yet (D132), and below the dynamic ranges where
+   * Chromium on Windows collides with connections in TIME_WAIT (#95).
    */
   readonly ephemeral?: boolean;
-  /** With `ephemeral`: the port the shell listens on instead of one assigned (`mostra dev --port`). */
+  /** With `ephemeral`: the port the shell listens on instead of one picked (`mostra dev --port`). */
   readonly shellPort?: number;
 }): Addressing {
   const { ledger, log } = options;
@@ -295,17 +338,13 @@ export function createAddressing(options: {
         .map((row) => ({ port: row.port, purpose: row.purpose, owner: row.owner_ref })),
     async listen(server, owner) {
       if (options.ephemeral) {
-        const wanted = owner.purpose === "shell" ? (options.shellPort ?? 0) : 0;
-        if (!(await tryListen(server, wanted, bindAddress))) {
-          throw bindFailed(
-            wanted === 0
-              ? `No ephemeral port is free on ${bindAddress}.`
-              : `The port ${wanted} on ${bindAddress} is taken.`,
-          );
+        if (owner.purpose === "shell" && options.shellPort !== undefined) {
+          if (!(await tryListen(server, options.shellPort, bindAddress))) {
+            throw bindFailed(`The port ${options.shellPort} on ${bindAddress} is taken.`);
+          }
+          return options.shellPort;
         }
-        const address = server.address();
-        if (address === null || typeof address === "string") throw new Error("not a TCP listener");
-        return address.port;
+        return listenShortLived(server, bindAddress, log);
       }
       return leaseAndListen(server, owner, bindAddress);
     },

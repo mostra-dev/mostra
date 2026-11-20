@@ -17,6 +17,7 @@ import {
   type ProcessManager,
 } from "../../src/processes/index.ts";
 import { alive, eventually, tempDir, WINDOWS } from "../support.ts";
+import { parseJson, readWhole } from "../whole-file.ts";
 
 let ledger: Ledger | undefined;
 let manager: ProcessManager | undefined;
@@ -272,10 +273,14 @@ const node = (script: string): { command: string; args: string[] } => ({
 });
 const familyFixture = fileURLToPath(new URL("../fixtures/family.mjs", import.meta.url));
 
-async function family(file: string): Promise<{ pid: number; grandchildren: number[] }> {
-  await eventually(() => existsSync(file), 10_000, "the family's PIDs");
-  return JSON.parse(readFileSync(file, "utf8")) as { pid: number; grandchildren: number[] };
-}
+/** The PIDs `family.mjs` writes, once the file holds them whole (#160). */
+const family = (file: string): Promise<{ pid: number; grandchildren: number[] }> =>
+  readWhole(
+    file,
+    (text) => parseJson(text) as { pid: number; grandchildren: number[] } | undefined,
+    10_000,
+    "the family's PIDs",
+  );
 
 describe.runIf(WINDOWS)("children on Windows (RT-09, RT-10)", () => {
   it("are recorded with their creation time, and stopping one ends its job: it and its grandchildren", async () => {
@@ -319,12 +324,17 @@ describe.runIf(WINDOWS)("children on Windows (RT-09, RT-10)", () => {
       command: process.execPath,
       args: [
         "-e",
-        'const g = require("node:child_process").spawn(process.execPath, ["-e", "setInterval(() => {}, 1 << 30)"], { stdio: "ignore" }); require("node:fs").writeFileSync(process.argv[1], String(g.pid)); setTimeout(() => process.exit(0), 1000);',
+        'const g = require("node:child_process").spawn(process.execPath, ["-e", "setInterval(() => {}, 1 << 30)"], { stdio: "ignore" }); const fs = require("node:fs"); fs.writeFileSync(process.argv[1] + ".partial", String(g.pid)); fs.renameSync(process.argv[1] + ".partial", process.argv[1]); setTimeout(() => process.exit(0), 1000);',
         file,
       ],
     });
-    await eventually(() => existsSync(file), 5000, "the grandchild's PID");
-    const grandchild = Number(readFileSync(file, "utf8"));
+    // Whole PIDs only: an empty read would be Number("") === 0, another process (#160).
+    const grandchild = await readWhole(
+      file,
+      (text) => (/^\d+$/.test(text) ? Number(text) : undefined),
+      5000,
+      "the grandchild's PID",
+    );
     expect(alive(grandchild)).toBe(true);
     expect((await child.exited).code).toBe(0);
     await eventually(() => !alive(grandchild), 5000, "the grandchild to end with the job");

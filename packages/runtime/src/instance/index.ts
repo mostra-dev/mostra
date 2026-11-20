@@ -615,6 +615,11 @@ async function assemble(home: OwnedHome, options: StartInstanceOptions): Promise
     ...(Number(environment["MOSTRA_TEST_WORKER_BACKOFF_MS"]) > 0
       ? { backoffMinMs: Number(environment["MOSTRA_TEST_WORKER_BACKOFF_MS"]) }
       : {}),
+    // Tests shorten the 60 s a worker has to answer its start, and seed a start that never ends.
+    ...(Number(environment["MOSTRA_TEST_WORKER_START_TIMEOUT_MS"]) > 0
+      ? { startTimeoutMs: Number(environment["MOSTRA_TEST_WORKER_START_TIMEOUT_MS"]) }
+      : {}),
+    faults,
   });
   const actions = createActions({
     // Server code's `state` of a hosted artifact acts on its hosted home (D165 item 1); the link

@@ -1,7 +1,8 @@
 /**
  * A verify run's sandbox (D138 item 1): the real interaction, actions, live and gateway code over
  * a scratch ledger in `cache/verify/runs/<run>/`, with its own worker pool and two short-lived
- * loopback listeners on ports the operating system assigns, so a run never touches the home's
+ * loopback listeners (`addressing`'s short-lived ports, outside the dynamic ranges where Chromium
+ * on Windows collides with connections in TIME_WAIT, #95), so a run never touches the home's
  * drafts, state, events, hosts or deliveries, and the human-facing gateway never serves an
  * unpublished build.
  *
@@ -164,7 +165,7 @@ export async function startSandbox(
      * run for real with the real secrets. Nothing is delivered to hosts or ports either way.
      */
     readonly dev?: { readonly upstream: () => DevUpstream | undefined };
-    /** The shell's port, instead of one the operating system assigns (`mostra dev --port`). */
+    /** The shell's port, instead of a short-lived one Mostra picks (`mostra dev --port`). */
     readonly shellPort?: number;
   },
 ): Promise<Sandbox> {

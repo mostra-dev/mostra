@@ -46,5 +46,20 @@ try {
   console.error(shell.slice(0, 2000));
   process.exitCode = 1;
 } finally {
-  await browser.close();
+  // A browser that doesn't close must not hold the smoke test until its job's limit (#124).
+  let timer;
+  const closed = await Promise.race([
+    browser.close().then(
+      () => true,
+      () => true,
+    ),
+    new Promise((resolve) => {
+      timer = setTimeout(() => resolve(false), 30_000);
+    }),
+  ]);
+  clearTimeout(timer);
+  if (!closed) {
+    console.error("submit: the browser didn't close within 30 s");
+    process.exit(1);
+  }
 }

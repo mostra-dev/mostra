@@ -13,6 +13,11 @@
 # 5. moves the bundle to another directory and publishes again from the same home (a Windows
 #    bundle, whose junctions name the old directory, is set up again first, D153);
 # 6. stops the daemon. Every step's output is kept in <work>/logs.
+#
+# Every step has a limit of its own (#124): the CLI's `--timeout` for each `mostra` command, and
+# deadline.sh's `bounded` for setup and the submission, which past its limit prints every process
+# and the logs so far. With `MOSTRA_SMOKE_WORK` set, the work directory's path is written there, so
+# a later step can keep the logs of a run that failed or was stopped.
 set -eu
 
 archive=$1
@@ -20,8 +25,10 @@ expected=$2
 here=$(cd "$(dirname "$0")" && pwd)
 work=$(mktemp -d "${TMPDIR:-/tmp}/mostra-smoke-XXXXXX")
 mkdir -p "$work/logs"
+[ -z "${MOSTRA_SMOKE_WORK:-}" ] || printf '%s\n' "$work" > "$MOSTRA_SMOKE_WORK"
 say() { printf 'smoke: %s\n' "$*"; }
-die() { printf 'smoke: FAILED: %s\n' "$*" >&2; exit 1; }
+# Capability links in what it prints are redacted (deadline.sh).
+die() { printf 'smoke: FAILED: %s\n' "$*" | redact >&2; exit 1; }
 
 windows=false
 case "$(uname -s)" in
@@ -31,6 +38,8 @@ case "$(uname -s)" in
   MINGW* | MSYS* | CYGWIN*) windows=true; sum() { sha256sum < "$1" | cut -d' ' -f1; } ;;
   *) sum() { sha256sum < "$1" | cut -d' ' -f1; } ;;
 esac
+# shellcheck source=deadline.sh
+. "$here/deadline.sh"
 # A path as the bundle's programs take it: a Windows path on Windows, else as it is.
 native() { if $windows; then cygpath -w "$1"; else printf '%s' "$1"; fi; }
 
@@ -69,7 +78,8 @@ mkdir -p "$work/t"
 tar -xzf - -C "$work/t" < "$archive"
 troot=$(find "$work/t" -mindepth 1 -maxdepth 1 -type d)
 printf '\n// tampered\n' >> "$troot/lib/node_modules/@mostra/runtime/dist/bin.js"
-if PATH=$clean_path "$troot/bin/mostra-setup" > "$work/logs/tampered.json" 2> "$work/logs/tampered.err"; then
+if bounded 300 "setup of the tampered bundle" "$work/logs/tampered.json" "$work/logs/tampered.err" \
+  env PATH="$clean_path" "$troot/bin/mostra-setup"; then
   die "setup accepted a tampered bundle"
 fi
 grep -q '"MOSTRA_ENV_BUNDLE_INVALID"' "$work/logs/tampered.json" || die "setup's refusal isn't MOSTRA_ENV_BUNDLE_INVALID: $(cat "$work/logs/tampered.json" "$work/logs/tampered.err")"
@@ -77,7 +87,9 @@ rm -rf "$work/t"
 
 say "setting the bundle up (fetches and checks the verify browser)"
 started=$(date +%s)
-PATH=$clean_path "$root/bin/mostra-setup" > "$work/logs/setup.json" 2> "$work/logs/setup.err" ||
+# Its browser fetch has a limit of 15 minutes of its own, which fails it with its own words first.
+bounded 960 "setup" "$work/logs/setup.json" "$work/logs/setup.err" \
+  env PATH="$clean_path" "$root/bin/mostra-setup" ||
   die "setup failed: $(cat "$work/logs/setup.json" "$work/logs/setup.err")"
 grep -q '"status":"ok"' "$work/logs/setup.json" || die "setup said: $(cat "$work/logs/setup.json")"
 say "setup took $(( $(date +%s) - started )) s"
@@ -108,7 +120,7 @@ field() { bnode -e 'let s="";process.stdin.on("data",(c)=>s+=c).on("end",()=>{le
 say "no Node.js on PATH: $(PATH=$clean_path command -v node || echo none)"
 say "mostra new"
 art=$(native "$work/art")
-mostra new "$art" --title "Smoke" --json > "$work/logs/new.json" 2> "$work/logs/new.err" ||
+mostra new "$art" --title "Smoke" --json --timeout 2m > "$work/logs/new.json" 2> "$work/logs/new.err" ||
   die "new failed: $(cat "$work/logs/new.json")"
 # An on-demand package (not in the warm set): the bundled pnpm installs it. A field the viewer
 # answers through the shell.
@@ -133,12 +145,13 @@ export default function Page() {
 EOF
 say "mostra verify"
 started=$(date +%s)
-mostra verify "$art" --json > "$work/logs/verify.json" 2> "$work/logs/verify.err" ||
+# Verify installs `ms` with the bundled pnpm (at most 5 minutes) and renders the page.
+mostra verify "$art" --json --timeout 10m > "$work/logs/verify.json" 2> "$work/logs/verify.err" ||
   die "verify failed: $(cat "$work/logs/verify.json")"
 grep -q '"status":"pass"' "$work/logs/verify.json" || die "verify didn't pass: $(cat "$work/logs/verify.json")"
 say "verify took $(( $(date +%s) - started )) s"
 say "mostra publish"
-mostra publish "$art" --json > "$work/logs/publish.json" 2> "$work/logs/publish.err" ||
+mostra publish "$art" --json --timeout 5m > "$work/logs/publish.json" 2> "$work/logs/publish.err" ||
   die "publish failed: $(cat "$work/logs/publish.json")"
 grep -q '"ok":true' "$work/logs/publish.json" || die "publish said: $(cat "$work/logs/publish.json")"
 grep -q '"version":1' "$work/logs/publish.json" || die "the first publish isn't version 1"
@@ -146,20 +159,20 @@ artifact=$(field result.artifactId < "$work/logs/publish.json")
 link=$(field result.url < "$work/logs/publish.json")
 
 say "a submission through the shell, in the bundle's browser"
-bnode "$(native "$here/submit.mjs")" "$(native "$root")" "$link" "answered by the smoke test" \
-  > "$work/logs/submit.out" 2> "$work/logs/submit.err" ||
+bounded 300 "the submission" "$work/logs/submit.out" "$work/logs/submit.err" \
+  bnode "$(native "$here/submit.mjs")" "$(native "$root")" "$link" "answered by the smoke test" ||
   die "the submission failed: $(cat "$work/logs/submit.out" "$work/logs/submit.err")"
 say "mostra wait and mostra results"
 mostra wait "$artifact" --until submitted --timeout 30s --json > "$work/logs/wait.json" 2> "$work/logs/wait.err" ||
   die "wait failed: $(cat "$work/logs/wait.json")"
 grep -q '"satisfied"' "$work/logs/wait.json" || die "wait said: $(cat "$work/logs/wait.json")"
-mostra results "$artifact" --json > "$work/logs/results.json" 2> "$work/logs/results.err" ||
+mostra results "$artifact" --json --timeout 2m > "$work/logs/results.json" 2> "$work/logs/results.err" ||
   die "results failed: $(cat "$work/logs/results.json")"
 [ "$(field result.answers.note < "$work/logs/results.json")" = "answered by the smoke test" ] ||
   die "results don't hold the answer: $(cat "$work/logs/results.json")"
 [ "$(field result.submission.channel < "$work/logs/results.json")" = "shell" ] ||
   die "the submission isn't the shell's: $(cat "$work/logs/results.json")"
-mostra daemon stop --json > /dev/null 2>&1 || true
+mostra daemon stop --json --timeout 1m > /dev/null 2>&1 || true
 
 say "moving the bundle"
 # Windows refuses to move a directory a process still has open: the daemon may take a moment.
@@ -171,10 +184,10 @@ done
 $moved || die "the bundle couldn't be moved: $(cat "$work/logs/mv.err")"
 root=$work/moved
 printf '\n// a second version\n' >> "$work/art/index.tsx"
-mostra publish "$art" --json > "$work/logs/publish2.json" 2> "$work/logs/publish2.err" ||
+mostra publish "$art" --json --timeout 5m > "$work/logs/publish2.json" 2> "$work/logs/publish2.err" ||
   die "publish from the moved bundle failed: $(cat "$work/logs/publish2.json" "$work/logs/publish2.err")"
 grep -q '"version":2' "$work/logs/publish2.json" || die "the moved bundle's publish isn't version 2: $(cat "$work/logs/publish2.json")"
-mostra doctor --json > "$work/logs/doctor.json" 2> "$work/logs/doctor.err" || die "doctor failed: $(cat "$work/logs/doctor.json")"
-mostra daemon stop --json > /dev/null 2>&1 || true
+mostra doctor --json --timeout 2m > "$work/logs/doctor.json" 2> "$work/logs/doctor.err" || die "doctor failed: $(cat "$work/logs/doctor.json")"
+mostra daemon stop --json --timeout 1m > /dev/null 2>&1 || true
 
 say "passed: logs in $work/logs"

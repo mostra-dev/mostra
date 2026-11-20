@@ -12,6 +12,7 @@ import { createServer, type Server } from "node:http";
 import { expect, type Frame, type Page, test } from "@playwright/test";
 import { gotoShell } from "../support/client.ts";
 import { Client, readRun } from "../support/mostra.ts";
+import { listenShortLived } from "../support/ports.ts";
 
 const run = readRun();
 
@@ -37,7 +38,7 @@ async function hostile(src: string, host = "127.0.0.1"): Promise<{ url: string; 
       `<!doctype html><title>elsewhere</title><iframe id="victim" src="${src}" width="800" height="600"></iframe>`,
     );
   });
-  await new Promise<void>((resolve) => server.listen(0, "127.0.0.1", resolve));
+  await listenShortLived(server);
   const address = server.address();
   if (address === null || typeof address === "string") throw new Error("no port");
   return { url: `http://${host}:${address.port}/`, close: () => server.close() };
@@ -64,7 +65,7 @@ async function unprotected(marker: string): Promise<{ url: string; close(): void
     response.writeHead(200, { "content-type": "text/html" });
     response.end(`<!doctype html><title>control</title><p>${marker}</p>`);
   });
-  await new Promise<void>((resolve) => server.listen(0, "127.0.0.1", resolve));
+  await listenShortLived(server);
   const address = server.address();
   if (address === null || typeof address === "string") throw new Error("no port");
   return { url: `http://127.0.0.1:${address.port}/`, close: () => server.close() };
@@ -279,7 +280,7 @@ test.describe("framing and revoked links (HY-01, D98 item 4)", () => {
       ).join("");
       response.end(`<!doctype html><title>elsewhere</title>${frames}`);
     });
-    await new Promise<void>((resolve) => server.listen(0, "127.0.0.1", resolve));
+    await listenShortLived(server);
     const address = server.address();
     if (address === null || typeof address === "string") throw new Error("no port");
     try {
@@ -456,7 +457,7 @@ test.describe("one artifact against the others and against its shell (Claude rev
       response.writeHead(200, { "content-type": "text/html" });
       response.end("<!doctype html><title>opened</title><p>opened</p>");
     });
-    await new Promise<void>((resolve) => target.listen(0, "127.0.0.1", resolve));
+    await listenShortLived(target);
     const address = target.address();
     if (address === null || typeof address === "string") throw new Error("no port");
     try {

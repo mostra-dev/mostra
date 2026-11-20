@@ -18,6 +18,7 @@ import {
   type ShellSession,
   signInFinish,
 } from "./api.ts";
+import { bootMark } from "./boot-marks.ts";
 import {
   clearSignedOut,
   enterRoute,
@@ -120,10 +121,12 @@ async function open(): Promise<State> {
   const strip = (): void => history.replaceState(null, "", location.pathname + location.search);
   if (token !== undefined && target.routeId === undefined) strip();
   try {
+    bootMark("session-asked");
     const session =
       token !== undefined
         ? await exchange(target.apiBase, token, false, target.routeId)
         : await readSession(target.apiBase);
+    bootMark("session-read");
     if (target.routeId !== undefined && token !== undefined) {
       const kept = session.session !== undefined && keepSession(session.session);
       if (kept) strip();
