@@ -57,9 +57,17 @@ The plan job's summary shows the scope, the runners chosen and every leg.
    traces, each daemon's supervisor log and ledger (`e2e-homes-*`, never its keys or secrets): the
    ledger's `draft.changed` events say when, or whether, a page's save reached Mostra (#39). A failure that a re-run cures is a finding: file it with the run and job IDs,
    or add the occurrence to its issue.
-8. **Add a job or a leg.** The job goes in `tools/check/jobs.ts` (so `pnpm check` runs it), its legs
+8. **A leg GitHub gave no runner.** GitHub's macOS arm64 pool sometimes cancels a job that waited,
+   with no runner, no step and the annotation "The job was not acquired by Runner of type hosted
+   even after multiple attempts" (#210, D179). The run tries such legs once more itself: the
+   `starved` job picks exactly those legs, waits until 10 minutes after the last was cancelled, and
+   each gate's retry twin (`retry · …`, the release's `retry · release`) runs them; `ci-ok` passes
+   when they pass. Nothing is retried when a gate also failed for its own reasons. If a retry
+   starves too, re-run the run's failed jobs once runners are back (`gh run rerun <id> --failed`).
+9. **Add a job or a leg.** The job goes in `tools/check/jobs.ts` (so `pnpm check` runs it), its legs
    in `tools/check/matrix.ts`, its CI job in `.github/workflows/ci.yml` (and in `ci-ok`'s `needs`),
-   and a case in `tools/test/ci.test.ts`.
+   and a case in `tools/test/ci.test.ts`. A job with legs on GitHub's macOS or Windows runners also
+   gets a retry twin and a name in `tools/check/starved.ts` (#210).
 
 **Done when** the pull request's `ci-ok` is green on its latest push, its merge-queue run passed
 and it merged, or the failure you were reading is fixed or filed.

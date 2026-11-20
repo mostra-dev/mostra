@@ -1708,6 +1708,17 @@ WP-28 designs and WP-30 builds, in the hosted shell on its trusted origin and ne
 
 *Rejected:* the lease range itself (it holds the home's shell and artifact ports, D99); leaving port 0 and relying on verify's render-again (D168 item 12) alone, which absorbs a collision but not the five-fold rate.
 
+### D179. A leg GitHub never gave a runner is tried again in the same run (#210, M85)
+*Status:* approved at M85 with #212. *Extends* D152 item 9 and REPO_STANDARDS §6.
+
+1. **What counts as starved.** After the gates, the `starved` job (`tools/check/starved.ts`) takes a leg for starved only when GitHub cancelled it with no runner, no step, and its annotation "The job was not acquired by Runner of type hosted even after multiple attempts". A job a newer run of its concurrency group cancelled carries the same capacity notice but never that annotation, so it never counts (VERIFIED_FACTS, #210).
+2. **One retry, in the same run.** When no gate failed for another reason and every planned leg has a job of its name, the `starved` job waits until 10 minutes after the last such cancellation and runs those legs once more through each gate's retry twin, whose steps, limit, environment and defaults are its gate's through YAML aliases. The release rehearsal runs what is left of it from the first call's artifacts (`release-build.yml`'s `resume`); a retried leg's own artifacts carry `-retry`.
+3. **`ci-ok`** accepts a gate that didn't pass only when the `starved` job named it and its retry passed; every other result fails as before.
+
+*Why:* GitHub's macOS arm64 pool starved 3.9% of this repository's arm64 jobs from 2026-11-02 (23% on the worst day), across both arm64 labels and with free slots under the account's limit in 96% of the starved minutes; a merge-group run asks for about 14 arm64 jobs and the merge queue decides on that one run, so 17% of merge-queue attempts lost a pull request to a runner that never came.
+
+*Rejected:* a second retry (a second starvation takes another 11 to 105 minutes to be cancelled, past the queue's 120-minute check timeout, turning a fast failure into a slow one); switching arm64 labels (they starve alike); changing `timeout-minutes` (it doesn't count queued time). Left for a later decision (#212's report): fewer arm64 jobs per run, adding a pull request to the queue only after its own run has finished, and an Intel fallback for the platform-neutral legs.
+
 ## Research consensus adopted
 
 These points were presented as the converged research findings and approved as a set at M5. The decisions above carry their details.
