@@ -23,6 +23,12 @@ export function appearanceCookie(appearance: Appearance, secure: boolean): strin
 export const APPEARANCES: readonly Appearance[];
 
 // @public
+export const arcata: Theme;
+
+// @public
+export const ARTIFACT_THEMES: Readonly<Record<string, Theme>>;
+
+// @public
 export function button(label: HtmlValue, options?: {
     readonly name?: string;
     readonly value?: string;
@@ -49,6 +55,9 @@ export interface Color {
 }
 
 // @public
+export function composeThemes(first: Theme, ...layers: readonly ThemeLayer[]): Theme;
+
+// @public
 export function contrast(first: Color | string, second: Color | string): number;
 
 // @public
@@ -59,6 +68,9 @@ export function cssColor(color: Color): string;
 
 // @public
 export function defineTheme(theme: Theme): Theme;
+
+// @public
+export function defineThemeLayer(layer: ThemeLayer): ThemeLayer;
 
 // @public
 export function escapeHtml(text: string): string;
@@ -139,7 +151,24 @@ export interface Identity {
 }
 
 // @public
+export function isCompleteTheme(layer: ThemeLayer): layer is Theme;
+
+// @public
 export function isSafeHtml(value: unknown): value is SafeHtml;
+
+// @public
+export function isTokenName(name: string): name is TokenName;
+
+// @public
+export function isTokenValue(value: string): boolean;
+
+// @public
+export function kitStylesheet(theme: Theme, options?: KitStylesheetOptions): string;
+
+// @public
+export interface KitStylesheetOptions {
+    readonly faceUrl?: (file: string) => string;
+}
 
 // @public
 export function linkButton(href: string, label: HtmlValue, options?: {
@@ -272,6 +301,7 @@ export interface Palette {
     readonly destructive: Color;
     readonly destructiveForeground: Color;
     readonly foreground: Color;
+    readonly highlight?: Color;
     readonly input: Color;
     readonly muted: Color;
     readonly mutedForeground: Color;
@@ -332,6 +362,7 @@ export function text(value: HtmlValue): SafeHtml;
 
 // @public
 export interface Theme {
+    readonly css?: string;
     readonly description: string;
     readonly faces: {
         readonly sans: Face;
@@ -355,10 +386,14 @@ export interface Theme {
         readonly light: Stage;
         readonly dark: Stage;
     };
+    readonly tokens?: TokenValues;
 }
 
 // @public
-export const THEME_REVISION = "2026-11-13";
+export const THEME_REVISION = "2026-11-20";
+
+// @public
+export const THEME_REVISIONS: readonly string[];
 
 // @public
 export class ThemeError extends Error {
@@ -367,10 +402,67 @@ export class ThemeError extends Error {
 }
 
 // @public
+export interface ThemeLayer {
+    // (undocumented)
+    readonly css?: string;
+    // (undocumented)
+    readonly description: string;
+    // (undocumented)
+    readonly faces?: Partial<Theme["faces"]>;
+    // (undocumented)
+    readonly id: string;
+    // (undocumented)
+    readonly modes?: {
+        readonly light?: Partial<Palette>;
+        readonly dark?: Partial<Palette>;
+    };
+    // (undocumented)
+    readonly motion?: Partial<Theme["motion"]>;
+    // (undocumented)
+    readonly name: string;
+    // (undocumented)
+    readonly radius?: string;
+    // (undocumented)
+    readonly revision: string;
+    // (undocumented)
+    readonly tokens?: TokenValues;
+}
+
+// @public
 export const THEMES: Readonly<Record<string, Theme>>;
 
 // @public
 export function themeStylesheet(theme: Theme, options?: StylesheetOptions): string;
+
+// @public
+export const TOKEN_NAMES: readonly ["body-size", "title-size", "title-weight", "title-tracking", "title-leading", "heading-font", "heading-size", "heading-weight", "heading-tracking", "card-title-font", "card-title-size", "card-title-weight", "figure-font", "figure-weight", "dialog-title-size", "question-number-color", "card-radius", "control-radius", "button-radius", "choice-radius", "popover-radius", "dialog-radius", "badge-radius", "tabs-radius", "tabs-indicator-radius", "thumb-radius", "section-radius", "figure-radius", "control-h", "control-h-sm", "card-pad", "dialog-pad", "menu-pad", "menu-item-radius", "tabs-track-pad", "figure-pad", "figures-gap", "section-pad", "section-index-size", "page-width", "page-pad", "stack-gap", "rule", "card-shadow", "choice-shadow", "choice-selected-shadow", "popover-shadow", "button-shadow", "control-shadow", "section-shadow", "section-rule", "figures-shadow", "figures-divider", "tabs-track-shadow", "tabs-indicator-shadow", "field", "button-outline-border", "choice-bg", "choice-hover-bg", "choice-selected-bg", "choice-selected-hover-bg", "choice-selected-fg", "choice-selected-muted", "menu-highlight", "menu-highlight-fg", "tabs-track-bg", "tabs-indicator-bg", "tabs-indicator-fill", "tabs-indicator-line", "tabs-active-fg", "section-bg", "section-index-color", "section-index-bg", "figure-bg", "figures-bg", "ease-out", "ease-answer", "answer-ms"];
+
+// @public
+export type TokenGroup = "type" | "shape" | "space" | "depth" | "surface" | "motion";
+
+// @public
+export type TokenName = (typeof TOKEN_NAMES)[number];
+
+// @public
+export const TOKENS: Readonly<Record<TokenName, TokenSpec>>;
+
+// @public
+export interface TokenSpec {
+    readonly default: string;
+    readonly description: string;
+    // (undocumented)
+    readonly group: TokenGroup;
+}
+
+// @public
+export interface TokenValues {
+    // (undocumented)
+    readonly base?: Readonly<Partial<Record<TokenName, string>>>;
+    // (undocumented)
+    readonly dark?: Readonly<Partial<Record<TokenName, string>>>;
+    // (undocumented)
+    readonly light?: Readonly<Partial<Record<TokenName, string>>>;
+}
 
 // @public
 export function variableOf(role: string): string;

@@ -2,14 +2,14 @@
 @import "@mostra/themes/css/faces.css";
 
 /*
- * Studio: Mostra's default theme: the brand's palette, faces and shapes without its marks, quiet so the page's own content leads.
+ * Studio: Mostra's default theme: the brand without its marks, as an editorial page of white grounds, nero rules, square edges and Jost set large.
  * Generated from @mostra/themes. Change any value; nothing depends on it.
  */
 :root {
   --font-sans: "Figtree", ui-sans-serif, system-ui, sans-serif;
   --font-display: "Jost", ui-sans-serif, system-ui, sans-serif;
   --font-mono: "Spline Sans Mono", ui-monospace, monospace;
-  --background: oklch(0.972 0.004 106.5);
+  --background: oklch(1 0 0);
   --foreground: oklch(0.191 0 0);
   --card: oklch(1 0 0);
   --card-foreground: oklch(0.191 0 0);
@@ -37,7 +37,8 @@
   --chart-4: oklch(0.561 0.121 160.3);
   --chart-5: oklch(0.651 0.135 80.9);
   --chart-6: oklch(0.586 0.176 358.8);
-  --radius: 10px;
+  --highlight: oklch(0.541 0.198 32);
+  --radius: 2px;
 }
 
 @media (prefers-color-scheme: dark) {
@@ -70,6 +71,7 @@
     --chart-4: oklch(0.627 0.133 159.6);
     --chart-5: oklch(0.645 0.131 81.9);
     --chart-6: oklch(0.63 0.169 355.6);
+    --highlight: oklch(0.706 0.188 32.9);
   }
 }
 

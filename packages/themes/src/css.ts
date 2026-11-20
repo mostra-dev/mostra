@@ -23,7 +23,7 @@ export function variableOf(role: string): string {
   return `--${role.replace(/[A-Z]/g, (letter) => `-${letter.toLowerCase()}`)}`;
 }
 
-function paletteVariables(palette: Palette): string[] {
+export function paletteVariables(palette: Palette): string[] {
   const lines: string[] = [];
   for (const [role, value] of Object.entries(palette)) {
     if (role === "chart") {
@@ -44,7 +44,7 @@ function stageVariables(stage: Stage | undefined): string[] {
   ];
 }
 
-function stack(face: Face): string {
+export function stack(face: Face): string {
   return `"${face.family}", ${face.fallback}`;
 }
 
@@ -107,7 +107,7 @@ export function themeStylesheet(theme: Theme, options: StylesheetOptions = {}): 
 }
 
 /** The roles a Tailwind 4 stylesheet maps to utilities (`bg-card`, `text-muted-foreground`…). */
-const TAILWIND_COLORS = [
+export const TAILWIND_COLORS: readonly string[] = [
   "background",
   "foreground",
   "card",

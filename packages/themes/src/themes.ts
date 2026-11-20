@@ -149,20 +149,190 @@ const dark = (ground: Color): Palette => ({
 const MOTION = { pressScale: 0.97, pressMs: 140, stateMs: 180 } as const;
 
 /**
- * Studio: the brand without its marks (D141, amended by D171). A warm pietra ground with white
- * cards, Jost for headings and Figtree for everything else, blu for the main action and what is
- * selected, giallo for what a person answered, rosso second in charts.
+ * Studio: the brand without its marks, as an editorial page (D141, D171, D178). White grounds,
+ * panels marked by a nero rule rather than boxed, square edges, Jost set large for titles and
+ * headings, Figtree for the rest, pill actions, rosso for the one recommended thing, a menu's
+ * highlight in nero, and what a person answered marked in giallo.
  */
 export const studio: Theme = defineTheme({
   revision: THEME_REVISION,
   id: "studio",
   name: "Studio",
   description:
-    "Mostra's default theme: the brand's palette, faces and shapes without its marks, quiet so the page's own content leads.",
-  modes: { light: light(P.pietra50), dark: dark(P.notte) },
+    "Mostra's default theme: the brand without its marks, as an editorial page of white grounds, nero rules, square edges and Jost set large.",
+  modes: {
+    light: { ...light(P.bianco), highlight: P.rossoText },
+    dark: { ...dark(P.notte), highlight: P.rossoDark },
+  },
   faces: { sans: FACES.figtree, display: FACES.jost, mono: FACES.splineSansMono },
-  radius: "10px",
+  radius: "2px",
   motion: MOTION,
+  tokens: {
+    base: {
+      "title-size": "clamp(2.25rem, 1.5rem + 2.6vw, 3.4rem)",
+      "title-weight": "500",
+      "title-tracking": "-0.032em",
+      "title-leading": "1.02",
+      "heading-size": "1.625rem",
+      "heading-weight": "500",
+      "heading-tracking": "-0.018em",
+      "card-title-font": "var(--font-display)",
+      "card-title-size": "1.1875rem",
+      "card-title-weight": "500",
+      "figure-font": "var(--font-display)",
+      "figure-weight": "500",
+      "dialog-title-size": "1.5rem",
+      "card-radius": "0px",
+      "control-radius": "0px",
+      "choice-radius": "0px",
+      "popover-radius": "2px",
+      "tabs-radius": "0px",
+      "tabs-indicator-radius": "0px",
+      "thumb-radius": "0px",
+      "card-pad": "1.25rem 0 0",
+      "dialog-pad": "1.75rem",
+      "menu-pad": "0.25rem",
+      "tabs-track-pad": "0px",
+      "figure-pad": "1.25rem 1.5rem 0.25rem",
+      "page-pad": "3.5rem",
+      "stack-gap": "2.75rem",
+      rule: "var(--foreground)",
+      "card-shadow": "inset 0 2px 0 var(--rule)",
+      "choice-selected-shadow": "0 0 0 2px var(--foreground)",
+      "tabs-track-shadow": "inset 0 -1px 0 var(--border)",
+      "tabs-indicator-shadow": "none",
+      "choice-selected-bg": "color-mix(in oklab, var(--answer) 16%, var(--card))",
+      "menu-highlight": "var(--foreground)",
+      "menu-highlight-fg": "var(--background)",
+      "tabs-track-bg": "transparent",
+      "tabs-indicator-bg": "var(--foreground)",
+      "tabs-indicator-fill": "0",
+      "section-index-color": "var(--highlight)",
+      "figures-bg": "transparent",
+    },
+    light: {
+      "popover-shadow": "0 0 0 1.5px var(--foreground), 0 12px 32px -12px oklch(0.191 0 0 / 0.25)",
+    },
+    dark: {
+      "popover-shadow": "0 0 0 1.5px var(--foreground), 0 16px 40px -12px oklch(0 0 0 / 0.6)",
+    },
+  },
+  // A row of figures sits on its rule: its first figure (and, two to a row, every odd one)
+  // starts at the rule's edge.
+  css: [
+    ':where([data-slot="figure"]:nth-child(odd)) { padding-left: 0; }',
+    "@media (min-width: 40rem) {",
+    '  :where([data-slot="figure"]:nth-child(odd)) { padding-left: 1.5rem; }',
+    '  :where([data-slot="figure"]:first-child) { padding-left: 0; }',
+    "}",
+  ].join("\n"),
+});
+
+/**
+ * Arcata: the brand's other half (D178). Flat fields of colour in place of lines, round shapes,
+ * bold Jost, and a choice that fills with blu the moment it is made; no borders where a field of
+ * colour does the work, and no shadows but a menu's.
+ */
+export const arcata: Theme = defineTheme({
+  revision: THEME_REVISION,
+  id: "arcata",
+  name: "Arcata",
+  description:
+    "Mostra's second theme: flat fields of colour, round shapes and bold Jost, with every choice filling with blu as it is made.",
+  modes: {
+    light: {
+      ...light(P.bianco),
+      card: oklch(0.978, 0.003, 106.5),
+      muted: oklch(0.955, 0.004, 106.5),
+      mutedForeground: oklch(0.44, 0.008, 106.7),
+      border: oklch(0.9, 0.008, 106.6),
+      input: oklch(0.6, 0.009, 106.6),
+      secondary: oklch(0.955, 0.004, 106.5),
+    },
+    dark: {
+      ...dark(P.notte),
+      card: P.notte2,
+      popover: P.notte25,
+      muted: P.notte25,
+      mutedForeground: oklch(0.74, 0.007, 286.2),
+      border: oklch(0.3, 0.011, 278.2),
+      input: oklch(0.55, 0.012, 279.2),
+    },
+  },
+  faces: { sans: FACES.figtree, display: FACES.jost, mono: FACES.splineSansMono },
+  radius: "16px",
+  motion: { ...MOTION, pressScale: 0.96 },
+  tokens: {
+    base: {
+      "title-size": "clamp(2.25rem, 1.55rem + 2.4vw, 3.25rem)",
+      "title-weight": "600",
+      "title-tracking": "-0.03em",
+      "title-leading": "1.04",
+      "heading-size": "1.625rem",
+      "heading-weight": "600",
+      "heading-tracking": "-0.02em",
+      "card-title-font": "var(--font-display)",
+      "card-title-size": "1.25rem",
+      "card-title-weight": "600",
+      "figure-font": "var(--font-display)",
+      "figure-weight": "600",
+      "dialog-title-size": "1.375rem",
+      "question-number-color": "var(--primary)",
+      "card-radius": "1.75rem",
+      "control-radius": "1rem",
+      "choice-radius": "1.25rem",
+      "popover-radius": "1.25rem",
+      "dialog-radius": "1.75rem",
+      "thumb-radius": "1rem",
+      "section-radius": "var(--card-radius)",
+      "figure-radius": "var(--choice-radius)",
+      "control-h": "3rem",
+      "control-h-sm": "2.375rem",
+      "card-pad": "1.75rem",
+      "dialog-pad": "1.75rem",
+      "figures-gap": "0.75rem",
+      "section-pad": "clamp(1.5rem, 4vw, 2.25rem)",
+      "section-index-size": "2.25rem",
+      "stack-gap": "1.25rem",
+      rule: "transparent",
+      "card-shadow": "none",
+      "choice-shadow": "none",
+      "choice-selected-shadow": "none",
+      "section-rule": "0 solid transparent",
+      "figures-shadow": "none",
+      "figures-divider": "transparent",
+      "tabs-indicator-shadow": "none",
+      "button-outline-border": "transparent",
+      "choice-selected-bg": "var(--primary)",
+      "choice-selected-fg": "var(--primary-foreground)",
+      "menu-highlight": "var(--primary)",
+      "menu-highlight-fg": "var(--primary-foreground)",
+      "tabs-indicator-bg": "var(--primary)",
+      "tabs-active-fg": "var(--primary-foreground)",
+      "section-bg": "var(--card)",
+      "section-index-color": "var(--primary-foreground)",
+      "section-index-bg": "var(--primary)",
+      "figure-bg": "var(--card)",
+      "figures-bg": "transparent",
+    },
+    light: {
+      field: "oklch(1 0 0)",
+      "choice-bg": "oklch(1 0 0)",
+      "choice-hover-bg": "oklch(0.985 0.002 106.5)",
+      "choice-selected-hover-bg": "color-mix(in oklab, var(--primary), black 14%)",
+      "choice-selected-muted": "oklch(0.88 0.04 270)",
+      "popover-shadow":
+        "0 0 0 1px oklch(0.191 0 0 / 0.06), 0 18px 40px -14px oklch(0.191 0 0 / 0.25)",
+    },
+    dark: {
+      field: "var(--muted)",
+      "choice-bg": "var(--muted)",
+      "choice-hover-bg": "oklch(0.29 0.014 279)",
+      "choice-selected-hover-bg": "color-mix(in oklab, var(--primary), white 12%)",
+      "choice-selected-muted": "oklch(0.3 0.05 272)",
+      "popover-shadow": "0 0 0 1px oklch(1 0 0 / 0.08), 0 24px 48px -16px oklch(0 0 0 / 0.7)",
+    },
+  },
 });
 
 /**
@@ -189,4 +359,10 @@ export const mostra: Theme = defineTheme({
 });
 
 /** Every theme this package ships, by id. */
-export const THEMES: Readonly<Record<string, Theme>> = Object.freeze({ studio, mostra });
+export const THEMES: Readonly<Record<string, Theme>> = Object.freeze({ studio, arcata, mostra });
+
+/**
+ * The built-in themes an artifact's stack may name (D178): Studio, the default, and Arcata. The
+ * `mostra` theme dresses Mostra's own pages and carries its brand, so it isn't one.
+ */
+export const ARTIFACT_THEMES: Readonly<Record<string, Theme>> = Object.freeze({ studio, arcata });
