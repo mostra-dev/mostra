@@ -151,7 +151,7 @@ export interface Theme {
   /** The brand's stage, for a theme that has one. */
   readonly stage?: { readonly light: Stage; readonly dark: Stage };
   /**
-   * The kit's other tokens (D178 item 3): shape, space, depth, surfaces and motion, by name
+   * The kit's other tokens (D179 item 3): shape, space, depth, surfaces and motion, by name
    * (`TOKENS`), for both modes and for each (revision 2026-11-20). A token no layer sets takes
    * the format's default.
    */
@@ -165,7 +165,7 @@ export interface Theme {
 }
 
 /**
- * A theme layer (D178 items 2 and 3): what a theme stacked over another changes, and nothing
+ * A theme layer (D179 items 2 and 3): what a theme stacked over another changes, and nothing
  * else. A complete theme is a layer too, and a stack's first entry must be one.
  */
 export interface ThemeLayer {
@@ -407,7 +407,7 @@ export function isCompleteTheme(layer: ThemeLayer): layer is Theme {
 }
 
 /**
- * The theme a stack makes (D178 item 2), unchecked: its first entry, a complete theme, with each
+ * The theme a stack makes (D179 item 2), unchecked: its first entry, a complete theme, with each
  * later layer over it, later winning, and the CSS of every layer in order. `composeThemes` is
  * this, checked; a caller that must build a stack below contrast (a page's look is its author's,
  * D68) uses this and reports the check's problems itself.

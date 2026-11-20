@@ -99,7 +99,7 @@ document(id PK, artifact_id, scope CHECK(scope IN ('viewer','artifact')), viewer
                                                     -- a trigger refuses revision or epoch going back
 field(document_id FK, field_id, value_json, deleted BOOLEAN, field_rev INTEGER, updated_by_json, updated_at,
       sensitive BOOLEAN, label NULL, required NULL, version_number INTEGER NULL,
-      options_json NULL, PRIMARY KEY(document_id, field_id))      -- options_json: migration 19 (WP-18, D178)
+      options_json NULL, PRIMARY KEY(document_id, field_id))      -- options_json: migration 19 (WP-18, D179)
                                                     -- a deleted field keeps its row and revision, so a stale write conflicts;
                                                     -- version_number: the version whose view last wrote it, an orphan's
                                                     -- fromVersion (D109; migration 6 renamed orphaned_from_version)
@@ -473,7 +473,7 @@ A route with `adopting_json` takes no push and sends no delivery or run until th
 
 **A hosted home's ledger.** No migration. `delivery_terminal` refuses a change of a delivery's `port_owner` (`ledger/migrations.ts:338-343`), and it stays: adoption rewrites no delivery, because a hosted home's outbox sends each pending delivery to its artifact's owner link as the route names it then (4.5). A delivery's `port_owner` on a hosted home is therefore the link that owned the route when the submission was committed. The adoption commit updates `relay_run.owner_link_id` and `relay_seq` of never-sent runs, which no trigger guards. The new events are rows of the existing `event` table.
 
-**The owner's ledger, migration 20 (WP-34; 18 is WP-17's, D175, and 19 WP-18's, D178).** `remote_link` is rebuilt with a local key, and its children reference the key.
+**The owner's ledger, migration 20 (WP-34; 18 is WP-17's, D175, and 19 WP-18's, D179).** `remote_link` is rebuilt with a local key, and its children reference the key.
 
 ```sql
 remote_link(id PK,                       -- local: rl_ + ULID

@@ -1,5 +1,5 @@
 /**
- * The kit's lint (KT-08, D48, D178): the APIs that changed in a recent major of a kit library or a
+ * The kit's lint (KT-08, D48, D179): the APIs that changed in a recent major of a kit library or a
  * tool artifacts use, each as one rule that finds the old form in the artifact's source and gives
  * the new one as a machine-applicable fix (`MOSTRA_LINT_API_CHANGED`); and the places a part of the
  * other base's idiom is used (`asChild` in a Base UI artifact, a `render` element in a Radix one),

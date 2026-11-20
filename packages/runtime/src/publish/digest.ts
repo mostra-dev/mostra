@@ -24,7 +24,7 @@ export interface BuildEnvironment {
    */
   readonly kitVersion: string | null;
   /**
-   * SHA-256 of the stylesheet the page's theme stack makes (D178 item 2): what the stack's built-in
+   * SHA-256 of the stylesheet the page's theme stack makes (D179 item 2): what the stack's built-in
    * and plugin themes are in this release. The stack's names and its local layers are the
    * source's, so `sourceDigest` covers them.
    */

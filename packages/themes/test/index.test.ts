@@ -56,7 +56,7 @@ describe("Mostra's themes", () => {
     });
   }
 
-  it("keeps the frame's look whatever a page's theme is (D178 item 8)", () => {
+  it("keeps the frame's look whatever a page's theme is (D179 item 8)", () => {
     // UX-01's values: a pietra ground with white cards, raised dark cards, a 10 px radius.
     expect(frame.modes.light.background.hex).toBe("#f6f6f3");
     expect(frame.modes.light.card.hex).toBe("#ffffff");

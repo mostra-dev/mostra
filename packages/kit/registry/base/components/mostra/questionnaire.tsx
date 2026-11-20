@@ -658,7 +658,7 @@ function ChoiceCard({
   );
 }
 
-/** The mark of an answer: a giallo dot that drops in, the theme's signature move (D178 item 1). */
+/** The mark of an answer: a giallo dot that drops in, the theme's signature move (D179 item 1). */
 function AnswerMark({
   shape = "circle",
 }: {

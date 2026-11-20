@@ -30,7 +30,7 @@ export const MADE_WITH_HREF = "https://mostradev.com";
 export interface AppearanceConfig {
   /**
    * `studio` (the default): the brand without its marks, in the frame's look (`@mostra/themes`'
-   * `frame`, D178 item 8); or `mostra`, Mostra's own brand.
+   * `frame`, D179 item 8); or `mostra`, Mostra's own brand.
    */
   readonly theme?: "studio" | "mostra" | undefined;
   /** The name pages speak of: `Mostra` by default, another name, or `null` for none. */

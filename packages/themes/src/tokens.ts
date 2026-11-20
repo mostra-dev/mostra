@@ -1,5 +1,5 @@
 /**
- * The kit's token contract beyond colours (D178 item 3): every custom property a theme may set to
+ * The kit's token contract beyond colours (D179 item 3): every custom property a theme may set to
  * shape the kit's parts, with what it does and the value a theme that doesn't set it gets. A
  * theme's `tokens` name them without their `--`; a value may refer to any palette role or other
  * token through `var()`, so most need no light and dark of their own.

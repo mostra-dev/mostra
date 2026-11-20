@@ -1,5 +1,5 @@
 /**
- * Themes as layers and as an artifact's stylesheet (D178 items 2 and 3, KT-04): every token of the
+ * Themes as layers and as an artifact's stylesheet (D179 items 2 and 3, KT-04): every token of the
  * contract reaches the stylesheet, a layer changes only what it names, a stack is checked as a
  * theme is, and nothing a theme writes outranks an artifact's own rule.
  */
@@ -103,7 +103,7 @@ describe("an artifact's stylesheet", () => {
   });
 });
 
-describe("a stack (D178 item 2)", () => {
+describe("a stack (D179 item 2)", () => {
   it("lays each layer over the one before, later winning, the CSS of each in order", () => {
     const brand = defineThemeLayer(
       layer({

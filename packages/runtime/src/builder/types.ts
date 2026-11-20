@@ -53,7 +53,7 @@ export interface VersionRegistry {
   readonly fields?: FieldCoverage;
 }
 
-/** What a build takes of the kit and the artifact's theme stack (D178, ROUND-3 §1.1). */
+/** What a build takes of the kit and the artifact's theme stack (D179, ROUND-3 §1.1). */
 export interface KitBuild {
   /**
    * The kit's registry for the artifact's base in the build's layout
@@ -91,7 +91,7 @@ export interface BuildRequest {
   readonly nodeModules: string;
   /** Where the client build goes; a server build goes beside it in `server/`. */
   readonly outDir: string;
-  /** The kit and the theme stack the page is built with (D178, ROUND-3 §1.1). */
+  /** The kit and the theme stack the page is built with (D179, ROUND-3 §1.1). */
   readonly kit: KitBuild;
   /**
    * Tests only (`MOSTRA_TEST_FAULTS=builder:build:hang`, issue #18): the child never answers,

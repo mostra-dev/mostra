@@ -300,7 +300,7 @@ export function createDev(options: DevOptions): Dev {
     const startChild = async (
       described: Awaited<ReturnType<typeof describe>>,
     ): Promise<DevChild> => {
-      // The theme stack as publish builds it (D178); a stack that can't be built is said, and the
+      // The theme stack as publish builds it (D179); a stack that can't be built is said, and the
       // preview shows the page with no theme until it can.
       let kit: KitBuild = { themeCss: "", themeFiles: [] };
       try {

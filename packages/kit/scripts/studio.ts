@@ -1,6 +1,6 @@
 /**
  * The kit's changes to the shadcn items it pins, the same for both bases (D27: two bases cost CI
- * time, not duplicate code). They move every part onto the kit's token contract (D178 item 3), so
+ * time, not duplicate code). They move every part onto the kit's token contract (D179 item 3), so
  * a theme's shape, depth, surfaces and type reach it, and give the parts the motion and states the
  * built-in themes are designed around. Each change must still find its place in the pinned items:
  * the generator fails on one that no longer does, so a newer shadcn can't silently drop it.

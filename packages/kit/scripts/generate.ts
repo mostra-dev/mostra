@@ -1,5 +1,5 @@
 /**
- * Builds the kit's per-base registry packs (KT-03, D27, D178) from the shadcn items it pins: each
+ * Builds the kit's per-base registry packs (KT-03, D27, D179) from the shadcn items it pins: each
  * item as shadcn's registry serves it (`upstream/shadcn/<style>/<item>.json`) and its files as
  * shadcn 4.23.0's own CLI wrote them into a project with `rsc: true` and lucide icons
  * (`upstream/shadcn/<style>/installed/`), all checked against `upstream/shadcn/lock.json`.

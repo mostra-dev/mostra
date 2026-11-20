@@ -1,5 +1,5 @@
 /**
- * The kit's side of the runtime (D178, KT-03, KT-04): an artifact's theme stack resolved into
+ * The kit's side of the runtime (D179, KT-03, KT-04): an artifact's theme stack resolved into
  * what its build includes, and where the kit's per-base registry is. The runtime never imports
  * the kit (it is the artifact's package, REPO_STANDARDS §3): it reads the kit's files from the
  * build's layout, and makes the theme's stylesheet from `@mostra/themes`.
@@ -33,7 +33,7 @@ import {
 } from "@mostra/themes";
 import type { KitBuild } from "../builder/index.ts";
 
-/** A theme a plugin installed for the artifact contributes (D178 item 4). */
+/** A theme a plugin installed for the artifact contributes (D179 item 4). */
 export interface ContributedTheme {
   readonly theme: ThemeLayer;
   /** The package that contributes it, for messages and its faces' URLs. */
@@ -44,7 +44,7 @@ export interface ContributedTheme {
 export interface ThemeBuild {
   /** The stack as the manifest writes it, or the default's. */
   readonly stack: readonly string[];
-  /** Whether the page named no theme and wears the default (D178 item 2). */
+  /** Whether the page named no theme and wears the default (D179 item 2). */
   readonly default: boolean;
   /** The id of the theme the stack's themes make, or `undefined` for `"none"`. */
   readonly id?: string;
@@ -53,7 +53,7 @@ export interface ThemeBuild {
   /** The artifact's own CSS layers, paths inside it, in the stack's order. */
   readonly files: readonly string[];
   /**
-   * Where the host's look goes, when the stack has `"host"` (D178 item 5): `over` everything,
+   * Where the host's look goes, when the stack has `"host"` (D179 item 5): `over` everything,
    * when it is last, or `under` the artifact's own files that follow it.
    */
   readonly host?: "over" | "under";
@@ -85,7 +85,7 @@ export function availableThemes(
 }
 
 /**
- * Resolves a manifest's theme stack (D178 items 2 and 5) against the built-in themes, the themes
+ * Resolves a manifest's theme stack (D179 items 2 and 5) against the built-in themes, the themes
  * the artifact's plugins contribute and its own files. Throws `MOSTRA_MANIFEST_INVALID` for a
  * stack that can't be written so, `MOSTRA_KIT_THEME_UNKNOWN`, `MOSTRA_KIT_THEME_FILE_MISSING` or
  * `MOSTRA_KIT_THEME_CONFLICT`; a stack whose themes break a text pair builds, with

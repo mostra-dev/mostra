@@ -1,5 +1,5 @@
 /*
- * The kit's CSS, which every themed build includes after Tailwind (D178): the animations and
+ * The kit's CSS, which every themed build includes after Tailwind (D179): the animations and
  * variants shadcn's components use, the dark variant that follows the page's appearance, and
  * the kit's two motions, the press and the answer dropping in. The colours, faces, shapes and
  * depths come from the theme stack, never from here.
@@ -22,7 +22,7 @@
   }
 }
 
-/* An answer arrives as a dot that drops in (the brand's signature move, D178 item 1). */
+/* An answer arrives as a dot that drops in (the brand's signature move, D179 item 1). */
 @keyframes answer-drop {
   from {
     transform: translateY(-5px) scale(0.4);

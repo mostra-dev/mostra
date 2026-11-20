@@ -266,7 +266,7 @@ export async function typecheck(options: {
         ...(options.kitRegistry !== undefined
           ? {
               "@/*": [...FORCED_OPTIONS.paths["@/*"], `${options.kitRegistry}/*`],
-              // A kit module as the build finds it: the artifact's copy, else the kit's (D178).
+              // A kit module as the build finds it: the artifact's copy, else the kit's (D179).
               "@mostra/kit/*": [
                 "./source/components/mostra/*",
                 `${options.kitRegistry}/components/mostra/*`,

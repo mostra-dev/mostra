@@ -532,7 +532,7 @@ export function createPublisher(options: PublisherOptions): Publisher {
 
     // 3. Digests (DATA_MODEL §2).
     const sourceDigest = listingDigest(listed);
-    // The kit and the theme stack (D178): the stack is the manifest's, so the snapshot's digest
+    // The kit and the theme stack (D179): the stack is the manifest's, so the snapshot's digest
     // covers it and the artifact's own layers; the kit's registry is the layout's, named by its
     // version; the theme's stylesheet is this release's `@mostra/themes`, named by Mostra's.
     const { kit, theme } = kitBuildFor({

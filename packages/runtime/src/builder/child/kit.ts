@@ -1,5 +1,5 @@
 /**
- * What a build takes of the kit (ROUND-3 §1.1, D178): `@/…` resolving to the artifact's own copy
+ * What a build takes of the kit (ROUND-3 §1.1, D179): `@/…` resolving to the artifact's own copy
  * first and the kit's registry for its base next, and the stylesheet the client entry imports,
  * which puts the theme stack inside the build's one Tailwind run.
  */
@@ -117,7 +117,7 @@ export function kitFilesUsed(sourceDir: string, registry: string): string[] {
  * The stylesheet every client entry imports: Tailwind over the artifact's source and the kit's
  * registry for its base, then, unless the stack is `"none"`, the kit's CSS, the theme the stack
  * makes and the artifact's own layers in their order, all in the one Tailwind run, so a layer's
- * `@theme` and `@apply` work (D178 item 2). The theme's file is written beside it.
+ * `@theme` and `@apply` work (D179 item 2). The theme's file is written beside it.
  */
 export function entryStylesheet(
   generatedDir: string,
@@ -148,7 +148,7 @@ export function entryStylesheet(
   return `${lines.join("\n")}\n`;
 }
 
-/** The attributes the page's `<html>` carries for its theme (D178 items 2 and 5). */
+/** The attributes the page's `<html>` carries for its theme (D179 items 2 and 5). */
 export function themeAttributes(kit: KitBuild): string {
   const attributes: string[] = [];
   if (kit.themeId !== undefined) attributes.push(`data-theme="${kit.themeId}"`);

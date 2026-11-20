@@ -149,7 +149,7 @@ const dark = (ground: Color): Palette => ({
 const MOTION = { pressScale: 0.97, pressMs: 140, stateMs: 180 } as const;
 
 /**
- * Studio: the brand without its marks, as an editorial page (D141, D171, D178). White grounds,
+ * Studio: the brand without its marks, as an editorial page (D141, D171, D179). White grounds,
  * panels marked by a nero rule rather than boxed, square edges, Jost set large for titles and
  * headings, Figtree for the rest, pill actions, rosso for the one recommended thing, a menu's
  * highlight in nero, and what a person answered marked in giallo.
@@ -232,7 +232,7 @@ export const studio: Theme = defineTheme({
 });
 
 /**
- * Arcata: the brand's other half (D178). Flat fields of colour in place of lines, round shapes,
+ * Arcata: the brand's other half (D179). Flat fields of colour in place of lines, round shapes,
  * bold Jost, and a choice that fills with blu the moment it is made; no borders where a field of
  * colour does the work, and no shadows but a menu's.
  */
@@ -370,7 +370,7 @@ export const mostra: Theme = defineTheme({
 
 /**
  * The frame: what dresses the trusted shell around a page and a server's own pages when they
- * aren't in the brand (D171 item 2, D178 item 8). The brand's palette and faces without its marks
+ * aren't in the brand (D171 item 2, D179 item 8). The brand's palette and faces without its marks
  * on a warm pietra ground with raised cards, as UX-01 designed them, so the frame keeps its look
  * whichever theme the page inside it wears; WP-20's final pass on the shell starts from it.
  */
@@ -395,7 +395,7 @@ export const THEMES: Readonly<Record<string, Theme>> = Object.freeze({
 });
 
 /**
- * The built-in themes an artifact's stack may name (D178): Studio, the default, and Arcata. The
+ * The built-in themes an artifact's stack may name (D179): Studio, the default, and Arcata. The
  * `mostra` theme dresses Mostra's own pages and carries its brand, so it isn't one.
  */
 export const ARTIFACT_THEMES: Readonly<Record<string, Theme>> = Object.freeze({ studio, arcata });
