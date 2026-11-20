@@ -57,7 +57,7 @@ Several of these had a major release recently, so older habits break the build o
 | `function Input({ ref, ...props })` | `forwardRef(...)` | React 19 passes `ref` as a prop |
 | `useTable({ features, columns, data })` | `useReactTable({ getCoreRowModel: getCoreRowModel(), … })` | TanStack Table 9 |
 | `import { ReactFlow } from "@xyflow/react"` | `import ReactFlow from "reactflow"` | React Flow is `@xyflow/react` since version 12 |
-| `mermaid.run()`, `await mermaid.render(id, text)` | `mermaid.init()`, `mermaid.mermaidAPI.render(…)` | Mermaid 12 removed them |
+| `mermaid.run()`, `await mermaid.render(id, text)` | `mermaid.init()`, `mermaid.mermaidAPI.render(…)` | Mermaid 12 deprecates them |
 | `import { cn } from "cn"` | `lib/utils.ts` with `clsx` and `tailwind-merge` | shadcn's components import the `cn` package |
 
 Verify flags each of these with its fix (`MOSTRA_LINT_API_CHANGED`), and the other base's idiom too (`MOSTRA_KIT_WRONG_BASE`). `mostra verify <dir> --fix` writes every fix verify offers into your files, lists the files it changed, and verifies again.

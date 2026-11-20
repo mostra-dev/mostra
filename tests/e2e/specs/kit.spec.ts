@@ -86,10 +86,10 @@ test.describe("the page's theme and a host's look (KT-04, D179 item 5)", () => {
       await expect.poll(async () => (await look(frame)).background).toBe("rgb(10, 20, 30)");
       expect(await look(frame)).toMatchObject({ theme: "studio", radius: "14px" });
     } finally {
+      // The look stays: it is the home's, and an engine running beside this one (the seeds run
+      // three in one home) sets the same values and may still be reading them. It reaches only
+      // pages whose stack names "host" in the shell, which no other test opens there.
       host.close();
-      // The look is the home's: cleared for the suites after this one.
-      const clear = await Client.connect(run.socket, { home: { look: {} } });
-      clear.close();
     }
   });
 });

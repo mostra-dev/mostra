@@ -75,8 +75,9 @@ const SEEDS: readonly Seed[] = [
     requirement: "KT-03",
     name: "resolution: the kit's part wins over the artifact's own copy",
     file: "src/builder/child/kit.ts",
-    from: "      if (own !== undefined) return own;\n      if (kit.registry !== undefined) {",
-    to: "      if (own !== undefined && kit.registry === undefined) return own;\n      if (kit.registry !== undefined) {",
+    // The kit's file is looked for first; the artifact's own files still resolve otherwise.
+    from: "      if (own !== undefined) return own;\n      if (kit.registry !== undefined) {\n        const kitFile = findUnder(kit.registry, rest);\n        if (kitFile !== undefined) return kitFile;\n      }\n      return null;",
+    to: "      if (kit.registry !== undefined) {\n        const kitFile = findUnder(kit.registry, rest);\n        if (kitFile !== undefined) return kitFile;\n      }\n      if (own !== undefined) return own;\n      return null;",
     check: e2e("design freedom"),
     e2e: true,
   },
