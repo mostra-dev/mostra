@@ -66,7 +66,7 @@ const BUILD_PACKAGES = [
 ] as const;
 
 /** Bumped whenever the SPA build's settings change, so older versions aren't reused. */
-const SPA_CONFIG_REVISION = 9;
+const SPA_CONFIG_REVISION = 10;
 
 /** What a render mode can deliver for a manifest (ROUND-3 §7). */
 export interface RenderCapabilities {

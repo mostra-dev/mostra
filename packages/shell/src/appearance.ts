@@ -1,8 +1,8 @@
 /**
  * Light or dark for the shell's own chrome (D171 item 6): the device's setting until the person
  * chooses with the chrome's one button, then their choice, kept in this origin's storage (a hosted
- * shell keeps no cookie, D165 item 8). The artifact keeps its own look: only the shell's document
- * changes.
+ * shell keeps no cookie, D165 item 8). The page hears it as an MCP Apps host's `theme` (D179
+ * item 5): a page in a kit theme follows it, and one with its own look keeps it.
  */
 
 const KEY = "mostra.appearance";
@@ -41,5 +41,25 @@ export function toggleAppearance(): Chosen {
   } catch {
     // Storage refused (a full or blocked storage): the choice lasts this page.
   }
+  for (const listener of listeners) listener(next);
   return next;
+}
+
+const listeners = new Set<(appearance: Chosen) => void>();
+
+/**
+ * Calls `listener` with the appearance in force whenever it changes: the person's switch, or the
+ * device's setting while they haven't chosen. Returns the way to stop.
+ */
+export function onAppearance(listener: (appearance: Chosen) => void): () => void {
+  listeners.add(listener);
+  const media = matchMedia("(prefers-color-scheme: dark)");
+  const device = (): void => {
+    if (stored() === undefined) listener(currentAppearance());
+  };
+  media.addEventListener("change", device);
+  return () => {
+    listeners.delete(listener);
+    media.removeEventListener("change", device);
+  };
 }

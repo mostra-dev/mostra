@@ -121,6 +121,11 @@ export interface PublisherOptions {
   readonly faults?: Faults;
   /** The home's submission policy (`HomeConfig.submission`, D102), read at each publish. */
   readonly homePolicy?: () => SubmissionPolicy | undefined;
+  /**
+   * The theme stack a page that names none wears in this home (`HomeConfig.look.theme`, D179
+   * item 5), read at each publish and verify; absent, Studio.
+   */
+  readonly homeTheme?: () => string | readonly string[] | undefined;
   /** The verifier, made on first use: publish's gate and `artifact/verify` (D41, D138). */
   readonly verifier: () => Verifier;
   /**
@@ -539,8 +544,11 @@ export function createPublisher(options: PublisherOptions): Publisher {
     // version; the theme's stylesheet is this release's `@mostra/themes`, named by Mostra's.
     // `verify --theme` builds in another stack for that run only (D179 item 6): the theme's
     // digest below covers the stack built, so its verdict is never a publish's.
+    // A page that names no theme wears the home's default (a host's, D179 item 5), else Studio.
+    const homeTheme = manifest.kit?.theme === undefined ? options.homeTheme?.() : undefined;
+    const stackOverride = themeOverride ?? homeTheme;
     const kitManifest =
-      themeOverride === undefined ? manifest : { kit: { ...manifest.kit, theme: themeOverride } };
+      stackOverride === undefined ? manifest : { kit: { ...manifest.kit, theme: stackOverride } };
     const { kit, theme } = kitBuildFor({
       manifest: kitManifest,
       sourceDir: join(staging, "source"),
@@ -582,7 +590,8 @@ export function createPublisher(options: PublisherOptions): Publisher {
         kit,
         theme: {
           stack: theme.stack,
-          default: theme.default,
+          // The page named none: it wears the home's default, or Studio.
+          default: themeOverride === undefined && manifest.kit?.theme === undefined,
           ...(themeOverride !== undefined ? { requested: true } : {}),
         },
       },

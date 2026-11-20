@@ -5,6 +5,7 @@
  */
 import { existsSync, readdirSync, readFileSync, statSync } from "node:fs";
 import { extname, join, relative } from "node:path";
+import { HOST_TOKENS } from "@mostra/themes";
 import type { Plugin } from "vite";
 import { isUnder } from "../../platform/index.ts";
 import type { KitBuild } from "../types.ts";
@@ -154,4 +155,16 @@ export function themeAttributes(kit: KitBuild): string {
   if (kit.themeId !== undefined) attributes.push(`data-theme="${kit.themeId}"`);
   if (kit.host !== undefined) attributes.push(`data-host-look="${kit.host}"`);
   return attributes.map((attribute) => ` ${attribute}`).join("");
+}
+
+/**
+ * The table of which host variables each token reads (`HOST_TOKENS`), as data in the page, when
+ * the stack names `"host"` (D179 item 5): the client runtime maps a host's look onto the tokens
+ * with it, in the shell as inline in an MCP Apps host. JSON's own escape for `<`, so nothing in it
+ * can end the element.
+ */
+export function hostTokensElement(kit: KitBuild): string {
+  if (kit.host === undefined) return "";
+  const table = JSON.stringify(HOST_TOKENS).replaceAll("<", "\\u003c");
+  return `\n    <script type="application/json" id="mostra-host-tokens">${table}</script>`;
 }

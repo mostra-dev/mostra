@@ -96,7 +96,49 @@ export interface HomeConfig {
    * accepted by the host. `{ accept: ["*"] }` accepts any; `{ accept: [] }` clears the policy.
    */
   readonly licenses?: LicensePolicy;
+  /**
+   * The host's look for the pages of this home (D179 item 5), kept in `config.json`: the theme
+   * stack a page that names none wears (`theme`, in place of Studio), and the host's own variables
+   * (`variables`, MCP Apps' standardized `--color-*`, `--font-*` and `--border-radius-*`), which
+   * the shell passes to every page as an MCP Apps host does and which a page takes where its stack
+   * names `"host"`. `{}` clears both.
+   */
+  readonly look?: HostLook;
 }
+
+/** A host's look for a home's pages (`HomeConfig.look`, D179 item 5). */
+export interface HostLook {
+  /** The theme stack a page that names none wears, written as `kit.theme` is. */
+  readonly theme?: string | readonly string[];
+  /** MCP Apps' style variables, by name, which pages naming `"host"` take. */
+  readonly variables?: Readonly<Record<string, string>>;
+}
+
+/** The Zod schema of the `HostLook` type. */
+export const HostLook: z.ZodType<HostLook> = z
+  .object({
+    theme: z
+      .union([
+        z.string().min(1).max(200),
+        z.array(z.string().min(1).max(200)).min(1).max(8).readonly(),
+      ])
+      .exactOptional(),
+    variables: z
+      .record(
+        z.string().regex(/^--[A-Za-z0-9-]{1,64}$/),
+        z
+          .string()
+          .max(1024)
+          .refine((value) => !/[;{}<>]/.test(value), "a value can't hold ; { } < or >"),
+      )
+      .refine((variables) => Object.keys(variables).length <= 256, "at most 256 variables")
+      .exactOptional(),
+  })
+  .register(wireRegistry, {
+    id: "HostLook",
+    description:
+      "A host's look for a home's pages (D179 item 5): the theme stack pages naming none wear, and MCP Apps style variables that pages naming \"host\" take.",
+  });
 
 /** How packages enter an artifact's lockfile (D43). */
 export type DependencyPolicy = "auto" | "explicit";
@@ -201,11 +243,12 @@ export const HomeConfig: z.ZodType<HomeConfig> = z
     ports: z.array(PortName).max(32).readonly().exactOptional(),
     submitChannels: z.array(SubmitChannel).min(1).max(2).readonly().exactOptional(),
     licenses: LicensePolicy.exactOptional(),
+    look: HostLook.exactOptional(),
   })
   .register(wireRegistry, {
     id: "HomeConfig",
     description:
-      "Home settings from a spawning host; path is a check against the instance's home (D84), dependencies the dependency policy (D43), submission the home's policy (D102), ports those the host always provides (D105), licenses those it accepts for every install (D31).",
+      "Home settings from a spawning host; path is a check against the instance's home (D84), dependencies the dependency policy (D43), submission the home's policy (D102), ports those the host always provides (D105), licenses those it accepts for every install (D31), look its look for the home's pages (D179).",
   });
 
 /** The Zod schema of the `InstanceInfo` type. */

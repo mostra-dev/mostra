@@ -27,6 +27,7 @@ import {
   type OrphanedField,
   type SubmitBlocker,
   type UiInitializeResult,
+  uiHostContextChanged,
   uiInitialize,
   uiInitialized,
   uiOpenLink,
@@ -51,6 +52,7 @@ import {
   signOutViewer,
   submit,
 } from "./api.ts";
+import { currentAppearance, onAppearance } from "./appearance.ts";
 import { bootMark } from "./boot-marks.ts";
 import {
   AppearanceButton,
@@ -209,9 +211,11 @@ function frameSandbox(): string {
   return FRAME_SANDBOX_TOKENS.filter((token) => probe.supports(token)).join(" ");
 }
 
-function hostContext(): UiInitializeResult["hostContext"] {
+function hostContext(ticket: FrameTicket): UiInitializeResult["hostContext"] {
   return {
-    theme: matchMedia("(prefers-color-scheme: dark)").matches ? "dark" : "light",
+    // The shell's own light or dark, the person's choice or the device's (D179 item 5).
+    theme: currentAppearance(),
+    ...(ticket.hostStyles ? { styles: { variables: ticket.hostStyles.variables } } : {}),
     displayMode: "fullscreen",
     availableDisplayModes: ["fullscreen"],
     locale: navigator.language,
@@ -309,7 +313,7 @@ function Frame(props: {
             protocolVersion: MCP_APPS_PROTOCOL_VERSION,
             hostInfo: { name: "mostra-shell", version: "0" },
             hostCapabilities: { openLinks: {} },
-            hostContext: hostContext(),
+            hostContext: hostContext(ticket),
             mostra: viewContext(ticket),
           };
           return result;
@@ -345,7 +349,10 @@ function Frame(props: {
       },
     });
     onBridge(bridge);
+    // The shell's light or dark reaches the page as a host's theme does (D179 item 5).
+    const stopAppearance = onAppearance((theme) => bridge.notify(uiHostContextChanged, { theme }));
     return () => {
+      stopAppearance();
       onBridge(undefined);
       bridge.close();
     };

@@ -23,7 +23,7 @@ import {
   STAGING_FILES,
   type VersionRegistry,
 } from "../types.ts";
-import { entryStylesheet, kitResolvePlugin, themeAttributes } from "./kit.ts";
+import { entryStylesheet, hostTokensElement, kitResolvePlugin, themeAttributes } from "./kit.ts";
 import {
   type BuildInputs,
   confinePlugin,
@@ -37,14 +37,14 @@ import { type ScanResult, scanArtifact } from "./scan.ts";
 /** Where generated build files live inside the staging directory (never in the snapshot). */
 export const GENERATED = ".mostra-build";
 
-export const html = (title: string, versionId: string, attributes = ""): string =>
+export const html = (title: string, versionId: string, attributes = "", head = ""): string =>
   `<!doctype html>
 <html lang="en"${attributes}>
   <head>
     <meta charset="utf-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1" />
     <meta name="mostra-version" content="${versionId}" />
-    <title>${title.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;")}</title>
+    <title>${title.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;")}</title>${head}
   </head>
   <body>
     <div id="root"></div>
@@ -267,7 +267,12 @@ export async function buildSpa(input: BuildRequest): Promise<BuildResponse> {
   await linkDirectory(request.nodeModules, join(request.stagingDir, "node_modules"));
   await writeFile(
     join(request.stagingDir, "index.html"),
-    html(request.manifest.title, request.versionId, themeAttributes(request.kit)),
+    html(
+      request.manifest.title,
+      request.versionId,
+      themeAttributes(request.kit),
+      hostTokensElement(request.kit),
+    ),
   );
   await writeFile(join(generated, "entry.js"), clientEntry(request, scan));
   await writeFile(join(generated, "theme.css"), request.kit.themeCss);

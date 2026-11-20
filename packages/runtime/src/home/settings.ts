@@ -33,6 +33,11 @@ export interface HomeSettings {
   readonly hostConfigured?: { readonly client: string; readonly at: string };
   /** The licenses a host accepts for every plugin and pack install (D31, `HomeConfig.licenses`). */
   readonly licenses?: { readonly accept: readonly string[] };
+  /** The host's look for the home's pages (D179 item 5, `HomeConfig.look`). */
+  readonly look?: {
+    readonly theme?: string | readonly string[];
+    readonly variables?: Readonly<Record<string, string>>;
+  };
 }
 
 const Settings = z.looseObject({
@@ -46,6 +51,12 @@ const Settings = z.looseObject({
     .optional(),
   hostConfigured: z.object({ client: z.string(), at: z.string() }).optional(),
   licenses: z.object({ accept: z.array(z.string()) }).optional(),
+  look: z
+    .object({
+      theme: z.union([z.string(), z.array(z.string())]).optional(),
+      variables: z.record(z.string(), z.string()).optional(),
+    })
+    .optional(),
 });
 
 /** The settings file of a home. */

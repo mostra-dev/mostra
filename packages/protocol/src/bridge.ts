@@ -93,9 +93,20 @@ export interface BridgeHostContext {
   readonly timeZone?: string;
   /** The kind of device. */
   readonly platform?: "web" | "desktop" | "mobile";
+  /**
+   * The host's look (MCP Apps' `styles`): its standardized CSS variables (`--color-*`, `--font-*`,
+   * `--border-radius-*`). A page takes them only where its theme stack names `"host"` (D179
+   * item 5); a host embedding Mostra sets them with `HomeConfig.look`.
+   */
+  readonly styles?: { readonly variables?: Readonly<Record<string, string>> };
   /** Further MCP Apps context, passed through. */
   readonly [key: string]: unknown;
 }
+
+/** The host's look's variables a bridge carries: a CSS custom property's name and its value. */
+const HOST_VARIABLES = z
+  .record(z.string().regex(/^--[A-Za-z0-9-]{1,64}$/), z.string().max(1024))
+  .refine((variables) => Object.keys(variables).length <= 256, "at most 256 variables");
 
 /** The result of `ui/initialize`: the shell introduces itself (MCP Apps). */
 export interface UiInitializeResult {
@@ -133,6 +144,7 @@ export const uiInitialize: BridgeMessage<UiInitializeParams, UiInitializeResult>
       locale: z.string().exactOptional(),
       timeZone: z.string().exactOptional(),
       platform: z.enum(["web", "desktop", "mobile"]).exactOptional(),
+      styles: z.looseObject({ variables: HOST_VARIABLES.exactOptional() }).exactOptional(),
     }),
     mostra: ViewContextWire.exactOptional(),
   }),
@@ -419,6 +431,21 @@ export const mostraVersionAvailable: BridgeMessage<VersionAvailableParams, undef
   result: z.undefined(),
 };
 
+/**
+ * `ui/notifications/host-context-changed` (MCP Apps): part of where the page is shown changed, such
+ * as the viewer switching the shell to dark; the page merges it into what `ui/initialize` gave.
+ */
+export const uiHostContextChanged: BridgeMessage<BridgeHostContext, undefined> = {
+  method: "ui/notifications/host-context-changed",
+  from: "shell",
+  kind: "notification",
+  params: z.looseObject({
+    theme: z.enum(["light", "dark"]).exactOptional(),
+    styles: z.looseObject({ variables: HOST_VARIABLES.exactOptional() }).exactOptional(),
+  }),
+  result: z.undefined(),
+};
+
 /** `mostra/field.focus`: the viewer picked a blocker in the shell; the page focuses that field. */
 export const mostraFieldFocus: BridgeMessage<{ readonly id: string }, undefined> = {
   method: "mostra/field.focus",
@@ -493,6 +520,7 @@ export const BRIDGE_MESSAGES: readonly AnyBridgeMessage[] = [
   mostraFieldFocus,
   mostraFrameSessionFailed,
   mostraFrameSessionEntered,
+  uiHostContextChanged,
 ] as readonly AnyBridgeMessage[];
 
 /** The window events arrive on (`window` itself). */

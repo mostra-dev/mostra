@@ -9,7 +9,8 @@ import {
 import { useState } from "react";
 import { count, greet } from "./actions";
 
-export const artifact = defineArtifact({ title: "Inline fixture" });
+// It takes the chat host's look: a page keeps its own theme unless its stack names "host" (D179 item 5).
+export const artifact = defineArtifact({ title: "Inline fixture", kit: { theme: ["studio", "host"] } });
 
 const CANDIDATES = [
   { id: "dense", label: "Dense" },

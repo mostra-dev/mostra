@@ -18,6 +18,7 @@ import {
   ARTIFACT_PROGRESS,
   BROWSER_PROTOCOL_REVISIONS,
   type ClientInfo,
+  createDiagnostic,
   DEV_NOTIFY,
   type Diagnostic,
   EVENTS_NOTIFY,
@@ -32,6 +33,7 @@ import {
   portTrustedControlsPolicyMethod,
   RpcError,
   relayAuthorProgressMethod,
+  themeStackProblem,
 } from "@mostra/protocol";
 import { createActions } from "../actions/index.ts";
 import { createAddressing, resolveBind } from "../addressing/index.ts";
@@ -402,6 +404,7 @@ async function assemble(home: OwnedHome, options: StartInstanceOptions): Promise
       log,
       faults,
       homePolicy: () => readHomeSettings(home.path).submission,
+      homeTheme: () => readHomeSettings(home.path).look?.theme,
       verifier: getVerifier,
       unverified: unverifiedPublish,
     });
@@ -708,6 +711,7 @@ async function assemble(home: OwnedHome, options: StartInstanceOptions): Promise
     actions,
     live,
     bus,
+    hostStyles: () => readHomeSettings(home.path).look?.variables,
     parked: (versionId) =>
       pool.status().some((w) => w.versionId === versionId && w.state === "parked"),
     revisions,
@@ -897,6 +901,20 @@ async function assemble(home: OwnedHome, options: StartInstanceOptions): Promise
     // A host's settings persist in the home's config.json for every later client (D95, D102,
     // D105).
     configureHome: (config, client) => {
+      // A home's default stack is written as a manifest's is: one that can't be built is refused
+      // now, not at the next publish.
+      const lookTheme = config.look?.theme;
+      const lookProblem =
+        lookTheme === undefined
+          ? undefined
+          : themeStackProblem(typeof lookTheme === "string" ? [lookTheme] : lookTheme);
+      if (lookProblem !== undefined) {
+        throw new RpcError(
+          createDiagnostic("MOSTRA_HOST_INVALID_PARAMS", {
+            message: `home.look.theme can't be built: ${lookProblem}.`,
+          }),
+        );
+      }
       const current = readHomeSettings(home.path);
       const expectedPorts = { ...(current.expectedPorts ?? {}) };
       if (config.ports !== undefined) {
@@ -913,6 +931,7 @@ async function assemble(home: OwnedHome, options: StartInstanceOptions): Promise
         ...(config.licenses !== undefined
           ? { licenses: { accept: [...new Set(config.licenses.accept)].sort() } }
           : {}),
+        ...(config.look !== undefined ? { look: config.look } : {}),
       };
       if (Object.keys(change).length === 0) return;
       writeHomeSettings(home.path, change);
@@ -923,6 +942,14 @@ async function assemble(home: OwnedHome, options: StartInstanceOptions): Promise
         ...(config.ports !== undefined ? { ports: config.ports } : {}),
         ...(config.submitChannels !== undefined ? { submitChannels: config.submitChannels } : {}),
         ...(config.licenses !== undefined ? { licenses: config.licenses.accept } : {}),
+        ...(config.look !== undefined
+          ? {
+              look: {
+                ...(config.look.theme !== undefined ? { theme: config.look.theme } : {}),
+                variables: Object.keys(config.look.variables ?? {}).length,
+              },
+            }
+          : {}),
       });
     },
     // A host's home never sends the standalone CLI's telemetry (D140 item 4).

@@ -244,6 +244,11 @@ export interface FrameTicket extends ViewContext {
   readonly paused?: { readonly by: "owner" | "operator"; readonly reason?: string };
   /** On a remote server: what the hosted shell's trusted chrome shows around the page (D161). */
   readonly hosted?: HostedChrome;
+  /**
+   * The host's look (`HomeConfig.look.variables`, D179 item 5): MCP Apps' style variables, which
+   * the shell passes the page in its host context (`styles.variables`), as an MCP Apps host does.
+   */
+  readonly hostStyles?: { readonly variables: Readonly<Record<string, string>> };
 }
 
 /**
@@ -321,6 +326,11 @@ export const FrameTicket: z.ZodType<FrameTicket> = z
       })
       .exactOptional(),
     hosted: HostedChrome.exactOptional(),
+    hostStyles: z
+      .object({
+        variables: z.record(z.string().regex(/^--[A-Za-z0-9-]{1,64}$/), z.string().max(1024)),
+      })
+      .exactOptional(),
   })
   .register(wireRegistry, {
     id: "FrameTicket",

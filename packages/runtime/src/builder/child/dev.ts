@@ -40,7 +40,7 @@ import {
   STAGING_FILES,
   type VersionRegistry,
 } from "../types.ts";
-import { entryStylesheet, themeAttributes } from "./kit.ts";
+import { entryStylesheet, hostTokensElement, themeAttributes } from "./kit.ts";
 import { type BuildInputs, confinePlugin, mdxPlugin, serverClientStubPlugin } from "./plugins.ts";
 import { type ScanResult, scanArtifact } from "./scan.ts";
 import {
@@ -132,7 +132,12 @@ export async function startDev(
     join(generated, "dev-loaded.js"),
     `const served = Number(document.querySelector('meta[name="mostra-dev-served"]')?.content);\nimport.meta.hot?.send(${JSON.stringify(LOADED_EVENT)}, served);\n`,
   );
-  const indexHtml = html(request.manifest.title, request.versionId, themeAttributes(request.kit));
+  const indexHtml = html(
+    request.manifest.title,
+    request.versionId,
+    themeAttributes(request.kit),
+    hostTokensElement(request.kit),
+  );
 
   /** Builds the server bundle and `registry.json` into the dev version's directory. */
   let lastBundle = "";

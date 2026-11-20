@@ -217,7 +217,8 @@ test.describe("an artifact inline in an MCP Apps host (MC-02)", () => {
       expect(declared.mimeType).toBe("text/html;profile=mcp-app");
       expect(declared._meta?.ui?.csp?.resourceDomains).toContain("https://images.example.com");
       expect(declared.text).toContain('<meta name="mostra-target" content="mcp-app" />');
-      // Mostra's tokens read the host's variables; its theme sets light or dark (D175 item 6).
+      // Mostra's tokens read the host's variables where the stack names "host"; the host sets light
+      // or dark (D175 item 6, D179 item 5).
       await expect(view.getByTestId("mode")).toHaveText("mcp-app");
       const look = await view.locator("html").evaluate((element) => {
         const style = getComputedStyle(element);
