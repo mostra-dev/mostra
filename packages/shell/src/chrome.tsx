@@ -12,7 +12,7 @@ import type { FrameTicket, HostedChrome } from "@mostra/protocol";
 import { type FormEvent, type ReactElement, useEffect, useId, useRef, useState } from "react";
 import { nameViewer, report, signInStart } from "./api.ts";
 import { currentAppearance, toggleAppearance } from "./appearance.ts";
-import { keepSignIn, pkcePair, sessionUnstored } from "./hosted.ts";
+import { keepSignIn, pkcePair, sessionUnstored, signedOutHere } from "./hosted.ts";
 import {
   CloseIcon,
   FlagIcon,
@@ -143,19 +143,24 @@ export function SenderLine(props: { readonly chrome: HostedChrome }): ReactEleme
 }
 
 /**
- * Who this browser is to the page, and the sign-in that names the person (INTERFACES §18.4): pill
- * buttons in the bar on a computer; on a phone, one button that opens them as a sheet.
+ * Who this browser is to the page, and the sign-in that names the person (INTERFACES §18.4), or
+ * once signed in, the sign-out that takes the name off (MT-06): pill buttons in the bar on a
+ * computer; on a phone, one button that opens them as a sheet.
  */
 export function ViewerChip(props: {
   readonly chrome: HostedChrome;
   readonly apiBase: string;
   readonly csrf: string;
   readonly routeId: string;
+  /** Signs this page out: its session goes back to this browser's anonymous viewer (MT-06). */
+  readonly onSignOut: () => Promise<void>;
 }): ReactElement {
   const { viewer, signIn } = props.chrome;
   const bodyId = useId();
   const [open, setOpen] = useState(false);
   const [failed, setFailed] = useState(false);
+  const [signOutFailed, setSignOutFailed] = useState(false);
+  const [signingOut, setSigningOut] = useState(false);
   // An anonymous viewer may give a name, shown to the page's owner as not verified (D165 item 8).
   const [naming, setNaming] = useState(false);
   const [name, setName] = useState(viewer.name ?? "");
@@ -178,7 +183,14 @@ export function ViewerChip(props: {
   const start = async (): Promise<void> => {
     try {
       const { verifier, challenge } = await pkcePair();
-      const started = await signInStart(props.apiBase, props.csrf, challenge);
+      // After a sign-out here, the sign-in asks the person to name themselves again, whoever the
+      // server still has signed in in this browser (MT-06).
+      const started = await signInStart(
+        props.apiBase,
+        props.csrf,
+        challenge,
+        signedOutHere(props.routeId) ? "consent" : undefined,
+      );
       const kept = keepSignIn({
         routeId: props.routeId,
         verifier,
@@ -190,6 +202,17 @@ export function ViewerChip(props: {
       location.assign(started.url);
     } catch {
       setFailed(true);
+    }
+  };
+  const signOut = async (): Promise<void> => {
+    setSigningOut(true);
+    setSignOutFailed(false);
+    try {
+      await props.onSignOut();
+    } catch {
+      setSignOutFailed(true);
+    } finally {
+      setSigningOut(false);
     }
   };
   // Sign-in leaves the page and comes back to a session it reads from storage: with none stored
@@ -248,6 +271,17 @@ export function ViewerChip(props: {
             <span className="mostra-pill-text">{viewer.name ?? ""}</span>
           </span>
         )}
+        {viewer.kind === "account" && (
+          <button
+            type="button"
+            className="mostra-pill"
+            data-mostra-sign-out=""
+            disabled={signingOut}
+            onClick={() => void signOut()}
+          >
+            {HOSTED_WORDS.signOut}
+          </button>
+        )}
         {offerSignIn && (
           <button
             type="button"
@@ -288,6 +322,11 @@ export function ViewerChip(props: {
         {failed && (
           <span role="alert" className="mostra-warn">
             {HOSTED_WORDS.signInFailed}
+          </span>
+        )}
+        {signOutFailed && (
+          <span role="alert" className="mostra-warn">
+            {HOSTED_WORDS.signOutFailed}
           </span>
         )}
       </div>

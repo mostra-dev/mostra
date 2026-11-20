@@ -1,5 +1,21 @@
 # @mostra/conformance
 
+## 0.18.0
+
+### Patch Changes
+
+- Updated dependencies []:
+  - @mostra/sdk@0.18.0
+  - @mostra/protocol@0.18.0
+
+## 0.17.0
+
+### Patch Changes
+
+- Updated dependencies [[`71369f3`](https://github.com/mostra-dev/mostra/commit/71369f338e2c395c0c58515cc60dc81f4e371a4c)]:
+  - @mostra/protocol@0.17.0
+  - @mostra/sdk@0.17.0
+
 ## 0.16.0
 
 ### Patch Changes

@@ -19,7 +19,14 @@ import {
   signInFinish,
 } from "./api.ts";
 import { bootMark } from "./boot-marks.ts";
-import { enterRoute, forgetSession, keepSession, takeSignIn } from "./hosted.ts";
+import {
+  clearSignedOut,
+  enterRoute,
+  forgetSession,
+  keepSession,
+  takeSignIn,
+  takeSignOut,
+} from "./hosted.ts";
 import { type Credential, credentialFrom, parseTarget, type ShellTarget } from "./location.ts";
 import { describeAccess, explain } from "./messages.ts";
 import { mark, ViewerPage } from "./viewer.tsx";
@@ -84,6 +91,7 @@ async function signInReturn(): Promise<State> {
   try {
     const session = await readSession(apiBase);
     await signInFinish(apiBase, session.csrf, { code, verifier: pending.verifier, state });
+    clearSignedOut(pending.routeId);
   } catch {
     return { kind: "error", code: "SIGN_IN_FAILED" };
   }
@@ -95,6 +103,14 @@ async function signInReturn(): Promise<State> {
 /** Opens the page: exchanges the link's token, or reads the session the browser has. */
 async function open(): Promise<State> {
   if (location.pathname === "/_mostra/signin") return signInReturn();
+  // Back from the API origin's own sign-out (MT-06): to the page that started it, once.
+  if (location.pathname === "/_mostra/signed-out") {
+    const back = takeSignOut(new URLSearchParams(location.search).get("state"));
+    history.replaceState(null, "", location.pathname);
+    if (back === undefined) return { kind: "error", code: "SIGN_OUT_RETURN" };
+    location.replace(back);
+    return { kind: "loading" };
+  }
   const target = parseTarget(location.pathname);
   if (!target) return { kind: "error", code: "NO_ARTIFACT" };
   const token = credentialFrom(location.hash);
@@ -173,7 +189,14 @@ export function Shell(): ReactElement {
   };
   useEffect(() => {
     mark("loading");
+    // A page the browser brings back from its back/forward cache shows what it showed when it was
+    // left: a viewer since signed out (MT-06), a ticket long spent. A hosted shell starts again.
+    const restored = (event: PageTransitionEvent): void => {
+      if (event.persisted && location.pathname.startsWith("/a/rte_")) location.reload();
+    };
+    window.addEventListener("pageshow", restored);
     void open().then(show);
+    return () => window.removeEventListener("pageshow", restored);
   }, []);
   if (state.kind === "loading") return <main className="mostra-shell" aria-busy="true" />;
   if (state.kind === "choosing") {

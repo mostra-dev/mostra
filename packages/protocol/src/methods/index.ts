@@ -4,6 +4,9 @@
  */
 import type { AnyMethod, AnyNotification } from "../method.ts";
 import { ARTIFACT_PROGRESS, ArtifactProgressParams } from "../verify.ts";
+import { appOpenMethod } from "./app/open.ts";
+import { appPageMethod } from "./app/page.ts";
+import { appRequestMethod } from "./app/request.ts";
 import { artifactCreateMethod } from "./artifact/create.ts";
 import { artifactExportMethod } from "./artifact/export.ts";
 import { artifactGetMethod } from "./artifact/get.ts";
@@ -47,6 +50,7 @@ import { portSecretsGetMethod } from "./port/secrets-get.ts";
 import { portSubmissionsDeliverMethod } from "./port/submissions-deliver.ts";
 import { portTrustedControlsActivatedMethod } from "./port/trusted-controls-activated.ts";
 import { portTrustedControlsPolicyMethod } from "./port/trusted-controls-policy.ts";
+import { relayAuthorProgressMethod } from "./relay/author-progress.ts";
 import { relayCallBatchMethod } from "./relay/call-batch.ts";
 import { relayEffectMethod } from "./relay/effect.ts";
 import { relayLiveValueMethod } from "./relay/live-value.ts";
@@ -134,6 +138,7 @@ export const hostMethods: readonly AnyMethod[] = [
   portRelayCallMethod,
   relayRunUpdateMethod,
   relayCallBatchMethod,
+  relayAuthorProgressMethod,
   relayEffectMethod,
   portRelayLiveMethod,
   relayLiveValueMethod,
@@ -152,6 +157,9 @@ export const hostMethods: readonly AnyMethod[] = [
   packAddMethod,
   pluginExportMethod,
   pluginCommandsMethod,
+  appOpenMethod,
+  appRequestMethod,
+  appPageMethod,
   // gen:methods
 ];
 

@@ -28,6 +28,7 @@ import {
   useSyncExternalStore,
 } from "react";
 import { MostraError } from "./runtime/errors.ts";
+import { inlineControls } from "./runtime/inline-sink.ts";
 import { MemoryJournal } from "./runtime/journal.ts";
 import { type FieldKey, fieldKey, Store, type SubmitState } from "./runtime/store.ts";
 import { connectShell } from "./shell-bridge.ts";
@@ -385,6 +386,13 @@ function useControl(request: ControlRequest | undefined, release: ControlRequest
   const releaseText = JSON.stringify(release);
   useEffect(() => {
     if (text === undefined) return;
+    // Inline in an MCP Apps host there is no shell: the bar offers the artifact channel's
+    // control in its place (D175 item 6).
+    const inline = inlineControls();
+    if (inline !== undefined) {
+      inline(JSON.parse(text) as ControlRequest);
+      return () => inline(JSON.parse(releaseText) as ControlRequest);
+    }
     let active = true;
     void connectShell().then((connection) => {
       if (!active || !connection) return;

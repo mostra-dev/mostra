@@ -5,8 +5,18 @@
  * it, links included, which is what the tool means, never a limit on what the agent may do with
  * its own file tools (D05).
  */
-import { randomBytes } from "node:crypto";
-import { lstat, mkdir, readFile, realpath, rename, rm, rmdir, writeFile } from "node:fs/promises";
+import { createHash, randomBytes } from "node:crypto";
+import {
+  lstat,
+  mkdir,
+  readdir,
+  readFile,
+  realpath,
+  rename,
+  rm,
+  rmdir,
+  writeFile,
+} from "node:fs/promises";
 import { homedir } from "node:os";
 import { dirname, isAbsolute, join, relative, resolve, sep } from "node:path";
 import { checkArtifactPath, createDiagnostic, RpcError } from "@mostra/protocol";
@@ -193,6 +203,46 @@ async function makeDirectory(dir: string): Promise<string[]> {
   return made;
 }
 
+/** The most entries a fingerprint walks; past them the workspace can't tell cheaply. */
+const FINGERPRINT_ENTRIES = 20_000;
+/** Folders an artifact's source never takes from: packages and history. */
+const FINGERPRINT_SKIPPED: ReadonlySet<string> = new Set(["node_modules", ".git"]);
+
+/**
+ * A fingerprint of what `path` holds: the path, size and time of a single file, or of every file
+ * and link under a directory but `node_modules` and `.git`; `undefined` for a path that doesn't
+ * exist, or one with more than {@link FINGERPRINT_ENTRIES} entries.
+ */
+export async function fingerprintOf(path: string): Promise<string | undefined> {
+  const hash = createHash("sha256");
+  const top = await lstat(path).catch(() => undefined);
+  if (top === undefined) return undefined;
+  if (!top.isDirectory()) {
+    hash.update(`file\0${top.size}\0${top.mtimeMs}`);
+    return hash.digest("hex");
+  }
+  let entries = 0;
+  const walk = async (dir: string, prefix: string): Promise<boolean> => {
+    const children = await readdir(dir, { withFileTypes: true }).catch(() => []);
+    children.sort((a, b) => (a.name < b.name ? -1 : a.name > b.name ? 1 : 0));
+    for (const child of children) {
+      entries += 1;
+      if (entries > FINGERPRINT_ENTRIES) return false;
+      const name = `${prefix}${child.name}`;
+      if (child.isDirectory()) {
+        if (FINGERPRINT_SKIPPED.has(child.name)) continue;
+        hash.update(`dir\0${name}\0`);
+        if (!(await walk(join(dir, child.name), `${name}/`))) return false;
+        continue;
+      }
+      const stats = await lstat(join(dir, child.name)).catch(() => undefined);
+      hash.update(`entry\0${name}\0${stats?.size ?? -1}\0${stats?.mtimeMs ?? -1}\0`);
+    }
+    return true;
+  };
+  return (await walk(path, "")) ? hash.digest("hex") : undefined;
+}
+
 /** The workspace on this computer, rooted at `root` (absolute). */
 export function localWorkspace(root: string): McpWorkspace {
   const base = resolve(root);
@@ -273,6 +323,9 @@ export function localWorkspace(root: string): McpWorkspace {
         if ((await lstatOrUndefined(candidate)) === undefined) return candidate;
       }
       return join(base, `${name}-${randomBytes(4).toString("hex")}`);
+    },
+    async fingerprint(dir) {
+      return fingerprintOf(dir);
     },
     async read(dir, path) {
       const real = await realDir(dir);

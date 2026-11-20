@@ -44,16 +44,22 @@ export function group(root: string = ROOT): string[] {
   return config.fixed[0] ?? [];
 }
 
-/** Each workspace package's manifest path, by name. */
+/** The folders that hold the workspace's published packages: the packages and the plugins. */
+const PACKAGE_FOLDERS = ["packages", "plugins"] as const;
+
+/** Each workspace package's manifest path, by name, wherever it lives. */
 function manifests(root: string): Map<string, string> {
   const out = new Map<string, string>();
-  for (const dir of readdirSync(join(root, "packages"))) {
-    const path = join(root, "packages", dir, "package.json");
-    try {
-      const name = (JSON.parse(readFileSync(path, "utf8")) as { name: string }).name;
-      out.set(name, path);
-    } catch {
-      // not a package
+  for (const folder of PACKAGE_FOLDERS) {
+    if (!existsSync(join(root, folder))) continue;
+    for (const dir of readdirSync(join(root, folder))) {
+      const path = join(root, folder, dir, "package.json");
+      try {
+        const name = (JSON.parse(readFileSync(path, "utf8")) as { name: string }).name;
+        out.set(name, path);
+      } catch {
+        // not a package
+      }
     }
   }
   return out;

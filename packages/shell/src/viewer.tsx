@@ -48,6 +48,7 @@ import {
   ShellError,
   type ShellSession,
   setFollow,
+  signOutViewer,
   submit,
 } from "./api.ts";
 import { bootMark } from "./boot-marks.ts";
@@ -63,7 +64,15 @@ import {
   ViewerChip,
 } from "./chrome.tsx";
 import { frameEntries } from "./entries.ts";
-import { hosted, interstitialPassed, passInterstitial, sessionUnstored } from "./hosted.ts";
+import {
+  hosted,
+  interstitialPassed,
+  keepSignOut,
+  markSignedOut,
+  passInterstitial,
+  routeBrowserKey,
+  sessionUnstored,
+} from "./hosted.ts";
 import { MostraMark } from "./icons.tsx";
 import { openLink } from "./links.ts";
 import type { ShellTarget } from "./location.ts";
@@ -922,6 +931,51 @@ export function ViewerPage(props: {
     },
   };
 
+  /**
+   * Signs this page out (MT-06): what the frame holds is saved first, as the account's; the page's
+   * session goes back to this browser's anonymous viewer for the route; and the frame enters again
+   * with a ticket for that viewer, which ends the frame session that acted as the account. The
+   * next sign-in on this page asks the person to name themselves again.
+   */
+  const signOutPage = async (): Promise<void> => {
+    const routeId = target.routeId;
+    if (routeId === undefined) return;
+    await flushFrame("switch");
+    const answer = await signOutViewer(
+      target.apiBase,
+      session.csrf,
+      await routeBrowserKey(routeId),
+    );
+    markSignedOut(routeId);
+    mark("", { shellSignedOut: "yes" });
+    // On to the API origin's own sign-out, so this browser's sign-in there ends too and the next
+    // person signs in through their provider, then back to this page (MT-06's review).
+    const away =
+      answer.signOut !== undefined
+        ? keepSignOut(routeId, answer.signOut, location.pathname)
+        : undefined;
+    if (away !== undefined) {
+      location.assign(away);
+      return;
+    }
+    // Every ticket asked for now is the anonymous viewer's; one the frame's greeting dropped is
+    // asked for again, so the frame never stays the account's.
+    for (let attempt = 0; attempt < 3; attempt += 1) {
+      const next = await entries.enter((signal) =>
+        frameTicket(target.apiBase, session.csrf, ticket.version.number, signal),
+      );
+      if (next === undefined) continue;
+      reloads.current = 0;
+      setFocusFrame(frameHasFocus());
+      setTicket(next);
+      return;
+    }
+    // The page is signed out already: a frame that couldn't enter again mustn't stay the
+    // account's, so the page loads again, its session (stored, as a signed-in page's is) entering
+    // as the anonymous viewer.
+    location.reload();
+  };
+
   const doSubmit = async (): Promise<void> => {
     if (!armedRef.current) return;
     setConfirming(false);
@@ -1078,6 +1132,7 @@ export function ViewerPage(props: {
             apiBase={target.apiBase}
             csrf={session.csrf}
             routeId={target.routeId}
+            onSignOut={signOutPage}
           />
         )}
         <div

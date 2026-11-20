@@ -536,8 +536,18 @@ export interface BridgeOptions {
   readonly receiver: BridgeReceiver;
   /** The window this end talks to, looked up on every message (a frame's window changes on reload). */
   readonly peer: () => BridgePeer | null | undefined;
-  /** The peer's exact origin. Messages from any other origin are dropped. */
+  /**
+   * The peer's exact origin. Messages from any other origin are dropped. `"*"` is for a peer whose
+   * origin can't be known in advance (an MCP Apps host's sandbox, MCP Apps' own
+   * `PostMessageTransport`): messages are then accepted only from the `peer()` window itself,
+   * whatever its origin, and sent to it with `"*"`.
+   */
   readonly peerOrigin: string;
+  /**
+   * The message set this bridge speaks: Mostra's shell bridge ({@link BRIDGE_MESSAGES}) by
+   * default, or MCP Apps' view-to-host set (`MCP_APPS_MESSAGES`, D175).
+   */
+  readonly messages?: readonly AnyBridgeMessage[];
   /** Answers a request from the peer; throw an {@link RpcError} to answer with an error. */
   readonly onRequest?: (message: AnyBridgeMessage, params: unknown) => unknown;
   /** Receives a notification from the peer. */
@@ -569,7 +579,14 @@ const asMethod = <P, R>(message: BridgeMessage<P, R>): MethodDefinition<P, R> =>
  * `peerOrigin`, be a JSON-RPC message, name a message the other side sends, and carry valid params.
  */
 export function connectBridge(options: BridgeOptions): Bridge {
-  const known = new Map(BRIDGE_MESSAGES.map((message) => [message.method, message]));
+  // A shell always knows its frame's exact origin: only a page, whose host it can't know, may
+  // take messages from its parent window whatever its origin.
+  if (options.peerOrigin === "*" && options.side !== "artifact") {
+    throw new Error('Only the artifact side of a bridge may take a peer of any origin ("*").');
+  }
+  const known = new Map(
+    (options.messages ?? BRIDGE_MESSAGES).map((message) => [message.method, message]),
+  );
   const send = (message: unknown): void => {
     const peer = options.peer();
     if (!peer) throw new Error("The bridge's peer window is gone.");
@@ -618,7 +635,7 @@ export function connectBridge(options: BridgeOptions): Bridge {
   const screen = (event: BridgeEvent): BridgeRejection | undefined => {
     const peer = options.peer();
     if (!peer || event.source !== peer) return "wrong-source";
-    if (event.origin !== options.peerOrigin) return "wrong-origin";
+    if (options.peerOrigin !== "*" && event.origin !== options.peerOrigin) return "wrong-origin";
     const classified = classifyMessage(event.data);
     if (classified.kind === "invalid") return "not-json-rpc";
     if (classified.kind !== "request" && classified.kind !== "notification") return undefined;

@@ -220,7 +220,12 @@ interface TokenRow {
 }
 
 /** How a session authenticates (DATA_MODEL §3 `session.mode`). */
-export type SessionMode = "cookie" | "worker" | "header";
+/**
+ * How a session authenticates: a cookie, a worker-mode frame's header (D70), a hosted shell's
+ * header (D165 item 8), or an inline page's app session, sent only in its `app/request` calls
+ * (D175 item 4).
+ */
+export type SessionMode = "cookie" | "worker" | "header" | "app";
 
 interface SessionRow {
   id: string;
@@ -588,12 +593,15 @@ export class Capabilities {
    * holds, every token is refused, a right one too, and the limit is checked here, at the moment
    * of the check, so concurrent guesses can't slip past it. An unknown secret, or one for another
    * artifact, is `MOSTRA_HYGIENE_TOKEN_INVALID`; a revoked or expired one, or one minted for
-   * another shell address, `_TOKEN_REVOKED`. Unknown secrets count towards the limit.
+   * another shell address, `_TOKEN_REVOKED`. Unknown secrets count towards the limit. `shellOrigin`
+   * is the address the link was presented at; for the app channel, which has none, it is whether
+   * the home serves the link's own address now (D175 item 4): a link whose address closed or moved
+   * opens inline no more than in a browser (review finding R01-4).
    */
   presentToken(
     secret: unknown,
     artifactId: string,
-    shellOrigin?: string,
+    shellOrigin?: string | ((origin: string) => boolean),
   ): Grant | (Refusal & { readonly retryAfter?: number }) {
     const limited = this.limited(artifactId);
     if (limited) return limited;
@@ -620,7 +628,13 @@ export class Capabilities {
         row.revoked_at !== null ? "This link was revoked." : "This link has expired.",
       );
     }
-    if (row.shell_origin !== (shellOrigin ?? this.#shellOrigin())) {
+    // A link works only at the address it was minted for (D97 item 10), and on the app channel
+    // only while the home serves that address.
+    const atItsAddress =
+      typeof shellOrigin === "function"
+        ? shellOrigin(row.shell_origin)
+        : row.shell_origin === (shellOrigin ?? this.#shellOrigin());
+    if (!atItsAddress) {
       return refusal(
         "MOSTRA_HYGIENE_TOKEN_REVOKED",
         `This link was made for ${row.shell_origin}, not this address.`,
@@ -720,6 +734,15 @@ export class Capabilities {
         );
   }
 
+  /**
+   * Ends a session now: a frame session its frame replaced by entering as another viewer (a hosted
+   * page signed out, MT-06), so nothing acts as the viewer it was any more.
+   */
+  endSession(sessionId: string): void {
+    this.#touched.delete(sessionId);
+    this.#ledger.write((db) => db.run("DELETE FROM session WHERE id = ?", sessionId));
+  }
+
   /** Records the version a frame session entered (D98 item 5). */
   enterVersion(sessionId: string, versionId: string): void {
     this.#ledger.write((db) =>
@@ -785,8 +808,8 @@ export class Capabilities {
       );
     }
     const shellSession = this.#ledger.read((db) =>
-      db.get<{ token_id: string }>(
-        "SELECT token_id FROM session WHERE id = ?",
+      db.get<{ token_id: string; viewer_id: string | null }>(
+        "SELECT token_id, viewer_id FROM session WHERE id = ?",
         entry.shellSessionId,
       ),
     );
@@ -801,6 +824,15 @@ export class Capabilities {
       return refusal(
         "MOSTRA_HYGIENE_TOKEN_REVOKED",
         "The link behind this frame was revoked or has expired.",
+      );
+    }
+    // The frame acts as its shell session's viewer now, not as the one it had when the ticket was
+    // minted: a page signed out since (MT-06) can't have a ticket of before bring the account back.
+    const now = grant.viewerId ?? shellSession.viewer_id ?? undefined;
+    if (now !== entry.viewerId) {
+      return refusal(
+        "MOSTRA_HYGIENE_SESSION_MISSING",
+        "The shell session that asked for this frame ticket acts as someone else now.",
       );
     }
     const { expires: _expires, ...rest } = entry;

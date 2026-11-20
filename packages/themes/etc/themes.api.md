@@ -115,6 +115,12 @@ export interface FooterLink {
 }
 
 // @public
+export const HOST_TOKENS: Readonly<Record<string, readonly string[]>>;
+
+// @public
+export function hostTokenValues(variables: Readonly<Record<string, unknown>>): Readonly<Record<string, string>>;
+
+// @public
 export function html(strings: TemplateStringsArray, ...values: readonly HtmlValue[]): SafeHtml;
 
 // @public
@@ -140,6 +146,9 @@ export function linkButton(href: string, label: HtmlValue, options?: {
     readonly primary?: boolean;
     readonly icon?: SafeHtml;
 }): SafeHtml;
+
+// @public
+export function localPath(path: string | null | undefined): string | undefined;
 
 // @public
 export function luminance(hex: string): number;
@@ -291,6 +300,13 @@ export interface SafeHtml {
     readonly [SAFE]: true;
     readonly value: string;
 }
+
+// @public
+export function signedInLine(who: HtmlValue, form: {
+    readonly action: string;
+    readonly fields: Readonly<Record<string, string>>;
+    readonly label: HtmlValue;
+}): SafeHtml;
 
 // @public
 export interface Stage {

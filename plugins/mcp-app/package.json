@@ -1,0 +1,86 @@
+{
+  "name": "@mostra/plugin-mcp-app",
+  "version": "0.18.0",
+  "description": "Mostra's MCP App exporter: one published artifact version as a single-file ui:// resource that chat hosts show inline.",
+  "license": "Apache-2.0",
+  "author": "The Mostra Authors",
+  "homepage": "https://github.com/mostra-dev/mostra/tree/main/plugins/mcp-app#readme",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/mostra-dev/mostra.git",
+    "directory": "plugins/mcp-app"
+  },
+  "bugs": "https://github.com/mostra-dev/mostra/issues",
+  "keywords": [
+    "mostra",
+    "mostra-plugin",
+    "mcp",
+    "mcp-apps",
+    "exporter"
+  ],
+  "type": "module",
+  "sideEffects": false,
+  "exports": {
+    ".": {
+      "@mostra/source": "./src/index.ts",
+      "types": "./dist/index.d.ts",
+      "default": "./dist/index.js"
+    },
+    "./package.json": "./package.json"
+  },
+  "files": [
+    "dist",
+    "src",
+    "!src/**/*.test.ts"
+  ],
+  "engines": {
+    "node": ">=22.19"
+  },
+  "publishConfig": {
+    "access": "public",
+    "provenance": true
+  },
+  "mostra": {
+    "name": "dev.mostra/mcp-app",
+    "title": "MCP App",
+    "description": "Exports a version as an MCP App: one self-contained ui:// page that chat hosts show inline.",
+    "contracts": {
+      "exporter": "^0.1.0"
+    },
+    "contributes": {
+      "exporters": [
+        {
+          "id": "mcp-app",
+          "entry": "./dist/index.js",
+          "export": "default"
+        }
+      ]
+    },
+    "effects": [],
+    "license": "Apache-2.0",
+    "platforms": [
+      "darwin",
+      "linux",
+      "win32"
+    ]
+  },
+  "scripts": {
+    "build": "tsdown",
+    "typecheck": "tsc -b",
+    "test": "vitest run",
+    "api": "mostra-tools api"
+  },
+  "dependencies": {
+    "@mostra/contract-exporter": "workspace:*",
+    "@mostra/protocol": "workspace:*",
+    "@mostra/themes": "workspace:*",
+    "rolldown": "catalog:"
+  },
+  "devDependencies": {
+    "@mostra/tools": "workspace:*",
+    "@types/node": "catalog:",
+    "tsdown": "catalog:",
+    "typescript": "catalog:",
+    "vitest": "catalog:"
+  }
+}

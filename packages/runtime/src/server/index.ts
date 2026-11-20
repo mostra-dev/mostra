@@ -47,6 +47,7 @@ import type { Environment, Log } from "../log.ts";
 import { type Api, createApi } from "./api.ts";
 import { type Authorization, createAuthorization } from "./auth.ts";
 import { type Authorize, createAuthorize } from "./authorize.ts";
+import { chatHostPolicies, createRender } from "./chat-hosts.ts";
 import { clientAddresses, RateLimiter } from "./clients.ts";
 import type { RemoteServerConfig } from "./config.ts";
 import { type DataDirectory, type HomeAssembler, openDataDirectory } from "./data.ts";
@@ -54,12 +55,13 @@ import { createHandle } from "./handle.ts";
 import { type HostedHome, type HostedServices, openHostedHome } from "./hosted.ts";
 import { type HomeOwner, homeUnavailable } from "./hosted-pages.ts";
 import { createRemoteMcp, serverDocs } from "./mcp.ts";
-import { createMeter, heldLevels, type Meter } from "./metering.ts";
+import { createMeter, DEFAULT_WINDOW_SECONDS, heldLevels, type Meter } from "./metering.ts";
 import { createClients } from "./oauth-clients.ts";
 import { loadOperator, type Operator } from "./operator.ts";
 import { APPEARANCE_PATH, createApiPages } from "./pages.ts";
 import { type BuiltInProvider, builtInProviders } from "./providers.ts";
 import { createRouting, type Destination, type Routing } from "./routing.ts";
+import { startSweep } from "./sweep.ts";
 
 export { type RemoteServerConfig, readServerConfig } from "./config.ts";
 
@@ -217,8 +219,10 @@ export async function startServer(options: ServerOptions): Promise<RemoteServer>
     meter: meter as Meter,
     routing,
     signin: {
-      start: (signin, challenge) => (authorizer as Authorize).startViewerSignin(signin, challenge),
+      start: (signin, challenge, prompt) =>
+        (authorizer as Authorize).startViewerSignin(signin, challenge, prompt),
       finish: (input) => (authorizer as Authorize).finishViewerSignin(input),
+      signOutUrl: (shellOrigin) => (authorizer as Authorize).viewerSignOutUrl(shellOrigin),
     },
     signInOffered: () =>
       (config.identityProviders?.length ?? 0) > 0 || (operator?.has.identity ?? false),
@@ -321,6 +325,15 @@ export async function startServer(options: ServerOptions): Promise<RemoteServer>
   }
   // A held file recorded before sizes were kept (directory migration 6) takes its stored size once.
   fillHeldSizes(data.directory, join(options.data, "files"), log);
+  // Expired sign-in sessions, sign-ins in progress, spent codes and expired tokens go on a timer
+  // of their own, never inside a request (MT-06).
+  const sweep = startSweep({
+    directory: data.directory,
+    log,
+    ...(Number(options.env["MOSTRA_TEST_SIGNIN_SWEEP_MS"]) > 0
+      ? { everyMs: Number(options.env["MOSTRA_TEST_SIGNIN_SWEEP_MS"]) }
+      : {}),
+  });
   routing = createRouting({
     apiHost: new URL(config.apiOrigin).host,
     domains: () => [config.domains.active, ...(config.domains.spares ?? [])],
@@ -333,9 +346,11 @@ export async function startServer(options: ServerOptions): Promise<RemoteServer>
     operator,
     keysDir: join(options.data, "keys"),
     log,
-    ...(Number(options.env["MOSTRA_TEST_METER_WINDOW_MS"]) > 0
-      ? { windowMs: Number(options.env["MOSTRA_TEST_METER_WINDOW_MS"]) }
-      : {}),
+    // The operator's window (`metering.windowSeconds`, MT-06), or a test's shorter one.
+    windowMs:
+      Number(options.env["MOSTRA_TEST_METER_WINDOW_MS"]) > 0
+        ? Number(options.env["MOSTRA_TEST_METER_WINDOW_MS"])
+        : (config.metering?.windowSeconds ?? DEFAULT_WINDOW_SECONDS) * 1000,
     activeHomes: () => data.open().map((home) => ({ home, account: ownerOf(home).account })),
     // `bytes.held` (MT-03): each home's running total, sent when it changed, and all in a snapshot.
     held: heldLevels(data.directory),
@@ -395,6 +410,7 @@ export async function startServer(options: ServerOptions): Promise<RemoteServer>
       log,
     });
   } catch (error) {
+    sweep.stop();
     operator?.stop();
     await data.close();
     throw error;
@@ -407,6 +423,7 @@ export async function startServer(options: ServerOptions): Promise<RemoteServer>
     apiPages = serverPages(config.appearance, { appearanceAction: APPEARANCE_PATH });
     hostedPages = serverPages(config.appearance);
   } catch (error) {
+    sweep.stop();
     operator?.stop();
     await data.close();
     throw new RpcError(
@@ -427,6 +444,9 @@ export async function startServer(options: ServerOptions): Promise<RemoteServer>
     providers,
     ownerName: (homeId) => ownerOf(homeId).name,
     log,
+    ...(Number(options.env["MOSTRA_TEST_SIGNIN_SESSION_MS"]) > 0
+      ? { sessionMs: Number(options.env["MOSTRA_TEST_SIGNIN_SESSION_MS"]) }
+      : {}),
   });
   authorizer = authorize;
   const mcp = createRemoteMcp({
@@ -438,6 +458,15 @@ export async function startServer(options: ServerOptions): Promise<RemoteServer>
     meter,
     home: async (id) => (await data.home(id)).assembled,
     ensureHome: (accountId) => (auth as Authorization).ensureHome(accountId),
+    // D160: the operator's answer for the chat host, else the configuration's, else an app.
+    render: createRender({
+      client: async (clientId) => {
+        const client = await oauthClients.find(clientId);
+        return "id" in client ? client : undefined;
+      },
+      ask: (client) => operator.chatHost(client),
+      configured: chatHostPolicies(config.chatHosts, log),
+    }),
   });
   api = createApi({
     server: apiPages,
@@ -651,7 +680,11 @@ export async function startServer(options: ServerOptions): Promise<RemoteServer>
       }
       // Where a page's sign-in returns (INTERFACES §18.4): the shell's own page, which finishes it
       // for the route that started it. It reads only the fragment and query it was sent.
-      if (path === "/_mostra/signin" && (request.method === "GET" || request.method === "HEAD")) {
+      // Where a page's sign-out comes back to once the API origin's own is done (MT-06): the same.
+      if (
+        (path === "/_mostra/signin" || path === "/_mostra/signed-out") &&
+        (request.method === "GET" || request.method === "HEAD")
+      ) {
         if (shellDir === undefined) {
           notServed(response);
           return;
@@ -744,6 +777,7 @@ export async function startServer(options: ServerOptions): Promise<RemoteServer>
         await mcp.close().catch(() => undefined);
         // What the operator hasn't taken yet stays queued in the directory for the next start.
         meter?.stop();
+        sweep.stop();
         operator?.stop();
         await stopListener();
         await data.close();

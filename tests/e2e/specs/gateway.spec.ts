@@ -10,6 +10,7 @@
  */
 import { createServer, type Server } from "node:http";
 import { expect, type Frame, type Page, test } from "@playwright/test";
+import { gotoShell } from "../support/client.ts";
 import { Client, readRun } from "../support/mostra.ts";
 import { listenShortLived } from "../support/ports.ts";
 
@@ -22,7 +23,7 @@ async function openShell(page: Page, url: string): Promise<{ frame: Frame; error
   page.on("console", (message) => {
     if (message.type() === "error") errors.push(message.text());
   });
-  await page.goto(url);
+  await gotoShell(page, url);
   await expect(page.locator("html")).toHaveAttribute("data-shell", "ready", { timeout: 15_000 });
   const frame = page.frames().find((candidate) => candidate !== page.mainFrame());
   if (!frame) throw new Error("the shell has no frame");
@@ -303,7 +304,7 @@ test.describe("framing and revoked links (HY-01, D98 item 4)", () => {
         artifact: { artifactId: run.receipts.tsx.artifactId },
       });
       await client.call("view/revoke", { tokenId: link.tokenId });
-      await page.goto(link.url);
+      await gotoShell(page, link.url);
       await expect(page.locator("html")).toHaveAttribute("data-shell", "error");
       await expect(page.locator("html")).toHaveAttribute(
         "data-shell-error",

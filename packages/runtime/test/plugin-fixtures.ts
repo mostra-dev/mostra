@@ -43,7 +43,31 @@ export function pluginFixtures(): FixturePackage[] {
   const exporter = contractPackage("exporter");
   const command = contractPackage("cli-command");
   const list = base(exporter, command);
-  return [...list, ...reviewFixtures(list)];
+  return [...list, ...reviewFixtures(list), ownMcpApp()];
+}
+
+/**
+ * A plugin with an MCP App exporter of its own (exporter ID `mcp-app`): installed for the home,
+ * it takes the place of the one every home has (D175 item 3).
+ */
+function ownMcpApp(): FixturePackage {
+  return {
+    name: "mostra-fixture-own-app",
+    version: "1.0.0",
+    manifest: {
+      type: "module",
+      license: "MIT",
+      mostra: {
+        name: "dev.mostra.fixtures/own-app",
+        contracts: { exporter: `^${range("exporter")}` },
+        contributes: { exporters: [{ id: "mcp-app", entry: "./exporter.js" }] },
+        license: "MIT",
+      },
+    },
+    files: {
+      "exporter.js": `export default { contract: { name: "exporter", version: ${JSON.stringify(implemented("exporter"))} }, id: "mcp-app", output: { mediaType: "text/html;profile=mcp-app", layout: "directory" }, async export({ version }) { return { files: [{ path: "index.html", content: "<!doctype html><title>own app</title>" }, { path: "mcp-app.json", content: JSON.stringify({ uri: "ui://mostra/view/" + version.versionId, _meta: { ui: { prefersBorder: true } } }) }], entry: "index.html" }; } };\n`,
+    },
+  };
 }
 
 /** An exporter entry stamped by hand, returning one file. */

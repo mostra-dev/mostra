@@ -21,6 +21,7 @@ import {
   uiOpenLink,
   type Viewer,
 } from "@mostra/protocol";
+import { inlineOpenLink } from "./runtime/inline-sink.ts";
 
 /**
  * The version this page's build belongs to: its `<meta name="mostra-version">`, which Mostra's
@@ -96,6 +97,13 @@ export function listenShell(listener: ShellListener): () => void {
 export function connectShell(): Promise<ShellConnection | undefined> {
   connecting ??= (async () => {
     if (typeof window === "undefined" || window.parent === window) return undefined;
+    // A static export and an MCP App have no shell: their frame's host isn't Mostra's, and asking
+    // for a session would only meet its policy (D111, D175).
+    const target = document
+      .querySelector('meta[name="mostra-target"]')
+      ?.getAttribute("content")
+      ?.trim();
+    if (target === "static" || target === "mcp-app") return undefined;
     let session: FrameSession;
     try {
       bootMark("session-asked");
@@ -203,6 +211,9 @@ export function reportReady(): void {
  * when the URL was handed to the browser.
  */
 export async function openLink(url: string): Promise<boolean> {
+  // Inline in an MCP Apps host, the host opens it (MCP Apps' own `ui/open-link`, D175).
+  const inline = inlineOpenLink();
+  if (inline !== undefined) return inline(url);
   const connection = await connectShell();
   if (connection) {
     try {

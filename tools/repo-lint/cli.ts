@@ -12,7 +12,8 @@
  *   own, D30) as one fixed group, so one Mostra version names one runtime bundle (RT-01), and
  *   never versions or tags a private package;
  * - every published package declares its Node.js line, and everything it brings along admits that
- *   line (#92, `engines.ts`).
+ *   line (#92, `engines.ts`);
+ * - every browser spec loads its pages through `gotoShell`, never a bare `page.goto` (#132).
  */
 import { createHash } from "node:crypto";
 import { existsSync, readdirSync, readFileSync } from "node:fs";
@@ -27,6 +28,36 @@ import { workspaceEngineProblems } from "./engines.ts";
 const REPOSITORY = "git+https://github.com/mostra-dev/mostra.git";
 /** SHA-256 of the canonical Apache License 2.0 text (apache.org/licenses/LICENSE-2.0.txt). */
 const APACHE_2_SHA256 = "cfc7749b96f63bd31c3c42b5c471bf756814053e847c10f3eb003417bc523d30";
+
+/**
+ * A browser spec's page loads (#132, WP-17): every one goes through `gotoShell`
+ * (`tests/e2e/support/client.ts`), which loads again once for Chromium's Windows-only
+ * `net::ERR_NO_BUFFER_SPACE` and records it on the test. A bare `page.goto` of a page on
+ * loopback fails at random on Windows runners (CI run 44280075785, `gateway.spec.ts`); only
+ * `about:blank`, which no request serves, may load directly.
+ */
+export function e2eLoadProblems(file: string, text: string): string[] {
+  const problems: string[] = [];
+  const lines = text.split("\n");
+  for (const [index, line] of lines.entries()) {
+    const call = /\bpage\.goto\(\s*([^)]*)/.exec(line);
+    if (call === null) continue;
+    if (/^["'`]about:blank["'`]/.test(call[1] ?? "")) continue;
+    problems.push(
+      `${file}:${index + 1}: load the page through gotoShell (tests/e2e/support/client.ts), never page.goto: a load on Windows can fail once with net::ERR_NO_BUFFER_SPACE (#132).`,
+    );
+  }
+  return problems;
+}
+
+/** The browser specs' files, which `e2eLoadProblems` reads. */
+function specFiles(root: string): string[] {
+  const dir = join(root, "tests", "e2e", "specs");
+  if (!existsSync(dir)) return [];
+  return readdirSync(dir)
+    .filter((name) => name.endsWith(".ts"))
+    .map((name) => join(dir, name));
+}
 
 /** Problems with the license files at the repository root. */
 export function licenseProblems(root: string): string[] {
@@ -307,6 +338,9 @@ function main(): void {
   // The Skill runs the CLI of the release it ships in (WP-14).
   problems.push(...skillPinProblems(root));
   problems.push(...workspaceEngineProblems(listPackages(root), root));
+  for (const file of specFiles(root)) {
+    problems.push(...e2eLoadProblems(relative(root, file), readFileSync(file, "utf8")));
+  }
   if (problems.length > 0) fail(problems, "repository lint");
   console.log(
     `✓ repository lint: ${packages.length} manifests, catalog-only specifiers, pinned actions, one release group with its crate, a publish job on built-ins, Node.js lines that hold`,

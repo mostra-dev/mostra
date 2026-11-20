@@ -3,10 +3,15 @@
  * they read must reach them absolute (D151 item 3, Opus review of WP-W2 finding 3).
  */
 import { readdirSync, readFileSync, statSync } from "node:fs";
-import { join, resolve } from "node:path";
+import { delimiter, join, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 import { describe, expect, it } from "vitest";
-import { detachedDirectory, detachedEnvironment, PATH_VARIABLES } from "../../src/detached.ts";
+import {
+  detachedDirectory,
+  detachedEnvironment,
+  PATH_LIST_VARIABLES,
+  PATH_VARIABLES,
+} from "../../src/detached.ts";
 
 const PACKAGES = fileURLToPath(new URL("../../..", import.meta.url));
 
@@ -39,6 +44,17 @@ describe("what the CLI's detached processes get", () => {
     expect(detachedDirectory(resolve("/work/project"))).toBe(resolve("/"));
   });
 
+  it("resolves each entry of a path list on its own", () => {
+    const absolute = resolve("/opt/plugin");
+    const env = detachedEnvironment(
+      { MOSTRA_BUNDLED_PLUGINS: ["plugins/a", absolute, ""].join(delimiter) },
+      resolve("/work/project"),
+    );
+    expect(env["MOSTRA_BUNDLED_PLUGINS"]).toBe(
+      [resolve("/work/project/plugins/a"), absolute, ""].join(delimiter),
+    );
+  });
+
   it("classifies every Mostra variable a process reads: a path, or not", () => {
     // Every variable read from an environment by the runtime, the worker, verify, the SDK or the
     // CLI is either a path (made absolute for a detached process) or named here as not one, so a
@@ -57,6 +73,8 @@ describe("what the CLI's detached processes get", () => {
       "MOSTRA_TEST_HELD_SNAPSHOT_MS",
       "MOSTRA_TEST_SESSION_TOUCH_MS",
       "MOSTRA_TEST_CURSOR_MARK_MS",
+      "MOSTRA_TEST_SIGNIN_SESSION_MS",
+      "MOSTRA_TEST_SIGNIN_SWEEP_MS",
       "MOSTRA_TEST_ROTATION_GRACE_MS",
       "MOSTRA_TEST_CIMD_ORIGIN",
       "MOSTRA_TEST_OIDC_INSECURE",
@@ -116,7 +134,12 @@ describe("what the CLI's detached processes get", () => {
     }
     expect(read.size).toBeGreaterThan(15);
     for (const name of read) {
-      expect(PATH_VARIABLES.includes(name) || notPaths.includes(name), name).toBe(true);
+      expect(
+        PATH_VARIABLES.includes(name) ||
+          PATH_LIST_VARIABLES.includes(name) ||
+          notPaths.includes(name),
+        name,
+      ).toBe(true);
     }
   });
 });

@@ -6,10 +6,11 @@
  *
  *   node packages/runtime/scripts/prove-seeds.ts [--only RT-09]
  *
- * It edits source files in place and restores them in `finally`, also on Ctrl-C. Don't run it
- * with uncommitted edits to the seeded files.
+ * It edits source files in place and restores them in `finally`, also on Ctrl-C, SIGTERM and
+ * SIGHUP (not SIGKILL). Don't run it with uncommitted edits to the seeded files, and don't stage
+ * or commit while it runs: the seeded file is the product's own until it is restored.
  */
-import { execFileSync, spawnSync } from "node:child_process";
+import { type ChildProcess, spawn } from "node:child_process";
 import { existsSync, readFileSync, writeFileSync } from "node:fs";
 import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
@@ -59,6 +60,326 @@ const unit = (file: string, ...filter: string[]): string[] => [
 const e2e = (...grep: string[]): string[] => (grep.length > 0 ? ["-g", grep.join("|")] : []);
 
 const SEEDS: readonly Seed[] = [
+  // MT-06: signing out (#204) and the metering window (#203). Each item's check goes red on a
+  // violation planted where it is enforced (`--only MT-06`, `--name "sign-out:"` for one item).
+  {
+    requirement: "MT-06",
+    name: "sign-out: a sign-out from the API origin's own page ends no session",
+    file: "src/server/authorize.ts",
+    from: '    if (hash !== undefined) {\n      directory.write((db) => db.run("DELETE FROM browser_session WHERE hash = ?", hash));',
+    to: '    if (hash === "") {\n      directory.write((db) => db.run("DELETE FROM browser_session WHERE hash = ?", hash));',
+    check: integration("signout.test.ts", "asks the provider again"),
+  },
+  {
+    requirement: "MT-06",
+    name: "sign-out: a sign-out from any origin is taken",
+    file: "src/server/authorize.ts",
+    from: "    const own = origin === apiOrigin;",
+    to: "    const own = true;",
+    check: integration("signout.test.ts", "ends nothing"),
+  },
+  {
+    requirement: "MT-06",
+    name: "sign-out: the API origin's own form is taken without the session's CSRF token",
+    file: "src/server/authorize.ts",
+    from: '    if (own && signed && form.get("csrf") !== csrf(signed.hash, "signout")) {',
+    to: '    if (own && signed && form.get("csrf") === "never") {',
+    check: integration("signout.test.ts", "ends nothing"),
+  },
+  {
+    requirement: "MT-06",
+    name: "sign-out: a GET of the sign-out page ends the session",
+    file: "src/server/authorize.ts",
+    from: '    const next = ownPath(params.get("next"));\n    const signed = sessionAccount(request);',
+    to: '    const next = ownPath(params.get("next"));\n    const signed = sessionAccount(request);\n    if (signed) directory.write((db) => db.run("DELETE FROM browser_session WHERE hash = ?", signed.hash));',
+    check: integration("signout.test.ts", "ends nothing"),
+  },
+  {
+    requirement: "MT-06",
+    name: "sign-out: a client that isn't the operator's own signs people out from its origin",
+    file: "src/server/authorize.ts",
+    // Two guards stand for this rule (only a vouched client is looked up; only an operator's
+    // client is taken): the violation defeats both.
+    from: '        client.trust === "operator" &&\n        origin !== undefined &&',
+    to: "        origin !== undefined &&",
+    also: [
+      {
+        file: "src/server/authorize.ts",
+        from: "      const client = clients.vouches(clientId) ? await clients.find(clientId) : undefined;",
+        to: '      const client = clientId !== "" ? await clients.find(clientId) : undefined;',
+      },
+    ],
+    check: integration("signout.test.ts", "ends nothing"),
+  },
+  {
+    requirement: "MT-06",
+    name: "sign-out: a client's sign-out goes back to an address it never registered",
+    file: "src/server/authorize.ts",
+    from: "    if (!client.postLogoutRedirectUris.includes(back)) {",
+    to: '    if (back === "") {',
+    check: integration("signout.test.ts", "back only to an address it registered"),
+  },
+  {
+    requirement: "MT-06",
+    name: "sign-out: the operator's own app can't sign a person out from its pages",
+    file: "src/server/authorize.ts",
+    from: "        clients.pagesOrigin(client) === origin;",
+    to: '        clients.pagesOrigin(client) === "never";',
+    check: integration("signout.test.ts", "back only to an address it registered"),
+  },
+  {
+    requirement: "MT-06",
+    name: "sign-out: a sign-out from an app the operator doesn't vouch for fetches its document",
+    file: "src/server/authorize.ts",
+    from: "      const client = clients.vouches(clientId) ? await clients.find(clientId) : undefined;",
+    to: '      const client = clientId !== "" ? await clients.find(clientId) : undefined;',
+    check: integration("signout.test.ts", "ends nothing"),
+  },
+  {
+    requirement: "MT-06",
+    name: "sign-out: a metadata-document client's pages are taken to be elsewhere",
+    file: "src/server/oauth-clients.ts",
+    from: "      return url.origin;\n    },",
+    to: "      return undefined;\n    },",
+    check: unit("oauth-clients.test.ts"),
+  },
+  {
+    requirement: "MT-06",
+    name: "prompt: a prompt=login request continues with a session from before it",
+    file: "src/server/authorize.ts",
+    from: "    if (pending.login !== undefined && signed.createdAt < pending.login) {",
+    to: "    if (pending.login !== undefined && signed.createdAt < 0) {",
+    check: integration("signout.test.ts", "prompt=login"),
+  },
+  {
+    requirement: "MT-06",
+    name: "prompt: a fresh sign-in leaves the browser's old session working",
+    file: "src/server/authorize.ts",
+    from: '      if (replacing !== undefined) db.run("DELETE FROM browser_session WHERE hash = ?", replacing);',
+    to: "",
+    check: integration("signout.test.ts", "prompt=login"),
+  },
+  {
+    requirement: "MT-06",
+    name: "prompt: prompt=consent doesn't ask again",
+    file: "src/server/authorize.ts",
+    from: "      pending.consent === true ||\n",
+    to: "",
+    check: integration("signout.test.ts", "prompt=login"),
+  },
+  {
+    requirement: "MT-06",
+    name: "prompt: a prompt the server doesn't implement is ignored",
+    file: "src/server/authorize.ts",
+    from: "      (prompts.length === 0 || !prompts.every((value) => PROMPT_VALUES.includes(value)))",
+    to: '      prompt === "never"',
+    check: integration("signout.test.ts", "doesn't implement"),
+  },
+  {
+    requirement: "MT-06",
+    name: "hosted: a frame ticket of before a page's sign-out enters as the account",
+    file: "src/gateway/capabilities.ts",
+    from: "    if (now !== entry.viewerId) {",
+    to: "    if (now === undefined && entry.viewerId === null) {",
+    check: e2e("signs out of the page"),
+    e2e: true,
+  },
+  {
+    requirement: "MT-06",
+    name: "hosted: a page's sign-out leaves the account's frame sessions to its frame",
+    file: "src/server/hosted-pages.ts",
+    from: "        return was === undefined || was === viewerId\n          ? 0",
+    to: "        return true\n          ? 0",
+    check: e2e("signs out of the page"),
+    e2e: true,
+  },
+  {
+    requirement: "MT-06",
+    name: "hosted: a page's sign-out leaves the server's sign-in on",
+    file: "../shell/src/viewer.tsx",
+    from: "    if (away !== undefined) {\n      location.assign(away);",
+    to: "    if (away === null) {\n      location.assign(away);",
+    check: e2e("signs out of the page"),
+    e2e: true,
+  },
+  {
+    requirement: "MT-06",
+    name: "hosted: a cookie-mode frame's re-entry as another viewer keeps the session it held",
+    file: "src/gateway/index.ts",
+    from: "        if (!isRefusal(existing) && existing.grant.tokenId === redeemed.tokenId) {\n          capabilities.endSession(existing.id);",
+    to: '        if (!isRefusal(existing) && existing.grant.tokenId === "") {\n          capabilities.endSession(existing.id);',
+    check: integration("identity.test.ts", "as another viewer"),
+  },
+  {
+    requirement: "MT-06",
+    name: "sign-out: a next with a tab sends the person to another origin",
+    file: "../themes/src/pages.ts",
+    from: '    if (character === "\\\\" || code < 0x20 || code === 0x7f) return undefined;',
+    to: '    if (character === "\\\\") return undefined;',
+    check: integration("signout.test.ts", "another origin from a"),
+  },
+  {
+    requirement: "MT-06",
+    name: "sign-out: a refused sign-out clears the cookie",
+    file: "src/server/authorize.ts",
+    from: "      if (!operator) {\n        log.warn(",
+    to: '      if (!operator) {\n        response.setHeader("set-cookie", clearCookies());\n        log.warn(',
+    check: integration("signout.test.ts", "ends nothing"),
+  },
+  {
+    requirement: "MT-06",
+    name: "sign-out: a registration's return addresses aren't checked",
+    file: "src/server/oauth-clients.ts",
+    from: "        !signedOut.every(redirectRegistrable) ||",
+    to: "        false ||",
+    check: integration("signout.test.ts", "registration"),
+  },
+  {
+    requirement: "MT-06",
+    name: "sweep: sign-ins in progress stay",
+    file: "src/server/sweep.ts",
+    from: '    signins: db.run("DELETE FROM signin WHERE expires_at <= ?", at).changes,',
+    to: '    signins: db.run("DELETE FROM signin WHERE expires_at <= ? AND 0", at).changes,',
+    check: unit("sweep.test.ts"),
+  },
+  {
+    requirement: "MT-06",
+    name: "sweep: expired device, access and refresh tokens stay",
+    file: "src/server/sweep.ts",
+    from: "        \"DELETE FROM token WHERE kind IN ('device', 'access', 'refresh') AND expires_at <= ?\",",
+    to: "        \"DELETE FROM token WHERE kind IN ('device', 'access', 'refresh') AND expires_at <= ? AND 0\",",
+    check: unit("sweep.test.ts"),
+  },
+  {
+    requirement: "MT-06",
+    name: "window: a counter added past a boundary lands in the next window",
+    file: "src/server/metering.ts",
+    from: "    if (!stopped) catchUp();\n    count(name, scope, value);",
+    to: "    count(name, scope, value);",
+    check: unit("metering.test.ts", "metering window"),
+  },
+  {
+    requirement: "MT-06",
+    name: "window: windows missed whole report the sleep",
+    file: "src/server/metering.ts",
+    from: "    if (current > due) from = current;",
+    to: "    if (current < due) from = current;",
+    check: unit("metering.test.ts", "metering window"),
+  },
+  {
+    requirement: "MT-06",
+    name: "window: a stop after a boundary sends one window across it",
+    file: "src/server/metering.ts",
+    from: "      if (timer) clearTimeout(timer);\n      catchUp();\n      close(now());",
+    to: "      if (timer) clearTimeout(timer);\n      close(now());",
+    check: unit("metering.test.ts", "when it stops"),
+  },
+  {
+    requirement: "MT-06",
+    name: "window: a window under a minute is taken",
+    file: "src/server/config.ts",
+    from: "          .min(60)\n          .max(3_600)",
+    to: "          .min(1)\n          .max(3_600)",
+    also: [
+      {
+        file: "src/server/config.ts",
+        from: "          .refine((seconds) => seconds % 60 === 0 && 3_600 % seconds === 0, {",
+        to: "          .refine((seconds) => 3_600 % seconds === 0, {",
+      },
+    ],
+    check: unit("server-config.test.ts", "metering window"),
+  },
+  {
+    requirement: "MT-06",
+    name: "hosted: a page's sign-out leaves its session the account's",
+    file: "src/server/hosted-pages.ts",
+    from: '        db.run("UPDATE session SET viewer_id = ? WHERE id = ?", viewerId, session.id);',
+    to: '        db.run("UPDATE session SET viewer_id = viewer_id WHERE id = ?", session.id);',
+    check: e2e("signs out of the page"),
+    e2e: true,
+  },
+  {
+    requirement: "MT-06",
+    name: "hosted: the frame session that acted as the account outlives the page's sign-out",
+    file: "src/gateway/index.ts",
+    from: "          existing.grant.tokenId === redeemed.tokenId\n        ) {\n          capabilities.endSession(existing.id);",
+    to: '          existing.grant.tokenId === ""\n        ) {\n          capabilities.endSession(existing.id);',
+    check: e2e("signs out of the page"),
+    e2e: true,
+  },
+  {
+    requirement: "MT-06",
+    name: "hosted: the next Sign in after a page's sign-out asks nobody",
+    file: "../shell/src/chrome.tsx",
+    from: '        signedOutHere(props.routeId) ? "consent" : undefined,',
+    to: "        undefined,",
+    check: e2e("signs out of the page"),
+    e2e: true,
+  },
+  {
+    requirement: "MT-06",
+    name: "sweep: an expired browser session stays",
+    file: "src/server/sweep.ts",
+    from: '    sessions: db.run("DELETE FROM browser_session WHERE expires_at <= ?", at).changes,',
+    to: '    sessions: db.run("DELETE FROM browser_session WHERE expires_at <= ? AND 0", at).changes,',
+    check: unit("sweep.test.ts"),
+  },
+  {
+    requirement: "MT-06",
+    name: "sweep: a spent code goes before its replay window passed",
+    file: "src/server/sweep.ts",
+    from: "  const codesBefore = new Date(now - CODE_KEPT_MS).toISOString();",
+    to: "  const codesBefore = at;",
+    check: unit("sweep.test.ts"),
+  },
+  {
+    requirement: "MT-06",
+    name: "sweep: a sweep that finds nothing writes the directory",
+    file: "src/server/sweep.ts",
+    from: "  return directory.write((db) => ({",
+    to: '  directory.write((db) => db.run("UPDATE browser_session SET created_at = ?", codesBefore));\n  return directory.write((db) => ({',
+    check: unit("sweep.test.ts"),
+  },
+  {
+    requirement: "MT-06",
+    name: "sweep: no sweep runs on the server",
+    file: "src/server/sweep.ts",
+    from: "  run();\n  const timer = setInterval(run, options.everyMs ?? SWEEP_MS);",
+    to: "  const timer = setInterval(() => undefined, options.everyMs ?? SWEEP_MS);",
+    check: integration("signout.test.ts", "once it expired"),
+  },
+  {
+    requirement: "MT-06",
+    name: "window: a window starts whenever the server does",
+    file: "src/server/metering.ts",
+    from: "  const boundary = (at: number): number => Math.floor(at / windowMs) * windowMs;",
+    to: "  const boundary = (at: number): number => at;",
+    check: unit("metering.test.ts", "metering window"),
+  },
+  {
+    requirement: "MT-06",
+    name: "window: a window's part of a second is dropped, so sums depend on the window",
+    file: "src/server/metering.ts",
+    from: "    carriedMs = elapsed - seconds * 1000;",
+    to: "    carriedMs = 0;",
+    check: unit("metering.test.ts", "sums the same"),
+  },
+  {
+    requirement: "MT-06",
+    name: "window: a length that doesn't divide an hour is taken",
+    file: "src/server/config.ts",
+    from: "          .refine((seconds) => seconds % 60 === 0 && 3_600 % seconds === 0, {",
+    to: "          .refine((seconds) => seconds > 0, {",
+    check: unit("server-config.test.ts", "metering window"),
+  },
+  {
+    requirement: "MT-06",
+    name: "window: the server ignores the operator's window",
+    file: "src/server/index.ts",
+    from: "        : (config.metering?.windowSeconds ?? DEFAULT_WINDOW_SECONDS) * 1000,",
+    to: "        : DEFAULT_WINDOW_SECONDS * 1000,",
+    check: integration("idle-marks.test.ts", "metering window"),
+  },
   // MT-05: who signs in, and what an idle home writes. Each request's check goes red on a violation
   // planted where it is enforced (`--only MT-05`, `--name "12:"` for one request).
   {
@@ -73,8 +394,8 @@ const SEEDS: readonly Seed[] = [
     requirement: "MT-05",
     name: "11: an operator's own client skips the consent of an account that never gave it",
     file: "src/server/authorize.ts",
-    from: "        : !auth.consented(signed.accountId, client.id);",
-    to: '        : client.trust !== "operator" && !auth.consented(signed.accountId, client.id);',
+    from: "        : !auth.consented(signed.accountId, client.id));",
+    to: '        : client.trust !== "operator" && !auth.consented(signed.accountId, client.id));',
     check: integration("oauth.test.ts", "operator's own client"),
   },
   {
@@ -261,8 +582,8 @@ const SEEDS: readonly Seed[] = [
     requirement: "UX-01",
     name: "the appearance switch sends a person to another site",
     file: "src/server/api.ts",
-    from: `          next.startsWith("/") && !next.startsWith("//") && !next.startsWith("/\\\\") ? next : "/";`,
-    to: `          next.startsWith("/") ? next : "/";`,
+    from: '        const back = localPath(next) ?? "/";',
+    to: '        const back = next.startsWith("/") ? next : "/";',
     check: integration("server-pages.test.ts", "light or dark choice"),
   },
   {
@@ -525,8 +846,8 @@ const SEEDS: readonly Seed[] = [
     requirement: "MT-03",
     name: "5: a provider the operator module supplies is never verified, whatever it says",
     file: "src/server/authorize.ts",
-    from: "        await resolved(response, identity, verifierOf(provider), 0, pending.flow, pending.next);",
-    to: "        await resolved(response, identity, undefined, 0, pending.flow, pending.next);",
+    from: "          identity,\n          verifierOf(provider),\n          0,",
+    to: "          identity,\n          undefined,\n          0,",
     check: integration("signin-facts.test.ts", "operator module supplies"),
   },
   {
@@ -988,8 +1309,8 @@ const SEEDS: readonly Seed[] = [
     requirement: "RM-02",
     name: "a lost submission whose read again fails is never read again (Opus review of WP-29, 3)",
     file: "src/link/manager.ts",
-    from: "      for (const submissionId of followed.missing) {",
-    to: "      for (const submissionId of followed.missing.slice(0, 0)) {",
+    from: "      noteMissing(db, connection.server, followed.missing, new Date(now()).toISOString());",
+    to: "      noteMissing(db, connection.server, [], new Date(now()).toISOString());",
     check: integration("restore.test.ts", "lost to a restore"),
   },
   {
@@ -1119,8 +1440,8 @@ const SEEDS: readonly Seed[] = [
     requirement: "RM-02",
     name: "a submission the owner lost to a restore is never read again",
     file: "src/link/manager.ts",
-    from: "    for (const submissionId of missing) {\n      const key = `${connection.server} ${submissionId}`;",
-    to: "    for (const submissionId of [] as string[]) {\n      const key = `${connection.server} ${submissionId}`;",
+    from: "        waiting: () => ledger.read((db) => waitingMissing(db, server)),",
+    to: "        waiting: () => [],",
     check: integration("restore.test.ts", "lost to a restore"),
   },
   {
@@ -1465,8 +1786,8 @@ const SEEDS: readonly Seed[] = [
     requirement: "RM-02",
     name: "a followed submission record is appended without its submission",
     file: "src/interaction/imports.ts",
-    from: "        missing.push(id);\n      continue;",
-    to: "        missing.push(id);",
+    from: "        missing.push({ submissionId: id, cursor: event.cursor });\n      continue;",
+    to: "        missing.push({ submissionId: id, cursor: event.cursor });",
     check: unit("imports.test.ts", "copies each followed event once"),
   },
   {
@@ -2999,7 +3320,7 @@ const SEEDS: readonly Seed[] = [
     requirement: "wp05-claude-origin",
     name: "a link works at whatever address the shell moved to",
     file: "src/gateway/capabilities.ts",
-    from: "    if (row.shell_origin !== (shellOrigin ?? this.#shellOrigin())) {",
+    from: "    if (!atItsAddress) {",
     to: "    if (false) {",
     check: integration("gateway.test.ts", "shell moved to another port"),
   },
@@ -3099,8 +3420,8 @@ const SEEDS: readonly Seed[] = [
     requirement: "HY-03",
     name: "scopes aren't enforced",
     file: "src/gateway/routes.ts",
-    from: "        if (!allowed) {",
-    to: "        if (allowed === false && needed === undefined) {",
+    from: "        if (denied) return refuse(checks, denied, meta);",
+    to: "        void denied;",
     check: hygiene("per-scope tokens"),
   },
   {
@@ -3131,8 +3452,8 @@ const SEEDS: readonly Seed[] = [
     requirement: "SH-01",
     name: "the frame is served on the shell's origin",
     file: "src/gateway/index.ts",
-    from: "      const artifactOrigin = found.way.origin() as string;",
-    to: "      const artifactOrigin = way.origin() as string;",
+    from: "          artifactOrigin = found.way.origin() as string;",
+    to: "          artifactOrigin = way.origin() as string;",
     check: e2e("live on two origins"),
     e2e: true,
   },
@@ -3157,7 +3478,7 @@ const SEEDS: readonly Seed[] = [
     requirement: "SH-04",
     name: "the bridge accepts messages from any origin",
     file: "../protocol/src/bridge.ts",
-    from: 'if (event.origin !== options.peerOrigin) return "wrong-origin";',
+    from: 'if (options.peerOrigin !== "*" && event.origin !== options.peerOrigin) return "wrong-origin";',
     to: "",
     check: ["test/bridge.test.ts"],
     cwd: "../protocol",
@@ -3541,8 +3862,8 @@ const SEEDS: readonly Seed[] = [
     requirement: "EN-07",
     name: "a POSIX integration suite runs in two groups",
     file: "vitest.config.ts",
-    from: "    exclude: [VERIFY_SUITES, DEV, ...FAULTS, ...REMOTE, ...EXTENSIONS],",
-    to: "    exclude: [VERIFY_SUITES, ...FAULTS, ...REMOTE, ...EXTENSIONS],",
+    from: "    exclude: [VERIFY_SUITES, DEV, ...FAULTS, ...REMOTE, ...EXTENSIONS, ...CORE_OVERFLOW],",
+    to: "    exclude: [VERIFY_SUITES, ...FAULTS, ...REMOTE, ...EXTENSIONS, ...CORE_OVERFLOW],",
     check: unit("windows-groups.test.ts", "macOS and Linux"),
   },
   {
@@ -6573,8 +6894,8 @@ const SEEDS: readonly Seed[] = [
     requirement: "MC-04",
     name: "an approval of one client carries to another (no consent page of the server's own)",
     file: "src/server/authorize.ts",
-    from: "        : !auth.consented(signed.accountId, client.id);",
-    to: "        : false;",
+    from: "        : !auth.consented(signed.accountId, client.id));",
+    to: "        : false);",
     check: integration("oauth.test.ts", "never carries over"),
   },
   {
@@ -6792,14 +7113,23 @@ const SEEDS: readonly Seed[] = [
     file: "src/gateway/actions.ts",
     from: "    const pause = interaction.pauseOf(page.artifactId);\n    if (!pause) return undefined;",
     to: "    const pause = interaction.pauseOf(page.artifactId);\n    if (pause || !pause) return undefined;",
+    // MT-03 judges the pause again after the operator's answer (server/relay.ts): the seed breaks
+    // both, since either refuses the run (WP-17 found this seed green while planted).
+    also: [
+      {
+        file: "src/server/relay.ts",
+        from: "    const pause = interaction.pauseOf(page.artifactId);\n    if (pause) {\n      throw failed(",
+        to: "    const pause = interaction.pauseOf(page.artifactId);\n    if (pause && !pause) {\n      throw failed(",
+      },
+    ],
     check: integration("pause.test.ts", "owner pauses"),
   },
   {
     requirement: "RM-09",
     name: "the shell isn't told a page is paused",
     file: "src/gateway/index.ts",
-    from: "      const pause = interaction.pauseOf(artifactId);\n      const chrome = hosted?.chrome",
-    to: "      const pause = undefined as ReturnType<typeof interaction.pauseOf>;\n      const chrome = hosted?.chrome",
+    from: "      const { detail, version, latest, viewId, viewerId, controls, pause, chrome } = opening;",
+    to: "      const { detail, version, latest, viewId, viewerId, controls, chrome } = opening;\n      const pause = undefined as ReturnType<typeof interaction.pauseOf>;",
     check: integration("pause.test.ts", "owner pauses"),
   },
   {
@@ -7071,7 +7401,7 @@ const SEEDS: readonly Seed[] = [
     requirement: "EX-01",
     name: "a plugin that runs in a page installs for the whole home",
     file: "src/plugins/plugins.ts",
-    from: "    if (!manifestScopes(manifest).includes(plugin.scope)) {",
+    from: '    if (!manifestScopes(manifest).includes(plugin.scope === "bundled" ? "home" : plugin.scope)) {',
     to: "    if (false) {",
     check: integration("plugins.test.ts", "never what runs in a page"),
   },
@@ -7280,8 +7610,8 @@ const SEEDS: readonly Seed[] = [
     requirement: "EX-01",
     name: "an export writes a file where another of its files needs a directory",
     file: "src/plugins/methods.ts",
-    from: '          if (seen.has(segments.slice(0, length).join("/"))) {',
-    to: "          if (false) {",
+    from: '        if (seen.has(segments.slice(0, length).join("/"))) {',
+    to: "        if (false) {",
     check: integration("plugins.test.ts", "installs an in-range plugin"),
   },
   {
@@ -7383,6 +7713,687 @@ const SEEDS: readonly Seed[] = [
     check: unit("commands.test.ts", "global flag's name"),
     cwd: "../cli",
   },
+  // WP-17 (D175): MCP Apps export. Each check goes red on a violation planted where the rule is
+  // enforced (`--only MC-02`, `--only MC-03`); the browser seeds run in Chromium, enough to see red.
+  {
+    requirement: "MC-02",
+    name: "the app channel skips the link's scopes",
+    file: "src/gateway/app.ts",
+    from: "  if (denied) return refused(denied);",
+    to: "  void denied;",
+    check: integration("mcp-apps.test.ts", "applies the link's scopes"),
+  },
+  {
+    requirement: "MC-02",
+    name: "a browser's cookie session works on the app channel",
+    file: "src/gateway/capabilities.ts",
+    from: "        if (!session || session.origin !== origin || session.mode !== mode) return undefined;",
+    to: "        if (!session) return undefined;",
+    check: integration("mcp-apps.test.ts", "never lets a browser present an app session"),
+  },
+  {
+    requirement: "MC-02",
+    name: "removing the bundled exporter says only that it isn't installed, not why",
+    file: "src/plugins/plugins.ts",
+    from: "            if (!plugins.includes(name) && bundled.has(name)) {",
+    to: "            if (false) {",
+    check: integration("mcp-apps.test.ts", "refuses to remove it"),
+  },
+  {
+    requirement: "MC-02",
+    name: "app/page makes a version's MCP App again instead of serving the one it kept",
+    file: "src/plugins/methods.ts",
+    from: '    if (existsSync(join(dir, "mcp-app.json"))) return read();',
+    to: "    if (false) return read();",
+    check: integration("mcp-apps.test.ts", "made once and kept"),
+  },
+  {
+    requirement: "MC-02",
+    name: "the export leaves out the mcp-app target, so its page routes as a live one",
+    file: "../../plugins/mcp-app/src/page.ts",
+    from: `    '    <meta name="mostra-target" content="mcp-app" />',`,
+    to: `    '    <meta name="mostra-target" content="live" />',`,
+    check: [
+      ...e2e("as an MCP App: memory routing", "renders through the loader"),
+      "--project",
+      "chromium",
+    ],
+    e2e: true,
+  },
+  {
+    requirement: "MC-02",
+    name: "the page's text ends its script early",
+    file: "../../plugins/mcp-app/src/page.ts",
+    from: '  const encoded = Buffer.from(code, "utf8").toString("base64");',
+    to: "  const encoded = code;",
+    check: ["test/exporter.test.ts", "-t", "never lets the page's text end its script"],
+    cwd: "../../plugins/mcp-app",
+  },
+  {
+    requirement: "MC-02",
+    name: "the page's module is carried but never run (Opus 11, Fable 12)",
+    file: "../../plugins/mcp-app/src/page.ts",
+    from: '  "  document.body.append(module);",',
+    to: '  "  void module;",',
+    check: ["test/exporter.test.ts", "-t", "never lets the page's text end its script"],
+    cwd: "../../plugins/mcp-app",
+  },
+  {
+    requirement: "MC-02",
+    name: "the page's stylesheet text ends its style element early",
+    file: "../../plugins/mcp-app/src/page.ts",
+    from: '  return css.replace(/<\\/(style)/gi, "<\\\\/$1");',
+    to: "  return css;",
+    check: ["test/exporter.test.ts", "-t", "never lets the page's text end its script"],
+    cwd: "../../plugins/mcp-app",
+  },
+  {
+    requirement: "MC-02",
+    name: "the export declares none of the origins its own code names",
+    file: "../../plugins/mcp-app/src/index.ts",
+    from: "    const codeOrigins = await ownOrigins(files, bundled.modules);",
+    to: "    const codeOrigins: string[] = [];",
+    check: ["test/exporter.test.ts", "-t", "declares the origins"],
+    cwd: "../../plugins/mcp-app",
+  },
+  {
+    requirement: "MC-02",
+    name: "artifact_open names no UI resource, so no host shows the page inline",
+    file: "../mcp/src/tools.ts",
+    from: '      meta: { ui: { resourceUri: MCP_APP_LOADER_URI }, "ui/resourceUri": MCP_APP_LOADER_URI },',
+    to: "      meta: {},",
+    check: ["test/apps.test.ts", "-t", "names the loader on artifact_open"],
+    cwd: "../mcp",
+  },
+  {
+    requirement: "MC-02",
+    name: "the page's own tools are listed to the model",
+    file: "../mcp/src/app.ts",
+    from: 'export const APP_ONLY_META: Readonly<Record<string, unknown>> = { ui: { visibility: ["app"] } };',
+    to: 'export const APP_ONLY_META: Readonly<Record<string, unknown>> = { ui: { visibility: ["model", "app"] } };',
+    check: ["test/apps.test.ts", "-t", "lists the page's tools as app-only"],
+    cwd: "../mcp",
+  },
+  {
+    requirement: "MC-02",
+    name: "a client without MCP Apps is given the page's tools anyway",
+    file: "../mcp/src/server.ts",
+    from: "  return Array.isArray(types) && types.includes(MCP_APP_MIME_TYPE);",
+    to: "  return true;",
+    check: ["test/apps.test.ts", "-t", "leaves MCP Apps out"],
+    cwd: "../mcp",
+  },
+  {
+    requirement: "MC-02",
+    name: "the page takes no look from its host",
+    file: "../react/src/runtime/mcp-app.ts",
+    from: "  applyHostContext(host.context());",
+    to: "",
+    check: [...e2e("takes the host's look"), "--project", "chromium"],
+    e2e: true,
+  },
+  {
+    requirement: "MC-02",
+    name: "the page answers the host's teardown before it saved",
+    file: "../react/src/runtime/mcp-app.ts",
+    from: "  host.onTeardown(async () => {\n    await store.flush();\n  });",
+    to: "  host.onTeardown(async () => {});",
+    check: [
+      ...e2e("saves what was typed before the host removes the page"),
+      "--project",
+      "chromium",
+    ],
+    e2e: true,
+  },
+  {
+    requirement: "MC-02",
+    name: "a hosted home can't make its own pages, so a chat host waits on the owner (R01-2)",
+    file: "src/plugins/bundled-page.ts",
+    from: "  const exporter = await bundledExporter(input.env);",
+    to: '  const exporter = await bundledExporter(input.env);\n  throw failed("made elsewhere");',
+    check: integration("remote-mcp-apps.test.ts", "shows a hosted page inline"),
+  },
+  {
+    requirement: "MC-02",
+    name: "a hosted home shows a quarantined version's page",
+    file: "src/server/app-pages.ts",
+    from: "    if (options.underReview(artifactId, versionId)) {",
+    to: "    if (false) {",
+    check: unit("app-pages.test.ts", "a quarantined one before it makes anything"),
+  },
+  {
+    requirement: "MC-02",
+    name: "a chat host whose policy shows links only is given MCP Apps anyway",
+    file: "src/server/mcp.ts",
+    from: '        apps: subject.render === "app",',
+    to: "        apps: true,",
+    check: integration("remote-mcp-apps.test.ts", "lists no app-only tools"),
+  },
+  {
+    requirement: "MC-03",
+    name: "presence is missing inline without a word",
+    file: "../react/src/team-hooks.ts",
+    from: '    noteUnavailable("presence");',
+    to: "",
+    check: [...e2e("each state their message"), "--project", "chromium"],
+    e2e: true,
+  },
+  {
+    requirement: "MC-03",
+    name: "an origin the host blocks goes unnamed",
+    file: "../react/src/runtime/inline.ts",
+    from: '    if (origin !== "null") note("origin", origin);',
+    to: "",
+    check: [...e2e("each state their message"), "--project", "chromium"],
+    e2e: true,
+  },
+  {
+    requirement: "MC-03",
+    name: "a frame the host blocks goes unmentioned",
+    file: "../react/src/runtime/inline.ts",
+    from: '      note("frames");\n      return;',
+    to: "      return;",
+    also: [
+      {
+        file: "../react/src/runtime/inline.ts",
+        from: '    if ([...document.querySelectorAll("iframe, frame, embed, object")].some(blockedFrame)) {\n      note("frames");\n    }',
+        to: "",
+      },
+    ],
+    check: [...e2e("each state their message"), "--project", "chromium"],
+    e2e: true,
+  },
+  {
+    requirement: "MC-03",
+    name: "review surfaces go without the word that comments are on the full page",
+    file: "../react/src/runtime/inline.ts",
+    from: '    if (document.querySelector("[data-review-id]")) note("review");',
+    to: "",
+    check: [...e2e("each state their message"), "--project", "chromium"],
+    e2e: true,
+  },
+  {
+    requirement: "MC-03",
+    name: "streamed results arrive whole without a word",
+    file: "../react/src/runtime/mcp-transport.ts",
+    from: '    if (lines.filter((line) => "batch" in line).length > 1) this.#onBatched?.();',
+    to: "",
+    check: [...e2e("each state their message"), "--project", "chromium"],
+    e2e: true,
+  },
+  {
+    requirement: "MC-03",
+    name: "a newer version goes unmentioned",
+    file: "../react/src/runtime/mcp-app.ts",
+    from: '        if (number > view.version.number) noteUnavailable("versions");',
+    to: "",
+    check: [...e2e("each state their message"), "--project", "chromium"],
+    e2e: true,
+  },
+  {
+    requirement: "MC-03",
+    name: "a shell-only view inline doesn't say to submit from the full page",
+    file: "../react/src/runtime/inline.ts",
+    from: "    if (takesSubmissions && !artifactChannel()) say(INLINE_WORDS.shellOnly);",
+    to: "",
+    check: [...e2e("only the shell's trusted controls"), "--project", "chromium"],
+    e2e: true,
+  },
+  {
+    requirement: "MC-03",
+    name: "a host without the app-only tools keeps answers in the browser without a word",
+    file: "../react/src/runtime/mcp-app.ts",
+    from: '    noteUnavailable("tools");',
+    to: "",
+    check: [...e2e("without the app-only tools"), "--project", "chromium"],
+    e2e: true,
+  },
+  // #139 (D175 item 9): the owner's log keeps the hosted order of the submissions it reads again.
+  {
+    requirement: "RM-08",
+    name: "#139: submissions are read again all at once, so a later read can land first",
+    file: "src/link/reimport.ts",
+    from: "          outcome = await source.read(missing);",
+    to: '          void source.read(missing).catch(() => undefined);\n          outcome = "done";',
+    check: unit("reimport.test.ts", "later read would finish first"),
+  },
+  {
+    requirement: "RM-08",
+    name: "#139: a submission that can't be read lets later ones past it",
+    file: "src/link/reimport.ts",
+    from: '        if (outcome === "retry") return false;',
+    to: '        if (outcome === "retry") continue;',
+    check: unit("reimport.test.ts", "holds every later submission back"),
+  },
+  {
+    requirement: "RM-08",
+    name: "#139: submissions are read again in the order of their IDs, not the hosted order",
+    file: "src/link/reimport.ts",
+    from: "    const order = key(a) - key(b);",
+    to: "    const order = 0n;",
+    check: unit("reimport.test.ts", "hosted cursor as a number"),
+  },
+  {
+    requirement: "RM-08",
+    name: "#139: a waiting submission is kept without its hosted cursor",
+    file: "src/interaction/imports.ts",
+    from: "      one.cursor,\n    );",
+    to: "      null,\n    );",
+    check: unit("imports.test.ts", "with its hosted cursor"),
+  },
+  {
+    requirement: "RM-08",
+    name: "#139: the follow reports a missing submission without its hosted cursor",
+    file: "src/interaction/imports.ts",
+    from: "        missing.push({ submissionId: id, cursor: event.cursor });",
+    to: '        missing.push({ submissionId: id, cursor: "0" });',
+    check: unit("imports.test.ts", "copies each followed event once"),
+  },
+  // #157 (D175 item 10): artifact_verify answers within a call's time, and its run is joined.
+  {
+    requirement: "MC-01",
+    name: "#157: the same artifact_verify again starts a second verify",
+    file: "../mcp/src/verify-run.ts",
+    from: "  let run = runs.get(key) as Run<V> | undefined;",
+    to: "  let run = undefined as Run<V> | undefined;",
+    check: ["test/verify.test.ts", "-t", "collects the same run's verdict"],
+    cwd: "../mcp",
+  },
+  {
+    requirement: "MC-01",
+    name: "#157: artifact_verify waits for the verdict however long verify takes",
+    file: "../mcp/src/verify-run.ts",
+    from: '    timer = setTimeout(() => resolve("waiting"), options.waitMs ?? VERIFY_ANSWER_MS);',
+    to: '    timer = setTimeout(() => resolve("waiting"), options.waitMs ?? 2_147_483_647);',
+    check: ["test/verify.test.ts", "-t", "answers running within its wait"],
+    cwd: "../mcp",
+  },
+  {
+    requirement: "MC-04",
+    name: "#157: a hosted home drops the stages a relayed verify reports",
+    file: "src/server/hosted.ts",
+    from: "        authorProgress.get(params.progressToken)?.(params);",
+    to: "",
+    check: integration("remote-mcp.test.ts", "authors through the owner"),
+  },
+  {
+    requirement: "MC-04",
+    name: "#157: the owner keeps a relayed verify's stages to itself",
+    file: "src/link/author.ts",
+    from: '          typeof token === "string" && options.progress !== undefined',
+    to: "          false",
+    check: integration("remote-mcp.test.ts", "authors through the owner"),
+  },
+  {
+    requirement: "MC-02",
+    name: "every app request counts as one caller for a route's rates",
+    file: "src/gateway/app.ts",
+    from: "      client: caller,",
+    to: "      client: undefined,",
+    check: unit("app-dispatch.test.ts", "its caller"),
+  },
+  {
+    requirement: "MC-02",
+    name: "a client without MCP Apps is told the tool list changed, before it listed any",
+    file: "../mcp/src/server.ts",
+    from: '        if (ui === "app") tool.enabled = shown;',
+    to: '        if (ui === "app") shown ? tool.enable() : tool.disable();',
+    check: ["test/apps.test.ts", "-t", "leaves MCP Apps out"],
+    cwd: "../mcp",
+  },
+  {
+    requirement: "MC-02",
+    name: "a release leaves the first-party plugin at the last release's version",
+    file: "../../tools/release/versions.ts",
+    from: 'const PACKAGE_FOLDERS = ["packages", "plugins"] as const;',
+    to: 'const PACKAGE_FOLDERS = ["packages"] as const;',
+    check: ["test/versions.test.ts", "-t", "first-party plugin"],
+    cwd: "../../tools",
+  },
+  {
+    requirement: "EN-07",
+    name: "pnpm check exits before its output is out, losing the summary on a pipe (WP-17's CI)",
+    file: "../../tools/check/exit.ts",
+    from: '  process.stdout.write("", flushed);\n  process.stderr.write("", flushed);',
+    to: "  void flushed;\n  leave();",
+    check: ["test/exit.test.ts"],
+    cwd: "../../tools",
+  },
+  {
+    requirement: "MC-02",
+    name: "a page inline shares one journal with every artifact in the host's origin (R02-1)",
+    file: "../react/src/runtime/mcp-app.ts",
+    from: "    journal: `mostra:${owner}`,\n    lock: `mostra-journal:${owner}`,\n    local: `mostra.app.${owner}.`,",
+    to: '    journal: "mostra",\n    lock: "mostra-journal",\n    local: "",',
+    check: [...e2e("unsent answers its own"), "--project", "chromium"],
+    e2e: true,
+  },
+  {
+    requirement: "MC-02",
+    name: "artifact_open shows the highest version, not the one its link opens (R01-1)",
+    file: "../mcp/src/tools.ts",
+    from: "              ? (detail.latestVersion ?? detail.versions[0])",
+    to: "              ? detail.versions[0]",
+    check: ["test/apps.test.ts", "-t", "the latest, after an earlier one"],
+    cwd: "../mcp",
+  },
+  {
+    requirement: "MC-02",
+    name: "one person's own link isn't marked, so a page opens it as them (R02-2)",
+    file: "../mcp/src/tools.ts",
+    from: "                ...(args.viewer !== undefined ? { personal: true } : {}),",
+    to: "",
+    check: ["test/apps.test.ts", "-t", "marks one person's own link"],
+    cwd: "../mcp",
+  },
+  {
+    requirement: "MC-02",
+    name: "the loader opens one person's own link (R02-2)",
+    file: "../mcp/src/loader.ts",
+    from: "    if (handles.personal === true) return say(WORDS.personal);",
+    to: "",
+    check: ["test/apps.test.ts", "-t", "never reads or opens one person's own link"],
+    cwd: "../mcp",
+  },
+  {
+    requirement: "MC-03",
+    name: "a host without tool calls gets no page, not its answers-stay-here mode (R02-8)",
+    file: "../mcp/src/loader.ts",
+    from: "    if (!capabilities.serverResources) return say(WORDS.noPage, url);",
+    to: "    if (!capabilities.serverResources || !capabilities.serverTools) return say(WORDS.noPage, url);",
+    check: ["test/apps.test.ts", "-t", "reads resources but runs no tools"],
+    cwd: "../mcp",
+  },
+  {
+    requirement: "MC-03",
+    name: "the loader waits for a tool result forever (R02-8)",
+    file: "../mcp/src/loader.ts",
+    from: "    if (answered === null) return say(WORDS.failed);",
+    to: "",
+    check: ["test/apps.test.ts", "-t", "no tool result comes"],
+    cwd: "../mcp",
+  },
+  {
+    requirement: "MC-02",
+    name: "a hosted page made while its version was quarantined still shows (R01-8)",
+    file: "src/server/app-pages.ts",
+    from: "        }\n        shown(versionId);\n",
+    to: "        }\n",
+    check: unit("app-pages.test.ts", "while its version was quarantined"),
+  },
+  {
+    requirement: "MC-02",
+    name: "a hosted page made while its version was removed is kept and shown (R01-8)",
+    file: "src/server/app-pages.ts",
+    from: "        if (generationOf(versionId) !== generation) {",
+    to: "        if (false) {",
+    check: unit("app-pages.test.ts", "while its version was removed"),
+  },
+  {
+    requirement: "RM-08",
+    name: "a submission the hosted home holds no more holds every later one back for good (R01-3)",
+    file: "src/link/reimport.ts",
+    from: '  return typeof code === "string" && REFUSED_FOR_GOOD.has(code) ? code : undefined;',
+    to: "  return undefined;",
+    check: unit("reimport.test.ts", "refusal of a submission it doesn't hold"),
+  },
+  {
+    requirement: "RM-08",
+    name: "a line that stopped waits for the next page, a kick meanwhile lost (R02-3)",
+    file: "src/link/reimport.ts",
+    from: "          later(() => {\n            retrying = false;\n            line.kick();\n          }, wait);",
+    to: "          void wait;",
+    check: unit("reimport.test.ts", "tries again on its own"),
+  },
+  {
+    requirement: "RM-08",
+    name: "a delivery overtakes an earlier submission still waiting to be read again (R01-5)",
+    file: "src/interaction/imports.ts",
+    from: "  if (earlier === undefined) return false;",
+    to: "  if (earlier !== null) return false;",
+    check: unit("imports.test.ts", "holds a delivery behind an earlier submission"),
+  },
+  {
+    requirement: "RM-08",
+    name: "what waits from before a restore keeps cursors the new incarnation reuses (R02-3)",
+    file: "src/interaction/imports.ts",
+    from: '  db.run("UPDATE remote_missing SET hosted_cursor = NULL WHERE server = ?", server);',
+    to: "  void db;\n  void server;",
+    check: unit("imports.test.ts", "holds a delivery behind an earlier submission"),
+  },
+  {
+    requirement: "MC-02",
+    name: "a link whose address closed still opens inline (R01-4)",
+    file: "src/gateway/index.ts",
+    from: "        const grant = capabilities.presentToken(params.token, params.artifactId, servesShell);",
+    to: "        const grant = capabilities.presentToken(params.token, params.artifactId, () => true);",
+    check: integration("gateway.test.ts", "shell moved to another port"),
+  },
+  {
+    requirement: "MC-04",
+    name: "a page opened inline on a hosted home isn't counted as a view (R02-16)",
+    file: "src/gateway/index.ts",
+    from: "    const chrome = hosted?.chrome\n      ? await hosted.chrome({ artifactId, tokenId: grant.tokenId, viewerId })\n      : undefined;",
+    to: '    const chrome =\n      hosted?.chrome && input.sessionId !== ""\n        ? await hosted.chrome({ artifactId, tokenId: grant.tokenId, viewerId })\n        : undefined;',
+    check: integration("operator.test.ts", "counts a page opened inline"),
+  },
+  {
+    requirement: "MC-01",
+    name: "a kept verdict answers a call made after the source changed (Opus 6, Fable 4)",
+    file: "../mcp/src/verify-run.ts",
+    from: "    (found.fingerprint !== fingerprint || now() - found.started > VERIFY_RUN_MAX_MS)",
+    to: "    now() - found.started > VERIFY_RUN_MAX_MS",
+    check: ["test/verify.test.ts", "-t", "fingerprint changed"],
+    cwd: "../mcp",
+  },
+  {
+    requirement: "MC-01",
+    name: "a run that never settles holds its key for good (Fable 4)",
+    file: "../mcp/src/verify-run.ts",
+    from: "    (found.fingerprint !== fingerprint || now() - found.started > VERIFY_RUN_MAX_MS)",
+    to: "    found.fingerprint !== fingerprint",
+    check: ["test/verify.test.ts", "-t", "longer than a run may"],
+    cwd: "../mcp",
+  },
+  {
+    requirement: "MC-01",
+    name: "a write through the tools leaves the old source's verify run to answer (Opus 6, Fable 4)",
+    file: "../mcp/src/verify-run.ts",
+    from: "    if (under) leave(key, run);",
+    to: "    void under;",
+    check: ["test/verify.test.ts", "-t", "forgets an instance's runs"],
+    cwd: "../mcp",
+  },
+  {
+    requirement: "MC-01",
+    name: "an edit beside the tools leaves the fingerprint unchanged (Opus 6, Fable 4)",
+    file: "../mcp/src/workspace.ts",
+    from: "      hash.update(`entry\\0${name}\\0${stats?.size ?? -1}\\0${stats?.mtimeMs ?? -1}\\0`);",
+    to: "      hash.update(`entry\\0${name}\\0`);",
+    check: ["test/verify.test.ts", "-t", "fingerprints a directory"],
+    cwd: "../mcp",
+  },
+  {
+    requirement: "MC-04",
+    name: "the owner can't tell a relayed verify whether its source changed (#157, Fable 4)",
+    file: "src/link/author.ts",
+    from: '        const fingerprint = await workspace.fingerprint?.(dirOf(given["dir"]));',
+    to: "        const fingerprint = undefined;",
+    check: unit("owner-author.test.ts", "fingerprint"),
+  },
+  {
+    requirement: "MC-02",
+    name: "the loader asks a host for no border, its pages framed as the host likes (Opus 7, Fable 5)",
+    file: "../mcp/src/loader.ts",
+    from: "  meta: { ui: { prefersBorder: true } },",
+    to: "  meta: { ui: { prefersBorder: false } },",
+    check: ["test/apps.test.ts", "-t", "serves the loader"],
+    cwd: "../mcp",
+  },
+  {
+    requirement: "MC-03",
+    name: "a plain call inline runs past the chat host's limit, its answer lost (Fable 6)",
+    file: "src/gateway/app.ts",
+    from: '  const limit = params.route === "call" ? APP_CALL_MS : ROUTE_TIMEOUT_MS;',
+    to: "  const limit = 10 * 60_000;",
+    check: unit("app-dispatch.test.ts", "stops a plain call past its bound"),
+  },
+  {
+    requirement: "MC-03",
+    name: "one bad line loses a call's whole answer (Opus 16)",
+    file: "src/gateway/app.ts",
+    from: "        lines.push(JSON.parse(line) as unknown);\n      } catch {",
+    to: "        lines.push(JSON.parse(line) as unknown);\n      } finally {",
+    check: unit("app-dispatch.test.ts", "isn't JSON"),
+  },
+  {
+    requirement: "MC-03",
+    name: "a call stopped at the chat host's bound fails without a word inline (Fable 6)",
+    file: "../react/src/runtime/mcp-app.ts",
+    from: '      onTooLong: () => noteUnavailable("calls"),',
+    to: "      onTooLong: () => undefined,",
+    check: [...e2e("says why it stopped"), "--project", "chromium"],
+    e2e: true,
+  },
+  {
+    requirement: "MC-02",
+    name: "a 2026-07-28 client without MCP Apps is listed the page's tools (Fable 9)",
+    file: "../mcp/src/server.ts",
+    from: "          if (shown !== undefined) showApps(shown);",
+    to: "          void shown;",
+    check: ["test/apps.test.ts", "-t", "judges each 2026-07-28 request"],
+    cwd: "../mcp",
+  },
+  {
+    requirement: "MC-02",
+    name: "a client without MCP Apps can call a page's own tools (Fable 9)",
+    file: "../mcp/src/server.ts",
+    from: '          if (tool.ui === "app" && (options.apps === false || appsOf(ctx) === false)) {',
+    to: '          if (tool.ui === "app" && options.apps === false) {',
+    check: ["test/apps.test.ts", "-t", "judges each 2026-07-28 request"],
+    cwd: "../mcp",
+  },
+  {
+    requirement: "MC-04",
+    name: "a chat host policy entry the server can't use stops it, though the release before took it (Fable 10)",
+    file: "src/server/chat-hosts.ts",
+    from: '      log.warn("server.chat_host_ignored", { key, why: "not a chat host policy" });\n      continue;',
+    to: "      throw new Error(`chatHosts.${key} isn't a chat host policy`);",
+    check: unit("chat-hosts.test.ts", "uses the entries it can"),
+  },
+  {
+    requirement: "MC-04",
+    name: "every request of an open page asks the operator how its chat host renders (Fable 11, Opus 13)",
+    file: "src/server/chat-hosts.ts",
+    from: "    if (last !== undefined && now() - last.at < RENDER_KEPT_MS) return last.render;",
+    to: "    void RENDER_KEPT_MS;",
+    check: unit("chat-hosts.test.ts", "asks once a minute"),
+  },
+  {
+    requirement: "MC-04",
+    name: "a client that can't be read once renders as the default, not as its host's policy (Fable 11)",
+    file: "src/server/chat-hosts.ts",
+    from: '    if (client === undefined) return last?.render ?? "app";',
+    to: '    if (client === undefined) return "app";',
+    check: unit("chat-hosts.test.ts", "asks once a minute"),
+  },
+  {
+    requirement: "MC-03",
+    name: "a refused inline Submit says nothing, the page still showing Saved (Fable 14)",
+    file: "../react/src/runtime/inline.ts",
+    from: "        refused = error instanceof MostraError ? error.message : INLINE_WORDS.unsent;",
+    to: "        void error;",
+    check: [...e2e("refuses says why"), "--project", "chromium"],
+    e2e: true,
+  },
+  {
+    requirement: "MC-03",
+    name: "a link without the review scope is offered a Choose it can't make (Fable 15)",
+    file: "../react/src/runtime/inline.ts",
+    from: '    const offered = view?.controls === undefined || view.controls.includes("choose");',
+    to: "    const offered = true;",
+    check: [...e2e("without the review scope"), "--project", "chromium"],
+    e2e: true,
+  },
+  {
+    requirement: "MC-02",
+    name: "a page sized by the viewport grows with every height it reports (Fable 7)",
+    file: "../react/src/runtime/mcp-app.ts",
+    from: "    if (last !== -1 && viewport === last && over > 0 && over === overshoot) return;",
+    to: "    void over;",
+    check: ["test/height.test.ts"],
+    cwd: "../react",
+  },
+  {
+    requirement: "MC-02",
+    name: "a file the page fetches is blocked as a data: URL by the host's policy (Fable 13)",
+    file: "../../plugins/mcp-app/src/page.ts",
+    from: '  "  var native = window.fetch;",',
+    to: '  "  var native = undefined;",',
+    check: ["test/exporter.test.ts", "-t", "data: files from memory"],
+    cwd: "../../plugins/mcp-app",
+  },
+  {
+    requirement: "HY-03",
+    name: "the one scope rule both channels apply lets every scope through (Opus 15)",
+    file: "src/gateway/routes.ts",
+    from: "  if (allowed) return undefined;",
+    to: "  return undefined;",
+    check: unit("app-dispatch.test.ts", "checks the session and the route's scope"),
+  },
+  {
+    requirement: "MC-03",
+    name: "a page whose host has no app-only tools keeps its answers in memory only (Opus 12)",
+    file: "../react/src/runtime/mcp-app.ts",
+    from: "      local: storage ?? memoryStorage(),",
+    to: "      local: memoryStorage(),",
+    check: [...e2e("without the app-only tools"), "--project", "chromium"],
+    e2e: true,
+  },
+  {
+    requirement: "MC-02",
+    name: "a host context change after the loader's handoff is lost, never reaching the page (Fable 19)",
+    file: "../mcp/src/loader.ts",
+    from: "        if (offered) kept.push({ data, origin: event.origin, source: event.source });",
+    to: "        if (false) kept.push({ data, origin: event.origin, source: event.source });",
+    check: ["test/apps.test.ts", "-t", "R02 finding 19"],
+    cwd: "../mcp",
+  },
+  {
+    requirement: "EN-07",
+    name: "the dependency suite rebalanced into extensions runs in core too",
+    file: "vitest.config.ts",
+    from: "    exclude: [VERIFY_SUITES, DEV, ...FAULTS, ...REMOTE, ...EXTENSIONS, ...CORE_OVERFLOW],",
+    to: "    exclude: [VERIFY_SUITES, DEV, ...FAULTS, ...REMOTE, ...EXTENSIONS],",
+    check: unit("windows-groups.test.ts", "macOS and Linux"),
+  },
+  {
+    requirement: "EN-07",
+    name: "a browser spec may load a page with a bare page.goto, which fails at random on Windows (#132)",
+    file: "../../tools/repo-lint/cli.ts",
+    from: "    if (call === null) continue;",
+    to: "    if (call === null || true) continue;",
+    check: ["test/rules.test.ts", "-t", "page loads"],
+    cwd: "../../tools",
+  },
+  {
+    requirement: "MC-02",
+    name: "artifact_open never tells the model its page shows in the chat, though the client said it shows MCP Apps (M79)",
+    file: "../mcp/src/tools.ts",
+    from: "                ? OPEN_WORDS.shown",
+    to: "                ? OPEN_WORDS.maybe",
+    check: ["test/apps.test.ts", "-t", "M79"],
+    cwd: "../mcp",
+  },
+  {
+    requirement: "MC-02",
+    name: "artifact_open says one person's link shows in the chat, where no page opens it (M79)",
+    file: "../mcp/src/tools.ts",
+    from: "            args.viewer !== undefined || apps === false",
+    to: "            apps === false",
+    check: ["test/apps.test.ts", "-t", "M79"],
+    cwd: "../mcp",
+  },
 ];
 
 const runtime = join(dirname(fileURLToPath(import.meta.url)), "..");
@@ -7426,7 +8437,51 @@ if (values.anchors) {
 
 const WINDOWS_HOST = process.platform === "win32";
 
-function build(seed?: Seed): void {
+/** The command running now, which a signal stops before the seeded file is restored. */
+let current: ChildProcess | undefined;
+
+/**
+ * Runs a command without blocking this process, so a signal reaches its handler at once (a
+ * synchronous child would hold it until the child ended, with the seed still planted).
+ */
+function run(
+  command: string,
+  args: readonly string[],
+  options: { readonly cwd: string; readonly shell?: boolean; readonly capture?: boolean },
+): Promise<{ readonly status: number | null; readonly text: string }> {
+  return new Promise((resolve, reject) => {
+    const child = spawn(command, args, {
+      cwd: options.cwd,
+      shell: options.shell ?? false,
+      stdio: options.capture ? ["ignore", "pipe", "pipe"] : "ignore",
+    });
+    current = child;
+    let text = "";
+    child.stdout?.setEncoding("utf8").on("data", (chunk: string) => {
+      text += chunk;
+    });
+    child.stderr?.setEncoding("utf8").on("data", (chunk: string) => {
+      text += chunk;
+    });
+    child.on("error", reject);
+    child.on("close", (status) => {
+      if (current === child) current = undefined;
+      resolve({ status, text });
+    });
+  });
+}
+
+/** Runs a command that must succeed. */
+async function exec(
+  command: string,
+  args: readonly string[],
+  options: { readonly cwd: string; readonly shell?: boolean },
+): Promise<void> {
+  const { status } = await run(command, args, options);
+  if (status !== 0) throw new Error(`${command} ${args.join(" ")} exited ${status}.`);
+}
+
+async function build(seed?: Seed): Promise<void> {
   // pnpm is a `.cmd` on Windows, which only a shell runs.
   const shell = WINDOWS_HOST;
   if (seed?.platform === "win32") {
@@ -7436,14 +8491,13 @@ function build(seed?: Seed): void {
       // ("Access is denied", seen in WP-W2's seed runs), so a failed build is tried twice more.
       for (let attempt = 1; ; attempt++) {
         try {
-          execFileSync("cargo", ["build", "-p", "mostra-win", "--release", "--locked"], {
+          await exec("cargo", ["build", "-p", "mostra-win", "--release", "--locked"], {
             cwd: root,
-            stdio: ["ignore", "ignore", "inherit"],
           });
           break;
         } catch (error) {
           if (attempt === 3) throw error;
-          Atomics.wait(new Int32Array(new SharedArrayBuffer(4)), 0, 0, 5000);
+          await new Promise((resolve) => setTimeout(resolve, 5000));
         }
       }
     }
@@ -7451,6 +8505,7 @@ function build(seed?: Seed): void {
     for (const name of [
       "@mostra/protocol",
       "@mostra/themes",
+      "@mostra/plugin-mcp-app",
       "@mostra/server",
       "@mostra/worker",
       "@mostra/react",
@@ -7461,13 +8516,14 @@ function build(seed?: Seed): void {
       "@mostra/mcp",
       "@mostra/cli",
     ]) {
-      execFileSync("pnpm", ["--filter", name, "build"], { cwd: root, stdio: "ignore", shell });
+      await exec("pnpm", ["--filter", name, "build"], { cwd: root, shell });
     }
     return;
   }
   for (const name of [
     "@mostra/protocol",
     "@mostra/themes",
+    "@mostra/plugin-mcp-app",
     "@mostra/server",
     "@mostra/worker",
     "@mostra/react",
@@ -7479,7 +8535,7 @@ function build(seed?: Seed): void {
     "@mostra/cli",
     "create-mostra",
   ]) {
-    execFileSync("pnpm", ["--filter", name, "build"], { cwd: root, stdio: "ignore", shell });
+    await exec("pnpm", ["--filter", name, "build"], { cwd: root, shell });
   }
 }
 
@@ -7490,22 +8546,22 @@ function quoteForShell(argument: string): string {
     : argument;
 }
 
-function check(seed: Seed): { ok: boolean; summary: string } {
+async function check(seed: Seed): Promise<{ ok: boolean; summary: string }> {
   const result = seed.e2e
-    ? spawnSync("npx", ["playwright", "test", ...seed.check], {
+    ? await run("npx", ["playwright", "test", ...seed.check], {
         cwd: join(root, "tests", "e2e"),
-        encoding: "utf8",
+        capture: true,
       })
     : // Through pnpm, as `pnpm check` runs a suite: its `vitest` shim puts pnpm's hoisted
       // packages on NODE_PATH, which a supervisor started from a checkout needs to load
       // oxc-parser's native binding (found in WP-W2: VR-08's dev seeds came back red when vitest
       // ran without it). pnpm is a `.cmd` on Windows, which only a shell runs.
-      spawnSync("pnpm", ["exec", "vitest", "run", ...seed.check.map(quoteForShell)], {
+      await run("pnpm", ["exec", "vitest", "run", ...seed.check.map(quoteForShell)], {
         cwd: join(runtime, seed.cwd ?? "."),
-        encoding: "utf8",
         shell: WINDOWS_HOST,
+        capture: true,
       });
-  const text = stripVTControlCharacters(`${result.stdout}${result.stderr}`);
+  const text = stripVTControlCharacters(result.text);
   const summary =
     text
       .split("\n")
@@ -7515,10 +8571,19 @@ function check(seed: Seed): { ok: boolean; summary: string } {
 }
 
 let restore: (() => void) | undefined;
-process.on("SIGINT", () => {
-  restore?.();
-  process.exit(130);
-});
+// Ctrl-C, a closed terminal and a deadline or a CI cancel (SIGTERM) all restore the seeded file
+// before the process ends: a seed left planted would be committed as the product (WP-17).
+for (const [signal, code] of [
+  ["SIGINT", 130],
+  ["SIGTERM", 143],
+  ["SIGHUP", 129],
+] as const) {
+  process.on(signal, () => {
+    current?.kill("SIGTERM");
+    restore?.();
+    process.exit(code);
+  });
+}
 
 let missed = 0;
 for (const seed of SEEDS) {
@@ -7550,14 +8615,14 @@ for (const seed of SEEDS) {
     for (const { path, edit } of originals) {
       writeFileSync(path, readFileSync(path, "utf8").replace(edit.from, edit.to));
     }
-    build(seed);
-    red = check(seed);
+    await build(seed);
+    red = await check(seed);
   } finally {
     restore();
     restore = undefined;
   }
-  build(seed);
-  const green = check(seed);
+  await build(seed);
+  const green = await check(seed);
   if (red.ok || !green.ok) missed++;
   console.log(
     `${seed.requirement} | ${seed.name} | seeded: ${red.ok ? "GREEN (missed)" : "red"} (${red.summary}) | restored: ${green.ok ? "green" : "RED"} (${green.summary})`,
