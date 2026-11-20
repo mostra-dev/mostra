@@ -4,7 +4,7 @@
 
 Every command takes `--json`, which prints one envelope on stdout: `{ "ok": true, "result", "instance", "warnings" }` or `{ "ok": false, "error", "warnings" }`. Streaming commands print one envelope per line, the last one carrying `result` or `error`. Logs and progress go to stderr. Without a terminal, or with `--json`, no command asks a question.
 
-Commands: `add`, `daemon`, `dev`, `docs`, `doctor`, `export`, `gc`, `host`, `list`, `login`, `logout`, `mcp`, `new`, `open`, `pause`, `plugin`, `publish`, `push`, `results`, `resume`, `roster`, `run`, `secret`, `share`, `state`, `status`, `telemetry`, `verify`, `wait`.
+Commands: `add`, `daemon`, `dev`, `docs`, `doctor`, `export`, `gc`, `host`, `list`, `login`, `logout`, `mcp`, `new`, `open`, `pause`, `plugin`, `publish`, `push`, `results`, `resume`, `roster`, `run`, `secret`, `share`, `state`, `status`, `telemetry`, `theme`, `verify`, `wait`.
 
 ## mostra new
 
@@ -87,6 +87,8 @@ Arguments:
 
 Flags:
   --screenshots <when>         Which screenshots the verdict marks as worth looking at. (on-failure, always, never) Default: on-failure.
+  --theme <theme,…>            Build the page in this theme stack for this verify only, in place of the manifest's kit.theme (mostra theme list).
+  --fix                        Apply the fixes verify finds to the artifact's files, then verify again; `fixed` lists the files changed.
 
 Global flags:
   --json                       Print one JSON envelope on stdout (NDJSON for streams).
@@ -764,13 +766,13 @@ Example:
 ## mostra add
 
 ```text
-Add npm packages to an artifact's lockfile, or copy source-pack items (shadcn registry items) into it.
+Add npm packages to an artifact's lockfile, or copy source-pack items (the kit's, or any shadcn registry item) into it.
 
 Usage:
   mostra add <package…> [flags]
 
 Arguments:
-  <package>                    npm specs (name, name@version, name@range, name@tag), or items: a URL, a local .json, owner/repo/item on GitHub, @namespace/item, plugin:<package>/<item>.
+  <package>                    Items: a kit part by name (button, dialog, mostra-questionnaire), a URL, a local .json, owner/repo/item on GitHub, @namespace/item, plugin:<package>/<item>; or npm specs (name, name@version, name@range, name@tag). A bare name the kit has is its item.
 
 Flags:
   --artifact <path|id>         The artifact. Default: the one in the current directory.
@@ -795,7 +797,7 @@ Exit codes:
   4  timeout (--timeout passed)
 
 Example:
-  mostra add recharts@3 --artifact ./dashboard
+  mostra add button dialog --artifact ./review
 ```
 
 ## mostra plugin add
@@ -935,6 +937,72 @@ Exit codes:
 
 Example:
   mostra plugin validate ./my-plugin
+```
+
+## mostra theme list
+
+```text
+List the themes a page can wear (kit.theme): the built-in ones and those an artifact's plugins add.
+
+Usage:
+  mostra theme list [flags]
+
+Flags:
+  --artifact <path|id>         Also list the themes this artifact's plugins add, and the stack it wears.
+
+Global flags:
+  --json                       Print one JSON envelope on stdout (NDJSON for streams).
+  --home <dir>                 Use this Mostra home instead of MOSTRA_HOME or the default.
+  --cwd <dir>                  Resolve relative paths from this directory.
+  --timeout <d>                Give up on the instance after this long (exit 4), such as 30s or 5m.
+  --help                       Show this command's help; with --json, its definition.
+
+Output: ThemeListResult (mostra docs cli)
+
+Exit codes:
+  0  success
+  1  artifact failure (verify failed, publish refused, the artifact's state refused the request)
+  2  usage error
+  3  environment error (no runtime, browser or socket; the home; an unsupported platform)
+  4  timeout (--timeout passed)
+
+Example:
+  mostra theme list --artifact ./review
+```
+
+## mostra theme show
+
+```text
+Show what a theme or a stack sets (faces, every token in light and dark), or what an artifact wears.
+
+Usage:
+  mostra theme show [<theme…>] [flags]
+
+Arguments:
+  <theme>                      A theme, or a stack in order (studio ./brand.css); default: the artifact's own stack.
+
+Flags:
+  --artifact <path|id>         The artifact whose stack to show, or for which to resolve the themes given.
+  --css                        Also print the stylesheet the build takes.
+
+Global flags:
+  --json                       Print one JSON envelope on stdout (NDJSON for streams).
+  --home <dir>                 Use this Mostra home instead of MOSTRA_HOME or the default.
+  --cwd <dir>                  Resolve relative paths from this directory.
+  --timeout <d>                Give up on the instance after this long (exit 4), such as 30s or 5m.
+  --help                       Show this command's help; with --json, its definition.
+
+Output: ThemeShowResult (mostra docs cli)
+
+Exit codes:
+  0  success
+  1  artifact failure (verify failed, publish refused, the artifact's state refused the request)
+  2  usage error
+  3  environment error (no runtime, browser or socket; the home; an unsupported platform)
+  4  timeout (--timeout passed)
+
+Example:
+  mostra theme show arcata --css
 ```
 
 ## mostra export

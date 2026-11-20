@@ -208,6 +208,7 @@ export interface PluginContributes {
     readonly embedEngines?: readonly PluginEntry[];
     readonly exporters?: readonly PluginEntry[];
     readonly packs?: readonly PluginPackEntry[];
+    readonly themes?: readonly PluginThemeEntry[];
     readonly verifyChecks?: readonly PluginEntry[];
 }
 
@@ -259,6 +260,11 @@ export type PluginScope = "artifact" | "home" | "bundled";
 
 // @public
 export const PluginScope: z.ZodType<PluginScope>;
+
+// @public
+export interface PluginThemeEntry {
+    readonly theme: string;
+}
 
 // @public
 export interface Registry {

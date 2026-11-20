@@ -126,12 +126,13 @@ export const HostLook: z.ZodType<HostLook> = z
     variables: z
       .record(
         z.string().regex(/^--[A-Za-z0-9-]{1,64}$/),
+        // A value can't hold ; { } < or >, so it can't end its declaration (as a regex, which
+        // the wire's JSON Schema expresses); the instance takes at most 256 of them.
         z
           .string()
           .max(1024)
-          .refine((value) => !/[;{}<>]/.test(value), "a value can't hold ; { } < or >"),
+          .regex(/^[^;{}<>]*$/),
       )
-      .refine((variables) => Object.keys(variables).length <= 256, "at most 256 variables")
       .exactOptional(),
   })
   .register(wireRegistry, {

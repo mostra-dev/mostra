@@ -144,6 +144,9 @@ import {
   workerLimits,
 } from "../workers/index.ts";
 
+/** The most variables a host's look (`HomeConfig.look.variables`, D179 item 9) may give. */
+const HOST_LOOK_VARIABLES_MAX = 256;
+
 /** Options for {@link startInstance}. */
 export interface StartInstanceOptions {
   /** `host`: serve `stdio` and live as long as it; `daemon`: serve the socket until stopped. */
@@ -920,6 +923,14 @@ async function assemble(home: OwnedHome, options: StartInstanceOptions): Promise
         throw new RpcError(
           createDiagnostic("MOSTRA_HOST_INVALID_PARAMS", {
             message: `home.look.theme can't be built: ${lookProblem}.`,
+          }),
+        );
+      }
+      const lookVariables = Object.keys(config.look?.variables ?? {}).length;
+      if (lookVariables > HOST_LOOK_VARIABLES_MAX) {
+        throw new RpcError(
+          createDiagnostic("MOSTRA_HOST_INVALID_PARAMS", {
+            message: `home.look.variables has ${lookVariables} variables; a host's look takes at most ${HOST_LOOK_VARIABLES_MAX}.`,
           }),
         );
       }

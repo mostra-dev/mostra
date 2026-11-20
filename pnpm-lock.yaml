@@ -843,6 +843,9 @@ importers:
       '@mostra/tools':
         specifier: workspace:*
         version: link:../../tools
+      '@size-limit/preset-small-lib':
+        specifier: 'catalog:'
+        version: 14.2.0(size-limit@14.2.0)
       '@types/node':
         specifier: 'catalog:'
         version: 24.19.2
@@ -858,6 +861,9 @@ importers:
       react-dom:
         specifier: 'catalog:'
         version: 19.3.1(react@19.3.1)
+      size-limit:
+        specifier: 'catalog:'
+        version: 14.2.0
       tsdown:
         specifier: 'catalog:'
         version: 0.23.1(@arethetypeswrong/core@0.18.5)(oxc-resolver@11.24.2)(publint@0.3.25)(typescript@7.0.2)
@@ -9124,7 +9130,7 @@ snapshots:
 
   '@size-limit/rolldown@14.2.0(size-limit@14.2.0)':
     dependencies:
-      rolldown: 1.2.12
+      rolldown: 1.2.14
       size-limit: 14.2.0
 
   '@standard-schema/spec@1.1.0': {}

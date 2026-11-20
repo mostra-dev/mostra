@@ -127,6 +127,9 @@ export interface FooterLink {
 }
 
 // @public
+export const frame: Theme;
+
+// @public
 export const HOST_TOKENS: Readonly<Record<string, readonly string[]>>;
 
 // @public
@@ -169,6 +172,9 @@ export function kitStylesheet(theme: Theme, options?: KitStylesheetOptions): str
 export interface KitStylesheetOptions {
     readonly faceUrl?: (file: string) => string;
 }
+
+// @public
+export function layerThemes(first: Theme, layers: readonly ThemeLayer[]): Theme;
 
 // @public
 export function linkButton(href: string, label: HtmlValue, options?: {
@@ -317,6 +323,9 @@ export interface Palette {
 }
 
 // @public
+export const PALETTE_ROLE_NAMES: readonly (keyof Palette)[];
+
+// @public
 export function readAppearance(cookieHeader: string | undefined, fallback?: Appearance): Appearance;
 
 // @public
@@ -354,7 +363,7 @@ export interface StylesheetOptions {
     readonly faces?: boolean;
 }
 
-// @public
+// @public @deprecated
 export function tailwindStylesheet(theme: Theme): string;
 
 // @public
@@ -396,6 +405,9 @@ export const THEME_REVISION = "2026-11-20";
 export const THEME_REVISIONS: readonly string[];
 
 // @public
+export const THEME_SCHEMA_ID = "https://mostradev.com/schemas/theme-layer.schema.json";
+
+// @public
 export class ThemeError extends Error {
     constructor(id: string, problems: readonly string[]);
     readonly problems: readonly string[];
@@ -403,30 +415,23 @@ export class ThemeError extends Error {
 
 // @public
 export interface ThemeLayer {
-    // (undocumented)
     readonly css?: string;
-    // (undocumented)
     readonly description: string;
-    // (undocumented)
     readonly faces?: Partial<Theme["faces"]>;
-    // (undocumented)
     readonly id: string;
-    // (undocumented)
     readonly modes?: {
         readonly light?: Partial<Palette>;
         readonly dark?: Partial<Palette>;
     };
-    // (undocumented)
     readonly motion?: Partial<Theme["motion"]>;
-    // (undocumented)
     readonly name: string;
-    // (undocumented)
     readonly radius?: string;
-    // (undocumented)
     readonly revision: string;
-    // (undocumented)
     readonly tokens?: TokenValues;
 }
+
+// @public
+export function themeLayerSchema(): Record<string, unknown>;
 
 // @public
 export const THEMES: Readonly<Record<string, Theme>>;
@@ -435,7 +440,17 @@ export const THEMES: Readonly<Record<string, Theme>>;
 export function themeStylesheet(theme: Theme, options?: StylesheetOptions): string;
 
 // @public
-export const TOKEN_NAMES: readonly ["body-size", "title-size", "title-weight", "title-tracking", "title-leading", "heading-font", "heading-size", "heading-weight", "heading-tracking", "card-title-font", "card-title-size", "card-title-weight", "figure-font", "figure-weight", "dialog-title-size", "question-number-color", "card-radius", "control-radius", "button-radius", "choice-radius", "popover-radius", "dialog-radius", "badge-radius", "tabs-radius", "tabs-indicator-radius", "thumb-radius", "section-radius", "figure-radius", "control-h", "control-h-sm", "card-pad", "dialog-pad", "menu-pad", "menu-item-radius", "tabs-track-pad", "figure-pad", "figures-gap", "section-pad", "section-index-size", "page-width", "page-pad", "stack-gap", "rule", "card-shadow", "choice-shadow", "choice-selected-shadow", "popover-shadow", "button-shadow", "control-shadow", "section-shadow", "section-rule", "figures-shadow", "figures-divider", "tabs-track-shadow", "tabs-indicator-shadow", "field", "button-outline-border", "choice-bg", "choice-hover-bg", "choice-selected-bg", "choice-selected-hover-bg", "choice-selected-fg", "choice-selected-muted", "menu-highlight", "menu-highlight-fg", "tabs-track-bg", "tabs-indicator-bg", "tabs-indicator-fill", "tabs-indicator-line", "tabs-active-fg", "section-bg", "section-index-color", "section-index-bg", "figure-bg", "figures-bg", "ease-out", "ease-answer", "answer-ms"];
+export interface ThemeValues {
+    readonly base: Readonly<Record<string, string>>;
+    readonly dark: Readonly<Record<string, string>>;
+    readonly light: Readonly<Record<string, string>>;
+}
+
+// @public
+export function themeValues(theme: Theme): ThemeValues;
+
+// @public
+export const TOKEN_NAMES: readonly ["body-size", "title-size", "title-weight", "title-tracking", "title-leading", "heading-font", "heading-size", "heading-weight", "heading-tracking", "card-title-font", "card-title-size", "card-title-weight", "figure-font", "figure-weight", "dialog-title-size", "question-number-color", "card-radius", "control-radius", "button-radius", "choice-radius", "popover-radius", "dialog-radius", "badge-radius", "tabs-radius", "tabs-indicator-radius", "thumb-radius", "section-radius", "figure-radius", "control-h", "control-h-sm", "card-gap", "card-pad-x", "card-pad-top", "card-pad-bottom", "dialog-pad", "menu-pad", "menu-item-radius", "tabs-track-pad", "figure-pad", "figures-gap", "section-pad", "section-index-size", "page-width", "page-pad", "stack-gap", "rule", "card-shadow", "choice-shadow", "choice-selected-shadow", "scale-selected-shadow", "popover-shadow", "button-shadow", "control-shadow", "section-shadow", "section-rule", "figures-shadow", "figures-divider", "tabs-track-shadow", "tabs-indicator-shadow", "field", "button-outline-border", "button-outline-bg", "choice-bg", "choice-hover-bg", "choice-selected-bg", "choice-selected-hover-bg", "choice-selected-fg", "scale-selected-bg", "scale-selected-fg", "choice-selected-muted", "menu-highlight", "menu-highlight-fg", "tabs-track-bg", "tabs-indicator-bg", "tabs-indicator-fill", "tabs-indicator-line", "tabs-active-fg", "section-bg", "section-index-color", "section-index-bg", "figure-bg", "figures-bg", "ease-out", "ease-answer", "answer-ms"];
 
 // @public
 export type TokenGroup = "type" | "shape" | "space" | "depth" | "surface" | "motion";
@@ -450,17 +465,13 @@ export const TOKENS: Readonly<Record<TokenName, TokenSpec>>;
 export interface TokenSpec {
     readonly default: string;
     readonly description: string;
-    // (undocumented)
     readonly group: TokenGroup;
 }
 
 // @public
 export interface TokenValues {
-    // (undocumented)
     readonly base?: Readonly<Partial<Record<TokenName, string>>>;
-    // (undocumented)
     readonly dark?: Readonly<Partial<Record<TokenName, string>>>;
-    // (undocumented)
     readonly light?: Readonly<Partial<Record<TokenName, string>>>;
 }
 

@@ -31,7 +31,7 @@
       "types": "./dist/layout.d.ts",
       "default": "./dist/layout.js"
     },
-    "./kit.css": "./css/kit.css",
+    "./css/*": "./css/*",
     "./registry/*": "./registry/*",
     "./package.json": "./package.json"
   },
@@ -54,7 +54,8 @@
     "typecheck": "tsc -b",
     "test": "vitest run",
     "api": "mostra-tools api",
-    "generate": "node --conditions @mostra/source scripts/generate.ts"
+    "generate": "node --conditions @mostra/source scripts/generate.ts",
+    "size": "size-limit"
   },
   "dependencies": {
     "@base-ui/react": "catalog:",
@@ -80,13 +81,43 @@
   },
   "devDependencies": {
     "@mostra/tools": "workspace:*",
+    "@size-limit/preset-small-lib": "catalog:",
     "@types/node": "catalog:",
     "@types/react": "catalog:",
     "@types/react-dom": "catalog:",
     "react": "catalog:",
     "react-dom": "catalog:",
+    "size-limit": "catalog:",
     "tsdown": "catalog:",
     "typescript": "catalog:",
     "vitest": "catalog:"
-  }
+  },
+  "size-limit": [
+    {
+      "name": "@mostra/kit/questionnaire (React, the client runtime and the icons excluded)",
+      "path": "dist/questionnaire.js",
+      "import": "*",
+      "ignore": [
+        "react",
+        "react-dom",
+        "@mostra/react",
+        "lucide-react",
+        "cn"
+      ],
+      "limit": "5 kB"
+    },
+    {
+      "name": "@mostra/kit/layout (React excluded)",
+      "path": "dist/layout.js",
+      "import": "*",
+      "ignore": [
+        "react",
+        "react-dom",
+        "@mostra/react",
+        "lucide-react",
+        "cn"
+      ],
+      "limit": "1.5 kB"
+    }
+  ]
 }

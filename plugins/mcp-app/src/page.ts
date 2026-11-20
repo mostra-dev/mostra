@@ -102,9 +102,11 @@ export function readBuiltPage(html: string): BuiltPage {
   const lang = /\blang="([^"]*)"/i.exec(root)?.[1] ?? "en";
   const id = /\bdata-theme="([a-z][a-z0-9-]{0,31})"/.exec(root)?.[1];
   const look = /\bdata-host-look="(over|under)"/.exec(root)?.[1];
+  const hostLook: "over" | "under" | undefined =
+    look === "over" || look === "under" ? look : undefined;
   const theme = {
     ...(id !== undefined ? { id } : {}),
-    ...(look === "over" || look === "under" ? { hostLook: look } : {}),
+    ...(hostLook !== undefined ? { hostLook } : {}),
   };
   return { entry, stylesheets, lang, ...(Object.keys(theme).length > 0 ? { theme } : {}) };
 }

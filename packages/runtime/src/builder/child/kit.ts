@@ -141,7 +141,7 @@ export function entryStylesheet(
     }
   }
   if (kit.themeId !== undefined) {
-    lines.push('@import "@mostra/kit/kit.css";', '@import "./theme.css";');
+    lines.push('@import "@mostra/kit/css/kit.css";', '@import "./theme.css";');
     for (const file of kit.themeFiles) {
       lines.push(`@import ${JSON.stringify(importPath(generatedDir, join(sourceDir, file)))};`);
     }

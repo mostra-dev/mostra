@@ -96,6 +96,16 @@ export const APP_TOOLS: {
 };
 
 // @public
+export interface AppliedFixes {
+    readonly applied: number;
+    readonly skipped: number;
+    readonly text: string;
+}
+
+// @public
+export function applyFixes(text: string, fixes: readonly DiagnosticFix[]): AppliedFixes;
+
+// @public
 export const appOpenMethod: MethodDefinition<AppOpenParams, AppOpenResult>;
 
 // @public
@@ -298,7 +308,7 @@ export interface ArtifactManifest {
     readonly id?: string;
     readonly kit?: {
         readonly base?: "base" | "radix";
-        readonly theme?: string;
+        readonly theme?: string | readonly string[];
     };
     readonly limits?: {
         readonly heapMb?: number;
@@ -412,6 +422,7 @@ export interface ArtifactVerifyParams {
     readonly progressToken?: string;
     readonly screenshots?: ScreenshotPolicy;
     readonly source: SourceRef;
+    readonly theme?: string | readonly string[];
 }
 
 // @public
@@ -455,6 +466,9 @@ export interface BridgeHostContext {
     readonly displayMode?: "inline" | "fullscreen" | "pip";
     readonly locale?: string;
     readonly platform?: "web" | "desktop" | "mobile";
+    readonly styles?: {
+        readonly variables?: Readonly<Record<string, string>>;
+    };
     readonly theme?: "light" | "dark";
     readonly timeZone?: string;
 }
@@ -884,6 +898,9 @@ export const DEFAULT_DOCS_BASE: string;
 
 // @public
 export const DEFAULT_TEAM_VISIBILITY: TeamVisibility;
+
+// @public
+export const DEFAULT_THEME_STACK: readonly string[];
 
 // @public
 export const DEFAULT_VIEWPORTS: readonly VerifyViewport[];
@@ -1342,6 +1359,9 @@ export interface FaceStatus {
 export const FIELD_ID_MAX_LENGTH = 256;
 
 // @public
+export const FIELD_OPTIONS_MAX = 200;
+
+// @public
 export interface FieldConflict {
     readonly deleted?: true;
     readonly id: string;
@@ -1365,6 +1385,7 @@ export interface FieldOp {
     readonly delete?: true;
     readonly id: string;
     readonly label?: string;
+    readonly options?: readonly FieldOption[];
     readonly required?: boolean;
     readonly sensitive?: boolean;
     readonly value?: unknown;
@@ -1372,6 +1393,16 @@ export interface FieldOp {
 
 // @public
 export const FieldOp: z.ZodType<FieldOp>;
+
+// @public
+export interface FieldOption {
+    readonly label?: string;
+    readonly recommended?: boolean;
+    readonly value: string | number;
+}
+
+// @public
+export const FieldOption: z.ZodType<FieldOption>;
 
 // @public
 export interface FieldRegistration {
@@ -1409,6 +1440,7 @@ export const FieldsRequest: z.ZodType<FieldsRequest>;
 // @public
 export interface FieldState {
     readonly label?: string;
+    readonly options?: readonly FieldOption[];
     readonly required?: boolean;
     readonly revision: DocumentRevision;
     readonly sensitive?: boolean;
@@ -1487,6 +1519,9 @@ export interface FrameTicket extends ViewContext {
     readonly devPreview?: true;
     readonly follow: boolean;
     readonly hosted?: HostedChrome;
+    readonly hostStyles?: {
+        readonly variables: Readonly<Record<string, string>>;
+    };
     readonly mode?: "worker";
     readonly paused?: {
         readonly by: "owner" | "operator";
@@ -1579,6 +1614,7 @@ export function headerValue(headers: readonly (readonly [string, string])[], nam
 export interface HomeConfig {
     readonly dependencies?: DependencyPolicy;
     readonly licenses?: LicensePolicy;
+    readonly look?: HostLook;
     readonly path?: string;
     readonly ports?: readonly PortName[];
     readonly submission?: SubmissionPolicy;
@@ -1693,6 +1729,15 @@ export interface HostedSubmissionParams {
 
 // @public
 export type HostedSubmissionResult = SubmissionEnvelope;
+
+// @public
+export interface HostLook {
+    readonly theme?: string | readonly string[];
+    readonly variables?: Readonly<Record<string, string>>;
+}
+
+// @public
+export const HostLook: z.ZodType<HostLook>;
 
 // @public
 export const hostMethods: readonly AnyMethod[];
@@ -1882,7 +1927,13 @@ export interface JsonRpcSuccess {
 export const JsonRpcSuccess: z.ZodType<JsonRpcSuccess>;
 
 // @public
-export type KnownDiagnosticCode = LicenseDiagnosticCode | PackDiagnosticCode | PluginDiagnosticCode | TeamDiagnosticCode | RemoteDiagnosticCode | ShareDiagnosticCode | CliDiagnosticCode | RegressionDiagnosticCode | SmokeDiagnosticCode | A11yDiagnosticCode | NetworkDiagnosticCode | ConsoleDiagnosticCode | TypeDiagnosticCode | VerifyDiagnosticCode | LiveDiagnosticCode | SecretDiagnosticCode | RuntimeDiagnosticCode | FieldDiagnosticCode | SubmitDiagnosticCode | HygieneDiagnosticCode | DepDiagnosticCode | EnvDiagnosticCode | TargetDiagnosticCode | ArtifactDiagnosticCode | PublishDiagnosticCode | ActionDiagnosticCode | BuildDiagnosticCode | ManifestDiagnosticCode | HomeDiagnosticCode | PlatformDiagnosticCode | HostDiagnosticCode;
+export type KitDiagnosticCode = (typeof kitDiagnosticCodes)[number];
+
+// @public
+export const kitDiagnosticCodes: readonly ["MOSTRA_KIT_THEME_UNKNOWN", "MOSTRA_KIT_THEME_FILE_MISSING", "MOSTRA_KIT_THEME_CONFLICT", "MOSTRA_KIT_THEME_CONTRAST", "MOSTRA_KIT_WRONG_BASE", "MOSTRA_KIT_CSS_UNPROCESSED"];
+
+// @public
+export type KnownDiagnosticCode = LintDiagnosticCode | KitDiagnosticCode | LicenseDiagnosticCode | PackDiagnosticCode | PluginDiagnosticCode | TeamDiagnosticCode | RemoteDiagnosticCode | ShareDiagnosticCode | CliDiagnosticCode | RegressionDiagnosticCode | SmokeDiagnosticCode | A11yDiagnosticCode | NetworkDiagnosticCode | ConsoleDiagnosticCode | TypeDiagnosticCode | VerifyDiagnosticCode | LiveDiagnosticCode | SecretDiagnosticCode | RuntimeDiagnosticCode | FieldDiagnosticCode | SubmitDiagnosticCode | HygieneDiagnosticCode | DepDiagnosticCode | EnvDiagnosticCode | TargetDiagnosticCode | ArtifactDiagnosticCode | PublishDiagnosticCode | ActionDiagnosticCode | BuildDiagnosticCode | ManifestDiagnosticCode | HomeDiagnosticCode | PlatformDiagnosticCode | HostDiagnosticCode;
 
 // @public
 export type LicenseAcknowledgment = "not-needed" | "accepted" | "host" | "missing";
@@ -1950,6 +2001,12 @@ export const LinkId: GeneratedIdKind<"lnk">;
 
 // @public
 export function linkSecret(url: string): string | undefined;
+
+// @public
+export type LintDiagnosticCode = (typeof lintDiagnosticCodes)[number];
+
+// @public
+export const lintDiagnosticCodes: readonly ["MOSTRA_LINT_API_CHANGED"];
 
 // @public
 export type ListingEntry = readonly [path: string, executable: boolean, sha256: string, size: number];
@@ -3317,6 +3374,7 @@ export interface Results {
         readonly required?: boolean;
         readonly sensitive?: boolean;
         readonly scope: FieldScope;
+        readonly options?: readonly FieldOption[];
     }[];
     readonly orphaned: readonly {
         readonly id: string;
@@ -4202,6 +4260,98 @@ export interface TerminalSpec {
 }
 
 // @public
+export const THEME_STACK_MAX = 8;
+
+// @public
+export const themeListMethod: MethodDefinition<ThemeListParams, ThemeListResult>;
+
+// @public
+export interface ThemeListParams {
+    readonly artifact?: SourceRef;
+}
+
+// @public
+export interface ThemeListResult {
+    readonly artifact?: {
+        readonly stack: readonly string[];
+        readonly default: boolean;
+    };
+    readonly themes: readonly ThemeSummary[];
+}
+
+// @public
+export const themeShowMethod: MethodDefinition<ThemeShowParams, ThemeShowResult>;
+
+// @public
+export interface ThemeShowParams {
+    readonly artifact?: SourceRef;
+    readonly css?: boolean;
+    readonly theme?: string | readonly string[];
+}
+
+// @public
+export interface ThemeShowResult {
+    readonly css?: string;
+    readonly default: boolean;
+    readonly faces?: {
+        readonly sans: string;
+        readonly display: string;
+        readonly mono: string;
+    };
+    readonly files: readonly string[];
+    readonly host?: "over" | "under";
+    readonly id?: string;
+    readonly name?: string;
+    readonly stack: readonly string[];
+    readonly values?: ThemeShowValues;
+    readonly warnings: readonly Diagnostic[];
+}
+
+// @public
+export interface ThemeShowValues {
+    readonly base: Readonly<Record<string, string>>;
+    readonly dark: Readonly<Record<string, string>>;
+    readonly light: Readonly<Record<string, string>>;
+}
+
+// @public
+export type ThemeStackEntry = {
+    readonly kind: "theme";
+    readonly id: string;
+} | {
+    readonly kind: "file";
+    readonly path: string;
+} | {
+    readonly kind: "host";
+};
+
+// @public
+export function themeStackEntry(text: string): ThemeStackEntry | undefined;
+
+// @public
+export function themeStackOf(manifest: Pick<ArtifactManifest, "kit">): {
+    readonly stack: readonly string[];
+    readonly default: boolean;
+};
+
+// @public
+export function themeStackProblem(stack: readonly string[]): string | undefined;
+
+// @public
+export interface ThemeSummary {
+    readonly complete: boolean;
+    readonly default: boolean;
+    readonly description: string;
+    readonly id: string;
+    readonly name: string;
+    readonly package?: string;
+    readonly source: "built-in" | "plugin";
+}
+
+// @public
+export const ThemeSummary: z.ZodType<ThemeSummary>;
+
+// @public
 export type ThreadId = Id<"thr">;
 
 // @public
@@ -4234,6 +4384,9 @@ export type TypeDiagnosticCode = (typeof typeDiagnosticCodes)[number];
 
 // @public
 export const typeDiagnosticCodes: readonly ["MOSTRA_TYPE_ERROR", "MOSTRA_TYPE_UNTYPED_PACKAGE"];
+
+// @public
+export const uiHostContextChanged: BridgeMessage<BridgeHostContext, undefined>;
 
 // @public
 export const uiInitialize: BridgeMessage<UiInitializeParams, UiInitializeResult>;
@@ -4327,6 +4480,13 @@ export interface VerdictScreenshot {
 }
 
 // @public
+export interface VerdictTheme {
+    readonly default: boolean;
+    readonly requested?: boolean;
+    readonly stack: readonly string[];
+}
+
+// @public
 export const VERIFY_PROBE = "__mostraVerify";
 
 // @public
@@ -4371,6 +4531,7 @@ export interface VerifyVerdict {
         readonly stateChanges: number;
     };
     readonly status: "pass" | "fail";
+    readonly theme?: VerdictTheme;
     readonly timingsMs: Readonly<Record<string, number>>;
 }
 

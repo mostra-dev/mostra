@@ -206,7 +206,17 @@ const PluginContributesSchema: z.ZodType<PluginContributes> = z
     connectors: entries,
     cliCommands: PluginCommandEntrySchema.array().readonly().exactOptional(),
     packs: PluginPackEntrySchema.array().readonly().exactOptional(),
-    themes: PluginThemeEntrySchema.array().readonly().exactOptional(),
+    // Read leniently within the manifest's revision (D32): `contributes.themes` was an unknown
+    // key, accepted with a warning, before WP-18, so any value still validates; each entry that
+    // is one is a theme, and the rules below warn about the rest, which are ignored.
+    themes: z
+      .unknown()
+      .transform((value): readonly PluginThemeEntry[] =>
+        Array.isArray(value)
+          ? value.filter((item) => PluginThemeEntrySchema.safeParse(item).success)
+          : [],
+      )
+      .exactOptional(),
   })
   .register(pluginManifestRegistry, { id: "PluginContributes" });
 
@@ -359,6 +369,28 @@ export function checkPluginManifest(value: unknown): ManifestCheck {
               : KNOWN_KEYS["entry"];
       unknownKeys(item, known ?? [], "contributes", key, index);
     });
+  }
+  // Theme entries the lenient read leaves out (D179 item 4).
+  const themes = (raw["contributes"] as Record<string, unknown> | undefined)?.["themes"];
+  if (themes !== undefined) {
+    if (!Array.isArray(themes)) {
+      warn(
+        'contributes.themes is a list of { "theme": "./themes/<name>.json" }; it is ignored.',
+        "contributes",
+        "themes",
+      );
+    } else {
+      themes.forEach((item, index) => {
+        if (!PluginThemeEntrySchema.safeParse(item).success) {
+          warn(
+            'A theme entry is { "theme": "./themes/<name>.json" }, a path inside the package; this one is ignored.',
+            "contributes",
+            "themes",
+            index,
+          );
+        }
+      });
+    }
   }
   if (Array.isArray(raw["bundledLicenses"])) {
     raw["bundledLicenses"].forEach((item, index) => {
