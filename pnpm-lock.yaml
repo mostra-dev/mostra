@@ -1525,9 +1525,15 @@ importers:
       '@types/node':
         specifier: 'catalog:'
         version: 24.19.2
+      '@types/pngjs':
+        specifier: 'catalog:'
+        version: 6.0.5
       axe-core:
         specifier: 'catalog:'
         version: 4.14.0
+      pngjs:
+        specifier: 'catalog:'
+        version: 7.0.0
       rolldown:
         specifier: 'catalog:'
         version: 1.2.14

@@ -12,6 +12,7 @@ import { cpSync, mkdirSync, readFileSync, writeFileSync } from "node:fs";
 import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
 import { expect, test } from "@playwright/test";
+import { PNG } from "pngjs";
 import {
   E2E_FIXTURES,
   linkFor,
@@ -23,6 +24,21 @@ import {
   viewerName,
 } from "../support/client.ts";
 import { Client, readRun } from "../support/mostra.ts";
+
+/** The pixels of `box` in `image`, row by row, with its size: two crops are equal only if both are. */
+function crop(image: PNG, box: { x: number; y: number; width: number; height: number }): Buffer {
+  // Every part shows whole in the one screenshot, or the comparison would miss it.
+  expect(box.x >= 0 && box.y >= 0, "a part above or left of the screenshot").toBe(true);
+  expect(box.y + box.height, "a part below the screenshot").toBeLessThanOrEqual(image.height);
+  const width = Math.max(0, Math.min(box.width, image.width - box.x));
+  const height = Math.max(0, Math.min(box.height, image.height - box.y));
+  const rows: Buffer[] = [Buffer.from(`${width}x${height}:`)];
+  for (let row = 0; row < height; row++) {
+    const start = ((box.y + row) * image.width + box.x) * 4;
+    rows.push(image.data.subarray(start, start + width * 4));
+  }
+  return Buffer.concat(rows);
+}
 
 const run = readRun();
 
@@ -110,9 +126,10 @@ test.describe("a token change restyles every kit visual (KT-04, KT-10)", () => {
         source: { path: dir },
       });
       const own = { artifactId: receipt.artifactId, dir };
-      // Each build in a browser of its own, so neither shows the other's version.
+      // Each build in a browser of its own, so neither shows the other's version, tall enough
+      // that every part shows at once: one screenshot per build, each part's box cut from it.
       const shots = async (viewer: string): Promise<{ slot: string; png: Buffer }[]> => {
-        const context = await browser.newContext();
+        const context = await browser.newContext({ viewport: { width: 1280, height: 7000 } });
         const page = await context.newPage();
         const frame = await openInShell(page, await linkFor(host, own.artifactId, viewer));
         await frame.locator("[data-slot='page']").waitFor();
@@ -123,26 +140,45 @@ test.describe("a token change restyles every kit visual (KT-04, KT-10)", () => {
           style.textContent = "html, body { background: rgb(128, 128, 128) !important; }";
           document.head.append(style);
         });
-        const parts = frame.locator("[data-slot]");
-        // Each visible part, in document order: the same parts in both builds.
-        const visible = await parts.evaluateAll((elements) =>
-          elements.map((element) => {
+        // Each visible part, in document order (the same parts in both builds), and its box.
+        const boxes = await frame.locator("[data-slot]").evaluateAll((elements) =>
+          elements.flatMap((element) => {
             const box = element.getBoundingClientRect();
-            return box.width >= 1 && box.height >= 1 && element.checkVisibility()
-              ? (element.getAttribute("data-slot") ?? "")
-              : undefined;
+            if (!(box.width >= 1 && box.height >= 1 && element.checkVisibility())) return [];
+            return [
+              {
+                slot: element.getAttribute("data-slot") ?? "",
+                x: box.x,
+                y: box.y,
+                width: box.width,
+                height: box.height,
+              },
+            ];
           }),
         );
-        const found: { slot: string; png: Buffer }[] = [];
-        for (const [index, slot] of visible.entries()) {
-          if (slot === undefined) continue;
-          found.push({
-            slot,
-            png: await parts.nth(index).screenshot({ animations: "disabled", caret: "hide" }),
-          });
-        }
+        const origin = await page.locator("iframe").first().boundingBox();
+        expect(origin).not.toBeNull();
+        // The frame shows its whole page at this height, so no part is cut off below its edge.
+        const view = await frame.locator("html").evaluate(() => ({
+          inner: window.innerHeight,
+          scroll: document.documentElement.scrollHeight,
+        }));
+        expect(view.scroll, "the specimen is taller than its frame").toBeLessThanOrEqual(
+          view.inner,
+        );
+        const shot = PNG.sync.read(
+          await page.screenshot({ animations: "disabled", caret: "hide", scale: "css" }),
+        );
         await context.close();
-        return found;
+        return boxes.map((box) => ({
+          slot: box.slot,
+          png: crop(shot, {
+            x: Math.round((origin?.x ?? 0) + box.x),
+            y: Math.round((origin?.y ?? 0) + box.y),
+            width: Math.round(box.width),
+            height: Math.round(box.height),
+          }),
+        }));
       };
       const before = await shots(viewerName(info));
       await republish(host, own, (text) =>
