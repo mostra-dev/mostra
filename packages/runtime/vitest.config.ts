@@ -15,13 +15,12 @@ import { configDefaults, defineConfig } from "vitest/config";
 const VERIFY_SUITES = "test/integration/verify*.test.ts";
 const VERIFY_FAILURES = "test/integration/verify-failures.test.ts";
 const DEV = "test/integration/dev.test.ts";
+const FAULTS = ["test/integration/publish-faults.test.ts", "test/integration/lifecycle.test.ts"];
 // The binding's heartbeat suite waits out a proxy's real 60 s idle limit and a 45 s silence
-// (WP-29): about two minutes, so it joins the shorter group.
-const FAULTS = [
-  "test/integration/publish-faults.test.ts",
-  "test/integration/lifecycle.test.ts",
-  "test/integration/heartbeat.test.ts",
-];
+// (WP-29): about two minutes. It joined `verify-failures`, the shorter group then; since WP-18 made
+// each verify build its theme, that group passed its 10 minutes on macOS (MT-03 saw it near them;
+// WP-18's `ci:full` run 44802962232), so it runs beside the binding's other suites in `remote`.
+const HEARTBEAT = "test/integration/heartbeat.test.ts";
 // The remote server's suites: real servers and owners, each half a machine of its own on macOS and
 // Linux so neither nor `core` passes its deadline. `remote` (WP-29): the server, the binding, the
 // owner's link, hosting and the relay. `remote-access` (WP-30, MT-03): sign-in, OAuth, the
@@ -80,10 +79,10 @@ const CORE_OVERFLOW = ["test/integration/deps.test.ts", KIT_PARTS];
 export const INTEGRATION_GROUPS: Record<string, { include: string[]; exclude: string[] }> = {
   core: {
     include: ["test/integration/**/*.test.ts"],
-    exclude: [VERIFY_SUITES, DEV, ...FAULTS, ...REMOTE, ...EXTENSIONS, ...CORE_OVERFLOW],
+    exclude: [VERIFY_SUITES, DEV, ...FAULTS, HEARTBEAT, ...REMOTE, ...EXTENSIONS, ...CORE_OVERFLOW],
   },
   extensions: { include: [...EXTENSIONS, ...CORE_OVERFLOW], exclude: [] },
-  remote: { include: REMOTE_HOSTING, exclude: [] },
+  remote: { include: [...REMOTE_HOSTING, HEARTBEAT], exclude: [] },
   "remote-access": { include: REMOTE_ACCESS, exclude: [] },
   verify: { include: [VERIFY_SUITES, DEV], exclude: [VERIFY_FAILURES] },
   "verify-failures": { include: [VERIFY_FAILURES, ...FAULTS], exclude: [] },
