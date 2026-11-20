@@ -2315,7 +2315,7 @@ pub struct ArtifactManifestKit {
     #[serde(skip_serializing_if = "::std::option::Option::is_none")]
     pub base: ::std::option::Option<ArtifactManifestKitBase>,
     #[serde(skip_serializing_if = "::std::option::Option::is_none")]
-    pub theme: ::std::option::Option<::std::string::String>,
+    pub theme: ::std::option::Option<ArtifactManifestKitTheme>,
 }
 ///`ArtifactManifestKitBase`
 #[derive(
@@ -2353,6 +2353,22 @@ impl ::std::convert::TryFrom<::std::string::String> for ArtifactManifestKitBase 
         value: ::std::string::String,
     ) -> ::std::result::Result<Self, self::error::ConversionError> {
         value.parse()
+    }
+}
+///`ArtifactManifestKitTheme`
+#[derive(::serde::Deserialize, ::serde::Serialize, Clone, Debug)]
+#[serde(untagged)]
+pub enum ArtifactManifestKitTheme {
+    String(::std::string::String),
+    Array(::std::vec::Vec<::std::string::String>),
+    /// A value a newer Mostra sends that this release doesn't know; it
+    /// serializes back unchanged.
+    Unknown(::serde_json::Value),
+}
+impl ::std::convert::From<::std::vec::Vec<::std::string::String>>
+for ArtifactManifestKitTheme {
+    fn from(value: ::std::vec::Vec<::std::string::String>) -> Self {
+        Self::Array(value)
     }
 }
 ///`ArtifactManifestLimits`
@@ -2991,6 +3007,8 @@ pub struct ArtifactVerifyParams {
     #[serde(skip_serializing_if = "::std::option::Option::is_none")]
     pub screenshots: ::std::option::Option<ScreenshotPolicy>,
     pub source: SourceRef,
+    #[serde(skip_serializing_if = "::std::option::Option::is_none")]
+    pub theme: ::std::option::Option<ArtifactVerifyParamsTheme>,
 }
 ///`ArtifactVerifyParamsProgressToken`
 #[derive(::serde::Serialize, Clone, Debug, Eq, Hash, Ord, PartialEq, PartialOrd)]
@@ -3039,6 +3057,143 @@ for ArtifactVerifyParamsProgressToken {
     }
 }
 impl<'de> ::serde::Deserialize<'de> for ArtifactVerifyParamsProgressToken {
+    fn deserialize<D>(deserializer: D) -> ::std::result::Result<Self, D::Error>
+    where
+        D: ::serde::Deserializer<'de>,
+    {
+        ::std::string::String::deserialize(deserializer)?
+            .parse()
+            .map_err(|e: self::error::ConversionError| {
+                <D::Error as ::serde::de::Error>::custom(e.to_string())
+            })
+    }
+}
+///`ArtifactVerifyParamsTheme`
+#[derive(::serde::Deserialize, ::serde::Serialize, Clone, Debug)]
+#[serde(untagged)]
+pub enum ArtifactVerifyParamsTheme {
+    String(ArtifactVerifyParamsThemeString),
+    Array(::std::vec::Vec<ArtifactVerifyParamsThemeArrayItem>),
+    /// A value a newer Mostra sends that this release doesn't know; it
+    /// serializes back unchanged.
+    Unknown(::serde_json::Value),
+}
+impl ::std::convert::From<ArtifactVerifyParamsThemeString>
+for ArtifactVerifyParamsTheme {
+    fn from(value: ArtifactVerifyParamsThemeString) -> Self {
+        Self::String(value)
+    }
+}
+impl ::std::convert::From<::std::vec::Vec<ArtifactVerifyParamsThemeArrayItem>>
+for ArtifactVerifyParamsTheme {
+    fn from(value: ::std::vec::Vec<ArtifactVerifyParamsThemeArrayItem>) -> Self {
+        Self::Array(value)
+    }
+}
+///`ArtifactVerifyParamsThemeArrayItem`
+#[derive(::serde::Serialize, Clone, Debug, Eq, Hash, Ord, PartialEq, PartialOrd)]
+#[serde(transparent)]
+pub struct ArtifactVerifyParamsThemeArrayItem(::std::string::String);
+impl ::std::ops::Deref for ArtifactVerifyParamsThemeArrayItem {
+    type Target = ::std::string::String;
+    fn deref(&self) -> &::std::string::String {
+        &self.0
+    }
+}
+impl ::std::convert::From<ArtifactVerifyParamsThemeArrayItem> for ::std::string::String {
+    fn from(value: ArtifactVerifyParamsThemeArrayItem) -> Self {
+        value.0
+    }
+}
+impl ::std::str::FromStr for ArtifactVerifyParamsThemeArrayItem {
+    type Err = self::error::ConversionError;
+    fn from_str(
+        value: &str,
+    ) -> ::std::result::Result<Self, self::error::ConversionError> {
+        if value.chars().count() > 200usize {
+            return Err("longer than 200 characters".into());
+        }
+        if value.chars().count() < 1usize {
+            return Err("shorter than 1 characters".into());
+        }
+        Ok(Self(value.to_string()))
+    }
+}
+impl ::std::convert::TryFrom<&str> for ArtifactVerifyParamsThemeArrayItem {
+    type Error = self::error::ConversionError;
+    fn try_from(
+        value: &str,
+    ) -> ::std::result::Result<Self, self::error::ConversionError> {
+        value.parse()
+    }
+}
+impl ::std::convert::TryFrom<::std::string::String>
+for ArtifactVerifyParamsThemeArrayItem {
+    type Error = self::error::ConversionError;
+    fn try_from(
+        value: ::std::string::String,
+    ) -> ::std::result::Result<Self, self::error::ConversionError> {
+        value.parse()
+    }
+}
+impl<'de> ::serde::Deserialize<'de> for ArtifactVerifyParamsThemeArrayItem {
+    fn deserialize<D>(deserializer: D) -> ::std::result::Result<Self, D::Error>
+    where
+        D: ::serde::Deserializer<'de>,
+    {
+        ::std::string::String::deserialize(deserializer)?
+            .parse()
+            .map_err(|e: self::error::ConversionError| {
+                <D::Error as ::serde::de::Error>::custom(e.to_string())
+            })
+    }
+}
+///`ArtifactVerifyParamsThemeString`
+#[derive(::serde::Serialize, Clone, Debug, Eq, Hash, Ord, PartialEq, PartialOrd)]
+#[serde(transparent)]
+pub struct ArtifactVerifyParamsThemeString(::std::string::String);
+impl ::std::ops::Deref for ArtifactVerifyParamsThemeString {
+    type Target = ::std::string::String;
+    fn deref(&self) -> &::std::string::String {
+        &self.0
+    }
+}
+impl ::std::convert::From<ArtifactVerifyParamsThemeString> for ::std::string::String {
+    fn from(value: ArtifactVerifyParamsThemeString) -> Self {
+        value.0
+    }
+}
+impl ::std::str::FromStr for ArtifactVerifyParamsThemeString {
+    type Err = self::error::ConversionError;
+    fn from_str(
+        value: &str,
+    ) -> ::std::result::Result<Self, self::error::ConversionError> {
+        if value.chars().count() > 200usize {
+            return Err("longer than 200 characters".into());
+        }
+        if value.chars().count() < 1usize {
+            return Err("shorter than 1 characters".into());
+        }
+        Ok(Self(value.to_string()))
+    }
+}
+impl ::std::convert::TryFrom<&str> for ArtifactVerifyParamsThemeString {
+    type Error = self::error::ConversionError;
+    fn try_from(
+        value: &str,
+    ) -> ::std::result::Result<Self, self::error::ConversionError> {
+        value.parse()
+    }
+}
+impl ::std::convert::TryFrom<::std::string::String> for ArtifactVerifyParamsThemeString {
+    type Error = self::error::ConversionError;
+    fn try_from(
+        value: ::std::string::String,
+    ) -> ::std::result::Result<Self, self::error::ConversionError> {
+        value.parse()
+    }
+}
+impl<'de> ::serde::Deserialize<'de> for ArtifactVerifyParamsThemeString {
     fn deserialize<D>(deserializer: D) -> ::std::result::Result<Self, D::Error>
     where
         D: ::serde::Deserializer<'de>,
@@ -7351,6 +7506,8 @@ pub struct FieldOp {
     pub id: FieldOpId,
     #[serde(skip_serializing_if = "::std::option::Option::is_none")]
     pub label: ::std::option::Option<FieldOpLabel>,
+    #[serde(default, skip_serializing_if = "::std::vec::Vec::is_empty")]
+    pub options: ::std::vec::Vec<FieldOption>,
     #[serde(skip_serializing_if = "::std::option::Option::is_none")]
     pub required: ::std::option::Option<bool>,
     #[serde(skip_serializing_if = "::std::option::Option::is_none")]
@@ -7469,11 +7626,189 @@ impl<'de> ::serde::Deserialize<'de> for FieldOpLabel {
             })
     }
 }
+///One option a field's value is chosen from: its value, its label, and whether it was recommended.
+#[derive(::serde::Deserialize, ::serde::Serialize, Clone, Debug)]
+pub struct FieldOption {
+    #[serde(skip_serializing_if = "::std::option::Option::is_none")]
+    pub label: ::std::option::Option<FieldOptionLabel>,
+    #[serde(skip_serializing_if = "::std::option::Option::is_none")]
+    pub recommended: ::std::option::Option<bool>,
+    pub value: FieldOptionValue,
+}
+///`FieldOptionLabel`
+#[derive(::serde::Serialize, Clone, Debug, Eq, Hash, Ord, PartialEq, PartialOrd)]
+#[serde(transparent)]
+pub struct FieldOptionLabel(::std::string::String);
+impl ::std::ops::Deref for FieldOptionLabel {
+    type Target = ::std::string::String;
+    fn deref(&self) -> &::std::string::String {
+        &self.0
+    }
+}
+impl ::std::convert::From<FieldOptionLabel> for ::std::string::String {
+    fn from(value: FieldOptionLabel) -> Self {
+        value.0
+    }
+}
+impl ::std::str::FromStr for FieldOptionLabel {
+    type Err = self::error::ConversionError;
+    fn from_str(
+        value: &str,
+    ) -> ::std::result::Result<Self, self::error::ConversionError> {
+        if value.chars().count() > 1024usize {
+            return Err("longer than 1024 characters".into());
+        }
+        Ok(Self(value.to_string()))
+    }
+}
+impl ::std::convert::TryFrom<&str> for FieldOptionLabel {
+    type Error = self::error::ConversionError;
+    fn try_from(
+        value: &str,
+    ) -> ::std::result::Result<Self, self::error::ConversionError> {
+        value.parse()
+    }
+}
+impl ::std::convert::TryFrom<::std::string::String> for FieldOptionLabel {
+    type Error = self::error::ConversionError;
+    fn try_from(
+        value: ::std::string::String,
+    ) -> ::std::result::Result<Self, self::error::ConversionError> {
+        value.parse()
+    }
+}
+impl<'de> ::serde::Deserialize<'de> for FieldOptionLabel {
+    fn deserialize<D>(deserializer: D) -> ::std::result::Result<Self, D::Error>
+    where
+        D: ::serde::Deserializer<'de>,
+    {
+        ::std::string::String::deserialize(deserializer)?
+            .parse()
+            .map_err(|e: self::error::ConversionError| {
+                <D::Error as ::serde::de::Error>::custom(e.to_string())
+            })
+    }
+}
+///`FieldOptionValue`
+#[derive(::serde::Deserialize, ::serde::Serialize, Clone, Debug)]
+#[serde(untagged)]
+pub enum FieldOptionValue {
+    String(FieldOptionValueString),
+    Number(f64),
+    /// A value a newer Mostra sends that this release doesn't know; it
+    /// serializes back unchanged.
+    Unknown(::serde_json::Value),
+}
+impl ::std::fmt::Display for FieldOptionValue {
+    fn fmt(&self, f: &mut ::std::fmt::Formatter<'_>) -> ::std::fmt::Result {
+        match self {
+            Self::String(x) => x.fmt(f),
+            Self::Number(x) => x.fmt(f),
+            Self::Unknown(value) => value.fmt(f),
+        }
+    }
+}
+impl ::std::str::FromStr for FieldOptionValue {
+    type Err = self::error::ConversionError;
+    fn from_str(
+        value: &str,
+    ) -> ::std::result::Result<Self, self::error::ConversionError> {
+        if let Ok(v) = value.parse() {
+            Ok(Self::String(v))
+        } else if let Ok(v) = value.parse() {
+            Ok(Self::Number(v))
+        } else {
+            Err("string conversion failed for all variants".into())
+        }
+    }
+}
+impl ::std::convert::TryFrom<&str> for FieldOptionValue {
+    type Error = self::error::ConversionError;
+    fn try_from(
+        value: &str,
+    ) -> ::std::result::Result<Self, self::error::ConversionError> {
+        value.parse()
+    }
+}
+impl ::std::convert::TryFrom<::std::string::String> for FieldOptionValue {
+    type Error = self::error::ConversionError;
+    fn try_from(
+        value: ::std::string::String,
+    ) -> ::std::result::Result<Self, self::error::ConversionError> {
+        value.parse()
+    }
+}
+impl ::std::convert::From<FieldOptionValueString> for FieldOptionValue {
+    fn from(value: FieldOptionValueString) -> Self {
+        Self::String(value)
+    }
+}
+impl ::std::convert::From<f64> for FieldOptionValue {
+    fn from(value: f64) -> Self {
+        Self::Number(value)
+    }
+}
+///`FieldOptionValueString`
+#[derive(::serde::Serialize, Clone, Debug, Eq, Hash, Ord, PartialEq, PartialOrd)]
+#[serde(transparent)]
+pub struct FieldOptionValueString(::std::string::String);
+impl ::std::ops::Deref for FieldOptionValueString {
+    type Target = ::std::string::String;
+    fn deref(&self) -> &::std::string::String {
+        &self.0
+    }
+}
+impl ::std::convert::From<FieldOptionValueString> for ::std::string::String {
+    fn from(value: FieldOptionValueString) -> Self {
+        value.0
+    }
+}
+impl ::std::str::FromStr for FieldOptionValueString {
+    type Err = self::error::ConversionError;
+    fn from_str(
+        value: &str,
+    ) -> ::std::result::Result<Self, self::error::ConversionError> {
+        if value.chars().count() > 1024usize {
+            return Err("longer than 1024 characters".into());
+        }
+        Ok(Self(value.to_string()))
+    }
+}
+impl ::std::convert::TryFrom<&str> for FieldOptionValueString {
+    type Error = self::error::ConversionError;
+    fn try_from(
+        value: &str,
+    ) -> ::std::result::Result<Self, self::error::ConversionError> {
+        value.parse()
+    }
+}
+impl ::std::convert::TryFrom<::std::string::String> for FieldOptionValueString {
+    type Error = self::error::ConversionError;
+    fn try_from(
+        value: ::std::string::String,
+    ) -> ::std::result::Result<Self, self::error::ConversionError> {
+        value.parse()
+    }
+}
+impl<'de> ::serde::Deserialize<'de> for FieldOptionValueString {
+    fn deserialize<D>(deserializer: D) -> ::std::result::Result<Self, D::Error>
+    where
+        D: ::serde::Deserializer<'de>,
+    {
+        ::std::string::String::deserialize(deserializer)?
+            .parse()
+            .map_err(|e: self::error::ConversionError| {
+                <D::Error as ::serde::de::Error>::custom(e.to_string())
+            })
+    }
+}
 ///A field's current value, the revision that wrote it, who wrote it and when.
 #[derive(::serde::Deserialize, ::serde::Serialize, Clone, Debug)]
 pub struct FieldState {
     #[serde(skip_serializing_if = "::std::option::Option::is_none")]
     pub label: ::std::option::Option<::std::string::String>,
+    #[serde(default, skip_serializing_if = "::std::vec::Vec::is_empty")]
+    pub options: ::std::vec::Vec<FieldOption>,
     #[serde(skip_serializing_if = "::std::option::Option::is_none")]
     pub required: ::std::option::Option<bool>,
     pub revision: DocumentRevision,
@@ -7785,6 +8120,11 @@ pub struct FrameTicket {
     )]
     pub dev_preview: ::std::option::Option<crate::wire::ConstTrue>,
     pub follow: bool,
+    #[serde(
+        rename = "hostStyles",
+        skip_serializing_if = "::std::option::Option::is_none"
+    )]
+    pub host_styles: ::std::option::Option<FrameTicketHostStyles>,
     #[serde(skip_serializing_if = "::std::option::Option::is_none")]
     pub hosted: ::std::option::Option<FrameTicketHosted>,
     pub latest: VersionRef,
@@ -7850,6 +8190,127 @@ impl ::std::convert::TryFrom<::std::string::String> for FrameTicketArtifactOrigi
     }
 }
 impl<'de> ::serde::Deserialize<'de> for FrameTicketArtifactOrigin {
+    fn deserialize<D>(deserializer: D) -> ::std::result::Result<Self, D::Error>
+    where
+        D: ::serde::Deserializer<'de>,
+    {
+        ::std::string::String::deserialize(deserializer)?
+            .parse()
+            .map_err(|e: self::error::ConversionError| {
+                <D::Error as ::serde::de::Error>::custom(e.to_string())
+            })
+    }
+}
+///`FrameTicketHostStyles`
+#[derive(::serde::Deserialize, ::serde::Serialize, Clone, Debug)]
+pub struct FrameTicketHostStyles {
+    pub variables: ::std::collections::BTreeMap<
+        FrameTicketHostStylesVariablesKey,
+        FrameTicketHostStylesVariablesValue,
+    >,
+}
+///`FrameTicketHostStylesVariablesKey`
+#[derive(::serde::Serialize, Clone, Debug, Eq, Hash, Ord, PartialEq, PartialOrd)]
+#[serde(transparent)]
+pub struct FrameTicketHostStylesVariablesKey(::std::string::String);
+impl ::std::ops::Deref for FrameTicketHostStylesVariablesKey {
+    type Target = ::std::string::String;
+    fn deref(&self) -> &::std::string::String {
+        &self.0
+    }
+}
+impl ::std::convert::From<FrameTicketHostStylesVariablesKey> for ::std::string::String {
+    fn from(value: FrameTicketHostStylesVariablesKey) -> Self {
+        value.0
+    }
+}
+impl ::std::str::FromStr for FrameTicketHostStylesVariablesKey {
+    type Err = self::error::ConversionError;
+    fn from_str(
+        value: &str,
+    ) -> ::std::result::Result<Self, self::error::ConversionError> {
+        static PATTERN: ::std::sync::LazyLock<::regress::Regex> = ::std::sync::LazyLock::new(||
+        { ::regress::Regex::new("^--[A-Za-z0-9-]{1,64}$").unwrap() });
+        if PATTERN.find(value).is_none() {
+            return Err("doesn't match pattern \"^--[A-Za-z0-9-]{1,64}$\"".into());
+        }
+        Ok(Self(value.to_string()))
+    }
+}
+impl ::std::convert::TryFrom<&str> for FrameTicketHostStylesVariablesKey {
+    type Error = self::error::ConversionError;
+    fn try_from(
+        value: &str,
+    ) -> ::std::result::Result<Self, self::error::ConversionError> {
+        value.parse()
+    }
+}
+impl ::std::convert::TryFrom<::std::string::String>
+for FrameTicketHostStylesVariablesKey {
+    type Error = self::error::ConversionError;
+    fn try_from(
+        value: ::std::string::String,
+    ) -> ::std::result::Result<Self, self::error::ConversionError> {
+        value.parse()
+    }
+}
+impl<'de> ::serde::Deserialize<'de> for FrameTicketHostStylesVariablesKey {
+    fn deserialize<D>(deserializer: D) -> ::std::result::Result<Self, D::Error>
+    where
+        D: ::serde::Deserializer<'de>,
+    {
+        ::std::string::String::deserialize(deserializer)?
+            .parse()
+            .map_err(|e: self::error::ConversionError| {
+                <D::Error as ::serde::de::Error>::custom(e.to_string())
+            })
+    }
+}
+///`FrameTicketHostStylesVariablesValue`
+#[derive(::serde::Serialize, Clone, Debug, Eq, Hash, Ord, PartialEq, PartialOrd)]
+#[serde(transparent)]
+pub struct FrameTicketHostStylesVariablesValue(::std::string::String);
+impl ::std::ops::Deref for FrameTicketHostStylesVariablesValue {
+    type Target = ::std::string::String;
+    fn deref(&self) -> &::std::string::String {
+        &self.0
+    }
+}
+impl ::std::convert::From<FrameTicketHostStylesVariablesValue>
+for ::std::string::String {
+    fn from(value: FrameTicketHostStylesVariablesValue) -> Self {
+        value.0
+    }
+}
+impl ::std::str::FromStr for FrameTicketHostStylesVariablesValue {
+    type Err = self::error::ConversionError;
+    fn from_str(
+        value: &str,
+    ) -> ::std::result::Result<Self, self::error::ConversionError> {
+        if value.chars().count() > 1024usize {
+            return Err("longer than 1024 characters".into());
+        }
+        Ok(Self(value.to_string()))
+    }
+}
+impl ::std::convert::TryFrom<&str> for FrameTicketHostStylesVariablesValue {
+    type Error = self::error::ConversionError;
+    fn try_from(
+        value: &str,
+    ) -> ::std::result::Result<Self, self::error::ConversionError> {
+        value.parse()
+    }
+}
+impl ::std::convert::TryFrom<::std::string::String>
+for FrameTicketHostStylesVariablesValue {
+    type Error = self::error::ConversionError;
+    fn try_from(
+        value: ::std::string::String,
+    ) -> ::std::result::Result<Self, self::error::ConversionError> {
+        value.parse()
+    }
+}
+impl<'de> ::serde::Deserialize<'de> for FrameTicketHostStylesVariablesValue {
     fn deserialize<D>(deserializer: D) -> ::std::result::Result<Self, D::Error>
     where
         D: ::serde::Deserializer<'de>,
@@ -8787,13 +9248,15 @@ pub struct GcRunResultVersionsItem {
     #[serde(rename = "versionId")]
     pub version_id: VersionId,
 }
-///Home settings from a spawning host; path is a check against the instance's home (D84), dependencies the dependency policy (D43), submission the home's policy (D102), ports those the host always provides (D105), licenses those it accepts for every install (D31).
+///Home settings from a spawning host; path is a check against the instance's home (D84), dependencies the dependency policy (D43), submission the home's policy (D102), ports those the host always provides (D105), licenses those it accepts for every install (D31), look its look for the home's pages (D181).
 #[derive(::serde::Deserialize, ::serde::Serialize, Clone, Debug, Default)]
 pub struct HomeConfig {
     #[serde(skip_serializing_if = "::std::option::Option::is_none")]
     pub dependencies: ::std::option::Option<DependencyPolicy>,
     #[serde(skip_serializing_if = "::std::option::Option::is_none")]
     pub licenses: ::std::option::Option<LicensePolicy>,
+    #[serde(skip_serializing_if = "::std::option::Option::is_none")]
+    pub look: ::std::option::Option<HostLook>,
     #[serde(skip_serializing_if = "::std::option::Option::is_none")]
     pub path: ::std::option::Option<HomeConfigPath>,
     #[serde(default, skip_serializing_if = "::std::vec::Vec::is_empty")]
@@ -8908,6 +9371,269 @@ impl ::std::convert::TryFrom<::std::string::String> for HomeId {
     }
 }
 impl<'de> ::serde::Deserialize<'de> for HomeId {
+    fn deserialize<D>(deserializer: D) -> ::std::result::Result<Self, D::Error>
+    where
+        D: ::serde::Deserializer<'de>,
+    {
+        ::std::string::String::deserialize(deserializer)?
+            .parse()
+            .map_err(|e: self::error::ConversionError| {
+                <D::Error as ::serde::de::Error>::custom(e.to_string())
+            })
+    }
+}
+///A host's look for a home's pages (D181 item 5): the theme stack pages naming none wear, and MCP Apps style variables that pages naming "host" take.
+#[derive(::serde::Deserialize, ::serde::Serialize, Clone, Debug, Default)]
+pub struct HostLook {
+    #[serde(skip_serializing_if = "::std::option::Option::is_none")]
+    pub theme: ::std::option::Option<HostLookTheme>,
+    #[serde(
+        default,
+        skip_serializing_if = ":: std :: collections :: BTreeMap::is_empty"
+    )]
+    pub variables: ::std::collections::BTreeMap<
+        HostLookVariablesKey,
+        HostLookVariablesValue,
+    >,
+}
+///`HostLookTheme`
+#[derive(::serde::Deserialize, ::serde::Serialize, Clone, Debug)]
+#[serde(untagged)]
+pub enum HostLookTheme {
+    String(HostLookThemeString),
+    Array(::std::vec::Vec<HostLookThemeArrayItem>),
+    /// A value a newer Mostra sends that this release doesn't know; it
+    /// serializes back unchanged.
+    Unknown(::serde_json::Value),
+}
+impl ::std::convert::From<HostLookThemeString> for HostLookTheme {
+    fn from(value: HostLookThemeString) -> Self {
+        Self::String(value)
+    }
+}
+impl ::std::convert::From<::std::vec::Vec<HostLookThemeArrayItem>> for HostLookTheme {
+    fn from(value: ::std::vec::Vec<HostLookThemeArrayItem>) -> Self {
+        Self::Array(value)
+    }
+}
+///`HostLookThemeArrayItem`
+#[derive(::serde::Serialize, Clone, Debug, Eq, Hash, Ord, PartialEq, PartialOrd)]
+#[serde(transparent)]
+pub struct HostLookThemeArrayItem(::std::string::String);
+impl ::std::ops::Deref for HostLookThemeArrayItem {
+    type Target = ::std::string::String;
+    fn deref(&self) -> &::std::string::String {
+        &self.0
+    }
+}
+impl ::std::convert::From<HostLookThemeArrayItem> for ::std::string::String {
+    fn from(value: HostLookThemeArrayItem) -> Self {
+        value.0
+    }
+}
+impl ::std::str::FromStr for HostLookThemeArrayItem {
+    type Err = self::error::ConversionError;
+    fn from_str(
+        value: &str,
+    ) -> ::std::result::Result<Self, self::error::ConversionError> {
+        if value.chars().count() > 200usize {
+            return Err("longer than 200 characters".into());
+        }
+        if value.chars().count() < 1usize {
+            return Err("shorter than 1 characters".into());
+        }
+        Ok(Self(value.to_string()))
+    }
+}
+impl ::std::convert::TryFrom<&str> for HostLookThemeArrayItem {
+    type Error = self::error::ConversionError;
+    fn try_from(
+        value: &str,
+    ) -> ::std::result::Result<Self, self::error::ConversionError> {
+        value.parse()
+    }
+}
+impl ::std::convert::TryFrom<::std::string::String> for HostLookThemeArrayItem {
+    type Error = self::error::ConversionError;
+    fn try_from(
+        value: ::std::string::String,
+    ) -> ::std::result::Result<Self, self::error::ConversionError> {
+        value.parse()
+    }
+}
+impl<'de> ::serde::Deserialize<'de> for HostLookThemeArrayItem {
+    fn deserialize<D>(deserializer: D) -> ::std::result::Result<Self, D::Error>
+    where
+        D: ::serde::Deserializer<'de>,
+    {
+        ::std::string::String::deserialize(deserializer)?
+            .parse()
+            .map_err(|e: self::error::ConversionError| {
+                <D::Error as ::serde::de::Error>::custom(e.to_string())
+            })
+    }
+}
+///`HostLookThemeString`
+#[derive(::serde::Serialize, Clone, Debug, Eq, Hash, Ord, PartialEq, PartialOrd)]
+#[serde(transparent)]
+pub struct HostLookThemeString(::std::string::String);
+impl ::std::ops::Deref for HostLookThemeString {
+    type Target = ::std::string::String;
+    fn deref(&self) -> &::std::string::String {
+        &self.0
+    }
+}
+impl ::std::convert::From<HostLookThemeString> for ::std::string::String {
+    fn from(value: HostLookThemeString) -> Self {
+        value.0
+    }
+}
+impl ::std::str::FromStr for HostLookThemeString {
+    type Err = self::error::ConversionError;
+    fn from_str(
+        value: &str,
+    ) -> ::std::result::Result<Self, self::error::ConversionError> {
+        if value.chars().count() > 200usize {
+            return Err("longer than 200 characters".into());
+        }
+        if value.chars().count() < 1usize {
+            return Err("shorter than 1 characters".into());
+        }
+        Ok(Self(value.to_string()))
+    }
+}
+impl ::std::convert::TryFrom<&str> for HostLookThemeString {
+    type Error = self::error::ConversionError;
+    fn try_from(
+        value: &str,
+    ) -> ::std::result::Result<Self, self::error::ConversionError> {
+        value.parse()
+    }
+}
+impl ::std::convert::TryFrom<::std::string::String> for HostLookThemeString {
+    type Error = self::error::ConversionError;
+    fn try_from(
+        value: ::std::string::String,
+    ) -> ::std::result::Result<Self, self::error::ConversionError> {
+        value.parse()
+    }
+}
+impl<'de> ::serde::Deserialize<'de> for HostLookThemeString {
+    fn deserialize<D>(deserializer: D) -> ::std::result::Result<Self, D::Error>
+    where
+        D: ::serde::Deserializer<'de>,
+    {
+        ::std::string::String::deserialize(deserializer)?
+            .parse()
+            .map_err(|e: self::error::ConversionError| {
+                <D::Error as ::serde::de::Error>::custom(e.to_string())
+            })
+    }
+}
+///`HostLookVariablesKey`
+#[derive(::serde::Serialize, Clone, Debug, Eq, Hash, Ord, PartialEq, PartialOrd)]
+#[serde(transparent)]
+pub struct HostLookVariablesKey(::std::string::String);
+impl ::std::ops::Deref for HostLookVariablesKey {
+    type Target = ::std::string::String;
+    fn deref(&self) -> &::std::string::String {
+        &self.0
+    }
+}
+impl ::std::convert::From<HostLookVariablesKey> for ::std::string::String {
+    fn from(value: HostLookVariablesKey) -> Self {
+        value.0
+    }
+}
+impl ::std::str::FromStr for HostLookVariablesKey {
+    type Err = self::error::ConversionError;
+    fn from_str(
+        value: &str,
+    ) -> ::std::result::Result<Self, self::error::ConversionError> {
+        static PATTERN: ::std::sync::LazyLock<::regress::Regex> = ::std::sync::LazyLock::new(||
+        { ::regress::Regex::new("^--[A-Za-z0-9-]{1,64}$").unwrap() });
+        if PATTERN.find(value).is_none() {
+            return Err("doesn't match pattern \"^--[A-Za-z0-9-]{1,64}$\"".into());
+        }
+        Ok(Self(value.to_string()))
+    }
+}
+impl ::std::convert::TryFrom<&str> for HostLookVariablesKey {
+    type Error = self::error::ConversionError;
+    fn try_from(
+        value: &str,
+    ) -> ::std::result::Result<Self, self::error::ConversionError> {
+        value.parse()
+    }
+}
+impl ::std::convert::TryFrom<::std::string::String> for HostLookVariablesKey {
+    type Error = self::error::ConversionError;
+    fn try_from(
+        value: ::std::string::String,
+    ) -> ::std::result::Result<Self, self::error::ConversionError> {
+        value.parse()
+    }
+}
+impl<'de> ::serde::Deserialize<'de> for HostLookVariablesKey {
+    fn deserialize<D>(deserializer: D) -> ::std::result::Result<Self, D::Error>
+    where
+        D: ::serde::Deserializer<'de>,
+    {
+        ::std::string::String::deserialize(deserializer)?
+            .parse()
+            .map_err(|e: self::error::ConversionError| {
+                <D::Error as ::serde::de::Error>::custom(e.to_string())
+            })
+    }
+}
+///`HostLookVariablesValue`
+#[derive(::serde::Serialize, Clone, Debug, Eq, Hash, Ord, PartialEq, PartialOrd)]
+#[serde(transparent)]
+pub struct HostLookVariablesValue(::std::string::String);
+impl ::std::ops::Deref for HostLookVariablesValue {
+    type Target = ::std::string::String;
+    fn deref(&self) -> &::std::string::String {
+        &self.0
+    }
+}
+impl ::std::convert::From<HostLookVariablesValue> for ::std::string::String {
+    fn from(value: HostLookVariablesValue) -> Self {
+        value.0
+    }
+}
+impl ::std::str::FromStr for HostLookVariablesValue {
+    type Err = self::error::ConversionError;
+    fn from_str(
+        value: &str,
+    ) -> ::std::result::Result<Self, self::error::ConversionError> {
+        if value.chars().count() > 1024usize {
+            return Err("longer than 1024 characters".into());
+        }
+        static PATTERN: ::std::sync::LazyLock<::regress::Regex> = ::std::sync::LazyLock::new(||
+        { ::regress::Regex::new("^[^;{}<>]*$").unwrap() });
+        if PATTERN.find(value).is_none() {
+            return Err("doesn't match pattern \"^[^;{}<>]*$\"".into());
+        }
+        Ok(Self(value.to_string()))
+    }
+}
+impl ::std::convert::TryFrom<&str> for HostLookVariablesValue {
+    type Error = self::error::ConversionError;
+    fn try_from(
+        value: &str,
+    ) -> ::std::result::Result<Self, self::error::ConversionError> {
+        value.parse()
+    }
+}
+impl ::std::convert::TryFrom<::std::string::String> for HostLookVariablesValue {
+    type Error = self::error::ConversionError;
+    fn try_from(
+        value: ::std::string::String,
+    ) -> ::std::result::Result<Self, self::error::ConversionError> {
+        value.parse()
+    }
+}
+impl<'de> ::serde::Deserialize<'de> for HostLookVariablesValue {
     fn deserialize<D>(deserializer: D) -> ::std::result::Result<Self, D::Error>
     where
         D: ::serde::Deserializer<'de>,
@@ -17149,6 +17875,8 @@ pub struct ResultsFieldsItem {
     pub id: ::std::string::String,
     #[serde(skip_serializing_if = "::std::option::Option::is_none")]
     pub label: ::std::option::Option<::std::string::String>,
+    #[serde(default, skip_serializing_if = "::std::vec::Vec::is_empty")]
+    pub options: ::std::vec::Vec<FieldOption>,
     #[serde(skip_serializing_if = "::std::option::Option::is_none")]
     pub required: ::std::option::Option<bool>,
     pub scope: ResultsFieldsItemScope,
@@ -21635,6 +22363,295 @@ impl ::std::convert::TryFrom<::std::string::String> for TeamVisibility {
         value.parse()
     }
 }
+///`ThemeListParams`
+#[derive(::serde::Deserialize, ::serde::Serialize, Clone, Debug, Default)]
+pub struct ThemeListParams {
+    #[serde(skip_serializing_if = "::std::option::Option::is_none")]
+    pub artifact: ::std::option::Option<SourceRef>,
+}
+///`ThemeListResult`
+#[derive(::serde::Deserialize, ::serde::Serialize, Clone, Debug)]
+pub struct ThemeListResult {
+    #[serde(skip_serializing_if = "::std::option::Option::is_none")]
+    pub artifact: ::std::option::Option<ThemeListResultArtifact>,
+    pub themes: ::std::vec::Vec<ThemeSummary>,
+}
+///`ThemeListResultArtifact`
+#[derive(::serde::Deserialize, ::serde::Serialize, Clone, Debug)]
+pub struct ThemeListResultArtifact {
+    pub default: bool,
+    pub stack: ::std::vec::Vec<::std::string::String>,
+}
+///`ThemeShowParams`
+#[derive(::serde::Deserialize, ::serde::Serialize, Clone, Debug, Default)]
+pub struct ThemeShowParams {
+    #[serde(skip_serializing_if = "::std::option::Option::is_none")]
+    pub artifact: ::std::option::Option<SourceRef>,
+    #[serde(skip_serializing_if = "::std::option::Option::is_none")]
+    pub css: ::std::option::Option<bool>,
+    #[serde(skip_serializing_if = "::std::option::Option::is_none")]
+    pub theme: ::std::option::Option<ThemeShowParamsTheme>,
+}
+///`ThemeShowParamsTheme`
+#[derive(::serde::Deserialize, ::serde::Serialize, Clone, Debug)]
+#[serde(untagged)]
+pub enum ThemeShowParamsTheme {
+    String(ThemeShowParamsThemeString),
+    Array(::std::vec::Vec<ThemeShowParamsThemeArrayItem>),
+    /// A value a newer Mostra sends that this release doesn't know; it
+    /// serializes back unchanged.
+    Unknown(::serde_json::Value),
+}
+impl ::std::convert::From<ThemeShowParamsThemeString> for ThemeShowParamsTheme {
+    fn from(value: ThemeShowParamsThemeString) -> Self {
+        Self::String(value)
+    }
+}
+impl ::std::convert::From<::std::vec::Vec<ThemeShowParamsThemeArrayItem>>
+for ThemeShowParamsTheme {
+    fn from(value: ::std::vec::Vec<ThemeShowParamsThemeArrayItem>) -> Self {
+        Self::Array(value)
+    }
+}
+///`ThemeShowParamsThemeArrayItem`
+#[derive(::serde::Serialize, Clone, Debug, Eq, Hash, Ord, PartialEq, PartialOrd)]
+#[serde(transparent)]
+pub struct ThemeShowParamsThemeArrayItem(::std::string::String);
+impl ::std::ops::Deref for ThemeShowParamsThemeArrayItem {
+    type Target = ::std::string::String;
+    fn deref(&self) -> &::std::string::String {
+        &self.0
+    }
+}
+impl ::std::convert::From<ThemeShowParamsThemeArrayItem> for ::std::string::String {
+    fn from(value: ThemeShowParamsThemeArrayItem) -> Self {
+        value.0
+    }
+}
+impl ::std::str::FromStr for ThemeShowParamsThemeArrayItem {
+    type Err = self::error::ConversionError;
+    fn from_str(
+        value: &str,
+    ) -> ::std::result::Result<Self, self::error::ConversionError> {
+        if value.chars().count() > 200usize {
+            return Err("longer than 200 characters".into());
+        }
+        if value.chars().count() < 1usize {
+            return Err("shorter than 1 characters".into());
+        }
+        Ok(Self(value.to_string()))
+    }
+}
+impl ::std::convert::TryFrom<&str> for ThemeShowParamsThemeArrayItem {
+    type Error = self::error::ConversionError;
+    fn try_from(
+        value: &str,
+    ) -> ::std::result::Result<Self, self::error::ConversionError> {
+        value.parse()
+    }
+}
+impl ::std::convert::TryFrom<::std::string::String> for ThemeShowParamsThemeArrayItem {
+    type Error = self::error::ConversionError;
+    fn try_from(
+        value: ::std::string::String,
+    ) -> ::std::result::Result<Self, self::error::ConversionError> {
+        value.parse()
+    }
+}
+impl<'de> ::serde::Deserialize<'de> for ThemeShowParamsThemeArrayItem {
+    fn deserialize<D>(deserializer: D) -> ::std::result::Result<Self, D::Error>
+    where
+        D: ::serde::Deserializer<'de>,
+    {
+        ::std::string::String::deserialize(deserializer)?
+            .parse()
+            .map_err(|e: self::error::ConversionError| {
+                <D::Error as ::serde::de::Error>::custom(e.to_string())
+            })
+    }
+}
+///`ThemeShowParamsThemeString`
+#[derive(::serde::Serialize, Clone, Debug, Eq, Hash, Ord, PartialEq, PartialOrd)]
+#[serde(transparent)]
+pub struct ThemeShowParamsThemeString(::std::string::String);
+impl ::std::ops::Deref for ThemeShowParamsThemeString {
+    type Target = ::std::string::String;
+    fn deref(&self) -> &::std::string::String {
+        &self.0
+    }
+}
+impl ::std::convert::From<ThemeShowParamsThemeString> for ::std::string::String {
+    fn from(value: ThemeShowParamsThemeString) -> Self {
+        value.0
+    }
+}
+impl ::std::str::FromStr for ThemeShowParamsThemeString {
+    type Err = self::error::ConversionError;
+    fn from_str(
+        value: &str,
+    ) -> ::std::result::Result<Self, self::error::ConversionError> {
+        if value.chars().count() > 200usize {
+            return Err("longer than 200 characters".into());
+        }
+        if value.chars().count() < 1usize {
+            return Err("shorter than 1 characters".into());
+        }
+        Ok(Self(value.to_string()))
+    }
+}
+impl ::std::convert::TryFrom<&str> for ThemeShowParamsThemeString {
+    type Error = self::error::ConversionError;
+    fn try_from(
+        value: &str,
+    ) -> ::std::result::Result<Self, self::error::ConversionError> {
+        value.parse()
+    }
+}
+impl ::std::convert::TryFrom<::std::string::String> for ThemeShowParamsThemeString {
+    type Error = self::error::ConversionError;
+    fn try_from(
+        value: ::std::string::String,
+    ) -> ::std::result::Result<Self, self::error::ConversionError> {
+        value.parse()
+    }
+}
+impl<'de> ::serde::Deserialize<'de> for ThemeShowParamsThemeString {
+    fn deserialize<D>(deserializer: D) -> ::std::result::Result<Self, D::Error>
+    where
+        D: ::serde::Deserializer<'de>,
+    {
+        ::std::string::String::deserialize(deserializer)?
+            .parse()
+            .map_err(|e: self::error::ConversionError| {
+                <D::Error as ::serde::de::Error>::custom(e.to_string())
+            })
+    }
+}
+///`ThemeShowResult`
+#[derive(::serde::Deserialize, ::serde::Serialize, Clone, Debug)]
+pub struct ThemeShowResult {
+    #[serde(skip_serializing_if = "::std::option::Option::is_none")]
+    pub css: ::std::option::Option<::std::string::String>,
+    pub default: bool,
+    #[serde(skip_serializing_if = "::std::option::Option::is_none")]
+    pub faces: ::std::option::Option<ThemeShowResultFaces>,
+    pub files: ::std::vec::Vec<::std::string::String>,
+    #[serde(skip_serializing_if = "::std::option::Option::is_none")]
+    pub host: ::std::option::Option<ThemeShowResultHost>,
+    #[serde(skip_serializing_if = "::std::option::Option::is_none")]
+    pub id: ::std::option::Option<::std::string::String>,
+    #[serde(skip_serializing_if = "::std::option::Option::is_none")]
+    pub name: ::std::option::Option<::std::string::String>,
+    pub stack: ::std::vec::Vec<::std::string::String>,
+    #[serde(skip_serializing_if = "::std::option::Option::is_none")]
+    pub values: ::std::option::Option<ThemeShowResultValues>,
+    pub warnings: ::std::vec::Vec<Diagnostic>,
+}
+///`ThemeShowResultFaces`
+#[derive(::serde::Deserialize, ::serde::Serialize, Clone, Debug)]
+pub struct ThemeShowResultFaces {
+    pub display: ::std::string::String,
+    pub mono: ::std::string::String,
+    pub sans: ::std::string::String,
+}
+///`ThemeShowResultHost`
+#[derive(
+    ::serde::Deserialize,
+    ::serde::Serialize,
+    Clone,
+    Debug,
+    Eq,
+    Hash,
+    Ord,
+    PartialEq,
+    PartialOrd
+)]
+pub enum ThemeShowResultHost {
+    #[serde(rename = "over")]
+    Over,
+    #[serde(rename = "under")]
+    Under,
+    /// A value a newer Mostra sends that this release doesn't know; it
+    /// serializes back unchanged.
+    #[serde(untagged)]
+    Unknown(::std::string::String),
+}
+impl ::std::convert::TryFrom<&str> for ThemeShowResultHost {
+    type Error = self::error::ConversionError;
+    fn try_from(
+        value: &str,
+    ) -> ::std::result::Result<Self, self::error::ConversionError> {
+        value.parse()
+    }
+}
+impl ::std::convert::TryFrom<::std::string::String> for ThemeShowResultHost {
+    type Error = self::error::ConversionError;
+    fn try_from(
+        value: ::std::string::String,
+    ) -> ::std::result::Result<Self, self::error::ConversionError> {
+        value.parse()
+    }
+}
+///`ThemeShowResultValues`
+#[derive(::serde::Deserialize, ::serde::Serialize, Clone, Debug)]
+pub struct ThemeShowResultValues {
+    pub base: ::std::collections::BTreeMap<::std::string::String, ::std::string::String>,
+    pub dark: ::std::collections::BTreeMap<::std::string::String, ::std::string::String>,
+    pub light: ::std::collections::BTreeMap<
+        ::std::string::String,
+        ::std::string::String,
+    >,
+}
+///`ThemeSummary`
+#[derive(::serde::Deserialize, ::serde::Serialize, Clone, Debug)]
+pub struct ThemeSummary {
+    pub complete: bool,
+    pub default: bool,
+    pub description: ::std::string::String,
+    pub id: ::std::string::String,
+    pub name: ::std::string::String,
+    #[serde(skip_serializing_if = "::std::option::Option::is_none")]
+    pub package: ::std::option::Option<::std::string::String>,
+    pub source: ThemeSummarySource,
+}
+///`ThemeSummarySource`
+#[derive(
+    ::serde::Deserialize,
+    ::serde::Serialize,
+    Clone,
+    Debug,
+    Eq,
+    Hash,
+    Ord,
+    PartialEq,
+    PartialOrd
+)]
+pub enum ThemeSummarySource {
+    #[serde(rename = "built-in")]
+    BuiltIn,
+    #[serde(rename = "plugin")]
+    Plugin,
+    /// A value a newer Mostra sends that this release doesn't know; it
+    /// serializes back unchanged.
+    #[serde(untagged)]
+    Unknown(::std::string::String),
+}
+impl ::std::convert::TryFrom<&str> for ThemeSummarySource {
+    type Error = self::error::ConversionError;
+    fn try_from(
+        value: &str,
+    ) -> ::std::result::Result<Self, self::error::ConversionError> {
+        value.parse()
+    }
+}
+impl ::std::convert::TryFrom<::std::string::String> for ThemeSummarySource {
+    type Error = self::error::ConversionError;
+    fn try_from(
+        value: ::std::string::String,
+    ) -> ::std::result::Result<Self, self::error::ConversionError> {
+        value.parse()
+    }
+}
 ///Thread ID: "thr_" followed by a 26-character ULID.
 #[derive(::serde::Serialize, Clone, Debug, Eq, Hash, Ord, PartialEq, PartialOrd)]
 #[serde(transparent)]
@@ -21817,6 +22834,8 @@ pub struct VerifyVerdict {
     pub screenshots: ::std::vec::Vec<VerifyVerdictScreenshotsItem>,
     pub smoke: VerifyVerdictSmoke,
     pub status: VerifyVerdictStatus,
+    #[serde(skip_serializing_if = "::std::option::Option::is_none")]
+    pub theme: ::std::option::Option<VerifyVerdictTheme>,
     #[serde(rename = "timingsMs")]
     pub timings_ms: ::std::collections::BTreeMap<::std::string::String, f64>,
 }
@@ -21925,6 +22944,14 @@ impl ::std::convert::TryFrom<::std::string::String> for VerifyVerdictStatus {
     ) -> ::std::result::Result<Self, self::error::ConversionError> {
         value.parse()
     }
+}
+///`VerifyVerdictTheme`
+#[derive(::serde::Deserialize, ::serde::Serialize, Clone, Debug)]
+pub struct VerifyVerdictTheme {
+    pub default: bool,
+    #[serde(skip_serializing_if = "::std::option::Option::is_none")]
+    pub requested: ::std::option::Option<bool>,
+    pub stack: ::std::vec::Vec<::std::string::String>,
 }
 ///Version ID: "ver_" followed by 26 characters of Crockford base32.
 #[derive(::serde::Serialize, Clone, Debug, Eq, Hash, Ord, PartialEq, PartialOrd)]
@@ -25937,6 +26964,66 @@ impl ::std::str::FromStr for TeamVisibility {
                 "private" => Self::Private,
                 "counts" => Self::Counts,
                 "names" => Self::Names,
+                other => Self::Unknown(other.to_string()),
+            },
+        )
+    }
+}
+impl ThemeShowResultHost {
+    /// The value as it travels on the wire.
+    #[must_use]
+    pub fn as_str(&self) -> &str {
+        match self {
+            Self::Over => "over",
+            Self::Under => "under",
+            Self::Unknown(value) => value.as_str(),
+        }
+    }
+}
+impl ::std::fmt::Display for ThemeShowResultHost {
+    fn fmt(&self, f: &mut ::std::fmt::Formatter<'_>) -> ::std::fmt::Result {
+        f.write_str(self.as_str())
+    }
+}
+impl ::std::str::FromStr for ThemeShowResultHost {
+    type Err = self::error::ConversionError;
+    fn from_str(
+        value: &str,
+    ) -> ::std::result::Result<Self, self::error::ConversionError> {
+        Ok(
+            match value {
+                "over" => Self::Over,
+                "under" => Self::Under,
+                other => Self::Unknown(other.to_string()),
+            },
+        )
+    }
+}
+impl ThemeSummarySource {
+    /// The value as it travels on the wire.
+    #[must_use]
+    pub fn as_str(&self) -> &str {
+        match self {
+            Self::BuiltIn => "built-in",
+            Self::Plugin => "plugin",
+            Self::Unknown(value) => value.as_str(),
+        }
+    }
+}
+impl ::std::fmt::Display for ThemeSummarySource {
+    fn fmt(&self, f: &mut ::std::fmt::Formatter<'_>) -> ::std::fmt::Result {
+        f.write_str(self.as_str())
+    }
+}
+impl ::std::str::FromStr for ThemeSummarySource {
+    type Err = self::error::ConversionError;
+    fn from_str(
+        value: &str,
+    ) -> ::std::result::Result<Self, self::error::ConversionError> {
+        Ok(
+            match value {
+                "built-in" => Self::BuiltIn,
+                "plugin" => Self::Plugin,
                 other => Self::Unknown(other.to_string()),
             },
         )
