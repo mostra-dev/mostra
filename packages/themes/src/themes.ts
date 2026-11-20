@@ -327,8 +327,10 @@ export const arcata: Theme = defineTheme({
     },
     light: {
       field: "oklch(1 0 0)",
-      "choice-bg": "oklch(1 0 0)",
-      "choice-hover-bg": "oklch(0.985 0.002 106.5)",
+      // A field of colour on the page and on a section alike, so a choice reads as one wherever
+      // the page puts it.
+      "choice-bg": "oklch(0.955 0.004 106.5)",
+      "choice-hover-bg": "oklch(0.935 0.005 106.5)",
       "choice-selected-hover-bg": "color-mix(in oklab, var(--primary), black 14%)",
       "choice-selected-muted": "oklch(0.88 0.04 270)",
       "popover-shadow":
