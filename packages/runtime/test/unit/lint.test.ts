@@ -132,6 +132,28 @@ export const A = () => <div className="shrink-0 grow bg-linear-to-r bg-(--brand)
   });
 });
 
+describe("Tailwind CSS that Tailwind never reads (MOSTRA_KIT_CSS_UNPROCESSED)", () => {
+  const brand =
+    "/* Our brand. */\n@theme {\n  --color-brand: oklch(0.5 0.2 30);\n}\n.cta { @apply bg-brand; }\n";
+
+  it("names a stylesheet with Tailwind's directives that neither imports Tailwind nor is a layer", async () => {
+    const found = await lint("brand.css", brand);
+    expect(found.diagnostics.map((d) => [d.code, d.severity, d.location])).toEqual([
+      ["MOSTRA_KIT_CSS_UNPROCESSED", "warning", { file: "brand.css", line: 2, column: 1 }],
+    ]);
+  });
+
+  it("leaves a layer of the theme stack, one that imports Tailwind, and plain CSS alone", async () => {
+    const root = tempDir("lint-layers");
+    writeFileSync(join(root, "brand.css"), brand);
+    expect((await lintArtifact(root, "base", ["brand.css"])).diagnostics).toEqual([]);
+    expect((await lint("own.css", `@import "tailwindcss";\n${brand}`)).diagnostics).toEqual([]);
+    expect(
+      (await lint("plain.css", ".a { color: red; } /* @apply in a comment */\n")).diagnostics,
+    ).toEqual([]);
+  });
+});
+
 describe("the other base's idiom (KT-08, MOSTRA_KIT_WRONG_BASE)", () => {
   const typeError = (file: string, line: number, column: number, attribute: string): Diagnostic =>
     createDiagnostic("MOSTRA_TYPE_ERROR", {

@@ -557,7 +557,7 @@ function lintScript(lint: FileLint, program: Node, base: "base" | "radix"): void
 }
 
 /** Tailwind 3's directives in a stylesheet: one `@import "tailwindcss";` in Tailwind 4. */
-function lintStylesheet(lint: FileLint): void {
+function lintStylesheet(lint: FileLint, layers: ReadonlySet<string>): void {
   const directives = [...lint.text.matchAll(/@tailwind\s+(base|components|utilities)\s*;/g)];
   directives.forEach((directive, index) => {
     lint.report(
@@ -568,6 +568,21 @@ function lintStylesheet(lint: FileLint): void {
       index === 0 ? '@import "tailwindcss";' : "",
     );
   });
+  if (directives.length > 0 || layers.has(lint.file)) return;
+  // Tailwind's directives in a stylesheet Tailwind never processes: neither a layer of the theme
+  // stack (which joins the build's one Tailwind run) nor a stylesheet that imports Tailwind.
+  const comments = lint.text.replace(/\/\*[\s\S]*?\*\//g, (comment) => " ".repeat(comment.length));
+  if (/@(?:import|reference)\s+["']tailwindcss["'/]/.test(comments)) return;
+  const used = /@(theme|apply|utility|variant|custom-variant|source|plugin|config)\b/.exec(
+    comments,
+  );
+  if (used === null) return;
+  lint.out.diagnostics.push(
+    createDiagnostic("MOSTRA_KIT_CSS_UNPROCESSED", {
+      message: `${lint.file} uses Tailwind's @${used[1]}, but Tailwind never reads it: it isn't a layer of kit.theme and doesn't import Tailwind, so the page gets it unchanged.`,
+      location: { file: lint.file, ...lineColumn(lint.text, used.index) },
+    }),
+  );
 }
 
 /**
@@ -600,8 +615,17 @@ async function sourceFiles(dir: string, prefix = ""): Promise<string[]> {
 }
 
 /** Lints the artifact's scripts and stylesheets in `sourceDir`, its snapshot. */
-export async function lintArtifact(sourceDir: string, base: "base" | "radix"): Promise<LintResult> {
+/**
+ * Lints the artifact's scripts and stylesheets in `sourceDir`, its snapshot. `layers` are the
+ * theme stack's own CSS files (paths inside it), which the build's Tailwind run reads.
+ */
+export async function lintArtifact(
+  sourceDir: string,
+  base: "base" | "radix",
+  layers: readonly string[] = [],
+): Promise<LintResult> {
   const out: LintResult = { diagnostics: [], wrongBase: [] };
+  const themeLayers = new Set(layers);
   for (const file of (await sourceFiles(sourceDir)).sort()) {
     const ext = extname(file);
     const lang = SCRIPT_LANG[ext];
@@ -609,7 +633,7 @@ export async function lintArtifact(sourceDir: string, base: "base" | "radix"): P
     const text = await readFile(join(sourceDir, file), "utf8");
     const lint = new FileLint(file, text, out);
     if (ext === ".css") {
-      lintStylesheet(lint);
+      lintStylesheet(lint, themeLayers);
       continue;
     }
     lintCnHelper(lint);

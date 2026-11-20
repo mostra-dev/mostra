@@ -440,7 +440,7 @@ export function createVerifier(options: VerifierOptions): Verifier {
       }),
       // The kit's lint, beside them (KT-08): it reads the snapshot, so a build reused from the
       // cache is linted too, and a build an old import broke still gets the fix.
-      lintArtifact(join(prepared.stagingDir, "source"), base),
+      lintArtifact(join(prepared.stagingDir, "source"), base, prepared.kit.themeFiles),
     ]);
     diagnostics.push(...(built.ok ? [] : built.diagnostics));
     // The kit's lint (KT-08): changed APIs with their fixes, found whether or not the build ran.
