@@ -1698,7 +1698,17 @@ WP-28 designs and WP-30 builds, in the hosted shell on its trusted origin and ne
 
 ## Fixes from the unassigned issues
 
-### D178. A leg GitHub never gave a runner is tried again in the same run (#210, M85)
+### D178. Short-lived listeners avoid the dynamic port ranges (#95, M85)
+*Status:* approved at M85 with #201. *Amends* D138 item 1 and INTERFACES §6; *extends* D140 item 12.
+
+1. **Where they listen.** Verify's sandbox (its harness and artifact listeners, D138 item 1) and `mostra dev`'s (its shell and artifact listeners, D140 item 12) take a free loopback port between the lease range and the dynamic ranges, 32768 to 49151 (`addressing`'s short-lived ports), and fall back to one the system assigns only when none is free, with a warning. `dev/start`'s `port`, when given, still chooses the shell's.
+2. **The test suites' servers that a browser loads** take the same range (`tests/e2e/support/ports.ts`), so CI meets what a person's machine meets.
+
+*Why:* on Windows, Chromium's random local ports (D157) collide with TIME_WAIT on a listener inside the dynamic range (49152 to 65535 on Windows and macOS) about five times as often as on one outside it: 11 in 64,932 page loads against 2 in 63,620 on GitHub's `windows-latest`, and 120 verify runs on the new range had every listener in it and no collision (VERIFIED_FACTS, #95 re-verification). A collision fails a request verify then counts against the artifact (`MOSTRA_NETWORK_REQUEST_FAILED` refuses publish).
+
+*Rejected:* the lease range itself (it holds the home's shell and artifact ports, D99); leaving port 0 and relying on verify's render-again (D168 item 12) alone, which absorbs a collision but not the five-fold rate.
+
+### D179. A leg GitHub never gave a runner is tried again in the same run (#210, M85)
 *Status:* approved at M85 with #212. *Extends* D152 item 9 and REPO_STANDARDS §6.
 
 1. **What counts as starved.** After the gates, the `starved` job (`tools/check/starved.ts`) takes a leg for starved only when GitHub cancelled it with no runner, no step, and its annotation "The job was not acquired by Runner of type hosted even after multiple attempts". A job a newer run of its concurrency group cancelled carries the same capacity notice but never that annotation, so it never counts (VERIFIED_FACTS, #210).

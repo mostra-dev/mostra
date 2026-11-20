@@ -152,7 +152,20 @@ describe("the runner's judgement (HO-05)", () => {
   it("a host shim that doesn't start fails the scenario with the reason", async () => {
     const report = await runConformance({ host: "exit 7", scenarios: [passes] });
     expect(report.outcomes[0]?.status).toBe("failed");
-    expect(report.outcomes[0]?.reason).toMatch(/exited/);
+    expect(report.outcomes[0]?.reason).toMatch(/exited \(code 7, \d+ ms after it started\)/);
+  });
+
+  // #140's only sighting said "failed" and nothing more: the reason now tells a shim that died at
+  // once, and why it said it did, from one that ran a while.
+  it("a shim that dies at its start is named by its exit code, its time and its last words (#140)", async () => {
+    const report = await runConformance({
+      host: `node -e "process.stderr.write('first\\nthe shim gave up\\n'); process.exit(1)"`,
+      scenarios: [passes],
+    });
+    expect(report.outcomes[0]?.status).toBe("failed");
+    const reason = report.outcomes[0]?.reason ?? "";
+    expect(reason).toMatch(/^The host under test exited \(code 1, \d+ ms after it started\): /);
+    expect(reason).toContain("first | the shim gave up");
   });
 });
 

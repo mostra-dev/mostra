@@ -175,10 +175,14 @@ jobs:
         if: runner.os == 'Windows'
         shell: pwsh
         run: Set-ItemProperty 'HKLM:\SYSTEM\CurrentControlSet\Control\FileSystem' -Name LongPathsEnabled -Value 0
+      # A limit of its own, below the job's: a step that stalls fails here, and the logs are kept
+      # below (a job GitHub ends at its limit runs nothing more, and once lost its log, #124).
       - name: new, verify and publish with no Node.js
+        timeout-minutes: 25
         env:
           VERSION: ${{ inputs.version }}
           PLATFORM: ${{ matrix.platform }}
+          MOSTRA_SMOKE_WORK: ${{ runner.temp }}/smoke-work
         run: |
           record="$RUNNER_TEMP/assets/mostra-$VERSION-$PLATFORM.json"
           sha=$(sed -n 's/.*"sha256": *"\([0-9a-f]*\)".*/\1/p' "$record")
@@ -228,6 +232,17 @@ jobs:
           $junction = Get-Item "$root\lib\node_modules\@mostra\warm\node_modules\react"
           "react in the warm set: $($junction.LinkType) -> $($junction.Target)"
           if ($junction.LinkType -ne "Junction") { throw "the warm set's link isn't a junction" }
+      - name: Keep the smoke test's logs
+        if: failure() || cancelled()
+        run: sh packages/bundle/scripts/keep-logs.sh "$RUNNER_TEMP/smoke-work" "$RUNNER_TEMP/smoke-logs"
+      - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        if: failure() || cancelled()
+        with:
+          name: logs-smoke-${{ matrix.platform }}
+          path: ${{ runner.temp }}/smoke-logs
+          if-no-files-found: ignore
+          overwrite: true
+          retention-days: 7
 
   packages:
     name: packages (pins, pack, npm publish --dry-run)
@@ -330,9 +345,22 @@ jobs:
           name: bundle-${{ matrix.platform }}
           path: ${{ runner.temp }}/assets
       - name: create-mostra, verify and publish through npm
+        timeout-minutes: 25
         env:
           NODE_VERSION: ${{ inputs.node }}
+          MOSTRA_SMOKE_WORK: ${{ runner.temp }}/smoke-work
         run: sh packages/bundle/scripts/npm-smoke.sh "$RUNNER_TEMP/release/npm" "$RUNNER_TEMP/assets" "$NODE_VERSION"
+      - name: Keep the smoke test's logs
+        if: failure() || cancelled()
+        run: sh packages/bundle/scripts/keep-logs.sh "$RUNNER_TEMP/smoke-work" "$RUNNER_TEMP/smoke-logs"
+      - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        if: failure() || cancelled()
+        with:
+          name: logs-npm-smoke-${{ matrix.platform }}
+          path: ${{ runner.temp }}/smoke-logs
+          if-no-files-found: ignore
+          overwrite: true
+          retention-days: 7
 
   # A Node.js too old to start Mostra: refused at once with MOSTRA_ENV_NODE_UNSUPPORTED.
   npm-old-node:

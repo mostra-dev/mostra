@@ -13,6 +13,7 @@ import { dirname, extname, join, posix } from "node:path";
 import { expect, test } from "@playwright/test";
 import { gotoShell, linkFor, openInShell, publishOwn, viewerName } from "../support/client.ts";
 import { Client, readRun } from "../support/mostra.ts";
+import { listenShortLived } from "../support/ports.ts";
 
 const run = readRun();
 
@@ -53,7 +54,7 @@ async function serveExport(
       response.writeHead(404).end();
     }
   });
-  await new Promise<void>((resolve) => server.listen(0, "127.0.0.1", resolve));
+  await listenShortLived(server);
   const address = server.address();
   if (address === null || typeof address === "string") throw new Error("no address");
   return { url: `http://127.0.0.1:${address.port}/`, server };

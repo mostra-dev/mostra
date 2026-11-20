@@ -2,7 +2,9 @@
  * A shim whose grandchild outlives it holding its output open, as a host's instance or daemon
  * might: the shim exits when its stdin ends, and the grandchild (which wrote its PID to
  * `MOSTRA_KIT_TEST_PID_FILE`) keeps the shell's stdout, so the shell's end is never seen as the
- * output closing. `close` must still end it (Opus review of WP-W3, finding 3).
+ * output closing. `close` must still end it (Opus review of WP-W3, finding 3). With
+ * `MOSTRA_KIT_TEST_STAY` set the shim itself doesn't exit when its stdin ends either, so its shell
+ * lives on (#140).
  */
 import { spawn } from "node:child_process";
 import { serveHarness } from "@mostra/conformance";
@@ -35,3 +37,6 @@ await serveHarness({
   stop: () => undefined,
   store: () => ({ deliveries: [], drafts: [], activations: [], identity: [], policies: [], secrets: [] }),
 });
+
+// A shim that won't end: its shell outlives the kit's wait, and only `close`'s taskkill ends it.
+if (process.env["MOSTRA_KIT_TEST_STAY"]) setInterval(() => {}, 1000);

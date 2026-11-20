@@ -4,8 +4,8 @@
  * everything a viewer can reach.
  *
  * A session is a sandbox like a verify run's (D138 item 1): a scratch ledger in
- * `cache/dev/<session>/`, its own worker pool, and two loopback listeners on ports the operating
- * system picks, reached only with the link minted in that scratch ledger; the artifact origin's
+ * `cache/dev/<session>/`, its own worker pool, and two loopback listeners on short-lived ports (as
+ * verify's, #95), reached only with the link minted in that scratch ledger; the artifact origin's
  * files and HMR WebSocket come from a Vite server in a builder child, behind the gateway's checks.
  * The source is mirrored into the session's root (Mostra never writes into the artifact's
  * directory) and kept in step as it changes. Nothing reaches the home's drafts, state, events,

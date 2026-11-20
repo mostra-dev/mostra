@@ -16,7 +16,13 @@ import {
   type VersionAvailableParams,
   type ViewContext,
 } from "@mostra/protocol";
-import { builtVersion, connectShell, listenShell, type ShellConnection } from "../shell-bridge.ts";
+import {
+  bootMark,
+  builtVersion,
+  connectShell,
+  listenShell,
+  type ShellConnection,
+} from "../shell-bridge.ts";
 import { blockersForShell, clip, firstThatMatter } from "./bridge-limits.ts";
 import { IndexedDbJournal, type Journal, MemoryJournal } from "./journal.ts";
 import { guardFrameServiceWorker } from "./service-worker.ts";
@@ -203,7 +209,9 @@ export async function startRuntime(): Promise<Runtime> {
     store.start();
     return { store, target, mode: target === "live" ? "static" : target, shell: undefined };
   }
+  bootMark("journal-opening");
   const journal: Journal = (await IndexedDbJournal.open()) ?? new MemoryJournal();
+  bootMark("journal-open");
   const store = new Store({
     mode: "live",
     transport: new HttpTransport(view.viewId, {
@@ -225,6 +233,7 @@ export async function startRuntime(): Promise<Runtime> {
   // A verify run reads which fields the page mounts (D138); a viewer's page never records them.
   if (target === "verify") installVerifyProbe(store);
   store.start();
+  bootMark("started");
   wireLifecycle(store);
   wireShell(store, shell);
   return { store, target, mode: view.target, shell };

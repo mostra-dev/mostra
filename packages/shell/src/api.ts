@@ -13,6 +13,7 @@ import {
   type MutationResult,
   type SubmissionSummary,
 } from "@mostra/protocol";
+import { bootMark } from "./boot-marks.ts";
 import { hosted, routeBrowserKey, sessionHeaders } from "./hosted.ts";
 import type { Credential } from "./location.ts";
 
@@ -124,6 +125,7 @@ export async function exchange(
 ): Promise<ShellSession> {
   // A hosted shell sends each route a key of its own, derived from one browser secret (§18.4).
   const browser = routeId !== undefined ? await routeBrowserKey(routeId) : browserKey();
+  bootMark("browser-key");
   return call(`${apiBase}/session`, {
     method: "POST",
     headers: JSON_HEADERS,
@@ -174,6 +176,7 @@ export function frameTicket(
   version?: number,
   signal?: AbortSignal,
 ): Promise<FrameTicket> {
+  bootMark("ticket-asked");
   return call(`${apiBase}/ticket`, {
     method: "POST",
     headers: { ...JSON_HEADERS, "x-mostra-csrf": csrf },

@@ -51,6 +51,7 @@ import {
   signOutViewer,
   submit,
 } from "./api.ts";
+import { bootMark } from "./boot-marks.ts";
 import {
   AppearanceButton,
   FoldButton,
@@ -111,6 +112,7 @@ import {
 /** Marks `<html>` for people's tools and Mostra's tests (see `shell.tsx`). */
 export function mark(state: string, attributes: Record<string, string> = {}): void {
   const root = document.documentElement;
+  if (state !== "" && root.dataset["shell"] !== state) bootMark(state);
   if (state !== "") root.dataset["shell"] = state;
   for (const [key, value] of Object.entries(attributes)) root.dataset[key] = value;
 }
@@ -294,6 +296,7 @@ function Frame(props: {
           const loaded = (params as { mostra?: { versionId?: string } }).mostra?.versionId;
           // At once, not in a microtask or a render: a ticket asked for before this greeting
           // must never replace the frame (the second GPT review of MT-02b, finding 2).
+          bootMark("greeted");
           handlersRef.current.onGreeted();
           if (loaded !== undefined && loaded !== ticket.version.id) {
             queueMicrotask(() => handlersRef.current.onWrongVersion());

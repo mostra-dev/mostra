@@ -59,7 +59,7 @@ The plan job's summary shows the scope, the runners chosen and every leg.
    or add the occurrence to its issue.
 8. **A leg GitHub gave no runner.** GitHub's macOS arm64 pool sometimes cancels a job that waited,
    with no runner, no step and the annotation "The job was not acquired by Runner of type hosted
-   even after multiple attempts" (#210, D178). The run tries such legs once more itself: the
+   even after multiple attempts" (#210, D179). The run tries such legs once more itself: the
    `starved` job picks exactly those legs, waits until 10 minutes after the last was cancelled, and
    each gate's retry twin (`retry · …`, the release's `retry · release`) runs them; `ci-ok` passes
    when they pass. Nothing is retried when a gate also failed for its own reasons. If a retry

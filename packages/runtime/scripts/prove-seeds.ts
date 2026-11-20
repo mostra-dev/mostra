@@ -2422,6 +2422,16 @@ const SEEDS: readonly Seed[] = [
   },
   {
     requirement: "RT-12",
+    name: "the kit hands taskkill the PID of a shell that has exited, which Windows may have given another process (#140)",
+    file: "../conformance/src/harness/client.ts",
+    from: "        if (this.#end === undefined) {",
+    to: "        if (true) {",
+    check: unit("close.test.ts", "never hands taskkill"),
+    cwd: "../conformance",
+    platform: "win32",
+  },
+  {
+    requirement: "RT-12",
     name: "a Windows bundle copied by a tool that follows junctions can't be set up (Opus review of WP-W3, finding 4)",
     file: "../sdk/src/bundle/links.ts",
     from: "    if (!current.isDirectory() || !(await sameTree(at, target))) {",
@@ -3806,6 +3816,14 @@ const SEEDS: readonly Seed[] = [
     check: ["--project", "unit", "test/unit/listener-keepalive.test.ts", "-t", "are reset"],
   },
   {
+    requirement: "SH-03",
+    name: "a sandbox listens on ports the system assigns, where Chromium on Windows collides five times as often (#95)",
+    file: "src/addressing/index.ts",
+    from: "        return listenShortLived(server, bindAddress, log);",
+    to: '        if (!(await tryListen(server, 0, bindAddress))) throw bindFailed("none");\n        return (server.address() as { port: number }).port;',
+    check: unit("gateway.test.ts", "listen between the lease range and the dynamic ranges"),
+  },
+  {
     requirement: "EN-07",
     name: "the gateway's request record logs a request's query, where a frame ticket travels (#66)",
     file: "src/gateway/listener.ts",
@@ -5114,6 +5132,15 @@ const SEEDS: readonly Seed[] = [
     to: '        channel: "artifact",',
     check: e2e("a field saves as the viewer types"),
     e2e: true,
+  },
+  // #111: a worker start that runs out of time names where it stopped.
+  {
+    requirement: "RT-03",
+    name: "#111: a start that never ends fails without saying where the worker was",
+    file: "src/workers/pool.ts",
+    from: '      const reason = timedOut\n        ? `${said.replace(/\\.$/, "")}; ${startStageText("start", probe)}.`\n        : said;',
+    to: "      const reason = said;",
+    check: unit("workers.test.ts", "names where a start that never ends stopped"),
   },
   // #182: on a phone the trusted Submit stays whole and on the screen beside a long Choose.
   {
