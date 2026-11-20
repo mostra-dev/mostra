@@ -38,6 +38,7 @@ import { dirname, join, relative, resolve, sep } from "node:path";
 import { fileURLToPath } from "node:url";
 import { parseArgs } from "node:util";
 import { c } from "tar";
+import { packageDir, workspacePackages } from "./workspace.ts";
 
 /** Whether this build is for Windows, whose bundle differs in its launchers, Node.js and links. */
 const WINDOWS = process.platform === "win32";
@@ -119,6 +120,8 @@ const out = resolve(values.out as string);
 /** Every Mostra package a bundle carries; each must be at the release's version (one version). */
 const MOSTRA_PACKAGES = [
   "@mostra/cli",
+  // The first-party plugin every home has (D175 item 3), run only in plugin children.
+  "@mostra/plugin-mcp-app",
   "@mostra/protocol",
   "@mostra/react",
   "@mostra/runtime",
@@ -129,10 +132,8 @@ const MOSTRA_PACKAGES = [
   "@mostra/worker",
 ];
 
-/** Where each Mostra package lives in the workspace. */
-const DIRS: Record<string, string> = Object.fromEntries(
-  MOSTRA_PACKAGES.map((name) => [name, `packages/${name.slice("@mostra/".length)}`]),
-);
+/** Where each Mostra package lives in the workspace, from its manifest (`workspace.ts`). */
+const DIRS: ReadonlyMap<string, string> = workspacePackages(ROOT);
 
 function step(message: string): void {
   console.log(`bundle: ${message}`);
@@ -154,7 +155,7 @@ async function releaseVersion(): Promise<string> {
   const versions = new Map<string, string>();
   for (const name of MOSTRA_PACKAGES) {
     const manifest = JSON.parse(
-      await readFile(fromRoot(DIRS[name] as string, "package.json"), "utf8"),
+      await readFile(join(packageDir(DIRS, name), "package.json"), "utf8"),
     );
     versions.set(name, manifest.version as string);
   }

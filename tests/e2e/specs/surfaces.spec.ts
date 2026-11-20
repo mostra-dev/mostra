@@ -17,13 +17,13 @@
 import { spawn } from "node:child_process";
 import { mkdirSync, writeFileSync } from "node:fs";
 import { createServer as createHttpServer, request as httpRequest, type Server } from "node:http";
-import { createServer } from "node:net";
 import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
 import { type Browser, type BrowserContext, expect, type Page, test } from "@playwright/test";
 import axe from "axe-core";
 import { gotoShell, openInShell, publishOwn, republish, settled } from "../support/client.ts";
 import { BIN, Client, removeTree, startDaemon } from "../support/mostra.ts";
+import { shortLivedPort } from "../support/ports.ts";
 
 const OPERATOR = join(
   dirname(fileURLToPath(import.meta.url)),
@@ -54,17 +54,6 @@ const LONG_REASON =
     0,
     1_000,
   );
-
-function freePort(): Promise<number> {
-  return new Promise((resolve, reject) => {
-    const probe = createServer();
-    probe.once("error", reject);
-    probe.listen(0, "127.0.0.1", () => {
-      const port = (probe.address() as { port: number }).port;
-      probe.close(() => resolve(port));
-    });
-  });
-}
 
 /** An HTTP request to the server under a host it serves (Node doesn't resolve `*.localhost`). */
 function ask(
@@ -126,8 +115,8 @@ test.describe("every surface a person meets (UX-01, D171)", () => {
 
   test.beforeAll(async ({ browser }) => {
     test.setTimeout(120_000);
-    port = await freePort();
-    control = await freePort();
+    port = await shortLivedPort();
+    control = await shortLivedPort();
     api = `http://api.localhost:${port}`;
     daemon = await startDaemon({ env: { MOSTRA_TEST_SERVER_ADDRESS: `127.0.0.1:${port}` } });
     const data = join(daemon.root, "server");
@@ -262,10 +251,12 @@ test.describe("every surface a person meets (UX-01, D171)", () => {
     await frame.getByTestId("day-Tuesday").focus();
     await page.keyboard.press("Space");
     await expect(page.locator("[data-mostra-save]")).toHaveAttribute("data-mostra-save", "saved");
+    // A trusted control is disabled, so no Tab reaches it, until it is armed (D111's half second
+    // after the controls last changed, as the answer just did): the keyboard reaches it once armed.
+    await expect(page.locator("[data-mostra-trusted][data-mostra-armed]")).toBeVisible();
     await page.locator("#mostra-fold").focus();
     await page.keyboard.press(browserName === "webkit" ? "Alt+Shift+Tab" : "Shift+Tab");
     await expect(page.locator("#mostra-submit")).toBeFocused();
-    await expect(page.locator("[data-mostra-trusted][data-mostra-armed]")).toBeVisible();
     await page.keyboard.press("Enter");
     await expect(page.locator("[data-mostra-receipt]")).toHaveAttribute(
       "data-mostra-receipt",
@@ -498,6 +489,16 @@ test.describe("every surface a person meets (UX-01, D171)", () => {
         await shoot(page, "api-allow-own");
         await gotoShell(page, `${api}/signin/return?step=nothing`);
         await shoot(page, "api-cant-continue");
+        // Signing out (MT-06): the sign-in page asked for afresh with the session shown, the page
+        // with one button, and the page after it.
+        await gotoShell(page, `${authorize(ownClient, accountPage)}&prompt=login`);
+        await expect(page.getByText(`Signed in as ${who}`)).toBeVisible();
+        await shoot(page, "api-signin-signed-in");
+        await gotoShell(page, `${api}/signout`);
+        await shoot(page, "api-sign-out");
+        await page.locator('form[action="/signout"] button').last().click();
+        await expect(page.getByRole("heading", { name: "You're signed out" })).toBeVisible();
+        await shoot(page, "api-signed-out");
         await person.close();
 
         // Linking a machine, not signed in: the development provider's form, and a wrong code.

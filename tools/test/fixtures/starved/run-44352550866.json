@@ -1,0 +1,1641 @@
+{
+ "source": "GitHub API, run 44352550866 attempt 1 (jobs, check-run annotations) and its plan job 134971833315 log; recorded 2026-11-19 for #210",
+ "plan": {
+  "run": "true",
+  "scope": "--affected",
+  "static": "[{\"runner\":\"ubuntu-latest\",\"jobs\":\"--job format-lint --job types --job build --job boundaries --job api --job licenses --job docs\",\"names\":\"format-lint, types, build, boundaries, api, licenses, docs\",\"cache\":\"static\"}]",
+  "unit": "[{\"os\":\"linux\",\"runner\":\"ubuntu-latest\",\"cache\":\"unit\"}]",
+  "hygiene": "[{\"os\":\"linux\",\"runner\":\"ubuntu-latest\",\"cache\":\"hygiene\"}]",
+  "integration": "[{\"os\":\"linux\",\"runner\":\"ubuntu-latest\",\"group\":\"core\",\"cache\":\"integration-core\"},{\"os\":\"linux\",\"runner\":\"ubuntu-latest\",\"group\":\"remote\",\"cache\":\"integration-remote\"},{\"os\":\"linux\",\"runner\":\"ubuntu-latest\",\"group\":\"remote-access\",\"cache\":\"integration-remote-access\"},{\"os\":\"linux\",\"runner\":\"ubuntu-latest\",\"group\":\"verify\",\"cache\":\"integration-verify\"},{\"os\":\"linux\",\"runner\":\"ubuntu-latest\",\"group\":\"verify-failures\",\"cache\":\"integration-verify-failures\"},{\"os\":\"linux\",\"runner\":\"ubuntu-latest\",\"group\":\"extensions\",\"cache\":\"integration-extensions\"},{\"os\":\"linux\",\"runner\":\"ubuntu-latest\",\"group\":\"clients\",\"cache\":\"integration-clients\"},{\"os\":\"macos\",\"runner\":\"macos-latest\",\"group\":\"core\",\"cache\":\"integration-core\"},{\"os\":\"macos\",\"runner\":\"macos-latest\",\"group\":\"remote\",\"cache\":\"integration-remote\"},{\"os\":\"macos\",\"runner\":\"macos-latest\",\"group\":\"remote-access\",\"cache\":\"integration-remote-access\"},{\"os\":\"macos\",\"runner\":\"macos-latest\",\"group\":\"verify\",\"cache\":\"integration-verify\"},{\"os\":\"macos\",\"runner\":\"macos-latest\",\"group\":\"verify-failures\",\"cache\":\"integration-verify-failures\"},{\"os\":\"macos\",\"runner\":\"macos-latest\",\"group\":\"extensions\",\"cache\":\"integration-extensions\"},{\"os\":\"macos\",\"runner\":\"macos-latest\",\"group\":\"clients\",\"cache\":\"integration-clients\"}]",
+  "windows": "[{\"os\":\"windows-x64\",\"runner\":\"windows-latest\",\"job\":\"unit\",\"group\":\"windows\",\"cache\":\"windows-unit-windows\"},{\"os\":\"windows-x64\",\"runner\":\"windows-latest\",\"job\":\"hygiene\",\"group\":\"windows\",\"cache\":\"windows-hygiene-windows\"},{\"os\":\"windows-x64\",\"runner\":\"windows-latest\",\"job\":\"integration\",\"group\":\"windows\",\"cache\":\"windows-integration-windows\"},{\"os\":\"windows-x64\",\"runner\":\"windows-latest\",\"job\":\"integration\",\"group\":\"windows-publish\",\"cache\":\"windows-integration-windows-publish\"},{\"os\":\"windows-x64\",\"runner\":\"windows-latest\",\"job\":\"integration\",\"group\":\"windows-gateway\",\"cache\":\"windows-integration-windows-gateway\"},{\"os\":\"windows-x64\",\"runner\":\"windows-latest\",\"job\":\"integration\",\"group\":\"windows-workers\",\"cache\":\"windows-integration-windows-workers\"},{\"os\":\"windows-x64\",\"runner\":\"windows-latest\",\"job\":\"integration\",\"group\":\"windows-verify\",\"cache\":\"windows-integration-windows-verify\"},{\"os\":\"windows-x64\",\"runner\":\"windows-latest\",\"job\":\"integration\",\"group\":\"windows-verify-failures\",\"cache\":\"windows-integration-windows-verify-failures\"},{\"os\":\"windows-x64\",\"runner\":\"windows-latest\",\"job\":\"integration\",\"group\":\"windows-remote\",\"cache\":\"windows-integration-windows-remote\"},{\"os\":\"windows-x64\",\"runner\":\"windows-latest\",\"job\":\"integration\",\"group\":\"windows-extensions\",\"cache\":\"windows-integration-windows-extensions\"},{\"os\":\"windows-x64\",\"runner\":\"windows-latest\",\"job\":\"integration\",\"group\":\"windows-clients\",\"cache\":\"windows-integration-windows-clients\"},{\"os\":\"windows-arm64\",\"runner\":\"windows-11-arm\",\"job\":\"unit\",\"group\":\"windows\",\"cache\":\"windows-unit-windows\"},{\"os\":\"windows-arm64\",\"runner\":\"windows-11-arm\",\"job\":\"hygiene\",\"group\":\"windows\",\"cache\":\"windows-hygiene-windows\"},{\"os\":\"windows-arm64\",\"runner\":\"windows-11-arm\",\"job\":\"integration\",\"group\":\"windows\",\"cache\":\"windows-integration-windows\"},{\"os\":\"windows-arm64\",\"runner\":\"windows-11-arm\",\"job\":\"integration\",\"group\":\"windows-publish\",\"cache\":\"windows-integration-windows-publish\"},{\"os\":\"windows-arm64\",\"runner\":\"windows-11-arm\",\"job\":\"integration\",\"group\":\"windows-gateway\",\"cache\":\"windows-integration-windows-gateway\"},{\"os\":\"windows-arm64\",\"runner\":\"windows-11-arm\",\"job\":\"integration\",\"group\":\"windows-workers\",\"cache\":\"windows-integration-windows-workers\"},{\"os\":\"windows-arm64\",\"runner\":\"windows-11-arm\",\"job\":\"integration\",\"group\":\"windows-verify\",\"cache\":\"windows-integration-windows-verify\"},{\"os\":\"windows-arm64\",\"runner\":\"windows-11-arm\",\"job\":\"integration\",\"group\":\"windows-verify-failures\",\"cache\":\"windows-integration-windows-verify-failures\"},{\"os\":\"windows-arm64\",\"runner\":\"windows-11-arm\",\"job\":\"integration\",\"group\":\"windows-remote\",\"cache\":\"windows-integration-windows-remote\"},{\"os\":\"windows-arm64\",\"runner\":\"windows-11-arm\",\"job\":\"integration\",\"group\":\"windows-extensions\",\"cache\":\"windows-integration-windows-extensions\"},{\"os\":\"windows-arm64\",\"runner\":\"windows-11-arm\",\"job\":\"integration\",\"group\":\"windows-clients\",\"cache\":\"windows-integration-windows-clients\"}]",
+  "e2e": "[{\"os\":\"linux\",\"runner\":\"ubuntu-latest\",\"browser\":\"chromium\",\"cache\":\"e2e-chromium\"},{\"os\":\"linux\",\"runner\":\"ubuntu-latest\",\"browser\":\"firefox\",\"cache\":\"e2e-firefox\"},{\"os\":\"linux\",\"runner\":\"ubuntu-latest\",\"browser\":\"webkit\",\"cache\":\"e2e-webkit\"},{\"os\":\"macos\",\"runner\":\"macos-latest\",\"browser\":\"chromium\",\"cache\":\"e2e-chromium\"},{\"os\":\"macos\",\"runner\":\"macos-latest\",\"browser\":\"firefox\",\"cache\":\"e2e-firefox\"},{\"os\":\"macos\",\"runner\":\"macos-latest\",\"browser\":\"webkit\",\"cache\":\"e2e-webkit\"},{\"os\":\"windows-x64\",\"runner\":\"windows-latest\",\"browser\":\"chromium\",\"cache\":\"e2e-chromium\"},{\"os\":\"windows-x64\",\"runner\":\"windows-latest\",\"browser\":\"firefox\",\"shard\":\"1/2\",\"part\":\"1of2\",\"cache\":\"e2e-firefox-1of2\"},{\"os\":\"windows-x64\",\"runner\":\"windows-latest\",\"browser\":\"firefox\",\"shard\":\"2/2\",\"part\":\"2of2\",\"cache\":\"e2e-firefox-2of2\"},{\"os\":\"windows-arm64\",\"runner\":\"windows-11-arm\",\"browser\":\"chromium\",\"shard\":\"1/2\",\"part\":\"1of2\",\"cache\":\"e2e-chromium-1of2\"},{\"os\":\"windows-arm64\",\"runner\":\"windows-11-arm\",\"browser\":\"chromium\",\"shard\":\"2/2\",\"part\":\"2of2\",\"cache\":\"e2e-chromium-2of2\"}]",
+  "rust": "[{\"os\":\"linux\",\"runner\":\"ubuntu-latest\",\"cache\":\"rust\"},{\"os\":\"macos\",\"runner\":\"macos-latest\",\"cache\":\"rust\"},{\"os\":\"windows-x64\",\"runner\":\"windows-latest\",\"cache\":\"rust\"},{\"os\":\"windows-arm64\",\"runner\":\"windows-11-arm\",\"cache\":\"rust\"}]",
+  "conformance": "[{\"os\":\"linux\",\"runner\":\"ubuntu-latest\",\"cache\":\"conformance\"},{\"os\":\"macos\",\"runner\":\"macos-latest\",\"cache\":\"conformance\"},{\"os\":\"windows-x64\",\"runner\":\"windows-latest\",\"cache\":\"conformance\"},{\"os\":\"windows-arm64\",\"runner\":\"windows-11-arm\",\"cache\":\"conformance\"}]",
+  "release": "{\"platforms\":[{\"platform\":\"darwin-arm64\",\"runner\":\"macos-15\"},{\"platform\":\"darwin-x64\",\"runner\":\"macos-15-intel\"},{\"platform\":\"linux-x64\",\"runner\":\"ubuntu-24.04\"},{\"platform\":\"linux-arm64\",\"runner\":\"ubuntu-24.04-arm\"},{\"platform\":\"win32-x64\",\"runner\":\"windows-2025\"},{\"platform\":\"win32-arm64\",\"runner\":\"windows-11-arm\"}],\"npmSmoke\":[{\"platform\":\"linux-x64\",\"runner\":\"ubuntu-24.04\"},{\"platform\":\"darwin-arm64\",\"runner\":\"macos-15\"},{\"platform\":\"win32-x64\",\"runner\":\"windows-2025\"},{\"platform\":\"win32-arm64\",\"runner\":\"windows-11-arm\"}],\"linux\":\"ubuntu-latest\",\"reason\":\"every platform: this run checks everything\"}"
+ },
+ "jobs": [
+  {
+   "id": 134971833315,
+   "name": "plan",
+   "status": "completed",
+   "conclusion": "success",
+   "runner_name": "GitHub Actions 1000038937",
+   "steps": [
+    {},
+    {},
+    {},
+    {},
+    {},
+    {},
+    {},
+    {},
+    {},
+    {},
+    {},
+    {},
+    {}
+   ],
+   "completed_at": "2026-11-18T16:54:40Z"
+  },
+  {
+   "id": 134972216110,
+   "name": "unit (linux)",
+   "status": "completed",
+   "conclusion": "success",
+   "runner_name": "GitHub Actions 1000038987",
+   "steps": [
+    {},
+    {},
+    {},
+    {},
+    {},
+    {},
+    {},
+    {},
+    {},
+    {},
+    {},
+    {}
+   ],
+   "completed_at": "2026-11-18T17:12:05Z"
+  },
+  {
+   "id": 134972216175,
+   "name": "hygiene (linux)",
+   "status": "completed",
+   "conclusion": "success",
+   "runner_name": "GitHub Actions 1000038968",
+   "steps": [
+    {},
+    {},
+    {},
+    {},
+    {},
+    {},
+    {},
+    {}
+   ],
+   "completed_at": "2026-11-18T17:00:12Z"
+  },
+  {
+   "id": 134972216205,
+   "name": "conformance (linux)",
+   "status": "completed",
+   "conclusion": "success",
+   "runner_name": "GitHub Actions 1000038992",
+   "steps": [
+    {},
+    {},
+    {},
+    {},
+    {},
+    {},
+    {},
+    {},
+    {},
+    {},
+    {},
+    {}
+   ],
+   "completed_at": "2026-11-18T17:13:06Z"
+  },
+  {
+   "id": 134972216302,
+   "name": "conformance (windows-arm64)",
+   "status": "completed",
+   "conclusion": "success",
+   "runner_name": "GitHub Actions 1000038990",
+   "steps": [
+    {},
+    {},
+    {},
+    {},
+    {},
+    {},
+    {},
+    {},
+    {},
+    {},
+    {},
+    {}
+   ],
+   "completed_at": "2026-11-18T17:27:25Z"
+  },
+  {
+   "id": 134972216313,
+   "name": "conformance (macos)",
+   "status": "completed",
+   "conclusion": "success",
+   "runner_name": "GitHub Actions 1000038981",
+   "steps": [
+    {},
+    {},
+    {},
+    {},
+    {},
+    {},
+    {},
+    {},
+    {},
+    {},
+    {},
+    {}
+   ],
+   "completed_at": "2026-11-18T17:13:52Z"
+  },
+  {
+   "id": 134972216338,
+   "name": "static (format-lint, types, build, boundaries, api, licenses, docs)",
+   "status": "completed",
+   "conclusion": "success",
+   "runner_name": "GitHub Actions 1000038978",
+   "steps": [
+    {},
+    {},
+    {},
+    {},
+    {},
+    {},
+    {},
+    {},
+    {},
+    {}
+   ],
+   "completed_at": "2026-11-18T17:07:08Z"
+  },
+  {
+   "id": 134972216347,
+   "name": "conformance (windows-x64)",
+   "status": "completed",
+   "conclusion": "success",
+   "runner_name": "GitHub Actions 1000038980",
+   "steps": [
+    {},
+    {},
+    {},
+    {},
+    {},
+    {},
+    {},
+    {},
+    {},
+    {},
+    {},
+    {}
+   ],
+   "completed_at": "2026-11-18T17:16:16Z"
+  },
+  {
+   "id": 134972216407,
+   "name": "rust (linux)",
+   "status": "completed",
+   "conclusion": "success",
+   "runner_name": "GitHub Actions 1000038986",
+   "steps": [
+    {},
+    {},
+    {},
+    {},
+    {},
+    {},
+    {},
+    {},
+    {},
+    {},
+    {},
+    {},
+    {}
+   ],
+   "completed_at": "2026-11-18T17:08:23Z"
+  },
+  {
+   "id": 134972216431,
+   "name": "rust (windows-x64)",
+   "status": "completed",
+   "conclusion": "success",
+   "runner_name": "GitHub Actions 1000038970",
+   "steps": [
+    {},
+    {},
+    {},
+    {},
+    {},
+    {},
+    {},
+    {},
+    {},
+    {},
+    {},
+    {},
+    {}
+   ],
+   "completed_at": "2026-11-18T17:04:22Z"
+  },
+  {
+   "id": 134972216466,
+   "name": "rust (windows-arm64)",
+   "status": "completed",
+   "conclusion": "success",
+   "runner_name": "GitHub Actions 1000038973",
+   "steps": [
+    {},
+    {},
+    {},
+    {},
+    {},
+    {},
+    {},
+    {},
+    {},
+    {},
+    {},
+    {},
+    {}
+   ],
+   "completed_at": "2026-11-18T17:09:37Z"
+  },
+  {
+   "id": 134972216738,
+   "name": "rust (macos)",
+   "status": "completed",
+   "conclusion": "cancelled",
+   "runner_name": "",
+   "steps": [],
+   "completed_at": "2026-11-18T18:35:36Z"
+  },
+  {
+   "id": 134972216812,
+   "name": "release / bundle (linux-x64)",
+   "status": "completed",
+   "conclusion": "success",
+   "runner_name": "GitHub Actions 1000038976",
+   "steps": [
+    {},
+    {},
+    {},
+    {},
+    {},
+    {},
+    {},
+    {},
+    {},
+    {},
+    {},
+    {}
+   ],
+   "completed_at": "2026-11-18T17:04:46Z"
+  },
+  {
+   "id": 134972216852,
+   "name": "release / bundle (win32-x64)",
+   "status": "completed",
+   "conclusion": "success",
+   "runner_name": "GitHub Actions 1000038985",
+   "steps": [
+    {},
+    {},
+    {},
+    {},
+    {},
+    {},
+    {},
+    {},
+    {},
+    {},
+    {},
+    {}
+   ],
+   "completed_at": "2026-11-18T17:09:17Z"
+  },
+  {
+   "id": 134972216853,
+   "name": "e2e (macos, chromium)",
+   "status": "completed",
+   "conclusion": "success",
+   "runner_name": "GitHub Actions 1000039151",
+   "steps": [
+    {},
+    {},
+    {},
+    {},
+    {},
+    {},
+    {},
+    {},
+    {},
+    {},
+    {},
+    {},
+    {}
+   ],
+   "completed_at": "2026-11-18T18:35:31Z"
+  },
+  {
+   "id": 134972216860,
+   "name": "e2e (linux, firefox)",
+   "status": "completed",
+   "conclusion": "success",
+   "runner_name": "GitHub Actions 1000039027",
+   "steps": [
+    {},
+    {},
+    {},
+    {},
+    {},
+    {},
+    {},
+    {},
+    {},
+    {},
+    {},
+    {},
+    {}
+   ],
+   "completed_at": "2026-11-18T17:27:58Z"
+  },
+  {
+   "id": 134972216865,
+   "name": "e2e (macos, webkit)",
+   "status": "completed",
+   "conclusion": "cancelled",
+   "runner_name": "",
+   "steps": [],
+   "completed_at": "2026-11-18T18:30:36Z"
+  },
+  {
+   "id": 134972216886,
+   "name": "release / bundle (linux-arm64)",
+   "status": "completed",
+   "conclusion": "success",
+   "runner_name": "GitHub Actions 1000038958",
+   "steps": [
+    {},
+    {},
+    {},
+    {},
+    {},
+    {},
+    {},
+    {},
+    {},
+    {},
+    {},
+    {}
+   ],
+   "completed_at": "2026-11-18T16:57:44Z"
+  },
+  {
+   "id": 134972216906,
+   "name": "e2e (linux, chromium)",
+   "status": "completed",
+   "conclusion": "success",
+   "runner_name": "GitHub Actions 1000038994",
+   "steps": [
+    {},
+    {},
+    {},
+    {},
+    {},
+    {},
+    {},
+    {},
+    {},
+    {},
+    {},
+    {},
+    {}
+   ],
+   "completed_at": "2026-11-18T17:16:46Z"
+  },
+  {
+   "id": 134972216914,
+   "name": "integration (macos, verify)",
+   "status": "completed",
+   "conclusion": "cancelled",
+   "runner_name": "",
+   "steps": [],
+   "completed_at": "2026-11-18T18:32:44Z"
+  },
+  {
+   "id": 134972216917,
+   "name": "release / bundle (win32-arm64)",
+   "status": "completed",
+   "conclusion": "success",
+   "runner_name": "GitHub Actions 1000038972",
+   "steps": [
+    {},
+    {},
+    {},
+    {},
+    {},
+    {},
+    {},
+    {},
+    {},
+    {},
+    {},
+    {}
+   ],
+   "completed_at": "2026-11-18T17:10:18Z"
+  },
+  {
+   "id": 134972216931,
+   "name": "e2e (macos, firefox)",
+   "status": "completed",
+   "conclusion": "success",
+   "runner_name": "GitHub Actions 1000039137",
+   "steps": [
+    {},
+    {},
+    {},
+    {},
+    {},
+    {},
+    {},
+    {},
+    {},
+    {},
+    {},
+    {},
+    {}
+   ],
+   "completed_at": "2026-11-18T18:21:05Z"
+  },
+  {
+   "id": 134972216936,
+   "name": "release / bundle (darwin-x64)",
+   "status": "completed",
+   "conclusion": "success",
+   "runner_name": "GitHub Actions 1000038969",
+   "steps": [
+    {},
+    {},
+    {},
+    {},
+    {},
+    {},
+    {},
+    {},
+    {},
+    {},
+    {},
+    {}
+   ],
+   "completed_at": "2026-11-18T17:08:39Z"
+  },
+  {
+   "id": 134972216950,
+   "name": "e2e (linux, webkit)",
+   "status": "completed",
+   "conclusion": "success",
+   "runner_name": "GitHub Actions 1000039004",
+   "steps": [
+    {},
+    {},
+    {},
+    {},
+    {},
+    {},
+    {},
+    {},
+    {},
+    {},
+    {},
+    {},
+    {}
+   ],
+   "completed_at": "2026-11-18T17:21:04Z"
+  },
+  {
+   "id": 134972216971,
+   "name": "integration (macos, remote-access)",
+   "status": "completed",
+   "conclusion": "success",
+   "runner_name": "GitHub Actions 1000039041",
+   "steps": [
+    {},
+    {},
+    {},
+    {},
+    {},
+    {},
+    {},
+    {},
+    {},
+    {},
+    {}
+   ],
+   "completed_at": "2026-11-18T17:31:16Z"
+  },
+  {
+   "id": 134972216984,
+   "name": "integration (linux, core)",
+   "status": "completed",
+   "conclusion": "success",
+   "runner_name": "GitHub Actions 1000039044",
+   "steps": [
+    {},
+    {},
+    {},
+    {},
+    {},
+    {},
+    {},
+    {},
+    {},
+    {},
+    {}
+   ],
+   "completed_at": "2026-11-18T17:32:17Z"
+  },
+  {
+   "id": 134972216994,
+   "name": "e2e (windows-x64, firefox, 1/2)",
+   "status": "completed",
+   "conclusion": "success",
+   "runner_name": "GitHub Actions 1000039122",
+   "steps": [
+    {},
+    {},
+    {},
+    {},
+    {},
+    {},
+    {},
+    {},
+    {},
+    {},
+    {},
+    {},
+    {},
+    {}
+   ],
+   "completed_at": "2026-11-18T18:08:01Z"
+  },
+  {
+   "id": 134972217025,
+   "name": "integration (linux, verify-failures)",
+   "status": "completed",
+   "conclusion": "success",
+   "runner_name": "GitHub Actions 1000039100",
+   "steps": [
+    {},
+    {},
+    {},
+    {},
+    {},
+    {},
+    {},
+    {},
+    {},
+    {},
+    {}
+   ],
+   "completed_at": "2026-11-18T17:57:16Z"
+  },
+  {
+   "id": 134972217053,
+   "name": "integration (macos, extensions)",
+   "status": "completed",
+   "conclusion": "success",
+   "runner_name": "GitHub Actions 1000039142",
+   "steps": [
+    {},
+    {},
+    {},
+    {},
+    {},
+    {},
+    {},
+    {},
+    {},
+    {},
+    {}
+   ],
+   "completed_at": "2026-11-18T18:17:19Z"
+  },
+  {
+   "id": 134972217057,
+   "name": "release / bundle (darwin-arm64)",
+   "status": "completed",
+   "conclusion": "cancelled",
+   "runner_name": "",
+   "steps": [],
+   "completed_at": "2026-11-18T17:13:54Z"
+  },
+  {
+   "id": 134972217063,
+   "name": "e2e (windows-arm64, chromium, 1/2)",
+   "status": "completed",
+   "conclusion": "success",
+   "runner_name": "GitHub Actions 1000039087",
+   "steps": [
+    {},
+    {},
+    {},
+    {},
+    {},
+    {},
+    {},
+    {},
+    {},
+    {},
+    {},
+    {},
+    {},
+    {}
+   ],
+   "completed_at": "2026-11-18T17:57:42Z"
+  },
+  {
+   "id": 134972217089,
+   "name": "integration (linux, verify)",
+   "status": "completed",
+   "conclusion": "success",
+   "runner_name": "GitHub Actions 1000039068",
+   "steps": [
+    {},
+    {},
+    {},
+    {},
+    {},
+    {},
+    {},
+    {},
+    {},
+    {},
+    {}
+   ],
+   "completed_at": "2026-11-18T17:39:21Z"
+  },
+  {
+   "id": 134972217104,
+   "name": "integration (linux, remote-access)",
+   "status": "completed",
+   "conclusion": "success",
+   "runner_name": "GitHub Actions 1000038995",
+   "steps": [
+    {},
+    {},
+    {},
+    {},
+    {},
+    {},
+    {},
+    {},
+    {},
+    {},
+    {}
+   ],
+   "completed_at": "2026-11-18T17:15:19Z"
+  },
+  {
+   "id": 134972217116,
+   "name": "integration (linux, remote)",
+   "status": "completed",
+   "conclusion": "success",
+   "runner_name": "GitHub Actions 1000039107",
+   "steps": [
+    {},
+    {},
+    {},
+    {},
+    {},
+    {},
+    {},
+    {},
+    {},
+    {},
+    {}
+   ],
+   "completed_at": "2026-11-18T17:56:04Z"
+  },
+  {
+   "id": 134972217121,
+   "name": "integration (macos, remote)",
+   "status": "completed",
+   "conclusion": "success",
+   "runner_name": "GitHub Actions 1000039161",
+   "steps": [
+    {},
+    {},
+    {},
+    {},
+    {},
+    {},
+    {},
+    {},
+    {},
+    {},
+    {}
+   ],
+   "completed_at": "2026-11-18T18:40:46Z"
+  },
+  {
+   "id": 134972217123,
+   "name": "hygiene (windows-x64)",
+   "status": "completed",
+   "conclusion": "success",
+   "runner_name": "GitHub Actions 1000038997",
+   "steps": [
+    {},
+    {},
+    {},
+    {},
+    {},
+    {},
+    {},
+    {},
+    {},
+    {},
+    {},
+    {},
+    {},
+    {},
+    {},
+    {}
+   ],
+   "completed_at": "2026-11-18T17:12:16Z"
+  },
+  {
+   "id": 134972217124,
+   "name": "integration (windows-x64, windows-verify)",
+   "status": "completed",
+   "conclusion": "success",
+   "runner_name": "GitHub Actions 1000039089",
+   "steps": [
+    {},
+    {},
+    {},
+    {},
+    {},
+    {},
+    {},
+    {},
+    {},
+    {},
+    {},
+    {},
+    {},
+    {},
+    {},
+    {}
+   ],
+   "completed_at": "2026-11-18T17:49:50Z"
+  },
+  {
+   "id": 134972217127,
+   "name": "integration (windows-x64, windows-extensions)",
+   "status": "completed",
+   "conclusion": "success",
+   "runner_name": "GitHub Actions 1000039057",
+   "steps": [
+    {},
+    {},
+    {},
+    {},
+    {},
+    {},
+    {},
+    {},
+    {},
+    {},
+    {},
+    {},
+    {},
+    {},
+    {},
+    {}
+   ],
+   "completed_at": "2026-11-18T17:35:49Z"
+  },
+  {
+   "id": 134972217135,
+   "name": "integration (windows-x64, windows-workers)",
+   "status": "completed",
+   "conclusion": "success",
+   "runner_name": "GitHub Actions 1000039114",
+   "steps": [
+    {},
+    {},
+    {},
+    {},
+    {},
+    {},
+    {},
+    {},
+    {},
+    {},
+    {},
+    {},
+    {},
+    {},
+    {},
+    {}
+   ],
+   "completed_at": "2026-11-18T17:59:00Z"
+  },
+  {
+   "id": 134972217150,
+   "name": "e2e (windows-arm64, chromium, 2/2)",
+   "status": "completed",
+   "conclusion": "success",
+   "runner_name": "GitHub Actions 1000039090",
+   "steps": [
+    {},
+    {},
+    {},
+    {},
+    {},
+    {},
+    {},
+    {},
+    {},
+    {},
+    {},
+    {},
+    {},
+    {}
+   ],
+   "completed_at": "2026-11-18T18:06:49Z"
+  },
+  {
+   "id": 134972217188,
+   "name": "integration (windows-x64, windows)",
+   "status": "completed",
+   "conclusion": "success",
+   "runner_name": "GitHub Actions 1000038975",
+   "steps": [
+    {},
+    {},
+    {},
+    {},
+    {},
+    {},
+    {},
+    {},
+    {},
+    {},
+    {},
+    {},
+    {},
+    {},
+    {},
+    {}
+   ],
+   "completed_at": "2026-11-18T17:11:43Z"
+  },
+  {
+   "id": 134972217204,
+   "name": "integration (macos, verify-failures)",
+   "status": "completed",
+   "conclusion": "cancelled",
+   "runner_name": "",
+   "steps": [],
+   "completed_at": "2026-11-18T18:37:44Z"
+  },
+  {
+   "id": 134972217205,
+   "name": "integration (windows-arm64, windows-publish)",
+   "status": "completed",
+   "conclusion": "success",
+   "runner_name": "GitHub Actions 1000039040",
+   "steps": [
+    {},
+    {},
+    {},
+    {},
+    {},
+    {},
+    {},
+    {},
+    {},
+    {},
+    {},
+    {},
+    {},
+    {},
+    {},
+    {}
+   ],
+   "completed_at": "2026-11-18T17:35:59Z"
+  },
+  {
+   "id": 134972217217,
+   "name": "integration (windows-arm64, windows)",
+   "status": "completed",
+   "conclusion": "success",
+   "runner_name": "GitHub Actions 1000039001",
+   "steps": [
+    {},
+    {},
+    {},
+    {},
+    {},
+    {},
+    {},
+    {},
+    {},
+    {},
+    {},
+    {},
+    {},
+    {},
+    {},
+    {}
+   ],
+   "completed_at": "2026-11-18T17:27:16Z"
+  },
+  {
+   "id": 134972217227,
+   "name": "integration (windows-x64, windows-clients)",
+   "status": "completed",
+   "conclusion": "success",
+   "runner_name": "GitHub Actions 1000039086",
+   "steps": [
+    {},
+    {},
+    {},
+    {},
+    {},
+    {},
+    {},
+    {},
+    {},
+    {},
+    {},
+    {},
+    {},
+    {},
+    {},
+    {}
+   ],
+   "completed_at": "2026-11-18T17:54:45Z"
+  },
+  {
+   "id": 134972217231,
+   "name": "integration (windows-arm64, windows-workers)",
+   "status": "completed",
+   "conclusion": "success",
+   "runner_name": "GitHub Actions 1000039078",
+   "steps": [
+    {},
+    {},
+    {},
+    {},
+    {},
+    {},
+    {},
+    {},
+    {},
+    {},
+    {},
+    {},
+    {},
+    {},
+    {},
+    {}
+   ],
+   "completed_at": "2026-11-18T17:48:07Z"
+  },
+  {
+   "id": 134972217232,
+   "name": "integration (windows-x64, windows-remote)",
+   "status": "completed",
+   "conclusion": "failure",
+   "runner_name": "GitHub Actions 1000039002",
+   "steps": [
+    {},
+    {},
+    {},
+    {},
+    {},
+    {},
+    {},
+    {},
+    {},
+    {},
+    {},
+    {},
+    {},
+    {},
+    {},
+    {}
+   ],
+   "completed_at": "2026-11-18T17:26:25Z"
+  },
+  {
+   "id": 134972217241,
+   "name": "integration (macos, clients)",
+   "status": "completed",
+   "conclusion": "success",
+   "runner_name": "GitHub Actions 1000039098",
+   "steps": [
+    {},
+    {},
+    {},
+    {},
+    {},
+    {},
+    {},
+    {},
+    {},
+    {},
+    {}
+   ],
+   "completed_at": "2026-11-18T17:55:30Z"
+  },
+  {
+   "id": 134972217251,
+   "name": "integration (windows-x64, windows-verify-failures)",
+   "status": "completed",
+   "conclusion": "success",
+   "runner_name": "GitHub Actions 1000039019",
+   "steps": [
+    {},
+    {},
+    {},
+    {},
+    {},
+    {},
+    {},
+    {},
+    {},
+    {},
+    {},
+    {},
+    {},
+    {},
+    {},
+    {}
+   ],
+   "completed_at": "2026-11-18T17:22:39Z"
+  },
+  {
+   "id": 134972217254,
+   "name": "integration (linux, clients)",
+   "status": "completed",
+   "conclusion": "success",
+   "runner_name": "GitHub Actions 1000038982",
+   "steps": [
+    {},
+    {},
+    {},
+    {},
+    {},
+    {},
+    {},
+    {},
+    {},
+    {},
+    {}
+   ],
+   "completed_at": "2026-11-18T17:11:44Z"
+  },
+  {
+   "id": 134972217261,
+   "name": "integration (windows-arm64, windows-gateway)",
+   "status": "completed",
+   "conclusion": "success",
+   "runner_name": "GitHub Actions 1000039067",
+   "steps": [
+    {},
+    {},
+    {},
+    {},
+    {},
+    {},
+    {},
+    {},
+    {},
+    {},
+    {},
+    {},
+    {},
+    {},
+    {},
+    {}
+   ],
+   "completed_at": "2026-11-18T17:46:22Z"
+  },
+  {
+   "id": 134972217272,
+   "name": "integration (windows-arm64, windows-verify)",
+   "status": "completed",
+   "conclusion": "success",
+   "runner_name": "GitHub Actions 1000039030",
+   "steps": [
+    {},
+    {},
+    {},
+    {},
+    {},
+    {},
+    {},
+    {},
+    {},
+    {},
+    {},
+    {},
+    {},
+    {},
+    {},
+    {}
+   ],
+   "completed_at": "2026-11-18T17:37:39Z"
+  },
+  {
+   "id": 134972217279,
+   "name": "integration (windows-x64, windows-publish)",
+   "status": "completed",
+   "conclusion": "success",
+   "runner_name": "GitHub Actions 1000039088",
+   "steps": [
+    {},
+    {},
+    {},
+    {},
+    {},
+    {},
+    {},
+    {},
+    {},
+    {},
+    {},
+    {},
+    {},
+    {},
+    {},
+    {}
+   ],
+   "completed_at": "2026-11-18T17:50:25Z"
+  },
+  {
+   "id": 134972217302,
+   "name": "integration (windows-x64, windows-gateway)",
+   "status": "completed",
+   "conclusion": "success",
+   "runner_name": "GitHub Actions 1000039074",
+   "steps": [
+    {},
+    {},
+    {},
+    {},
+    {},
+    {},
+    {},
+    {},
+    {},
+    {},
+    {},
+    {},
+    {},
+    {},
+    {},
+    {}
+   ],
+   "completed_at": "2026-11-18T17:45:03Z"
+  },
+  {
+   "id": 134972217305,
+   "name": "hygiene (windows-arm64)",
+   "status": "completed",
+   "conclusion": "success",
+   "runner_name": "GitHub Actions 1000039032",
+   "steps": [
+    {},
+    {},
+    {},
+    {},
+    {},
+    {},
+    {},
+    {},
+    {},
+    {},
+    {},
+    {},
+    {},
+    {},
+    {},
+    {}
+   ],
+   "completed_at": "2026-11-18T17:26:53Z"
+  },
+  {
+   "id": 134972217324,
+   "name": "integration (macos, core)",
+   "status": "completed",
+   "conclusion": "success",
+   "runner_name": "GitHub Actions 1000039106",
+   "steps": [
+    {},
+    {},
+    {},
+    {},
+    {},
+    {},
+    {},
+    {},
+    {},
+    {},
+    {}
+   ],
+   "completed_at": "2026-11-18T17:56:33Z"
+  },
+  {
+   "id": 134972217409,
+   "name": "integration (windows-arm64, windows-clients)",
+   "status": "completed",
+   "conclusion": "success",
+   "runner_name": "GitHub Actions 1000039076",
+   "steps": [
+    {},
+    {},
+    {},
+    {},
+    {},
+    {},
+    {},
+    {},
+    {},
+    {},
+    {},
+    {},
+    {},
+    {},
+    {},
+    {}
+   ],
+   "completed_at": "2026-11-18T17:53:12Z"
+  },
+  {
+   "id": 134972217412,
+   "name": "integration (linux, extensions)",
+   "status": "completed",
+   "conclusion": "success",
+   "runner_name": "GitHub Actions 1000039093",
+   "steps": [
+    {},
+    {},
+    {},
+    {},
+    {},
+    {},
+    {},
+    {},
+    {},
+    {},
+    {}
+   ],
+   "completed_at": "2026-11-18T17:49:17Z"
+  },
+  {
+   "id": 134972217425,
+   "name": "unit (windows-x64)",
+   "status": "completed",
+   "conclusion": "success",
+   "runner_name": "GitHub Actions 1000039007",
+   "steps": [
+    {},
+    {},
+    {},
+    {},
+    {},
+    {},
+    {},
+    {},
+    {},
+    {},
+    {},
+    {},
+    {},
+    {},
+    {},
+    {}
+   ],
+   "completed_at": "2026-11-18T17:17:44Z"
+  },
+  {
+   "id": 134972217445,
+   "name": "integration (windows-arm64, windows-verify-failures)",
+   "status": "completed",
+   "conclusion": "success",
+   "runner_name": "GitHub Actions 1000039083",
+   "steps": [
+    {},
+    {},
+    {},
+    {},
+    {},
+    {},
+    {},
+    {},
+    {},
+    {},
+    {},
+    {},
+    {},
+    {},
+    {},
+    {}
+   ],
+   "completed_at": "2026-11-18T17:51:03Z"
+  },
+  {
+   "id": 134972217462,
+   "name": "integration (windows-arm64, windows-extensions)",
+   "status": "completed",
+   "conclusion": "success",
+   "runner_name": "GitHub Actions 1000039105",
+   "steps": [
+    {},
+    {},
+    {},
+    {},
+    {},
+    {},
+    {},
+    {},
+    {},
+    {},
+    {},
+    {},
+    {},
+    {},
+    {},
+    {}
+   ],
+   "completed_at": "2026-11-18T18:01:24Z"
+  },
+  {
+   "id": 134972217495,
+   "name": "integration (windows-arm64, windows-remote)",
+   "status": "completed",
+   "conclusion": "success",
+   "runner_name": "GitHub Actions 1000039115",
+   "steps": [
+    {},
+    {},
+    {},
+    {},
+    {},
+    {},
+    {},
+    {},
+    {},
+    {},
+    {},
+    {},
+    {},
+    {},
+    {},
+    {}
+   ],
+   "completed_at": "2026-11-18T18:12:05Z"
+  },
+  {
+   "id": 134972217498,
+   "name": "e2e (windows-x64, chromium)",
+   "status": "completed",
+   "conclusion": "success",
+   "runner_name": "GitHub Actions 1000039096",
+   "steps": [
+    {},
+    {},
+    {},
+    {},
+    {},
+    {},
+    {},
+    {},
+    {},
+    {},
+    {},
+    {},
+    {},
+    {}
+   ],
+   "completed_at": "2026-11-18T18:01:37Z"
+  },
+  {
+   "id": 134972217642,
+   "name": "e2e (windows-x64, firefox, 2/2)",
+   "status": "completed",
+   "conclusion": "failure",
+   "runner_name": "GitHub Actions 1000039121",
+   "steps": [
+    {},
+    {},
+    {},
+    {},
+    {},
+    {},
+    {},
+    {},
+    {},
+    {},
+    {},
+    {},
+    {},
+    {}
+   ],
+   "completed_at": "2026-11-18T18:07:33Z"
+  },
+  {
+   "id": 134972217671,
+   "name": "unit (windows-arm64)",
+   "status": "completed",
+   "conclusion": "success",
+   "runner_name": "GitHub Actions 1000039108",
+   "steps": [
+    {},
+    {},
+    {},
+    {},
+    {},
+    {},
+    {},
+    {},
+    {},
+    {},
+    {},
+    {},
+    {},
+    {},
+    {},
+    {}
+   ],
+   "completed_at": "2026-11-18T17:57:59Z"
+  },
+  {
+   "id": 134972220981,
+   "name": "dependency review",
+   "status": "completed",
+   "conclusion": "skipped",
+   "runner_name": null,
+   "steps": [],
+   "completed_at": "2026-11-18T16:54:40Z"
+  },
+  {
+   "id": 134985249266,
+   "name": "release / smoke (${{ matrix.platform }}, no Node.js)",
+   "status": "completed",
+   "conclusion": "skipped",
+   "runner_name": null,
+   "steps": [],
+   "completed_at": "2026-11-18T17:13:55Z"
+  },
+  {
+   "id": 134985249819,
+   "name": "release / packages (pins, pack, npm publish --dry-run)",
+   "status": "completed",
+   "conclusion": "skipped",
+   "runner_name": null,
+   "steps": [],
+   "completed_at": "2026-11-18T17:13:55Z"
+  },
+  {
+   "id": 134985249937,
+   "name": "release / image (linux/amd64)",
+   "status": "completed",
+   "conclusion": "skipped",
+   "runner_name": null,
+   "steps": [],
+   "completed_at": "2026-11-18T17:13:55Z"
+  },
+  {
+   "id": 134985250063,
+   "name": "release / npm-smoke (${{ matrix.platform }}, Node.js 22)",
+   "status": "completed",
+   "conclusion": "skipped",
+   "runner_name": null,
+   "steps": [],
+   "completed_at": "2026-11-18T17:13:55Z"
+  },
+  {
+   "id": 134985252223,
+   "name": "release / npm-old-node (Node.js 20)",
+   "status": "completed",
+   "conclusion": "skipped",
+   "runner_name": null,
+   "steps": [],
+   "completed_at": "2026-11-18T17:13:55Z"
+  },
+  {
+   "id": 135042112311,
+   "name": "ci-ok",
+   "status": "completed",
+   "conclusion": "failure",
+   "runner_name": "GitHub Actions 1000039162",
+   "steps": [
+    {},
+    {},
+    {}
+   ],
+   "completed_at": "2026-11-18T18:40:52Z"
+  }
+ ],
+ "annotations": {
+  "134972216738": [
+   {
+    "annotation_level": "failure",
+    "message": "The job was not acquired by Runner of type hosted even after multiple attempts"
+   },
+   {
+    "annotation_level": "notice",
+    "message": "Due to capacity constraints, jobs targeting macOS arm64 runners may experience longer queue times."
+   },
+   {
+    "annotation_level": "notice",
+    "message": "Due to capacity constraints, jobs targeting macOS arm64 runners may experience longer queue times."
+   },
+   {
+    "annotation_level": "notice",
+    "message": "Due to capacity constraints, jobs targeting macOS arm64 runners may experience longer queue times."
+   }
+  ],
+  "134972216865": [
+   {
+    "annotation_level": "failure",
+    "message": "The job was not acquired by Runner of type hosted even after multiple attempts"
+   },
+   {
+    "annotation_level": "notice",
+    "message": "Due to capacity constraints, jobs targeting macOS arm64 runners may experience longer queue times."
+   },
+   {
+    "annotation_level": "notice",
+    "message": "Due to capacity constraints, jobs targeting macOS arm64 runners may experience longer queue times."
+   },
+   {
+    "annotation_level": "notice",
+    "message": "Due to capacity constraints, jobs targeting macOS arm64 runners may experience longer queue times."
+   }
+  ],
+  "134972216914": [
+   {
+    "annotation_level": "failure",
+    "message": "The job was not acquired by Runner of type hosted even after multiple attempts"
+   },
+   {
+    "annotation_level": "notice",
+    "message": "Due to capacity constraints, jobs targeting macOS arm64 runners may experience longer queue times."
+   },
+   {
+    "annotation_level": "notice",
+    "message": "Due to capacity constraints, jobs targeting macOS arm64 runners may experience longer queue times."
+   },
+   {
+    "annotation_level": "notice",
+    "message": "Due to capacity constraints, jobs targeting macOS arm64 runners may experience longer queue times."
+   }
+  ],
+  "134972217057": [
+   {
+    "annotation_level": "failure",
+    "message": "The job was not acquired by Runner of type hosted even after multiple attempts"
+   },
+   {
+    "annotation_level": "notice",
+    "message": "Due to capacity constraints, jobs targeting macOS arm64 runners may experience longer queue times."
+   },
+   {
+    "annotation_level": "notice",
+    "message": "Due to capacity constraints, jobs targeting macOS arm64 runners may experience longer queue times."
+   },
+   {
+    "annotation_level": "notice",
+    "message": "Due to capacity constraints, jobs targeting macOS arm64 runners may experience longer queue times."
+   }
+  ],
+  "134972217204": [
+   {
+    "annotation_level": "failure",
+    "message": "The job was not acquired by Runner of type hosted even after multiple attempts"
+   },
+   {
+    "annotation_level": "notice",
+    "message": "Due to capacity constraints, jobs targeting macOS arm64 runners may experience longer queue times."
+   },
+   {
+    "annotation_level": "notice",
+    "message": "Due to capacity constraints, jobs targeting macOS arm64 runners may experience longer queue times."
+   },
+   {
+    "annotation_level": "notice",
+    "message": "Due to capacity constraints, jobs targeting macOS arm64 runners may experience longer queue times."
+   }
+  ]
+ },
+ "concurrencyCancel": [
+  {
+   "annotation_level": "failure",
+   "message": "Canceling since a higher priority waiting request for ci-120 exists"
+  },
+  {
+   "annotation_level": "notice",
+   "message": "Due to capacity constraints, jobs targeting macOS arm64 runners may experience longer queue times."
+  }
+ ]
+}

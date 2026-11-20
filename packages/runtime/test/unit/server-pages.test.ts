@@ -35,17 +35,41 @@ describe("the server's own pages (D171)", () => {
       at,
       { action: "/oauth/authorize/continue?authorize=a&b", csrf: "c" },
       { name: hostile, trust: "self-named" },
-      hostile,
+      { name: hostile, csrf: hostile, next: hostile },
       "client.example",
       true,
     );
     const device = pages.deviceForm(at, {
       code: hostile,
       message: hostile,
-      signedIn: { name: hostile, csrf: hostile },
+      signedIn: {
+        name: hostile,
+        csrf: hostile,
+        signOut: { name: hostile, csrf: hostile, next: hostile },
+      },
     });
-    const signIn = pages.signIn(at, [{ id: "x", label: hostile }], "/next?a=1&b=2", hostile);
-    for (const page of [allow, device, signIn, pages.problem(at, hostile)]) {
+    const signIn = pages.signIn(at, [{ id: "x", label: hostile }], "/next?a=1&b=2", hostile, {
+      name: hostile,
+      csrf: hostile,
+      next: hostile,
+    });
+    // Signing out (MT-06): the page with its button and the page that says it's done.
+    const signOut = pages.signOut(at, {
+      name: hostile,
+      csrf: hostile,
+      fields: { client_id: hostile, next: hostile },
+      client: { name: hostile, trust: "self-named", back: hostile },
+    });
+    const signedOut = pages.signedOut(at, "/next?a=1&b=2");
+    expect(signedOut).toContain('href="/next?a=1&#38;b=2"');
+    expect(signedOut).not.toMatch(/<script/i);
+    for (const page of [allow, device, signIn, signOut, pages.problem(at, hostile)]) {
+      // Every page that shows who is signed in has its "Sign out", posting to this origin only.
+      if (page !== pages.problem(at, hostile)) {
+        expect(page).toMatch(
+          /<form class="m-signed-in" method="post" action="\/signout">|<form method="post" action="\/signout">/,
+        );
+      }
       expect(page).not.toContain("<img src=x");
       expect(page).not.toMatch(/<script/i);
       // No event handler in any tag: the hostile text lands escaped, as text or inside a quoted

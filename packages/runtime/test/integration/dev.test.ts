@@ -19,6 +19,7 @@ import {
 import { join } from "node:path";
 import { type Browser, chromium } from "playwright";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
+import { SHORT_LIVED_FIRST_PORT, SHORT_LIVED_LAST_PORT } from "../../src/addressing/index.ts";
 import { Browser as Client, openLink, raw } from "../browser-client.ts";
 import { writeDevFixture } from "../dev-fixture.ts";
 import { GatewayHome, ok } from "../gateway-home.ts";
@@ -98,6 +99,12 @@ describe("mostra dev (VR-08)", () => {
       .toBe("HEADING-ONE");
     // A marker the page keeps unless it loads again.
     const handle = page.frames().find((candidate) => candidate !== page.mainFrame());
+    // Both listeners are short-lived ones: above the lease range and below the dynamic ranges, so
+    // a browser on Windows doesn't collide with a connection in TIME_WAIT there (#95).
+    for (const port of [started.port, Number(new URL(handle?.url() ?? "http://x").port)]) {
+      expect(port).toBeGreaterThanOrEqual(SHORT_LIVED_FIRST_PORT);
+      expect(port).toBeLessThanOrEqual(SHORT_LIVED_LAST_PORT);
+    }
     await handle?.evaluate(() => {
       (window as unknown as { marker: number }).marker = 1;
     });

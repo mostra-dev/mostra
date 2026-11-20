@@ -13,6 +13,10 @@
 # checks that every Mostra process ran
 # on the bundle's own Node.js (doctor's platform check names it), not the machine's. On Windows it
 # runs in Git's sh.
+#
+# Every step has a limit of its own (#124), as in smoke.sh: the CLI's `--timeout` for each `mostra`
+# command and deadline.sh's `bounded` for the rest. With `MOSTRA_SMOKE_WORK` set, the work
+# directory's path is written there, so a later step can keep the logs.
 set -eu
 
 here=$(cd "$(dirname "$0")" && pwd)
@@ -21,11 +25,15 @@ archives=$(cd "$2" && pwd)
 bundled=$3
 work=$(mktemp -d "${TMPDIR:-/tmp}/mostra-npm-smoke-XXXXXX")
 mkdir -p "$work/logs" "$work/project" "$work/user"
+[ -z "${MOSTRA_SMOKE_WORK:-}" ] || printf '%s\n' "$work" > "$MOSTRA_SMOKE_WORK"
 say() { printf 'npm-smoke: %s\n' "$*"; }
-die() { printf 'npm-smoke: FAILED: %s\n' "$*" >&2; exit 1; }
+# Capability links in what it prints are redacted (deadline.sh).
+die() { printf 'npm-smoke: FAILED: %s\n' "$*" | redact >&2; exit 1; }
 
 windows=false
 case "$(uname -s)" in MINGW* | MSYS* | CYGWIN*) windows=true ;; esac
+# shellcheck source=deadline.sh
+. "$here/deadline.sh"
 # A path as Mostra's programs take it: a Windows path on Windows, else as it is.
 native() { if $windows; then cygpath -w "$1"; else printf '%s' "$1"; fi; }
 
@@ -49,11 +57,14 @@ say "npm install of the release's tarballs"
 packed=""
 for file in $(find "$tarballs" -name '*.tgz' | sort); do packed="$packed $(native "$file")"; done
 # shellcheck disable=SC2086
-npm install --no-audit --no-fund $packed > "$work/logs/install.log" 2>&1 ||
-  die "npm install failed: $(tail -20 "$work/logs/install.log")"
+bounded 900 "npm install" "$work/logs/install.log" "$work/logs/install.err" \
+  npm install --no-audit --no-fund $packed ||
+  die "npm install failed: $(tail -20 "$work/logs/install.log" "$work/logs/install.err")"
 
 say "create-mostra (installs the pinned bundle from the mirror)"
-./node_modules/.bin/create-mostra smoke --json > "$work/logs/create.json" 2> "$work/logs/create.err" ||
+# It installs the bundle, whose browser fetch has a limit of 15 minutes of its own.
+bounded 960 "create-mostra" "$work/logs/create.json" "$work/logs/create.err" \
+  ./node_modules/.bin/create-mostra smoke --json ||
   die "create-mostra failed: $(cat "$work/logs/create.json" "$work/logs/create.err")"
 grep -q '"ok":true' "$work/logs/create.json" || die "create-mostra said: $(cat "$work/logs/create.json")"
 [ -f smoke/index.tsx ] || die "create-mostra wrote no smoke/index.tsx"
@@ -77,12 +88,12 @@ export default function Page() {
 EOF
 
 say "mostra verify"
-./node_modules/.bin/mostra verify smoke --json > "$work/logs/verify.json" 2> "$work/logs/verify.err" ||
+./node_modules/.bin/mostra verify smoke --json --timeout 10m > "$work/logs/verify.json" 2> "$work/logs/verify.err" ||
   die "verify failed: $(cat "$work/logs/verify.json")"
 grep -q '"status":"pass"' "$work/logs/verify.json" || die "verify didn't pass: $(cat "$work/logs/verify.json")"
 
 say "mostra publish"
-./node_modules/.bin/mostra publish smoke --json > "$work/logs/publish.json" 2> "$work/logs/publish.err" ||
+./node_modules/.bin/mostra publish smoke --json --timeout 5m > "$work/logs/publish.json" 2> "$work/logs/publish.err" ||
   die "publish failed: $(cat "$work/logs/publish.json")"
 grep -q '"version":1' "$work/logs/publish.json" || die "publish said: $(cat "$work/logs/publish.json")"
 
@@ -97,32 +108,32 @@ artifact=$(field result.artifactId < "$work/logs/publish.json")
 link=$(field result.url < "$work/logs/publish.json")
 
 say "a submission through the shell, in the bundle's browser"
-"$bnode" "$(native "$here/submit.mjs")" "$(native "$root")" "$link" "answered through npm" \
-  > "$work/logs/submit.out" 2> "$work/logs/submit.err" ||
+bounded 300 "the submission" "$work/logs/submit.out" "$work/logs/submit.err" \
+  "$bnode" "$(native "$here/submit.mjs")" "$(native "$root")" "$link" "answered through npm" ||
   die "the submission failed: $(cat "$work/logs/submit.out" "$work/logs/submit.err")"
 ./node_modules/.bin/mostra wait "$artifact" --until submitted --timeout 30s --json > "$work/logs/wait.json" 2> "$work/logs/wait.err" ||
   die "wait failed: $(cat "$work/logs/wait.json")"
-./node_modules/.bin/mostra results "$artifact" --json > "$work/logs/results.json" 2> "$work/logs/results.err" ||
+./node_modules/.bin/mostra results "$artifact" --json --timeout 2m > "$work/logs/results.json" 2> "$work/logs/results.err" ||
   die "results failed: $(cat "$work/logs/results.json")"
 [ "$(field result.answers.note < "$work/logs/results.json")" = "answered through npm" ] ||
   die "results don't hold the answer: $(cat "$work/logs/results.json")"
 
 say "mostra mcp from npm with an empty cache: it answers at once and installs the bundle itself"
 mkdir -p "$work/cache-mcp"
-MOSTRA_CACHE_DIR=$(native "$work/cache-mcp") node "$(native "$here/mcp-smoke.mjs")" "$artifact" -- \
-  node "$(native "$work/project/node_modules/@mostra/cli/dist/bin.js")" mcp --embedded \
-  > "$work/logs/mcp.out" 2> "$work/logs/mcp.err" ||
+bounded 960 "mostra mcp" "$work/logs/mcp.out" "$work/logs/mcp.err" \
+  env MOSTRA_CACHE_DIR="$(native "$work/cache-mcp")" node "$(native "$here/mcp-smoke.mjs")" "$artifact" -- \
+  node "$(native "$work/project/node_modules/@mostra/cli/dist/bin.js")" mcp --embedded ||
   die "mostra mcp failed: $(cat "$work/logs/mcp.out"; tail -20 "$work/logs/mcp.err")"
 cat "$work/logs/mcp.out"
 [ -n "$(find "$work/cache-mcp/bundles" -mindepth 2 -maxdepth 2 -name bundle.json)" ] ||
   die "mostra mcp left no bundle in its cache"
 
 say "mostra doctor: the bundle's Node.js runs Mostra"
-./node_modules/.bin/mostra doctor --json > "$work/logs/doctor.json" 2> "$work/logs/doctor.err" || true
+./node_modules/.bin/mostra doctor --json --timeout 2m > "$work/logs/doctor.json" 2> "$work/logs/doctor.err" || true
 grep -q '"name":"bundle","status":"ok"' "$work/logs/doctor.json" ||
   die "doctor reports no runtime bundle: $(cat "$work/logs/doctor.json")"
 grep -q "Node $bundled" "$work/logs/doctor.json" ||
   die "doctor's platform check doesn't name the bundle's Node $bundled: $(cat "$work/logs/doctor.json")"
-./node_modules/.bin/mostra daemon stop --json > /dev/null 2>&1 || true
+./node_modules/.bin/mostra daemon stop --json --timeout 1m > /dev/null 2>&1 || true
 
 say "passed: logs in $work/logs"

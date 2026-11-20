@@ -179,11 +179,22 @@ export interface RemoteServerConfig {
   readonly homes?: { readonly idleCloseMinutes?: number | undefined } | undefined;
   readonly framing?: { readonly frameAncestors: "'none'" } | undefined;
   readonly operator?: string | undefined;
+  /**
+   * How each chat host shows pages and what a quota message there may say (D160), by the host
+   * name its OAuth client redirects to (`claude.ai`); the operator's `policy.chatHost` answers
+   * first.
+   */
   readonly chatHosts?: Record<string, unknown> | undefined;
   /** The operator's own clients, named as the server's own on the consent page (MT-05). */
   readonly operatorClients?: OperatorClient[] | undefined;
   /** How the server's own pages look and name themselves (D171). */
   readonly appearance?: AppearanceConfig | undefined;
+  /**
+   * The operator's metering (MT-06): how long a window of counters lasts, in seconds. A length
+   * that divides an hour, at most 3,600, 60 by default; windows start on its multiples since the
+   * epoch.
+   */
+  readonly metering?: { readonly windowSeconds?: number | undefined } | undefined;
 }
 
 /** The schema of {@link RemoteServerConfig}. */
@@ -247,7 +258,21 @@ const Config: z.ZodType<RemoteServerConfig> & { readonly shape: Record<string, u
     homes: z.strictObject({ idleCloseMinutes: z.number().positive().optional() }).optional(),
     framing: z.strictObject({ frameAncestors: z.literal("'none'") }).optional(),
     operator: z.string().optional(),
+    // Read as openly as before (D32): `chat-hosts.ts` uses the entries it can and logs the rest.
     chatHosts: z.record(z.string(), z.unknown()).optional(),
+    metering: z
+      .strictObject({
+        windowSeconds: z
+          .int()
+          .min(60)
+          .max(3_600)
+          .refine((seconds) => seconds % 60 === 0 && 3_600 % seconds === 0, {
+            message:
+              "must be whole minutes that divide an hour (60, 120, 180, 240, 300, 360, 600, 720, 900, 1200, 1800 or 3600)",
+          })
+          .optional(),
+      })
+      .optional(),
     operatorClients: z
       .array(z.strictObject({ clientId: MetadataClientId, name: PageName }))
       .min(1)

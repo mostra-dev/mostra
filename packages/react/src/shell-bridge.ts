@@ -21,6 +21,7 @@ import {
   uiOpenLink,
   type Viewer,
 } from "@mostra/protocol";
+import { inlineOpenLink } from "./runtime/inline-sink.ts";
 
 /**
  * The version this page's build belongs to: its `<meta name="mostra-version">`, which Mostra's
@@ -96,8 +97,16 @@ export function listenShell(listener: ShellListener): () => void {
 export function connectShell(): Promise<ShellConnection | undefined> {
   connecting ??= (async () => {
     if (typeof window === "undefined" || window.parent === window) return undefined;
+    // A static export and an MCP App have no shell: their frame's host isn't Mostra's, and asking
+    // for a session would only meet its policy (D111, D175).
+    const target = document
+      .querySelector('meta[name="mostra-target"]')
+      ?.getAttribute("content")
+      ?.trim();
+    if (target === "static" || target === "mcp-app") return undefined;
     let session: FrameSession;
     try {
+      bootMark("session-asked");
       const response = await fetch("/_mostra/session", {
         credentials: "same-origin",
         cache: "no-store",
@@ -105,6 +114,7 @@ export function connectShell(): Promise<ShellConnection | undefined> {
       });
       if (!response.ok) return undefined;
       session = (await response.json()) as FrameSession;
+      bootMark("session-read");
     } catch {
       return undefined;
     }
@@ -128,6 +138,7 @@ export function connectShell(): Promise<ShellConnection | undefined> {
     });
     let host: UiInitializeResult;
     try {
+      bootMark("initialize-sent");
       host = await bridge.call(
         uiInitialize,
         {
@@ -142,6 +153,7 @@ export function connectShell(): Promise<ShellConnection | undefined> {
       bridge.close();
       throw error;
     }
+    bootMark("initialized");
     bridge.notify(uiInitialized, {});
     return {
       shellOrigin,
@@ -199,6 +211,9 @@ export function reportReady(): void {
  * when the URL was handed to the browser.
  */
 export async function openLink(url: string): Promise<boolean> {
+  // Inline in an MCP Apps host, the host opens it (MCP Apps' own `ui/open-link`, D175).
+  const inline = inlineOpenLink();
+  if (inline !== undefined) return inline(url);
   const connection = await connectShell();
   if (connection) {
     try {
@@ -217,4 +232,20 @@ export async function openLink(url: string): Promise<boolean> {
   if (!OPEN_LINK_SCHEMES.includes(parsed.protocol)) return false;
   window.open(parsed.href, "_blank", "noopener,noreferrer");
   return true;
+}
+
+/**
+ * The client runtime's start, step by step, in the browser's performance timeline:
+ * `mostra:client:<step>` marks (its session asked for and read, `ui/initialize` sent and
+ * answered, the journal opening and open, the store started). A person's tools and Mostra's tests
+ * read them (`performance.getEntriesByType("mark")`), so a page that stalls names the step it
+ * stalled after (#95: in Firefox on Windows a frame once read its session and sent nothing more).
+ * Nothing is shown or sent.
+ */
+export function bootMark(step: string): void {
+  try {
+    globalThis.performance?.mark(`mostra:client:${step}`);
+  } catch {
+    // A browser without the User Timing API: nothing to mark.
+  }
 }

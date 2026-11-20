@@ -49,30 +49,37 @@ const REMOTE_ACCESS = [
   "test/integration/operator.test.ts",
   "test/integration/oauth.test.ts",
   "test/integration/remote-mcp.test.ts",
+  "test/integration/remote-mcp-apps.test.ts",
   "test/integration/signin.test.ts",
   "test/integration/hosted-rules.test.ts",
   "test/integration/anonymous-volume.test.ts",
   "test/integration/remote-mcp-conformance.test.ts",
   "test/integration/server-pages.test.ts",
+  "test/integration/signout.test.ts",
   SIGNIN_FACTS,
   OPERATOR_RELAY,
 ];
 const REMOTE = [...REMOTE_HOSTING, ...REMOTE_ACCESS];
 // Plugins and source packs (WP-16): real installs from a local registry, plugin children and
 // local registry servers, a group of their own, since `core` has no room for them.
-const EXTENSIONS = ["test/integration/plugins.test.ts", "test/integration/packs.test.ts"];
-// Dependency installs (D95) are built the same way (a real daemon, a real pnpm install child and a
-// local registry) and were `core`'s largest suite, which ran at its 10-minute deadline on slow
-// macOS runners (#197). On macOS and Linux they join the plugins and packs; Windows keeps them in
-// its `windows` group, which partitions the suites its own way.
-const DEPS = "test/integration/deps.test.ts";
-const REGISTRY_INSTALLS = [...EXTENSIONS, DEPS];
+const EXTENSIONS = [
+  "test/integration/plugins.test.ts",
+  "test/integration/packs.test.ts",
+  // WP-17: the app channel and the MCP App exporter, a bundled plugin (D175).
+  "test/integration/mcp-apps.test.ts",
+];
+// Suites `core` has no room for on macOS and Linux, which `extensions` runs there (REPO_STANDARDS
+// §6: a group near its deadline is rebalanced). macOS `core` reached its 10 minutes on `main` (10 min
+// 7 s and 10 min 27 s in MT-05's merge queue, 44230190769 and 44224848051) and ran past it on WP-17's
+// `ci:full` run (44270632827), while `extensions` takes about 4 minutes. The dependency suite installs
+// as the plugin and pack suites do. Windows keeps it in `windows`, so its partition is unchanged.
+const CORE_OVERFLOW = ["test/integration/deps.test.ts"];
 export const INTEGRATION_GROUPS: Record<string, { include: string[]; exclude: string[] }> = {
   core: {
     include: ["test/integration/**/*.test.ts"],
-    exclude: [VERIFY_SUITES, DEV, ...FAULTS, ...REMOTE, ...REGISTRY_INSTALLS],
+    exclude: [VERIFY_SUITES, DEV, ...FAULTS, ...REMOTE, ...EXTENSIONS, ...CORE_OVERFLOW],
   },
-  extensions: { include: REGISTRY_INSTALLS, exclude: [] },
+  extensions: { include: [...EXTENSIONS, ...CORE_OVERFLOW], exclude: [] },
   remote: { include: REMOTE_HOSTING, exclude: [] },
   "remote-access": { include: REMOTE_ACCESS, exclude: [] },
   verify: { include: [VERIFY_SUITES, DEV], exclude: [VERIFY_FAILURES] },
@@ -88,7 +95,7 @@ export const INTEGRATION_GROUPS: Record<string, { include: string[]; exclude: st
       "test/integration/platform.test.ts",
       "test/integration/reaping.test.ts",
       "test/integration/processes.test.ts",
-      DEPS,
+      "test/integration/deps.test.ts",
       "test/integration/windows.test.ts",
       "test/integration/heartbeat.test.ts",
     ],

@@ -11,6 +11,8 @@ import type { AddressInfo } from "node:net";
 import { join } from "node:path";
 import { ArtifactId } from "@mostra/protocol";
 import { expect, it } from "vitest";
+import { listenShortLived } from "../../src/addressing/index.ts";
+import { silentLog } from "../../src/log.ts";
 import {
   connectTo,
   initializeParams,
@@ -54,7 +56,8 @@ it("keeps a secret server code read during verify out of the verdict and every f
     seen.push(new URL(request.url ?? "/", "http://sink").searchParams.get("v") ?? "");
     response.end();
   });
-  await new Promise<void>((done) => sink.listen(0, "127.0.0.1", done));
+  // Verify's Chromium reaches it: away from the ports it collides on on Windows (#95).
+  await listenShortLived(sink, "127.0.0.1", silentLog);
   const sinkUrl = `http://127.0.0.1:${(sink.address() as AddressInfo).port}/seen`;
   const home = verifiedHome();
   const daemon = await startDaemon(home);

@@ -78,6 +78,9 @@ the bundle's entry point (D85); it never runs artifact code (RT-02).
   applies `@mostra/protocol`'s `checkRequest` (exact Host, request target and headers, exact
   Origin, JSON content type, CSRF), then the rate limit, the origin-bound session and the scope,
   before any handler. Add a route by declaring it there, never by mounting a handler of its own.
+  The app channel (`gateway/app.ts`, D175 item 4) runs those same specs for an inline page: its
+  `app` session is presented only there and never by a browser, and only Host, Origin and CSRF,
+  which guard a browser's ambient cookie, are left out.
   Unbuilt routes answer 501 behind the same checks, so a later package attaches a handler and
   repeats the scope test.
 - **The ledger holds no capability secret.** Tokens, session cookies and CSRF tokens are stored
@@ -208,7 +211,8 @@ the bundle's entry point (D85); it never runs artifact code (RT-02).
 - **verify never touches the home, and publish never skips it (D41, D138).** A verify run serves
   its build from a sandbox (`verify/sandbox.ts`): a scratch ledger in `cache/verify/runs/<run>/`
   with the real interaction, actions, live and gateway code, its own worker pool and two listeners
-  on ports the operating system assigns, reached only with links minted there. Nothing reaches
+  on free ports between the lease range and the dynamic ranges (`addressing`'s short-lived ports,
+  32768 to 49151, D178), reached only with links minted there. Nothing reaches
   the home's drafts, state, events, hosts or deliveries, and the human-facing gateway serves
   published versions only. In the sandbox, a function that didn't opt into `dryRun()` is refused
   before anything is recorded (`MOSTRA_VERIFY_ACTION_SKIPPED`), and documents get the verify
@@ -219,8 +223,8 @@ the bundle's entry point (D85); it never runs artifact code (RT-02).
   regression baseline. Playwright, axe and the type checker run in children (`@mostra/verify`'s
   runner, `typecheck`), never in the supervisor (RT-02's audit covers verify).
 - **A dev preview is never a viewer's path (VR-03, VR-08, D140 item 12).** `mostra dev` serves
-  unpublished source only from its session's sandbox: listeners on loopback ports the operating
-  system picks, a link minted in the session's scratch ledger, the gateway's route table and
+  unpublished source only from its session's sandbox: listeners on short-lived loopback ports (as
+  verify's), a link minted in the session's scratch ledger, the gateway's route table and
   checks in front of the dev server (`gateway/dev.ts` proxies files and the HMR WebSocket, without
   Mostra's cookies), and a dev server that answers only requests carrying the session's secret.
   The home's gateway never proxies to it, no home link opens it, and a non-loopback `--bind`
@@ -245,7 +249,18 @@ the bundle's entry point (D85); it never runs artifact code (RT-02).
   closes, and in between only where a mark moved (a conditional upsert), so a backup replicator
   has nothing to ship (`server/data.ts`, MT-05). The consent page names a metadata-document client as the server's own
   only when `operatorClients` names it, and asks its consent once per account as for any other
-  (`server/oauth-clients.ts`, MT-05).
+  (`server/oauth-clients.ts`, MT-05). A person signs out of the API origin by a `POST /signout`
+  only its own pages (their `Origin` and the session's CSRF token) or an operator's own app (its
+  pages' exact `Origin`) can send, never by a `GET`, and goes back only to an address the client
+  registered; a hosted page's sign-out puts its session back on the route's anonymous viewer and
+  ends the account's frame sessions on that link, a frame ticket is good only while its shell
+  session acts as the viewer it was minted for, and a frame entering as another viewer ends the
+  session it held (`gateway/capabilities.ts`, `server/authorize.ts`,
+  `server/hosted-pages.ts`, MT-06). Expired sign-ins are removed by a sweep on its own timer, never
+  inside a request (`server/sweep.ts`), and metering windows start on multiples of the operator's
+  `metering.windowSeconds` (`server/metering.ts`, MT-06). Every path of the API origin a page draws
+  or a form continues at passes `localPath` (`@mostra/themes`), which refuses one a browser would
+  read as another origin.
 - **The shell and every artifact are separate origins (SH-01).** The shell page may be framed by
   nothing and sends `Cross-Origin-Opener-Policy: same-origin`, so no popup of a frame can navigate
   it; an artifact document may be framed only by its shell (D98 items 4 and 7).
@@ -268,7 +283,7 @@ one `index.ts`, and imports between them go only through it (REPO_STANDARDS §3)
 | `registry` | Artifacts, versions and source bindings in the ledger, identity and ID conflicts, the sealed version store, recovery at start |
 | `interaction` | Viewers and views, with each view's controls (D108); documents, fields and mutations with per-field compare-and-set (`fields.ts`); the policy in force (`policy.ts`); the submit transaction with its channel check and orphans (`submissions.ts`); the trusted Choose, carry-over and follow; signals; the outbox and draft mirrors (`outbox.ts`); events with filters, compaction and subscriptions; `wait`; results as JSON and Markdown; the `state/*`, `results/get`, `results/list`, `wait` and `events/*` methods; the roster, its rounds, status and the visibility projection (`roster.ts`, D168); presence and the roster's ephemeral pushes (`team.ts`) |
 | `addressing` | The bind (`--bind`, `--url-host`), origins and exact Host allowlists, port leases in `port_lease`, binding a lease and leasing again when its port is taken, faces' loopback listeners (leased under `face`, or ephemeral), the frame-session mode for an origin pair |
-| `gateway` | Capability tokens, links, sessions and frame tickets (`capabilities.ts`); the channel policy a ticket resolves (`controls.ts`); the browser protocol's `fields`, `submit`, `signal`, `events` and `events/poll` on artifact origins, and the shell's trusted `submit`, `review/choose`, `follow`, `carry` and its own stream (`browser.ts`), for every revision served; the route table and its checks (`routes.ts`); the HTTP listeners, with the 1 MiB header limit and the cookie-clearing 431 page (`listener.ts`); static files (`serve.ts`); version integrity for served files (`integrity.ts`); the shell and artifact routes, faces and hosts' external bases (`externalBase`, `external_base`), worker-mode entry, stream tickets, and `view/url`, `view/rotate`, `view/revoke` (`index.ts`); the worker-mode bootstrap page and service worker (`worker.ts`); Tailscale's identity headers (`identity.ts`); `roster/*`, whose personal links it mints in the roster's transaction, and the `respondents` and `presence` routes (`team.ts`, D168) |
+| `gateway` | Capability tokens, links, sessions and frame tickets (`capabilities.ts`); the channel policy a ticket resolves (`controls.ts`); the browser protocol's `fields`, `submit`, `signal`, `events` and `events/poll` on artifact origins, and the shell's trusted `submit`, `review/choose`, `follow`, `carry` and its own stream (`browser.ts`), for every revision served; the route table and its checks (`routes.ts`); the HTTP listeners, with the 1 MiB header limit and the cookie-clearing 431 page (`listener.ts`); static files (`serve.ts`); version integrity for served files (`integrity.ts`); the shell and artifact routes, faces and hosts' external bases (`externalBase`, `external_base`), worker-mode entry, stream tickets, and `view/url`, `view/rotate`, `view/revoke` (`index.ts`); the worker-mode bootstrap page and service worker (`worker.ts`); Tailscale's identity headers (`identity.ts`); `roster/*`, whose personal links it mints in the roster's transaction, and the `respondents` and `presence` routes (`team.ts`, D168). The app channel (D175 item 4, `app.ts`): `app/open` opens a view through a link's secret with an `app` session, and `app/request` runs one browser-protocol route through the same route specs and their session and scope checks, for a page inline in an MCP Apps host. |
 | `share` | Shares (D158): `share/start`, `share/stop` and `share/list`, their rows, plans, expiry, recovery after a restart and the busy count (`index.ts`); the tunnel children (`tunnel.ts`); Tailscale Serve and Funnel (`tailscale.ts`) and Cloudflare quick tunnels (`cloudflare.ts`). The tools are found by `platform/tools.ts` (`MOSTRA_TAILSCALE`, `MOSTRA_CLOUDFLARED`, `PATH`, the usual install places) |
 | `actions` | Plain calls and durable action runs (D54, D130): starting, joining, attaching, cancelling and recovering runs, flushing their progress, log and result batches, the worker bridge for `secret`, `signal`, `emit` and `state` |
 | `workers` | The `WorkerLauncher` seam with the local and socket launchers (D124), and the pool: one worker per version, start, ping watchdog, idle eviction, crash kinds, backoff and parking (D129, D133) |
@@ -276,12 +291,12 @@ one `index.ts`, and imports between them go only through it (REPO_STANDARDS §3)
 | `live` | Live sources (D56): the latest value and ring in the ledger, `live/push`, which producers run (views' interest, host subscriptions, `always`), and their updates |
 | `service` | The daemon's idle exit (`idle.ts`) and the per-home login service (`unit.ts`: launchd, systemd, or Task Scheduler with the helper's windowless launcher on Windows) (D133, D151) |
 | `gc` | What keeps a version (`REFERENCE_SOURCES`, one named source per rule, checked against every ledger column that names a version by `test/unit/gc.test.ts`), the collection that marks versions in `version_collected` and removes their files, unreferenced snapshots, lock layouts, store packages and verify caches, serialized against publish, verify and installs by the instance's `Gate` (`src/gate.ts`), and `gc/run` (D140 item 14) |
-| `plugins` | Plugins (D30, D31, WP-16): `plugin/validate`, `plugin/add`, `plugin/list`, `plugin/remove`, `plugin/export` and `plugin/commands` (`methods.ts`); reading and checking a plugin package (its manifest, contract ranges, scope, entries, conflicts with other plugins and the home's), license disclosure over its production dependencies and acknowledgments (`index.ts`), JSON locations for diagnostics (`location.ts`); `child/host.ts` is the plugin child, which loads an entry to read its stamp (`plugin/inspect`) and runs an exporter on a version's read-only files (`plugin/export`) |
+| `plugins` | Plugins (D30, D31, WP-16): `plugin/validate`, `plugin/add`, `plugin/list`, `plugin/remove`, `plugin/export` and `plugin/commands` (`methods.ts`); reading and checking a plugin package (its manifest, contract ranges, scope, entries, conflicts with other plugins and the home's), license disclosure over its production dependencies and acknowledgments (`index.ts`), JSON locations for diagnostics (`location.ts`); `child/host.ts` is the plugin child, which loads an entry to read its stamp (`plugin/inspect`) and runs an exporter on a version's read-only files (`plugin/export`). Mostra's bundled plugins (scope `bundled`, D175 item 3: `locateBundledPlugins`, below an artifact's and the home's, never removable), and `app/page`, a version's MCP App made by its `mcp-app` exporter and kept in `cache/mcp-app/`. |
 | `packs` | Source packs (EX-03, WP-16): `pack/add`'s reading of shadcn registry items by every address shadcn takes and their registry dependencies (`read.ts`: bounded `https:` reads through the environment's proxy, GitHub refs pinned to a commit), and their installation as shadcn would (`index.ts`: places, import rewrites, one stylesheet, npm packages and licenses in one lockfile change, files written all or nothing) |
 | `dev` | `mostra dev`'s sessions (D140 item 12): the source mirrored into `cache/dev/<session>/root`, the dev server in a builder child (`builder/child/dev.ts`, Vite in middleware mode, answering only with the session's secret), the sandbox the preview is served from (`verify/sandbox.ts` with `dev`), and `dev/start`, `dev/stop` and `dev/notify` |
 | `verify` | The pipeline and the verdict cache (`index.ts`), the sandbox a run serves its build from (`sandbox.ts`), the type check in a child (`typecheck.ts`), field-ID lint (`fields.ts`), regressions against the last passing version (`regression.ts`), and the client of the runner child (`runner.ts`) (D138); `artifact/verify` is in `publish` |
-| `link` | The owner's side of a remote server (WP-29, D165): sign-in by the device grant or an operator's key (`manager.ts`, `remote/*`), the network binding with heartbeats and in-band tokens (`binding.ts`), version pushes, the sync cursor and imported submissions (`hosted.ts`), the relay's runs, calls and live producers (`relay.ts`), and relayed authoring confined to the MCP workspace (`author.ts`) |
-| `server` | The remote server (WP-29, WP-30): the front and its exact-Host routing (`index.ts`, `routing.ts`), the data directory, locks and hosted homes opened on demand (`data.ts`, `directory.ts`, `hosted.ts`), the API origin (`api.ts`), the authorization server and sign-in (`auth.ts`, `authorize.ts`, `oauth-clients.ts`, `providers.ts`), hosted pages' rules and chrome (`hosted-pages.ts`), client addresses and rates (`clients.ts`), the relay (`relay.ts`), operator ports, events and metering (`operator.ts`, `feed.ts`, `metering.ts`), the server handle and removal (`handle.ts`, `remove.ts`), and remote MCP on `@mostra/mcp`'s factory (`mcp.ts`) |
+| `link` | The owner's side of a remote server (WP-29, D165): sign-in by the device grant or an operator's key (`manager.ts`, `remote/*`), the network binding with heartbeats and in-band tokens (`binding.ts`), version pushes, the sync cursor and imported submissions (`hosted.ts`), the relay's runs, calls and live producers (`relay.ts`), and relayed authoring confined to the MCP workspace (`author.ts`). Submissions read again one at a time in the hosted order, a delivery held behind an earlier one that waits, a read refused for good ending its row (`reimport.ts`, #139); a workspace's fingerprint for #157's runs (`workspace/fingerprint`), and a relayed verify's stages sent back (`relay/author.progress`, #157). |
+| `server` | The remote server (WP-29, WP-30): the front and its exact-Host routing (`index.ts`, `routing.ts`), the data directory, locks and hosted homes opened on demand (`data.ts`, `directory.ts`, `hosted.ts`), the API origin (`api.ts`), the authorization server and sign-in (`auth.ts`, `authorize.ts`, `oauth-clients.ts`, `providers.ts`), hosted pages' rules and chrome (`hosted-pages.ts`), client addresses and rates (`clients.ts`), the relay (`relay.ts`), operator ports, events and metering (`operator.ts`, `feed.ts`, `metering.ts`), the server handle and removal (`handle.ts`, `remove.ts`), and remote MCP on `@mostra/mcp`'s factory (`mcp.ts`). Each version's MCP App, made here from the version's own client files by the bundled exporter in a child process (`plugins/bundled-page.ts`) and kept written once (`app-pages.ts`, D175 item 8), never one an owner sends; the render policy per chat host, `chatHosts` read as openly as before and each client's answer kept a minute (`chat-hosts.ts`, D160). |
 | `instance` | The composition root: start-up and stop order only, no policy |
 
 `src/log.ts` is the supervisor's JSON-lines log in `<home>/logs/`. `src/faults.ts` reads
@@ -293,7 +308,8 @@ the 300 s install limit, and `MOSTRA_TEST_CLOCK_OFFSET_MS` moves the gateway's c
 (token expiry, session age) without waiting, and `MOSTRA_TEST_PORT_TIMEOUT_MS` shortens the 30 s limit on host port calls; `MOSTRA_TEST_CONTRACT_VERSIONS` (JSON, `{"exporter":["7.0.0"]}`) makes the instance serve those contract versions in place of this release's, so a recorded plugin goes out of range at load; `MOSTRA_TEST_GITHUB_API` and `MOSTRA_TEST_GITHUB_RAW` point GitHub registry addresses at a local fake; `MOSTRA_TEST_BROWSER_REVISION_NEXT` makes the gateway also serve a newer, test-only browser-protocol revision with today's handlers (VR-10); `MOSTRA_TEST_REQUEST_LOG` makes every gateway listener log each connection and request it sees and how it ended (`gateway.connection`, `gateway.request`, `gateway.request_closed` with `headersSent` and `finished`), the path only, never a query or a header: the browser suites set it, so a request a browser saw go unanswered shows whether it arrived (#66). These are for tests only. `MOSTRA_OFFLINE` (not a
 test variable) makes the instance offline: packages resolve only from the home's store.
 `MOSTRA_TEST_WORKER_IDLE_MS` shortens workers' idle eviction, `MOSTRA_TEST_WORKER_BACKOFF_MS` their
-first restart delay, `MOSTRA_TEST_INTEREST_LEASE_MS` the minute a page's interest in a run or live
+first restart delay, `MOSTRA_TEST_WORKER_START_TIMEOUT_MS` the 60 s a worker has to answer its start
+(`worker:start:hang` in `MOSTRA_TEST_FAULTS` sends it none, #111), `MOSTRA_TEST_INTEREST_LEASE_MS` the minute a page's interest in a run or live
 source lasts, `MOSTRA_TEST_IDLE_EXIT_MS` the daemon's 30 idle minutes, and
 `MOSTRA_TEST_WORKER_HOST` sends every launch to a worker host listening on that socket
 (`test/fixtures/worker-host.mjs`, D124). `MOSTRA_WORKER_ENTRY` points at another build of
@@ -318,7 +334,9 @@ from), `MOSTRA_TEST_OIDC_INSECURE` and `MOSTRA_TEST_GITHUB_BASE` (providers' fak
 queue and meter), `MOSTRA_TEST_HELD_SNAPSHOT_MS` (how often every held level is sent again, a day
 by default), `MOSTRA_TEST_SESSION_TOUCH_MS` (how often a session's last use is written, an hour by
 default, which idle expiry reads), `MOSTRA_TEST_CURSOR_MARK_MS` (how often an open home's
-high-water marks are looked at and written when they moved, 10 s by default), the fault point `remove:after-purge` (`MOSTRA_TEST_FAULTS`, a removal cut off
+high-water marks are looked at and written when they moved, 10 s by default),
+`MOSTRA_TEST_SIGNIN_SESSION_MS` (a browser's 7-day sign-in on the API origin) and
+`MOSTRA_TEST_SIGNIN_SWEEP_MS` (how often expired sign-ins are swept, hourly by default), the fault point `remove:after-purge` (`MOSTRA_TEST_FAULTS`, a removal cut off
 between its two databases), the relay's `MOSTRA_TEST_RELAY_*`, and `MOSTRA_TEST_BINDING_TRACE` (every binding
 message, for the secrets grep). `test/fixtures/operator.mjs` is an operator module with a control
 server (`test/operator-support.ts`), and `test/oauth-support.ts` a browser on the API origin.

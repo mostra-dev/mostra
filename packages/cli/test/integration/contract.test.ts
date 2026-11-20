@@ -649,7 +649,8 @@ describe("every command, with --json and no terminal", () => {
     const value = envelope(opened);
     expect(value.result).toMatchObject({ opened: true });
     const linkSecret = new URL((value.result as { url: string }).url).hash.slice(1);
-    await eventually(() => existsSync(record));
+    // The whole record, not just the file: writeFileSync creates it before it writes it (#160).
+    await eventually(() => existsSync(record) && readFileSync(record, "utf8").endsWith("\n"));
     const argv = readFileSync(record, "utf8").trim().split("\n");
     expect(argv[0]).toBe("--new");
     const page = argv[1] as string;

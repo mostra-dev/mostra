@@ -68,6 +68,10 @@ catalog:
   # jsdiff for artifact_patch's unified diffs, and the MCP conformance suites (D48; VERIFIED_FACTS)
   '@modelcontextprotocol/server': 2.4.0
   '@modelcontextprotocol/client': 2.4.0
+  # The MCP Apps reference host the end-to-end suites render pages in (WP-17): its AppBridge and
+  # the SDK core it imports.
+  '@modelcontextprotocol/core': 2.4.0
+  '@modelcontextprotocol/ext-apps': 2.0.4
   diff: 9.0.0
   '@modelcontextprotocol/conformance': 0.1.16
   # The suite's 2026-07-28 scenarios ship only in its 0.2 prereleases so far.
@@ -84,6 +88,8 @@ catalog:
   remark-frontmatter: 5.0.0
   remark-gfm: 4.0.1
   '@tailwindcss/vite': 4.3.3
+  # The MCP App exporter's re-bundling (D175 item 2): the version Vite pins, one native binary
+  rolldown: 1.2.14
 
   # The warm set artifacts resolve (@mostra/warm, D91; ROUND-3 §1.2, D72; VERIFIED_FACTS, WP-04)
   react: 19.3.1

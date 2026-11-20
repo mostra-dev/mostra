@@ -3,5 +3,6 @@
  * (`plugins.ts`) and the `plugin/*` methods of the host protocol (`methods.ts`).
  */
 
+export { bundledAppPage } from "./bundled-page.ts";
 export { pluginMethods } from "./methods.ts";
 export * from "./plugins.ts";

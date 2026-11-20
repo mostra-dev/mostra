@@ -214,6 +214,19 @@ export function tempDir(prefix: string, short = false): string {
   return dir;
 }
 
+/**
+ * A temporary directory on Windows' system volume (`%LOCALAPPDATA%\Temp`), for a check that needs
+ * what only that volume does, such as making 8.3 names: CI keeps temporary files on the
+ * workspace's drive, which makes none (#95). Elsewhere, {@link tempDir}'s.
+ */
+export function systemVolumeTempDir(prefix: string): string {
+  const local = process.env["LOCALAPPDATA"];
+  if (!WINDOWS || !local || !existsSync(join(local, "Temp"))) return tempDir(prefix);
+  const dir = realpathSync.native(mkdtempSync(join(local, "Temp", `${prefix}-`)));
+  created.push(dir);
+  return dir;
+}
+
 /** The built runtime binary (`pnpm --filter @mostra/runtime build`). */
 export const BIN: string = join(dirname(fileURLToPath(import.meta.url)), "../dist/bin.js");
 
@@ -518,6 +531,54 @@ export async function eventually(
     await new Promise((resolve) => setTimeout(resolve, 50));
   }
   throw new Error(`Timed out waiting for ${what}.`);
+}
+
+/**
+ * Runs one step of a test under its own deadline, shorter than the test's, so a step that never
+ * ends fails naming itself rather than as "Test timed out" (#111). `context` says what else to
+ * report then, such as the instance's log lines about the step.
+ */
+export async function within<T>(
+  step: string,
+  timeoutMs: number,
+  work: () => Promise<T>,
+  context?: () => string | Promise<string>,
+): Promise<T> {
+  let timer: ReturnType<typeof setTimeout> | undefined;
+  const expired = new Promise<"expired">((resolve) => {
+    timer = setTimeout(() => resolve("expired"), timeoutMs);
+  });
+  try {
+    const running = work();
+    const outcome = await Promise.race([running.then((value) => ({ value })), expired]);
+    if (outcome !== "expired") return outcome.value;
+    running.catch(() => {});
+    let more = "";
+    try {
+      more = context ? await context() : "";
+    } catch (error) {
+      more = `(the step's context couldn't be read: ${(error as Error).message})`;
+    }
+    throw new Error(
+      `The step "${step}" didn't end within ${timeoutMs / 1000} s.${more ? `\n${more}` : ""}`,
+    );
+  } finally {
+    clearTimeout(timer);
+  }
+}
+
+/** The supervisor log's lines of a home whose event starts with one of `prefixes`, oldest first. */
+export function supervisorLines(home: string, prefixes: readonly string[]): string[] {
+  let text: string;
+  try {
+    text = readFileSync(join(home, "logs", "supervisor.log"), "utf8");
+  } catch {
+    return [];
+  }
+  return text.split("\n").filter((line) => {
+    const event = /"event":"([^"]+)"/.exec(line)?.[1];
+    return event !== undefined && prefixes.some((prefix) => event.startsWith(prefix));
+  });
 }
 
 /**

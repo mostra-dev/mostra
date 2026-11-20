@@ -24,6 +24,7 @@ import {
   type WorkerStatus,
   type WorkerVersionRef,
 } from "@mostra/protocol";
+import { type Faults, noFaults } from "../faults.ts";
 import type { Environment, Log } from "../log.ts";
 import type { WorkerChannel, WorkerExit, WorkerLauncher } from "./launcher.ts";
 
@@ -129,6 +130,13 @@ export interface WorkerPoolOptions {
   readonly parkAfter?: { readonly crashes: number; readonly windowMs: number };
   /** The first backoff after a crash, doubling to 60 s (FAILURE_MODEL §2: 1 s; tests shorten it). */
   readonly backoffMinMs?: number;
+  /** How long a worker has to answer `worker/start`; default 60 s (tests shorten it). */
+  readonly startTimeoutMs?: number;
+  /**
+   * Test faults (`MOSTRA_TEST_FAULTS`): `worker:start:hang` sends a worker no `worker/start`, as
+   * if it never answered, so a test sees how a start that never ends is reported (#111).
+   */
+  readonly faults?: Faults;
   readonly now?: () => number;
 }
 
@@ -167,6 +175,24 @@ const CRASH_LIMIT = { crashes: 5, windowMs: 10 * 60_000 } as const;
 const BACKOFF_MIN_MS = 1000;
 const BACKOFF_MAX_MS = 60_000;
 const START_TIMEOUT_MS = 60_000;
+/** A start still running after this long is logged with the stage it is in (#111). */
+const START_SLOW_MS = 10_000;
+/** How long a starting worker has to answer the ping that tells where its start is (#111). */
+const START_PING_MS = 2000;
+/** A starting worker whose event loop is blocked at least this long is reported as blocked. */
+const START_BLOCKED_MS = 1000;
+
+/**
+ * Where a worker's start is (#111): `launch` until the launcher handed over the worker's channel
+ * (its packages made ready, its process started and recorded, on Windows released from its
+ * gate), then `start` until the worker answered `worker/start` (it loads the server bundle).
+ */
+type StartStage = "launch" | "start";
+
+/** What a ping to a worker that hasn't answered `worker/start` showed. */
+type StartProbe =
+  | { readonly answered: false }
+  | { readonly answered: true; readonly blockedMs: number; readonly heapUsed: number };
 
 interface Slot {
   version: WorkerVersion;
@@ -236,10 +262,29 @@ class StartFailure extends RpcError {
   }
 }
 
+/**
+ * Where a start that hasn't ended is, in words (#111). In the `start` stage a ping says more: the
+ * worker's channel thread answers it whatever the artifact's code does, with how long the event
+ * loop has been blocked, so no answer means the process never read its channel at all.
+ */
+export function startStageText(stage: StartStage, probe: StartProbe | undefined): string {
+  if (stage === "launch") return "it was still being launched (its packages and its process)";
+  if (!probe) return "it was loading its server code";
+  if (!probe.answered) {
+    return `it didn't answer a ping within ${START_PING_MS / 1000} s either: it never read its channel`;
+  }
+  if (probe.blockedMs >= START_BLOCKED_MS) {
+    return `it was loading its server code, with its event loop blocked for ${(probe.blockedMs / 1000).toFixed(1)} s`;
+  }
+  return "it was loading its server code, with its event loop free, waiting on something that never finished";
+}
+
 /** Creates the pool. */
 export function createWorkerPool(options: WorkerPoolOptions): WorkerPool {
   const slots = new Map<string, Slot>();
   const now = options.now ?? Date.now;
+  const startTimeoutMs = options.startTimeoutMs ?? START_TIMEOUT_MS;
+  const faults = options.faults ?? noFaults;
   const park = options.parkAfter ?? CRASH_LIMIT;
   const watchdogEvery = options.watchdogIntervalMs ?? 1000;
   const backoffMin = options.backoffMinMs ?? BACKOFF_MIN_MS;
@@ -370,12 +415,46 @@ export function createWorkerPool(options: WorkerPoolOptions): WorkerPool {
   const start = async (slot: Slot): Promise<Running> => {
     const { version } = slot;
     const who = { artifactId: version.artifactId, versionId: version.ref.versionId };
-    const channel = await options.launcher.launch({
-      artifactId: version.artifactId,
-      version: version.ref,
-      env: options.env,
-      limits: version.limits,
-      ...(version.sourceDir ? { sourceDir: version.sourceDir } : {}),
+    // Each stage of the start is logged with its time, and a start still running after 10 s says
+    // which stage it is in, so a start that never ends names where it stopped (#111).
+    const began = performance.now();
+    const elapsed = (): number => Math.round(performance.now() - began);
+    let stage: StartStage = "launch";
+    let probeWorker: (() => Promise<StartProbe>) | undefined;
+    let pid: number | undefined;
+    const slow = setTimeout(() => {
+      void (async () => {
+        const probe = stage === "start" ? await probeWorker?.() : undefined;
+        options.log.warn("worker.start_slow", {
+          versionId: who.versionId,
+          stage,
+          elapsedMs: elapsed(),
+          ...(pid !== undefined ? { pid } : {}),
+          ...(probe ? { probe } : {}),
+          state: startStageText(stage, probe),
+        });
+      })();
+    }, START_SLOW_MS);
+    slow.unref?.();
+    let channel: WorkerChannel;
+    try {
+      channel = await options.launcher.launch({
+        artifactId: version.artifactId,
+        version: version.ref,
+        env: options.env,
+        limits: version.limits,
+        ...(version.sourceDir ? { sourceDir: version.sourceDir } : {}),
+      });
+    } catch (error) {
+      clearTimeout(slow);
+      throw error;
+    }
+    pid = channel.pid;
+    const launchMs = elapsed();
+    options.log.info("worker.launched", {
+      versionId: who.versionId,
+      ...(pid !== undefined ? { pid } : {}),
+      launchMs,
     });
     const calls: Running["calls"] = new Map();
     const live = new Set<string>();
@@ -427,21 +506,62 @@ export function createWorkerPool(options: WorkerPoolOptions): WorkerPool {
     };
     void channel.ended.then((exit) => onEnded(slot, running, exit));
 
+    stage = "start";
+    probeWorker = (): Promise<StartProbe> =>
+      peer.request(WORKER_METHODS.ping, {}, { timeoutMs: START_PING_MS }).then(
+        (raw) => {
+          const ping = WorkerPingResult.parse(raw);
+          return { answered: true, blockedMs: ping.blockedMs, heapUsed: ping.heapUsed } as const;
+        },
+        () => ({ answered: false }) as const,
+      );
     let started: WorkerStartResult;
     try {
-      const raw = await peer.request(
-        WORKER_METHODS.start,
-        {
-          artifactId: version.artifactId,
-          version: version.ref,
-          entry: version.entry,
-          limits: version.limits,
-        },
-        { timeoutMs: START_TIMEOUT_MS },
-      );
+      const params = {
+        artifactId: version.artifactId,
+        version: version.ref,
+        entry: version.entry,
+        limits: version.limits,
+      };
+      const raw = faults.hangs("worker:start")
+        ? await new Promise<never>((_resolve, reject) => {
+            const timer = setTimeout(
+              () =>
+                reject(
+                  new RpcError(
+                    createDiagnostic("MOSTRA_HOST_TIMEOUT", {
+                      message: `No response to ${WORKER_METHODS.start} within ${startTimeoutMs} ms.`,
+                    }),
+                  ),
+                ),
+              startTimeoutMs,
+            );
+            void channel.ended.then(() => {
+              clearTimeout(timer);
+              reject(
+                new RpcError(
+                  createDiagnostic("MOSTRA_HOST_CONNECTION_CLOSED", {
+                    message: "The worker ended before it was asked to start.",
+                  }),
+                ),
+              );
+            });
+          })
+        : await peer.request(WORKER_METHODS.start, params, { timeoutMs: startTimeoutMs });
       started = WorkerStartResultSchema.parse(raw);
       running.starting = false;
+      clearTimeout(slow);
+      options.log.info("worker.started", {
+        versionId: who.versionId,
+        ...(pid !== undefined ? { pid } : {}),
+        launchMs,
+        startMs: elapsed() - launchMs,
+      });
     } catch (error) {
+      clearTimeout(slow);
+      // A start that ran out of time says where the worker was: a ping, before it is ended (#111).
+      const timedOut = error instanceof RpcError && error.diagnostic.code === "MOSTRA_HOST_TIMEOUT";
+      const probe = timedOut ? await probeWorker() : undefined;
       running.stopping = true;
       channel.kill();
       const exit = await channel.ended;
@@ -451,8 +571,20 @@ export function createWorkerPool(options: WorkerPoolOptions): WorkerPool {
         .join(" / ");
       // How it ended: a worker that ran out of memory while loading is an OOM, not a crash.
       const { kind } = classify(exit, running, version.limits);
+      const said = error instanceof RpcError ? error.diagnostic.message : String(error);
+      const reason = timedOut
+        ? `${said.replace(/\.$/, "")}; ${startStageText("start", probe)}.`
+        : said;
+      options.log.warn("worker.start_failed", {
+        versionId: who.versionId,
+        ...(pid !== undefined ? { pid } : {}),
+        launchMs,
+        elapsedMs: elapsed(),
+        ...(probe ? { probe } : {}),
+        error,
+      });
       throw new StartFailure(
-        `The server code of ${version.ref.versionId} couldn't start: ${error instanceof RpcError ? error.diagnostic.message : String(error)}${tail ? ` (${tail})` : ""}`,
+        `The server code of ${version.ref.versionId} couldn't start: ${reason}${tail ? ` (${tail})` : ""}`,
         kind,
       );
     }

@@ -30,6 +30,7 @@ import {
   portTrustedControlsActivatedMethod,
   portTrustedControlsPolicyMethod,
   RpcError,
+  relayAuthorProgressMethod,
 } from "@mostra/protocol";
 import { createActions } from "../actions/index.ts";
 import { createAddressing, resolveBind } from "../addressing/index.ts";
@@ -94,6 +95,7 @@ import { createPacks, type Packs, packMethods } from "../packs/index.ts";
 import { helperPath, type LaunchPipe, realPath } from "../platform/index.ts";
 import {
   createPlugins,
+  locateBundledPlugins,
   type Plugins,
   pluginMethods,
   testContractVersions,
@@ -360,6 +362,8 @@ async function assemble(home: OwnedHome, options: StartInstanceOptions): Promise
       env: environment,
       policy: () => readHomeSettings(home.path).licenses,
       runtimeVersion: runtimeVersion(),
+      // The first-party plugins every home has (D175 item 3), found, never imported.
+      bundled: locateBundledPlugins(environment),
       // Tests stand in a runtime that serves other contract versions (plugins.test.ts).
       ...(environment["MOSTRA_TEST_CONTRACT_VERSIONS"]
         ? { implemented: testContractVersions(environment["MOSTRA_TEST_CONTRACT_VERSIONS"]) }
@@ -611,6 +615,11 @@ async function assemble(home: OwnedHome, options: StartInstanceOptions): Promise
     ...(Number(environment["MOSTRA_TEST_WORKER_BACKOFF_MS"]) > 0
       ? { backoffMinMs: Number(environment["MOSTRA_TEST_WORKER_BACKOFF_MS"]) }
       : {}),
+    // Tests shorten the 60 s a worker has to answer its start, and seed a start that never ends.
+    ...(Number(environment["MOSTRA_TEST_WORKER_START_TIMEOUT_MS"]) > 0
+      ? { startTimeoutMs: Number(environment["MOSTRA_TEST_WORKER_START_TIMEOUT_MS"]) }
+      : {}),
+    faults,
   });
   const actions = createActions({
     // Server code's `state` of a hosted artifact acts on its hosted home (D165 item 1); the link
@@ -819,6 +828,9 @@ async function assemble(home: OwnedHome, options: StartInstanceOptions): Promise
     runtimeVersion: runtimeVersion(),
     protocol: () => server,
     hostedOn: (artifactId) => link.hostedServers(artifactId),
+    // A relayed verify's stages go back to the server that asked (#157), best effort.
+    progress: (to, params) =>
+      void link.forward(to, relayAuthorProgressMethod, params).catch(() => undefined),
   });
   const stopPushingPublishes = interaction.onPublished((artifactId, versionId) =>
     link.published(artifactId, versionId),
@@ -943,6 +955,8 @@ async function assemble(home: OwnedHome, options: StartInstanceOptions): Promise
         publisher: getPublisher,
         log,
         dependenciesChanged: (artifact) => dev.dependenciesChanged(artifact),
+        versionOwner: (versionId) => registry.version(versionId)?.artifactId,
+        cacheDir: join(home.path, "cache", "mcp-app"),
       }),
       ...packMethods({
         packs: getPacks,

@@ -11,6 +11,9 @@
     "typecheck": "tsc -b"
   },
   "devDependencies": {
+    "@modelcontextprotocol/client": "catalog:",
+    "@modelcontextprotocol/core": "catalog:",
+    "@modelcontextprotocol/ext-apps": "catalog:",
     "@mostra/cli": "workspace:*",
     "@mostra/runtime": "workspace:*",
     "@mostra/sdk": "workspace:*",
@@ -19,6 +22,8 @@
     "@playwright/test": "catalog:",
     "@types/node": "catalog:",
     "axe-core": "catalog:",
-    "typescript": "catalog:"
+    "rolldown": "catalog:",
+    "typescript": "catalog:",
+    "zod": "catalog:"
   }
 }

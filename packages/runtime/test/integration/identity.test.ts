@@ -262,6 +262,48 @@ describe("the identity port (D143 item 2)", () => {
     identity.close();
   });
 
+  it("ends the frame session a browser held once its frame enters the same link as another viewer (MT-06)", async () => {
+    const identity = await host(gateway, "identity-switch", ["identity"]);
+    const link = await gateway.link(receipt.artifactId);
+    const opened = parseLink(link.url);
+    const api = `/a/${opened.artifactId}/_mostra`;
+    const browser = new Browser();
+    /** The shell's exchange, as the host names `ref`; then the frame's entry; its origin. */
+    const enterAs = async (ref: string): Promise<string> => {
+      const pending = exchange(browser, link.url);
+      answer(identity, await identity.next((m) => m.method === "port/identity.resolve"), { ref });
+      expect((await pending).status).toBe(200);
+      const session = await browser.fetchJson(opened.shell, `${api}/session`);
+      const csrf = session.json<{ csrf: string }>().csrf;
+      const ticket = await browser.fetchJson(opened.shell, `${api}/ticket`, { body: {}, csrf });
+      const { src, artifactOrigin } = ticket.json<{ src: string; artifactOrigin: string }>();
+      expect((await browser.navigate(src, opened.shell)).status).toBe(303);
+      return artifactOrigin;
+    };
+    const frameAs = async (who: Browser, origin: string) =>
+      await who.fetchJson(origin, "/_mostra/session");
+    const origin = await enterAs("ada@example.com");
+    expect(
+      (await frameAs(browser, origin)).json<{ viewer: Record<string, unknown> }>().viewer["ref"],
+    ).toBe("ada@example.com");
+    const adaFrame = [...browser.jar.entries()].filter(([, cookie]) => cookie.path === "/");
+    expect(adaFrame).toHaveLength(1);
+    // The shell's session goes (the person cleared it) and the frame's stays: the same link's
+    // next exchange names someone else, and the frame enters again as them.
+    for (const [key, cookie] of [...browser.jar.entries()]) {
+      if (cookie.path.startsWith("/a/")) browser.jar.delete(key);
+    }
+    expect(await enterAs("bo@example.com")).toBe(origin);
+    expect(
+      (await frameAs(browser, origin)).json<{ viewer: Record<string, unknown> }>().viewer["ref"],
+    ).toBe("bo@example.com");
+    // The frame session that acted as Ada ended at that entry: its cookie opens nothing now.
+    const stale = new Browser();
+    for (const [key, cookie] of adaFrame) stale.jar.set(key, cookie);
+    expect((await frameAs(stale, origin)).status).toBe(401);
+    identity.close();
+  });
+
   it("doesn't wait for a host that is connected but stopped serving identity (Opus review finding 7)", async () => {
     // The host once served identity and is expected to; now it connects without the port.
     const once = await host(gateway, "identity-dropped", ["identity"], ["identity"]);

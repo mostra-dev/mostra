@@ -320,8 +320,8 @@ export function ciMatrix(scope: CiScope, plan: Plan, runners: Runners): CiMatrix
   const rust = has("rust") ? [...posix, ...windowsOs] : [];
   const conformance = has("conformance") ? [...posix, ...windowsOs] : [];
   // macOS legs in the order they are kept: the suites through real processes, Safari's engine,
-  // then the remote server's suites and the plugins' and packs' (platform-neutral network and
-  // install code Linux and Windows still run, WP-29, WP-16), the Rust crate and the conformance kit
+  // then the remote server's suites and the plugins', packs' and dependencies' (platform-neutral
+  // network and install code Linux and Windows still run, WP-29, WP-16, WP-17), the Rust crate and the conformance kit
   // (POSIX like Linux, where they still run).
   const remoteGroup = (leg: Leg): boolean =>
     String(leg["group"]).startsWith("remote") || leg["group"] === "extensions";

@@ -7,6 +7,12 @@
  * home that holds anything at the first window after a start and once a day after (MT-03). A
  * window's counters go out in batches of at most {@link MAX_COUNTERS}.
  *
+ * Windows are the operator's choice (`metering.windowSeconds`, 60 by default, a length that divides
+ * an hour, MT-06) and start on multiples of their length since the epoch, so no window straddles an
+ * hour and an operator's hourly rollups stay exact. The window a start begins in, and the one a stop
+ * ends in, are the part of their aligned window the server ran; a window the process missed whole
+ * (its machine asleep, its timers held) reports nothing, and the next one starts on its boundary.
+ *
  * Views carry `viewerKey`, a monthly pseudonymous key: an HMAC of the viewer's subject under a key
  * the server makes for each month (`<data>/keys/metering-<YYYY-MM>`), so an operator can count
  * monthly viewers without learning who they are or matching them across months. The subject is
@@ -21,8 +27,8 @@ import type { Ledger } from "../ledger/index.ts";
 import type { Log } from "../log.ts";
 import type { Operator } from "./operator.ts";
 
-/** How long one batch's window lasts. */
-const WINDOW_MS = 60_000;
+/** How long one batch's window lasts unless the operator chooses (`metering.windowSeconds`). */
+export const DEFAULT_WINDOW_SECONDS: number = 60;
 /** How often every home that holds anything reports its level again, changed or not. */
 const SNAPSHOT_MS = 24 * 60 * 60 * 1000;
 /** The most counters one batch carries; a window with more sends several batches. */
@@ -64,7 +70,10 @@ export interface MeterOptions {
   readonly keysDir: string;
   readonly log: Log;
   readonly now?: () => number;
-  /** The window, shortened by tests. */
+  /**
+   * The window's length: `metering.windowSeconds` (a length that divides an hour), or a test's
+   * shorter one; windows start on its multiples since the epoch.
+   */
   readonly windowMs?: number;
   /** Seconds each open home was active, added at every window. */
   readonly activeHomes?: () => readonly { readonly home: string; readonly account: string }[];
@@ -89,9 +98,13 @@ export interface MeterOptions {
 export function createMeter(options: MeterOptions): Meter {
   const on = options.operator.has.metering;
   const now = options.now ?? (() => Date.now());
-  const windowMs = options.windowMs ?? WINDOW_MS;
+  const windowMs = options.windowMs ?? DEFAULT_WINDOW_SECONDS * 1000;
+  /** The boundary on or before `at`: a multiple of the window's length since the epoch. */
+  const boundary = (at: number): number => Math.floor(at / windowMs) * windowMs;
   const counters = new Map<string, { counter: MeterCounter; value: number }>();
   let from = now();
+  /** The part of a second a window's active seconds left over, for the next window. */
+  let carriedMs = 0;
   const monthKeys = new Map<string, Buffer>();
   const snapshotMs = options.snapshotMs ?? SNAPSHOT_MS;
   /** When every level was last sent; never, so the first window after a start sends them all. */
@@ -118,13 +131,17 @@ export function createMeter(options: MeterOptions): Meter {
     return key;
   };
 
-  const flush = (): void => {
+  /** Hands the counters to the outbound queue, for the window that ends at `to`. */
+  const close = (to: number): void => {
     if (!on) return;
-    const to = now();
-    const seconds = Math.max(0, Math.round((to - from) / 1000));
+    // Whole seconds, the rest carried to the next window, so the seconds of a span sum the same
+    // whatever the window's length (#203).
+    const elapsed = Math.max(0, to - from) + carriedMs;
+    const seconds = Math.floor(elapsed / 1000);
+    carriedMs = elapsed - seconds * 1000;
     if (seconds > 0) {
       for (const active of options.activeHomes?.() ?? []) {
-        add("home.activeSeconds", { account: active.account, home: active.home }, seconds);
+        count("home.activeSeconds", { account: active.account, home: active.home }, seconds);
       }
     }
     // `bytes.held` is a level, not a sum: a home whose level changed reports it, and every home
@@ -164,6 +181,12 @@ export function createMeter(options: MeterOptions): Meter {
 
   const add = (name: MeterName, scope: MeterScope, value = 1): void => {
     if (!on || scope.account === "" || value <= 0) return;
+    if (!stopped) catchUp();
+    count(name, scope, value);
+  };
+  /** Adds to the window in progress. */
+  const count = (name: MeterName, scope: MeterScope, value: number): void => {
+    if (scope.account === "" || value <= 0) return;
     const key = JSON.stringify([
       name,
       scope.account,
@@ -191,19 +214,55 @@ export function createMeter(options: MeterOptions): Meter {
     });
   };
 
-  const timer = on ? setInterval(flush, windowMs) : undefined;
-  timer?.unref();
-  if (on) options.log.info("meter.started", { windowMs });
+  /** The window in progress ends on this boundary. */
+  let due = boundary(now()) + windowMs;
+  let timer: ReturnType<typeof setTimeout> | undefined;
+  let stopped = false;
+  /**
+   * Closes the window that is due once its boundary passed, at the boundary itself, so its length
+   * is exact; a timer that fired early waits for the rest. When the process missed whole windows
+   * (asleep), nothing is said for them: the next window starts on the boundary it wakes in. A
+   * counter added once the boundary passed closes the window first (a timer held up by a busy or
+   * waking process), so it is counted in its own window.
+   */
+  const catchUp = (): void => {
+    const at = now();
+    if (at < due) return;
+    close(due);
+    const current = boundary(at);
+    if (current > due) from = current;
+    due = current + windowMs;
+  };
+  const tick = (): void => {
+    if (stopped) return;
+    catchUp();
+    schedule();
+  };
+  const schedule = (): void => {
+    timer = setTimeout(tick, Math.max(1, due - now()));
+    timer.unref();
+  };
+  if (on) {
+    schedule();
+    options.log.info("meter.started", { windowMs });
+  }
 
   return {
     on,
     add,
     viewerKey: (subject) =>
       createHmac("sha256", monthKey()).update(`mostra viewer ${subject}`).digest("base64url"),
-    flush,
+    // A window whose boundary passed is closed at its boundary first, and windows missed whole
+    // say nothing, so the last batch never straddles a boundary nor counts a sleep (MT-06's review).
+    flush: () => {
+      catchUp();
+      close(now());
+    },
     stop() {
-      if (timer) clearInterval(timer);
-      flush();
+      stopped = true;
+      if (timer) clearTimeout(timer);
+      catchUp();
+      close(now());
     },
   };
 }

@@ -18,6 +18,11 @@ export function explain(code: string): { readonly title: string; readonly detail
       };
     case "MOSTRA_HYGIENE_RATE_LIMITED":
       return { title: "Too many attempts", detail: "Wait a minute, then open the link again." };
+    case "SIGN_OUT_RETURN":
+      return {
+        title: "You're signed out",
+        detail: "Open the page with its link again.",
+      };
     case "SIGN_IN_FAILED":
       return {
         title: "Sign-in didn't finish",

@@ -88,6 +88,16 @@ if (process.argv[2] !== "install" || process.argv[3] !== "chromium-headless-shel
 if (process.env.FAKE_INSTALL_LOG) appendFileSync(process.env.FAKE_INSTALL_LOG, "install\\n");
 if (process.env.FAKE_BROWSER_SAY) console.log(process.env.FAKE_BROWSER_SAY);
 if (process.env.FAKE_BROWSER_FAIL) { console.error("ERROR: connect ECONNREFUSED"); process.exit(1); }
+// A process the installer starts that outlives it holding its output, as Playwright's own fetch
+// process could (#124): it writes its PID for the test to end it, and idles.
+if (process.env.FAKE_BROWSER_LINGER_PID_FILE) {
+  const holder = require("node:child_process").spawn(process.execPath, ["-e", "setInterval(() => {}, 1000)"], { stdio: ["ignore", "inherit", "inherit"], detached: process.platform === "win32" });
+  writeFileSync(process.env.FAKE_BROWSER_LINGER_PID_FILE + ".partial", String(holder.pid));
+  require("node:fs").renameSync(process.env.FAKE_BROWSER_LINGER_PID_FILE + ".partial", process.env.FAKE_BROWSER_LINGER_PID_FILE);
+  holder.unref();
+}
+// An installer that never finishes and ignores the request to end (POSIX: SIGTERM).
+if (process.env.FAKE_BROWSER_HANG) { process.on("SIGTERM", () => {}); setInterval(() => {}, 1000); return; }
 if (process.env.FAKE_BROWSER_SLEEP_MS) Atomics.wait(new Int32Array(new SharedArrayBuffer(4)), 0, 0, Number(process.env.FAKE_BROWSER_SLEEP_MS));
 // As Playwright does: a browser marked complete is never fetched again.
 if (require("node:fs").existsSync(join(browsers, "chromium_headless_shell-1", "INSTALLATION_COMPLETE"))) process.exit(0);

@@ -3,16 +3,17 @@
  * `pages/` routing per delivery target, in Chromium, Firefox and WebKit (AU-09, D57, D111): behind
  * the gateway the frame navigates in browser history, deep links open their page, and every page
  * is reported to the shell (comments record it, WP-20); the same build marked as a static export
- * routes by hash, and marked as an MCP App routes in memory. The static and MCP App checks serve
- * a real published build with the `mostra-target` marker the exporters write (WP-13, WP-17 repeat
- * them through the real exporters).
+ * routes by hash, and as an MCP App routes in memory. The static check serves a real published
+ * build with the `mostra-target` marker the static exporter writes (WP-24 repeats it through that
+ * exporter); the MCP App check serves the real MCP App exporter's output (WP-17).
  */
 import { readFileSync } from "node:fs";
 import { createServer, type Server } from "node:http";
-import { extname, join, posix } from "node:path";
+import { dirname, extname, join, posix } from "node:path";
 import { expect, test } from "@playwright/test";
-import { linkFor, openInShell, publishOwn, viewerName } from "../support/client.ts";
+import { gotoShell, linkFor, openInShell, publishOwn, viewerName } from "../support/client.ts";
 import { Client, readRun } from "../support/mostra.ts";
+import { listenShortLived } from "../support/ports.ts";
 
 const run = readRun();
 
@@ -30,7 +31,7 @@ const TYPES: Readonly<Record<string, string>> = {
  */
 async function serveExport(
   clientDir: string,
-  target: "static" | "mcp-app",
+  target: "static",
 ): Promise<{ readonly url: string; readonly server: Server }> {
   const server = createServer((request, response) => {
     // URL paths are `/`-separated on every platform (`normalize` would make them `\` on Windows).
@@ -53,7 +54,7 @@ async function serveExport(
       response.writeHead(404).end();
     }
   });
-  await new Promise<void>((resolve) => server.listen(0, "127.0.0.1", resolve));
+  await listenShortLived(server);
   const address = server.address();
   if (address === null || typeof address === "string") throw new Error("no address");
   return { url: `http://127.0.0.1:${address.port}/`, server };
@@ -67,6 +68,22 @@ async function clientDirOf(client: Client, artifactId: string): Promise<string> 
   const latest = detail.versions[0];
   if (!latest) throw new Error("no version");
   return join(run.home, "versions", latest.id, "client");
+}
+
+/** Serves one file at `/`, as a host serves an MCP App's single document. */
+async function serveFile(file: string): Promise<{ readonly url: string; readonly server: Server }> {
+  const server = createServer((request, response) => {
+    if (new URL(request.url ?? "/", "http://x").pathname !== "/") {
+      response.writeHead(404).end();
+      return;
+    }
+    response.writeHead(200, { "content-type": "text/html; charset=utf-8" });
+    response.end(readFileSync(file));
+  });
+  await new Promise<void>((resolve) => server.listen(0, "127.0.0.1", resolve));
+  const address = server.address();
+  if (address === null || typeof address === "string") throw new Error("no address");
+  return { url: `http://127.0.0.1:${address.port}/`, server };
 }
 
 test.describe("pages/ in each delivery target (AU-09)", () => {
@@ -114,7 +131,7 @@ test.describe("pages/ in each delivery target (AU-09)", () => {
     const own = await publishOwn(client, run.home, info, { fixture: "pages" });
     const served = await serveExport(await clientDirOf(client, own.artifactId), "static");
     try {
-      await page.goto(served.url);
+      await gotoShell(page, served.url);
       await expect(page.getByTestId("page")).toHaveText("Home");
       await expect(page.getByTestId("mode")).toHaveText("static");
       await page.getByTestId("to-settings").click();
@@ -122,10 +139,10 @@ test.describe("pages/ in each delivery target (AU-09)", () => {
       expect(new URL(page.url()).hash).toBe("#/settings");
       expect(new URL(page.url()).pathname).toBe("/");
       // The hash is a deep link a static host can serve.
-      await page.goto(`${served.url}#/reports/9`);
+      await gotoShell(page, `${served.url}#/reports/9`);
       await expect(page.getByTestId("page")).toHaveText("Report 9");
       // Fields keep local state where there is no Mostra server (INTERFACES §2.3).
-      await page.goto(`${served.url}#/settings`);
+      await gotoShell(page, `${served.url}#/settings`);
       await page.getByTestId("theme").fill("dark");
       await page.reload();
       await expect(page.getByTestId("theme")).toHaveValue("dark");
@@ -138,9 +155,17 @@ test.describe("pages/ in each delivery target (AU-09)", () => {
   test("as an MCP App: memory routing, the frame's URL never changes", async ({ page }, info) => {
     const client = await Client.connect(run.socket);
     const own = await publishOwn(client, run.home, info, { fixture: "pages" });
-    const served = await serveExport(await clientDirOf(client, own.artifactId), "mcp-app");
+    // The real exporter's output (WP-17, D175 item 2): one document, its routes inside it.
+    const out = join(dirname(run.home), "exports", `pages-${info.project.name}-${Date.now()}`);
+    const exported = await client.call<{ entry?: string }>("plugin/export", {
+      artifact: { artifactId: own.artifactId },
+      exporter: "mcp-app",
+      out,
+    });
+    expect(exported.entry).toBe(join(out, "index.html"));
+    const served = await serveFile(join(out, "index.html"));
     try {
-      await page.goto(served.url);
+      await gotoShell(page, served.url);
       await expect(page.getByTestId("page")).toHaveText("Home");
       await expect(page.getByTestId("mode")).toHaveText("mcp-app");
       const before = page.url();

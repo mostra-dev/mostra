@@ -177,7 +177,7 @@ async function freshPageReaches(page: Page): Promise<string> {
 }
 
 /** Waits until the shell says it is ready, or fails saying what each document renders (#39). */
-async function shellReady(page: Page): Promise<void> {
+export async function shellReady(page: Page): Promise<void> {
   try {
     await expect(page.locator("html")).toHaveAttribute("data-shell", "ready", { timeout: 20_000 });
   } catch (error) {
@@ -210,9 +210,10 @@ async function frameTree(page: Page): Promise<string> {
 }
 
 /**
- * Each document of `page`: its visibility, focus, and whether an animation frame runs in 2 s.
- * Each read is bounded (3 s): Playwright may not reach a frame at all (#135), and a diagnosis
- * must never wait out the test.
+ * Each document of `page`: its visibility, focus, whether an animation frame runs in 2 s, and the
+ * steps of its start it marked (`mostra:shell:*`, `mostra:client:*`, with their times), so a start
+ * that stalled names the step it stalled after (#95, #39). Each read is bounded (3 s): Playwright
+ * may not reach a frame at all (#135), and a diagnosis must never wait out the test.
  */
 async function rendering(page: Page): Promise<string> {
   const lines: string[] = [];
@@ -225,10 +226,17 @@ async function rendering(page: Page): Promise<string> {
             clearTimeout(timer);
             done("an animation frame ran");
           });
-        }).then(
-          (frameRan) =>
-            `visibility ${document.visibilityState}, focus ${document.hasFocus()}, ${frameRan}`,
-        ),
+        }).then((frameRan) => {
+          const steps = performance
+            .getEntriesByType("mark")
+            .filter((entry) => entry.name.startsWith("mostra:"))
+            .map(
+              (entry) =>
+                `${new Date(performance.timeOrigin + entry.startTime).toISOString().slice(11)} ${entry.name.slice(7)}`,
+            );
+          const loaded = new Date(performance.timeOrigin).toISOString().slice(11);
+          return `visibility ${document.visibilityState}, focus ${document.hasFocus()}, ${frameRan}; loading began ${loaded}; its steps: ${steps.join(", ") || "none"}`;
+        }),
       )
       .catch((error: unknown) => `unreadable: ${(error as Error).message.split("\n")[0]}`);
     let timer: ReturnType<typeof setTimeout> | undefined;

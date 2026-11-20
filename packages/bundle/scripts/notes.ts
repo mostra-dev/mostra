@@ -8,14 +8,16 @@
 import { existsSync, readFileSync } from "node:fs";
 import { dirname, join, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
+import { packageDir, workspacePackages } from "./workspace.ts";
 
 const ROOT = resolve(dirname(fileURLToPath(import.meta.url)), "..", "..", "..");
 const config = JSON.parse(readFileSync(join(ROOT, ".changeset", "config.json"), "utf8")) as {
   fixed: string[][];
 };
 const names = config.fixed[0] ?? [];
-const dirOf = (name: string): string =>
-  join(ROOT, "packages", name.startsWith("@mostra/") ? name.slice("@mostra/".length) : name);
+/** Each workspace package's directory by name, under `packages/` or `plugins/`, from its manifest. */
+const dirs = workspacePackages(ROOT);
+const dirOf = (name: string): string => packageDir(dirs, name);
 const version = (
   JSON.parse(readFileSync(join(dirOf("@mostra/sdk"), "package.json"), "utf8")) as {
     version: string;
