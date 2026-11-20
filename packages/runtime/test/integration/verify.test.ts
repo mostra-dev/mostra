@@ -1162,3 +1162,46 @@ export default function Page() { return <main><h1>Count {count}</h1></main>; }
     VERIFY_MS,
   );
 });
+
+describe("the kit's forms through verify (WP-18)", () => {
+  it(
+    "judges an input unbound only when its value changed and nothing saved (#158)",
+    async () => {
+      const dir = artifact("radios", {
+        "index.tsx": `import { useState } from "react";
+import { useField } from "@mostra/react";
+
+export default function Page() {
+  const [size, setSize] = useField("size", "small", { label: "Size" });
+  const [loose, setLoose] = useState("");
+  return (
+    <main>
+      <h1>Sizes</h1>
+      <fieldset>
+        <legend>Size</legend>
+        {["small", "medium", "large"].map((v) => (
+          <label key={v}>
+            <input type="radio" name="size" value={v} checked={size === v} onChange={() => setSize(v)} />
+            {v}
+          </label>
+        ))}
+      </fieldset>
+      <label>
+        Search
+        <input value={loose} onChange={(event) => setLoose(event.currentTarget.value)} />
+      </label>
+    </main>
+  );
+}
+`,
+      });
+      const verdict = await verify(dir);
+      // "small" was already chosen, so choosing it again changed and saved nothing; the input that
+      // isn't bound still is reported.
+      expect(find(verdict, "MOSTRA_FIELD_UNBOUND").map((d) => d.message)).toEqual([
+        expect.stringContaining('"Search"'),
+      ]);
+    },
+    VERIFY_MS,
+  );
+});

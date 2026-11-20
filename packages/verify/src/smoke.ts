@@ -132,6 +132,15 @@ function findControls([mark, start]: readonly [string, number]): Control[] {
   return controls;
 }
 
+/** An input's own value as the smoke test changes it: checked for a box or radio, else its value. */
+function inputValueOf(element: Element): string | undefined {
+  const input = element as HTMLInputElement;
+  if (input.type === "checkbox" || input.type === "radio") return String(input.checked);
+  if ("value" in input && typeof input.value === "string") return input.value;
+  const checked = element.getAttribute("aria-checked");
+  return checked ?? undefined;
+}
+
 /** Whether a control is disabled or already active, read live (runs in the frame). */
 function stateOf(element: Element): { readonly disabled: boolean; readonly active: boolean } {
   const html = element as HTMLButtonElement;
@@ -216,6 +225,12 @@ const mutations = (frame: Frame): Promise<number> =>
 interface Use {
   readonly used: boolean;
   readonly changed: boolean;
+  /**
+   * Whether the input's own value changed (an input filled, toggled or selected): one that already
+   * held what the smoke test gave it (a radio already chosen, a field already holding the text)
+   * saves nothing because nothing changed, which says nothing about its binding (#158).
+   */
+  readonly valueChanged: boolean;
   readonly writes: number;
   readonly navigated: boolean;
   readonly newDocument: boolean;
@@ -247,6 +262,7 @@ export async function runSmoke(options: SmokeOptions): Promise<SmokeOutcome> {
     const none: Use = {
       used: false,
       changed: false,
+      valueChanged: false,
       writes: 0,
       navigated: false,
       newDocument: false,
@@ -261,6 +277,7 @@ export async function runSmoke(options: SmokeOptions): Promise<SmokeOutcome> {
     const beforeMutations = await mutations(frame);
     const beforeAttributes = await target.evaluate(attributesOf).catch(() => "");
     const beforeUrl = frame.url();
+    const beforeValue = await target.evaluate(inputValueOf).catch(() => undefined);
     try {
       const timeout = Math.max(500, Math.min(2000, options.deadline - Date.now()));
       if (control.use === "hover") await target.hover({ timeout });
@@ -291,6 +308,9 @@ export async function runSmoke(options: SmokeOptions): Promise<SmokeOutcome> {
     const afterAttributes = newDocument
       ? beforeAttributes
       : await target.evaluate(attributesOf).catch(() => beforeAttributes);
+    const afterValue = newDocument
+      ? beforeValue
+      : await target.evaluate(inputValueOf).catch(() => beforeValue);
     // Whatever the page reported meanwhile (an error) is an effect too: judged as itself.
     const reported = (await recorded(frame, seen)).length > 0;
     const changed =
@@ -316,7 +336,15 @@ export async function runSmoke(options: SmokeOptions): Promise<SmokeOutcome> {
         await page.mouse.move(0, 0).catch(() => undefined);
       }
     }
-    return { used: true, changed, writes: network.writesSince(mark), navigated, newDocument, mark };
+    return {
+      used: true,
+      changed,
+      valueChanged: afterValue !== beforeValue,
+      writes: network.writesSince(mark),
+      navigated,
+      newDocument,
+      mark,
+    };
   };
 
   const within = (): boolean =>
@@ -345,6 +373,7 @@ export async function runSmoke(options: SmokeOptions): Promise<SmokeOutcome> {
   /** Reports an input the smoke test changed whose value saved nothing (a hint). */
   const unbound = (control: Control, outcome: Use): void => {
     if (control.use !== "fill" && control.use !== "toggle" && control.use !== "select") return;
+    if (!outcome.valueChanged) return;
     if (outcome.writes > 0 || outcome.navigated || outcome.newDocument) return;
     findings.push(
       createDiagnostic("MOSTRA_FIELD_UNBOUND", {

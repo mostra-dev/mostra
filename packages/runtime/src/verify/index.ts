@@ -63,7 +63,7 @@ import { renamePath } from "../platform/index.ts";
 
 /** The revision of verify's rules: a cached verdict made under other rules is never reused. */
 export const VERIFY_REVISION: string = createHash("sha256")
-  .update(`verify 2 ${TYPECHECK_REVISION}`)
+  .update(`verify 3 ${TYPECHECK_REVISION}`)
   .digest("hex")
   .slice(0, 16);
 
