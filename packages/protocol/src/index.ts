@@ -174,8 +174,10 @@ export {
   type KnownDiagnosticCode,
   kitDiagnosticCodes,
   type LicenseDiagnosticCode,
+  type LintDiagnosticCode,
   type LiveDiagnosticCode,
   licenseDiagnosticCodes,
+  lintDiagnosticCodes,
   liveDiagnosticCodes,
   type ManifestDiagnosticCode,
   manifestDiagnosticCodes,
@@ -223,6 +225,7 @@ export {
   DiagnosticPhase,
   DiagnosticSeverity,
 } from "./diagnostics/diagnostic.ts";
+export { type AppliedFixes, applyFixes } from "./diagnostics/fixes.ts";
 export {
   type AreaCatalog,
   DEFAULT_DOCS_BASE,
