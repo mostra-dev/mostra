@@ -17,13 +17,13 @@
 import { spawn } from "node:child_process";
 import { mkdirSync, writeFileSync } from "node:fs";
 import { createServer as createHttpServer, request as httpRequest, type Server } from "node:http";
-import { createServer } from "node:net";
 import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
 import { type Browser, type BrowserContext, expect, type Page, test } from "@playwright/test";
 import axe from "axe-core";
 import { gotoShell, openInShell, publishOwn, republish, settled } from "../support/client.ts";
 import { BIN, Client, removeTree, startDaemon } from "../support/mostra.ts";
+import { shortLivedPort } from "../support/ports.ts";
 
 const OPERATOR = join(
   dirname(fileURLToPath(import.meta.url)),
@@ -54,17 +54,6 @@ const LONG_REASON =
     0,
     1_000,
   );
-
-function freePort(): Promise<number> {
-  return new Promise((resolve, reject) => {
-    const probe = createServer();
-    probe.once("error", reject);
-    probe.listen(0, "127.0.0.1", () => {
-      const port = (probe.address() as { port: number }).port;
-      probe.close(() => resolve(port));
-    });
-  });
-}
 
 /** An HTTP request to the server under a host it serves (Node doesn't resolve `*.localhost`). */
 function ask(
@@ -126,8 +115,8 @@ test.describe("every surface a person meets (UX-01, D171)", () => {
 
   test.beforeAll(async ({ browser }) => {
     test.setTimeout(120_000);
-    port = await freePort();
-    control = await freePort();
+    port = await shortLivedPort();
+    control = await shortLivedPort();
     api = `http://api.localhost:${port}`;
     daemon = await startDaemon({ env: { MOSTRA_TEST_SERVER_ADDRESS: `127.0.0.1:${port}` } });
     const data = join(daemon.root, "server");

@@ -35,6 +35,7 @@ import {
   initializeParams,
   sealedAgainstWrites,
   startDaemon,
+  systemVolumeTempDir,
   tempDir,
   testHome,
   WINDOWS,
@@ -88,9 +89,17 @@ async function startFamily(home: ReturnType<typeof testHome>, env: NodeJS.Proces
     [fixture("windows-supervisor.mjs"), home.home, scratch],
     {
       env,
-      stdio: ["ignore", "pipe", "inherit"],
+      stdio: ["ignore", "pipe", "pipe"],
     },
   );
+  // The fixture's stderr still reaches the log, and its last lines go into the failure itself: in
+  // #160 the cause was printed minutes of log above "exited 1".
+  let stderr = "";
+  supervisor.stderr?.setEncoding("utf8");
+  supervisor.stderr?.on("data", (chunk: string) => {
+    process.stderr.write(chunk);
+    stderr = (stderr + chunk).slice(-4000);
+  });
   const started = await new Promise<Family>((resolve, reject) => {
     const splitter = new LineSplitter();
     supervisor.stdout?.setEncoding("utf8");
@@ -98,7 +107,20 @@ async function startFamily(home: ReturnType<typeof testHome>, env: NodeJS.Proces
       const [line] = splitter.push(chunk);
       if (line) resolve(JSON.parse(line) as Family);
     });
-    supervisor.once("exit", (code) => reject(new Error(`fixture supervisor exited ${code}`)));
+    supervisor.once("exit", async (code, signal) => {
+      // Its last stderr may still be in the pipe: wait for the streams to close, briefly, since
+      // a descendant holding the pipe would keep them open.
+      await Promise.race([
+        once(supervisor, "close"),
+        new Promise((resolve) => setTimeout(resolve, 1000)),
+      ]);
+      const tail = stderr.trim().split(/\r?\n/).slice(-15).join("\n");
+      reject(
+        new Error(
+          `fixture supervisor exited ${code ?? signal}${tail ? `; its stderr ends:\n${tail}` : ", printing nothing to stderr"}`,
+        ),
+      );
+    });
   });
   return { supervisor, started };
 }
@@ -652,8 +674,9 @@ describe.runIf(WINDOWS)("a home's spellings on Windows (RT-11, D151 item 5)", ()
   it("is the same home under its short name or another case, and another home under a name only JavaScript's lower case makes equal (Opus review of WP-W2, findings 7 and 8)", async () => {
     const base = testHome();
     // A long name with a space, which always has an 8.3 spelling where 8.3 names are made
-    // (Windows' system volume); a `k`, which the Kelvin sign below stands beside.
-    const root = join(dirname(base.home), "Long kiosk home");
+    // (Windows' system volume, where this home is made); a `k`, which the Kelvin sign below
+    // stands beside.
+    const root = join(systemVolumeTempDir("spellings"), "Long kiosk home");
     const home = { ...base, home: join(root, "home") };
     mkdirSync(home.home, { recursive: true });
     const daemon = await startDaemon(home);

@@ -211,7 +211,8 @@ the bundle's entry point (D85); it never runs artifact code (RT-02).
 - **verify never touches the home, and publish never skips it (D41, D138).** A verify run serves
   its build from a sandbox (`verify/sandbox.ts`): a scratch ledger in `cache/verify/runs/<run>/`
   with the real interaction, actions, live and gateway code, its own worker pool and two listeners
-  on ports the operating system assigns, reached only with links minted there. Nothing reaches
+  on free ports between the lease range and the dynamic ranges (`addressing`'s short-lived ports,
+  32768 to 49151, D178), reached only with links minted there. Nothing reaches
   the home's drafts, state, events, hosts or deliveries, and the human-facing gateway serves
   published versions only. In the sandbox, a function that didn't opt into `dryRun()` is refused
   before anything is recorded (`MOSTRA_VERIFY_ACTION_SKIPPED`), and documents get the verify
@@ -222,8 +223,8 @@ the bundle's entry point (D85); it never runs artifact code (RT-02).
   regression baseline. Playwright, axe and the type checker run in children (`@mostra/verify`'s
   runner, `typecheck`), never in the supervisor (RT-02's audit covers verify).
 - **A dev preview is never a viewer's path (VR-03, VR-08, D140 item 12).** `mostra dev` serves
-  unpublished source only from its session's sandbox: listeners on loopback ports the operating
-  system picks, a link minted in the session's scratch ledger, the gateway's route table and
+  unpublished source only from its session's sandbox: listeners on short-lived loopback ports (as
+  verify's), a link minted in the session's scratch ledger, the gateway's route table and
   checks in front of the dev server (`gateway/dev.ts` proxies files and the HMR WebSocket, without
   Mostra's cookies), and a dev server that answers only requests carrying the session's secret.
   The home's gateway never proxies to it, no home link opens it, and a non-loopback `--bind`
@@ -307,7 +308,8 @@ the 300 s install limit, and `MOSTRA_TEST_CLOCK_OFFSET_MS` moves the gateway's c
 (token expiry, session age) without waiting, and `MOSTRA_TEST_PORT_TIMEOUT_MS` shortens the 30 s limit on host port calls; `MOSTRA_TEST_CONTRACT_VERSIONS` (JSON, `{"exporter":["7.0.0"]}`) makes the instance serve those contract versions in place of this release's, so a recorded plugin goes out of range at load; `MOSTRA_TEST_GITHUB_API` and `MOSTRA_TEST_GITHUB_RAW` point GitHub registry addresses at a local fake; `MOSTRA_TEST_BROWSER_REVISION_NEXT` makes the gateway also serve a newer, test-only browser-protocol revision with today's handlers (VR-10); `MOSTRA_TEST_REQUEST_LOG` makes every gateway listener log each connection and request it sees and how it ended (`gateway.connection`, `gateway.request`, `gateway.request_closed` with `headersSent` and `finished`), the path only, never a query or a header: the browser suites set it, so a request a browser saw go unanswered shows whether it arrived (#66). These are for tests only. `MOSTRA_OFFLINE` (not a
 test variable) makes the instance offline: packages resolve only from the home's store.
 `MOSTRA_TEST_WORKER_IDLE_MS` shortens workers' idle eviction, `MOSTRA_TEST_WORKER_BACKOFF_MS` their
-first restart delay, `MOSTRA_TEST_INTEREST_LEASE_MS` the minute a page's interest in a run or live
+first restart delay, `MOSTRA_TEST_WORKER_START_TIMEOUT_MS` the 60 s a worker has to answer its start
+(`worker:start:hang` in `MOSTRA_TEST_FAULTS` sends it none, #111), `MOSTRA_TEST_INTEREST_LEASE_MS` the minute a page's interest in a run or live
 source lasts, `MOSTRA_TEST_IDLE_EXIT_MS` the daemon's 30 idle minutes, and
 `MOSTRA_TEST_WORKER_HOST` sends every launch to a worker host listening on that socket
 (`test/fixtures/worker-host.mjs`, D124). `MOSTRA_WORKER_ENTRY` points at another build of
