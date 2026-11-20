@@ -541,6 +541,18 @@ describe("the CI workflow's shape (D152)", () => {
     expect(handed.filter((entry) => !known.has(entry.split(": ")[1] as string))).toEqual([]);
   });
 
+  it("hands Windows PowerShell its module analysis cache through Turbo (#196)", () => {
+    // Turbo's strict mode drops every variable turbo.json doesn't name, and its built-in list has
+    // neither. Without PSModuleAnalysisCachePath (the runner image's prebuilt cache) each
+    // powershell.exe a test starts spends 22-30 s rebuilding it, against 0.5 s (VERIFIED_FACTS).
+    const turbo = JSON.parse(readFileSync(fromRoot("turbo.json"), "utf8")) as {
+      globalPassThroughEnv?: string[];
+    };
+    expect(turbo.globalPassThroughEnv).toEqual(
+      expect.arrayContaining(["PSModuleAnalysisCachePath", "PSModulePath"]),
+    );
+  });
+
   it("keeps the e2e daemons' logs and ledgers from a failed run (#39)", () => {
     const steps = (jobs["e2e"] as Job).steps ?? [];
     const run = steps.find((step) => step.run?.includes("--job e2e"));

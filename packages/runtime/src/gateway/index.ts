@@ -89,7 +89,7 @@ import {
   type MintedToken,
   SESSION_MAX_AGE_S,
 } from "./capabilities.ts";
-import { type DevUpstream, devFetch, devUpgrade } from "./dev.ts";
+import { type DevUpstream, devFetchAcrossRestarts, devUpgrade } from "./dev.ts";
 import {
   BASE_HEADERS,
   cookieValues,
@@ -119,6 +119,7 @@ export type { DevUpstream } from "./dev.ts";
 export { BASE_HEADERS, documentHeaders, isRefusal, jsonResponse, readJsonObject } from "./http.ts";
 export { IDENTITY_TIMEOUT_MS, resolveIdentity } from "./identity.ts";
 export type { RouteContext, RouteSpec } from "./routes.ts";
+export { checkRespondentLinks } from "./team.ts";
 export {
   type AppearanceConfig,
   defaultPages,
@@ -1258,6 +1259,24 @@ export function createGateway(options: GatewayOptions): Gateway {
     ...(grant.pinnedVersion !== undefined ? { version: grant.pinnedVersion } : {}),
   });
 
+  /**
+   * One side of a choice between two links (D98 item 8): what it allows, and whose it is. A link
+   * minted with a viewer acts as that person (D104), so the shell can say "a personal link, for
+   * Sam" against "a shared link" instead of two descriptions in the same words, which is how a
+   * respondent kept the share's link instead of his own (#184). Only the display name: never the
+   * host's `ref` or an email (D168 item 2), and the browser asking holds both links already.
+   */
+  const side = (grant: Grant) => {
+    if (grant.viewerId === undefined) return { ...access(grant), personal: false };
+    let name: string | undefined;
+    try {
+      name = interaction.viewer(grant.viewerId).name;
+    } catch {
+      name = undefined;
+    }
+    return { ...access(grant), personal: true, ...(name ? { name } : {}) };
+  };
+
   /** The session's facts, for the shell and the frame alike. */
   const sessionFacts = (artifactId: string, grant: Grant) => {
     const detail = artifacts.get({ artifactId });
@@ -1420,8 +1439,8 @@ export function createGateway(options: GatewayOptions): Gateway {
                 "MOSTRA_HYGIENE_SESSION_CONFLICT",
                 "This browser already has this artifact open from another link.",
               ).diagnostic,
-              current: access(existing.grant),
-              offered: access(grant),
+              current: side(existing.grant),
+              offered: side(grant),
             },
             { status: 409 },
           );
@@ -1473,8 +1492,8 @@ export function createGateway(options: GatewayOptions): Gateway {
               "MOSTRA_HYGIENE_SESSION_CONFLICT",
               "This browser already has this artifact open from another link.",
             ).diagnostic,
-            current: access(made.grant),
-            offered: access(grant),
+            current: side(made.grant),
+            offered: side(grant),
           },
           { status: 409 },
         );
@@ -2026,9 +2045,18 @@ export function createGateway(options: GatewayOptions): Gateway {
             meta,
           );
         }
-        const answered = await devFetch(upstream, context.request, url.pathname + url.search).catch(
-          () => undefined,
-        );
+        const devOptions = options.dev;
+        const answered = await devFetchAcrossRestarts(
+          () => devOptions.upstream(),
+          upstream,
+          context.request,
+          url.pathname + url.search,
+          ({ from, to, error }) =>
+            log.info("gateway.dev_retried", { path: url.pathname, from, to, error }),
+        ).catch((error: unknown) => {
+          log.warn("gateway.dev_failed", { path: url.pathname, port: upstream.port, error });
+          return undefined;
+        });
         if (!answered) {
           return refuse(
             checks,

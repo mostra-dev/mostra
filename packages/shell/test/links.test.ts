@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import { openLink } from "../src/links.ts";
-import { describeAccess } from "../src/messages.ts";
+import { describeAccess, describeLink, prefersOffered } from "../src/messages.ts";
 
 describe("ui/open-link (D98 item 7)", () => {
   it("opens web, mail and phone links in a new tab without an opener", () => {
@@ -49,5 +49,30 @@ describe("the choice between two links (D98 item 8)", () => {
       "Can view, save answers, submit, comment and choose, notify the agent and run every action.",
     );
     expect(describeAccess({ scopes: ["view", "action:send"] })).toBe("Can view and run send.");
+  });
+
+  it("says whose each link is, so a share's link and a personal one never read the same (#184)", () => {
+    const scopes = ["draft", "submit", "view"];
+    const shared = describeLink({ scopes, personal: false });
+    const sams = describeLink({ scopes, personal: true, name: "Sam Okafor" });
+    expect(shared).toBe("A shared link. Can view, save answers and submit.");
+    expect(sams).toBe("A personal link, for Sam Okafor. Can view, save answers and submit.");
+    expect(sams).not.toBe(shared);
+    expect(describeLink({ scopes, personal: true })).toBe(
+      "A personal link. Can view, save answers and submit.",
+    );
+    // A gateway from before #184 says nothing of whose: the words are what they were.
+    expect(describeLink({ scopes })).toBe(describeAccess({ scopes }));
+  });
+
+  it("puts a personal link first only over a link that names nobody (#184)", () => {
+    const shared = { personal: false };
+    const personal = { personal: true };
+    expect(prefersOffered({ current: shared, offered: personal })).toBe(true);
+    expect(prefersOffered({ current: {}, offered: personal })).toBe(true);
+    expect(prefersOffered({ current: personal, offered: personal })).toBe(false);
+    expect(prefersOffered({ current: personal, offered: shared })).toBe(false);
+    expect(prefersOffered({ current: shared, offered: shared })).toBe(false);
+    expect(prefersOffered({ current: shared, offered: {} })).toBe(false);
   });
 });

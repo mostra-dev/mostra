@@ -688,6 +688,43 @@ function procAddress6(hex: string): string {
 }
 
 /**
+ * Windows PowerShell's bound in `windowsPowerShell`: far above its 0.5 s start (3.4 s on a runner's
+ * very first), and below the integration suites' 60 s test limit, so the step is named first.
+ */
+const POWERSHELL_TIMEOUT_MS = 40_000;
+
+/**
+ * Windows PowerShell's answer to one command, bounded: a start that doesn't answer within
+ * `timeoutMs` fails naming `what` and how long it took, never a bare test timeout. Windows
+ * PowerShell starts in about 0.5 s on the runners, but rebuilds its module analysis on every start
+ * (about 22 s, #196) when `PSModuleAnalysisCachePath` doesn't reach it, so the error says whether
+ * it did.
+ */
+export function windowsPowerShell(
+  command: string,
+  what: string,
+  options: { maxBuffer?: number; timeoutMs?: number } = {},
+): string {
+  const timeout = options.timeoutMs ?? POWERSHELL_TIMEOUT_MS;
+  const started = Date.now();
+  try {
+    return execFileSync("powershell.exe", ["-NoProfile", "-NonInteractive", "-Command", command], {
+      encoding: "utf8",
+      windowsHide: true,
+      timeout,
+      ...(options.maxBuffer === undefined ? {} : { maxBuffer: options.maxBuffer }),
+    });
+  } catch (error) {
+    if ((error as NodeJS.ErrnoException).code !== "ETIMEDOUT") throw error;
+    const cache = process.env["PSModuleAnalysisCachePath"];
+    throw new Error(
+      `${what}: Windows PowerShell didn't answer within ${Math.round((Date.now() - started) / 1000)} s ` +
+        `(PSModuleAnalysisCachePath ${cache ? `is ${cache}` : "isn't set, so PowerShell rebuilds its module analysis on every start"}; #196)`,
+    );
+  }
+}
+
+/**
  * The command line a process runs: `ps` on POSIX; on Windows its `CommandLine` from CIM (as Task
  * Manager shows it).
  */
@@ -698,15 +735,9 @@ export function commandLineOf(pid: number): string {
     // arm64, once 55 s on a loaded x64 runner, past the suite's limit; one row takes 0.4 s and
     // 23 s (VERIFIED_FACTS, WP-W3).
     const started = Date.now();
-    const out = execFileSync(
-      "powershell.exe",
-      [
-        "-NoProfile",
-        "-NonInteractive",
-        "-Command",
-        `Get-CimInstance Win32_Process -Filter 'ProcessId = ${Number(pid)}' | Select-Object ProcessId,Name,CommandLine | ConvertTo-Json -Compress`,
-      ],
-      { encoding: "utf8", windowsHide: true },
+    const out = windowsPowerShell(
+      `Get-CimInstance Win32_Process -Filter 'ProcessId = ${Number(pid)}' | Select-Object ProcessId,Name,CommandLine | ConvertTo-Json -Compress`,
+      `reading process ${pid}'s command line`,
     ).trim();
     const row =
       out === ""
@@ -814,15 +845,9 @@ export function descendantsOf(pid: number): { pid: number; command: string }[] {
   }
   if (below.length === 0) return [];
   const filter = below.map((id) => `ProcessId = ${Number(id)}`).join(" OR ");
-  const out = execFileSync(
-    "powershell.exe",
-    [
-      "-NoProfile",
-      "-NonInteractive",
-      "-Command",
-      `@(Get-CimInstance Win32_Process -Filter '${filter}' | Select-Object ProcessId,Name,CommandLine) | ConvertTo-Json -Compress`,
-    ],
-    { encoding: "utf8", windowsHide: true },
+  const out = windowsPowerShell(
+    `@(Get-CimInstance Win32_Process -Filter '${filter}' | Select-Object ProcessId,Name,CommandLine) | ConvertTo-Json -Compress`,
+    `reading the command lines of process ${pid}'s ${below.length} descendants`,
   ).trim();
   const found = (out === "" ? [] : [JSON.parse(out)].flat()) as {
     ProcessId: number;
@@ -838,15 +863,10 @@ export function descendantsOf(pid: number): { pid: number; command: string }[] {
 /** Every process's ID, parent and command line: `ps` on POSIX, CIM's `Win32_Process` on Windows. */
 function processTable(): { pid: number; ppid: number; command: string }[] {
   if (WINDOWS) {
-    const out = execFileSync(
-      "powershell.exe",
-      [
-        "-NoProfile",
-        "-NonInteractive",
-        "-Command",
-        "Get-CimInstance Win32_Process | Select-Object ProcessId,ParentProcessId,Name,CommandLine | ConvertTo-Json -Compress",
-      ],
-      { encoding: "utf8", windowsHide: true, maxBuffer: 64 * 1024 * 1024 },
+    const out = windowsPowerShell(
+      "Get-CimInstance Win32_Process | Select-Object ProcessId,ParentProcessId,Name,CommandLine | ConvertTo-Json -Compress",
+      "reading the process table",
+      { maxBuffer: 64 * 1024 * 1024 },
     );
     const rows = JSON.parse(out) as {
       ProcessId: number;
