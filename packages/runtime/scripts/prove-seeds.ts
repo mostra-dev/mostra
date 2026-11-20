@@ -103,7 +103,7 @@ const SEEDS: readonly Seed[] = [
     file: "../kit/registry/radix/components/ui/slider.tsx",
     from: "          aria-label={ariaLabel}\n",
     to: "",
-    check: integration("verify.test.ts", "kit part in the radix base"),
+    check: integration("kit-parts.test.ts", "kit part in the radix base"),
   },
   {
     requirement: "KT-04",
@@ -163,7 +163,7 @@ const SEEDS: readonly Seed[] = [
     file: "../verify/src/smoke.ts",
     from: "    if (!outcome.valueChanged) return;",
     to: "    if (outcome.valueChanged === undefined) return;",
-    check: integration("verify.test.ts", "the kit's forms through verify"),
+    check: integration("kit-parts.test.ts", "the kit's forms through verify"),
   },
   {
     requirement: "KT-08",
@@ -204,7 +204,7 @@ const SEEDS: readonly Seed[] = [
     file: "src/kit/stack.ts",
     from: '  if (stack.length === 1 && stack[0] === "none") {',
     to: '  if (stack.length === 1 && stack[0] === "nothing") {',
-    check: integration("verify.test.ts", "uses nothing of the kit"),
+    check: integration("kit-parts.test.ts", "uses nothing of the kit"),
   },
   // MT-06: signing out (#204) and the metering window (#203). Each item's check goes red on a
   // violation planted where it is enforced (`--only MT-06`, `--name "sign-out:"` for one item).

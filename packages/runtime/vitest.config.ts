@@ -154,7 +154,11 @@ export const INTEGRATION_GROUPS: Record<string, { include: string[]; exclude: st
     ],
     exclude: [],
   },
-  "windows-verify-failures": { include: [VERIFY_FAILURES], exclude: [] },
+  // WP-18: the kit through verify, a suite of its own, in the lighter of the verify groups.
+  "windows-verify-failures": {
+    include: [VERIFY_FAILURES, "test/integration/kit-parts.test.ts"],
+    exclude: [],
+  },
   "windows-extensions": { include: EXTENSIONS, exclude: [] },
   "windows-clients": { include: [], exclude: [] },
 };

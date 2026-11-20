@@ -961,6 +961,28 @@ describe("every command, with --json and no terminal", () => {
     covered.add("dev");
   }, 120_000);
 
+  it("theme list and theme show name the themes on offer and what a page's stack sets (D181 item 6)", async () => {
+    const listed = await run(["theme", "list"], { code: 0, ok: true });
+    const themes = (listed.result as { themes: { id: string; builtIn?: boolean }[] }).themes;
+    expect(themes.map((theme) => theme.id)).toEqual(expect.arrayContaining(["studio", "arcata"]));
+    const shown = await run(["theme", "show", "arcata"], { code: 0, ok: true });
+    expect(shown.result).toMatchObject({ stack: ["arcata"], id: "arcata" });
+    // A page's own stack, with its CSS; an unknown theme is refused with its code.
+    const page = join(home.root, "themed");
+    mkdirSync(page, { recursive: true });
+    writeFileSync(
+      join(page, "index.tsx"),
+      `import { defineArtifact } from "@mostra/react";\n\nexport const artifact = defineArtifact({ title: "Themed", kit: { theme: ["studio", "host"] } });\n\nexport default function Page() {\n  return <h1>Themed</h1>;\n}\n`,
+    );
+    const ofPage = await run(["theme", "show", "--artifact", page, "--css"], {
+      code: 0,
+      ok: true,
+    });
+    expect(ofPage.result).toMatchObject({ stack: ["studio", "host"], default: false });
+    expect((ofPage.result as { css?: string }).css).toContain("--background");
+    await run(["theme", "show", "nope"], { code: 1, ok: false, error: "MOSTRA_KIT_THEME_UNKNOWN" });
+  });
+
   it("verify --fix writes the new form of every changed API and the base's own idiom, then passes (KT-08)", async () => {
     const dir = join(home.root, "churned");
     mkdirSync(dir, { recursive: true });
