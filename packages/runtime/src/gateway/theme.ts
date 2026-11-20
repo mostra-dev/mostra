@@ -10,11 +10,11 @@ import {
   type Appearance,
   createPages,
   type FooterLink,
+  frame,
   html,
   mostra,
   type PageAsset,
   type Pages,
-  studio,
 } from "@mostra/themes";
 
 /** Where a page's theme files are served, on every origin that draws one. */
@@ -28,7 +28,10 @@ export const MADE_WITH_HREF = "https://mostradev.com";
  * the name Mostra unless the operator says otherwise.
  */
 export interface AppearanceConfig {
-  /** `studio` (the default), or `mostra`, Mostra's own brand. */
+  /**
+   * `studio` (the default): the brand without its marks, in the frame's look (`@mostra/themes`'
+   * `frame`, D178 item 8); or `mostra`, Mostra's own brand.
+   */
   readonly theme?: "studio" | "mostra" | undefined;
   /** The name pages speak of: `Mostra` by default, another name, or `null` for none. */
   readonly name?: string | null | undefined;
@@ -102,7 +105,7 @@ export function serverPages(
     };
   }
   const pages = createPages({
-    theme: config.theme === "mostra" ? mostra : studio,
+    theme: config.theme === "mostra" ? mostra : frame,
     identity: {
       name: config.name === undefined ? "Mostra" : config.name,
       ...(logo && logoAsset

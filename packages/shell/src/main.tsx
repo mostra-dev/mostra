@@ -3,7 +3,7 @@ import "./jitless.ts";
 import { createRoot } from "react-dom/client";
 import { applyAppearance } from "./appearance.ts";
 import { Shell } from "./shell.tsx";
-import "@mostra/themes/css/studio.css";
+import "@mostra/themes/css/frame.css";
 import "./shell.css";
 
 // The person's light or dark, before anything is drawn (D171 item 6).

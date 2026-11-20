@@ -365,8 +365,31 @@ export const mostra: Theme = defineTheme({
   },
 });
 
+/**
+ * The frame: what dresses the trusted shell around a page and a server's own pages when they
+ * aren't in the brand (D171 item 2, D178 item 8). The brand's palette and faces without its marks
+ * on a warm pietra ground with raised cards, as UX-01 designed them, so the frame keeps its look
+ * whichever theme the page inside it wears; WP-20's final pass on the shell starts from it.
+ */
+export const frame: Theme = defineTheme({
+  revision: THEME_REVISION,
+  id: "frame",
+  name: "Frame",
+  description:
+    "The frame around a page: the shell and a server's own pages, in the brand's palette and faces without its marks.",
+  modes: { light: light(P.pietra50), dark: dark(P.notte) },
+  faces: { sans: FACES.figtree, display: FACES.jost, mono: FACES.splineSansMono },
+  radius: "10px",
+  motion: MOTION,
+});
+
 /** Every theme this package ships, by id. */
-export const THEMES: Readonly<Record<string, Theme>> = Object.freeze({ studio, arcata, mostra });
+export const THEMES: Readonly<Record<string, Theme>> = Object.freeze({
+  studio,
+  arcata,
+  frame,
+  mostra,
+});
 
 /**
  * The built-in themes an artifact's stack may name (D178): Studio, the default, and Arcata. The

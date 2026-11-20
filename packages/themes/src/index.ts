@@ -66,7 +66,7 @@ export {
   ThemeError,
   type ThemeLayer,
 } from "./theme.ts";
-export { ARTIFACT_THEMES, arcata, FACES, mostra, studio, THEMES } from "./themes.ts";
+export { ARTIFACT_THEMES, arcata, FACES, frame, mostra, studio, THEMES } from "./themes.ts";
 export {
   isTokenName,
   isTokenValue,

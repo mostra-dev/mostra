@@ -53,7 +53,7 @@ describe("a server's own pages (D171)", () => {
     expect(csp).not.toContain("unsafe-inline");
     // Not dressed as Mostra: it says what it runs on, linking to Mostra.
     expect(device.body).toContain("Runs on Mostra");
-    const sheet = /href="(\/_mostra\/theme\/pages-studio-[0-9a-z]+\.css)"/.exec(device.body)?.[1];
+    const sheet = /href="(\/_mostra\/theme\/pages-frame-[0-9a-z]+\.css)"/.exec(device.body)?.[1];
     expect(sheet, device.body).toBeDefined();
     const css = await send({ url: `${api}${sheet}` });
     expect(css.status).toBe(200);
@@ -108,7 +108,7 @@ describe("a server's own pages (D171)", () => {
     const refused = await page(`http://elsewhere.localhost:${port}/`);
     expect(refused.status).toBe(421);
     expect(refused.body).toContain("MOSTRA_HYGIENE_HOST_REFUSED");
-    expect(refused.body).toContain("/_mostra/theme/pages-studio-");
+    expect(refused.body).toContain("/_mostra/theme/pages-frame-");
     expect(refused.body).not.toMatch(/<script/i);
     expect(header(refused, "content-security-policy")).not.toContain("unsafe-inline");
     const json = await send({
