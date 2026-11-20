@@ -4,7 +4,12 @@
   "title": "Mostra theme layer",
   "description": "A theme, or a layer over one, of theme revision 2026-11-20 (D179). A complete theme sets every palette role in both modes, its faces, radius and motion.",
   "type": "object",
-  "required": ["revision", "id", "name", "description"],
+  "required": [
+    "revision",
+    "id",
+    "name",
+    "description"
+  ],
   "additionalProperties": false,
   "properties": {
     "$schema": {
@@ -38,7 +43,10 @@
             "accent": {
               "type": "object",
               "description": "A colour: OKLCH (lightness 0 to 1, chroma, hue 0 to 360) and the hex it is.",
-              "required": ["oklch", "hex"],
+              "required": [
+                "oklch",
+                "hex"
+              ],
               "additionalProperties": false,
               "properties": {
                 "oklch": {
@@ -58,7 +66,10 @@
             "accentForeground": {
               "type": "object",
               "description": "A colour: OKLCH (lightness 0 to 1, chroma, hue 0 to 360) and the hex it is.",
-              "required": ["oklch", "hex"],
+              "required": [
+                "oklch",
+                "hex"
+              ],
               "additionalProperties": false,
               "properties": {
                 "oklch": {
@@ -78,7 +89,10 @@
             "answer": {
               "type": "object",
               "description": "A colour: OKLCH (lightness 0 to 1, chroma, hue 0 to 360) and the hex it is.",
-              "required": ["oklch", "hex"],
+              "required": [
+                "oklch",
+                "hex"
+              ],
               "additionalProperties": false,
               "properties": {
                 "oklch": {
@@ -98,7 +112,10 @@
             "background": {
               "type": "object",
               "description": "A colour: OKLCH (lightness 0 to 1, chroma, hue 0 to 360) and the hex it is.",
-              "required": ["oklch", "hex"],
+              "required": [
+                "oklch",
+                "hex"
+              ],
               "additionalProperties": false,
               "properties": {
                 "oklch": {
@@ -118,7 +135,10 @@
             "border": {
               "type": "object",
               "description": "A colour: OKLCH (lightness 0 to 1, chroma, hue 0 to 360) and the hex it is.",
-              "required": ["oklch", "hex"],
+              "required": [
+                "oklch",
+                "hex"
+              ],
               "additionalProperties": false,
               "properties": {
                 "oklch": {
@@ -138,7 +158,10 @@
             "card": {
               "type": "object",
               "description": "A colour: OKLCH (lightness 0 to 1, chroma, hue 0 to 360) and the hex it is.",
-              "required": ["oklch", "hex"],
+              "required": [
+                "oklch",
+                "hex"
+              ],
               "additionalProperties": false,
               "properties": {
                 "oklch": {
@@ -158,7 +181,10 @@
             "cardForeground": {
               "type": "object",
               "description": "A colour: OKLCH (lightness 0 to 1, chroma, hue 0 to 360) and the hex it is.",
-              "required": ["oklch", "hex"],
+              "required": [
+                "oklch",
+                "hex"
+              ],
               "additionalProperties": false,
               "properties": {
                 "oklch": {
@@ -180,7 +206,10 @@
               "items": {
                 "type": "object",
                 "description": "A colour: OKLCH (lightness 0 to 1, chroma, hue 0 to 360) and the hex it is.",
-                "required": ["oklch", "hex"],
+                "required": [
+                  "oklch",
+                  "hex"
+                ],
                 "additionalProperties": false,
                 "properties": {
                   "oklch": {
@@ -203,7 +232,10 @@
             "destructive": {
               "type": "object",
               "description": "A colour: OKLCH (lightness 0 to 1, chroma, hue 0 to 360) and the hex it is.",
-              "required": ["oklch", "hex"],
+              "required": [
+                "oklch",
+                "hex"
+              ],
               "additionalProperties": false,
               "properties": {
                 "oklch": {
@@ -223,7 +255,10 @@
             "destructiveForeground": {
               "type": "object",
               "description": "A colour: OKLCH (lightness 0 to 1, chroma, hue 0 to 360) and the hex it is.",
-              "required": ["oklch", "hex"],
+              "required": [
+                "oklch",
+                "hex"
+              ],
               "additionalProperties": false,
               "properties": {
                 "oklch": {
@@ -243,7 +278,10 @@
             "foreground": {
               "type": "object",
               "description": "A colour: OKLCH (lightness 0 to 1, chroma, hue 0 to 360) and the hex it is.",
-              "required": ["oklch", "hex"],
+              "required": [
+                "oklch",
+                "hex"
+              ],
               "additionalProperties": false,
               "properties": {
                 "oklch": {
@@ -263,7 +301,10 @@
             "highlight": {
               "type": "object",
               "description": "A colour: OKLCH (lightness 0 to 1, chroma, hue 0 to 360) and the hex it is.",
-              "required": ["oklch", "hex"],
+              "required": [
+                "oklch",
+                "hex"
+              ],
               "additionalProperties": false,
               "properties": {
                 "oklch": {
@@ -283,7 +324,10 @@
             "input": {
               "type": "object",
               "description": "A colour: OKLCH (lightness 0 to 1, chroma, hue 0 to 360) and the hex it is.",
-              "required": ["oklch", "hex"],
+              "required": [
+                "oklch",
+                "hex"
+              ],
               "additionalProperties": false,
               "properties": {
                 "oklch": {
@@ -303,7 +347,10 @@
             "muted": {
               "type": "object",
               "description": "A colour: OKLCH (lightness 0 to 1, chroma, hue 0 to 360) and the hex it is.",
-              "required": ["oklch", "hex"],
+              "required": [
+                "oklch",
+                "hex"
+              ],
               "additionalProperties": false,
               "properties": {
                 "oklch": {
@@ -323,7 +370,10 @@
             "mutedForeground": {
               "type": "object",
               "description": "A colour: OKLCH (lightness 0 to 1, chroma, hue 0 to 360) and the hex it is.",
-              "required": ["oklch", "hex"],
+              "required": [
+                "oklch",
+                "hex"
+              ],
               "additionalProperties": false,
               "properties": {
                 "oklch": {
@@ -343,7 +393,10 @@
             "popover": {
               "type": "object",
               "description": "A colour: OKLCH (lightness 0 to 1, chroma, hue 0 to 360) and the hex it is.",
-              "required": ["oklch", "hex"],
+              "required": [
+                "oklch",
+                "hex"
+              ],
               "additionalProperties": false,
               "properties": {
                 "oklch": {
@@ -363,7 +416,10 @@
             "popoverForeground": {
               "type": "object",
               "description": "A colour: OKLCH (lightness 0 to 1, chroma, hue 0 to 360) and the hex it is.",
-              "required": ["oklch", "hex"],
+              "required": [
+                "oklch",
+                "hex"
+              ],
               "additionalProperties": false,
               "properties": {
                 "oklch": {
@@ -383,7 +439,10 @@
             "primary": {
               "type": "object",
               "description": "A colour: OKLCH (lightness 0 to 1, chroma, hue 0 to 360) and the hex it is.",
-              "required": ["oklch", "hex"],
+              "required": [
+                "oklch",
+                "hex"
+              ],
               "additionalProperties": false,
               "properties": {
                 "oklch": {
@@ -403,7 +462,10 @@
             "primaryForeground": {
               "type": "object",
               "description": "A colour: OKLCH (lightness 0 to 1, chroma, hue 0 to 360) and the hex it is.",
-              "required": ["oklch", "hex"],
+              "required": [
+                "oklch",
+                "hex"
+              ],
               "additionalProperties": false,
               "properties": {
                 "oklch": {
@@ -423,7 +485,10 @@
             "ring": {
               "type": "object",
               "description": "A colour: OKLCH (lightness 0 to 1, chroma, hue 0 to 360) and the hex it is.",
-              "required": ["oklch", "hex"],
+              "required": [
+                "oklch",
+                "hex"
+              ],
               "additionalProperties": false,
               "properties": {
                 "oklch": {
@@ -443,7 +508,10 @@
             "secondary": {
               "type": "object",
               "description": "A colour: OKLCH (lightness 0 to 1, chroma, hue 0 to 360) and the hex it is.",
-              "required": ["oklch", "hex"],
+              "required": [
+                "oklch",
+                "hex"
+              ],
               "additionalProperties": false,
               "properties": {
                 "oklch": {
@@ -463,7 +531,10 @@
             "secondaryForeground": {
               "type": "object",
               "description": "A colour: OKLCH (lightness 0 to 1, chroma, hue 0 to 360) and the hex it is.",
-              "required": ["oklch", "hex"],
+              "required": [
+                "oklch",
+                "hex"
+              ],
               "additionalProperties": false,
               "properties": {
                 "oklch": {
@@ -483,7 +554,10 @@
             "success": {
               "type": "object",
               "description": "A colour: OKLCH (lightness 0 to 1, chroma, hue 0 to 360) and the hex it is.",
-              "required": ["oklch", "hex"],
+              "required": [
+                "oklch",
+                "hex"
+              ],
               "additionalProperties": false,
               "properties": {
                 "oklch": {
@@ -503,7 +577,10 @@
             "warning": {
               "type": "object",
               "description": "A colour: OKLCH (lightness 0 to 1, chroma, hue 0 to 360) and the hex it is.",
-              "required": ["oklch", "hex"],
+              "required": [
+                "oklch",
+                "hex"
+              ],
               "additionalProperties": false,
               "properties": {
                 "oklch": {
@@ -529,7 +606,10 @@
             "accent": {
               "type": "object",
               "description": "A colour: OKLCH (lightness 0 to 1, chroma, hue 0 to 360) and the hex it is.",
-              "required": ["oklch", "hex"],
+              "required": [
+                "oklch",
+                "hex"
+              ],
               "additionalProperties": false,
               "properties": {
                 "oklch": {
@@ -549,7 +629,10 @@
             "accentForeground": {
               "type": "object",
               "description": "A colour: OKLCH (lightness 0 to 1, chroma, hue 0 to 360) and the hex it is.",
-              "required": ["oklch", "hex"],
+              "required": [
+                "oklch",
+                "hex"
+              ],
               "additionalProperties": false,
               "properties": {
                 "oklch": {
@@ -569,7 +652,10 @@
             "answer": {
               "type": "object",
               "description": "A colour: OKLCH (lightness 0 to 1, chroma, hue 0 to 360) and the hex it is.",
-              "required": ["oklch", "hex"],
+              "required": [
+                "oklch",
+                "hex"
+              ],
               "additionalProperties": false,
               "properties": {
                 "oklch": {
@@ -589,7 +675,10 @@
             "background": {
               "type": "object",
               "description": "A colour: OKLCH (lightness 0 to 1, chroma, hue 0 to 360) and the hex it is.",
-              "required": ["oklch", "hex"],
+              "required": [
+                "oklch",
+                "hex"
+              ],
               "additionalProperties": false,
               "properties": {
                 "oklch": {
@@ -609,7 +698,10 @@
             "border": {
               "type": "object",
               "description": "A colour: OKLCH (lightness 0 to 1, chroma, hue 0 to 360) and the hex it is.",
-              "required": ["oklch", "hex"],
+              "required": [
+                "oklch",
+                "hex"
+              ],
               "additionalProperties": false,
               "properties": {
                 "oklch": {
@@ -629,7 +721,10 @@
             "card": {
               "type": "object",
               "description": "A colour: OKLCH (lightness 0 to 1, chroma, hue 0 to 360) and the hex it is.",
-              "required": ["oklch", "hex"],
+              "required": [
+                "oklch",
+                "hex"
+              ],
               "additionalProperties": false,
               "properties": {
                 "oklch": {
@@ -649,7 +744,10 @@
             "cardForeground": {
               "type": "object",
               "description": "A colour: OKLCH (lightness 0 to 1, chroma, hue 0 to 360) and the hex it is.",
-              "required": ["oklch", "hex"],
+              "required": [
+                "oklch",
+                "hex"
+              ],
               "additionalProperties": false,
               "properties": {
                 "oklch": {
@@ -671,7 +769,10 @@
               "items": {
                 "type": "object",
                 "description": "A colour: OKLCH (lightness 0 to 1, chroma, hue 0 to 360) and the hex it is.",
-                "required": ["oklch", "hex"],
+                "required": [
+                  "oklch",
+                  "hex"
+                ],
                 "additionalProperties": false,
                 "properties": {
                   "oklch": {
@@ -694,7 +795,10 @@
             "destructive": {
               "type": "object",
               "description": "A colour: OKLCH (lightness 0 to 1, chroma, hue 0 to 360) and the hex it is.",
-              "required": ["oklch", "hex"],
+              "required": [
+                "oklch",
+                "hex"
+              ],
               "additionalProperties": false,
               "properties": {
                 "oklch": {
@@ -714,7 +818,10 @@
             "destructiveForeground": {
               "type": "object",
               "description": "A colour: OKLCH (lightness 0 to 1, chroma, hue 0 to 360) and the hex it is.",
-              "required": ["oklch", "hex"],
+              "required": [
+                "oklch",
+                "hex"
+              ],
               "additionalProperties": false,
               "properties": {
                 "oklch": {
@@ -734,7 +841,10 @@
             "foreground": {
               "type": "object",
               "description": "A colour: OKLCH (lightness 0 to 1, chroma, hue 0 to 360) and the hex it is.",
-              "required": ["oklch", "hex"],
+              "required": [
+                "oklch",
+                "hex"
+              ],
               "additionalProperties": false,
               "properties": {
                 "oklch": {
@@ -754,7 +864,10 @@
             "highlight": {
               "type": "object",
               "description": "A colour: OKLCH (lightness 0 to 1, chroma, hue 0 to 360) and the hex it is.",
-              "required": ["oklch", "hex"],
+              "required": [
+                "oklch",
+                "hex"
+              ],
               "additionalProperties": false,
               "properties": {
                 "oklch": {
@@ -774,7 +887,10 @@
             "input": {
               "type": "object",
               "description": "A colour: OKLCH (lightness 0 to 1, chroma, hue 0 to 360) and the hex it is.",
-              "required": ["oklch", "hex"],
+              "required": [
+                "oklch",
+                "hex"
+              ],
               "additionalProperties": false,
               "properties": {
                 "oklch": {
@@ -794,7 +910,10 @@
             "muted": {
               "type": "object",
               "description": "A colour: OKLCH (lightness 0 to 1, chroma, hue 0 to 360) and the hex it is.",
-              "required": ["oklch", "hex"],
+              "required": [
+                "oklch",
+                "hex"
+              ],
               "additionalProperties": false,
               "properties": {
                 "oklch": {
@@ -814,7 +933,10 @@
             "mutedForeground": {
               "type": "object",
               "description": "A colour: OKLCH (lightness 0 to 1, chroma, hue 0 to 360) and the hex it is.",
-              "required": ["oklch", "hex"],
+              "required": [
+                "oklch",
+                "hex"
+              ],
               "additionalProperties": false,
               "properties": {
                 "oklch": {
@@ -834,7 +956,10 @@
             "popover": {
               "type": "object",
               "description": "A colour: OKLCH (lightness 0 to 1, chroma, hue 0 to 360) and the hex it is.",
-              "required": ["oklch", "hex"],
+              "required": [
+                "oklch",
+                "hex"
+              ],
               "additionalProperties": false,
               "properties": {
                 "oklch": {
@@ -854,7 +979,10 @@
             "popoverForeground": {
               "type": "object",
               "description": "A colour: OKLCH (lightness 0 to 1, chroma, hue 0 to 360) and the hex it is.",
-              "required": ["oklch", "hex"],
+              "required": [
+                "oklch",
+                "hex"
+              ],
               "additionalProperties": false,
               "properties": {
                 "oklch": {
@@ -874,7 +1002,10 @@
             "primary": {
               "type": "object",
               "description": "A colour: OKLCH (lightness 0 to 1, chroma, hue 0 to 360) and the hex it is.",
-              "required": ["oklch", "hex"],
+              "required": [
+                "oklch",
+                "hex"
+              ],
               "additionalProperties": false,
               "properties": {
                 "oklch": {
@@ -894,7 +1025,10 @@
             "primaryForeground": {
               "type": "object",
               "description": "A colour: OKLCH (lightness 0 to 1, chroma, hue 0 to 360) and the hex it is.",
-              "required": ["oklch", "hex"],
+              "required": [
+                "oklch",
+                "hex"
+              ],
               "additionalProperties": false,
               "properties": {
                 "oklch": {
@@ -914,7 +1048,10 @@
             "ring": {
               "type": "object",
               "description": "A colour: OKLCH (lightness 0 to 1, chroma, hue 0 to 360) and the hex it is.",
-              "required": ["oklch", "hex"],
+              "required": [
+                "oklch",
+                "hex"
+              ],
               "additionalProperties": false,
               "properties": {
                 "oklch": {
@@ -934,7 +1071,10 @@
             "secondary": {
               "type": "object",
               "description": "A colour: OKLCH (lightness 0 to 1, chroma, hue 0 to 360) and the hex it is.",
-              "required": ["oklch", "hex"],
+              "required": [
+                "oklch",
+                "hex"
+              ],
               "additionalProperties": false,
               "properties": {
                 "oklch": {
@@ -954,7 +1094,10 @@
             "secondaryForeground": {
               "type": "object",
               "description": "A colour: OKLCH (lightness 0 to 1, chroma, hue 0 to 360) and the hex it is.",
-              "required": ["oklch", "hex"],
+              "required": [
+                "oklch",
+                "hex"
+              ],
               "additionalProperties": false,
               "properties": {
                 "oklch": {
@@ -974,7 +1117,10 @@
             "success": {
               "type": "object",
               "description": "A colour: OKLCH (lightness 0 to 1, chroma, hue 0 to 360) and the hex it is.",
-              "required": ["oklch", "hex"],
+              "required": [
+                "oklch",
+                "hex"
+              ],
               "additionalProperties": false,
               "properties": {
                 "oklch": {
@@ -994,7 +1140,10 @@
             "warning": {
               "type": "object",
               "description": "A colour: OKLCH (lightness 0 to 1, chroma, hue 0 to 360) and the hex it is.",
-              "required": ["oklch", "hex"],
+              "required": [
+                "oklch",
+                "hex"
+              ],
               "additionalProperties": false,
               "properties": {
                 "oklch": {
@@ -1021,7 +1170,11 @@
       "properties": {
         "sans": {
           "type": "object",
-          "required": ["family", "fallback", "files"],
+          "required": [
+            "family",
+            "fallback",
+            "files"
+          ],
           "additionalProperties": false,
           "properties": {
             "family": {
@@ -1035,7 +1188,12 @@
               "type": "array",
               "items": {
                 "type": "object",
-                "required": ["file", "weight", "style", "unicodeRange"],
+                "required": [
+                  "file",
+                  "weight",
+                  "style",
+                  "unicodeRange"
+                ],
                 "additionalProperties": false,
                 "properties": {
                   "file": {
@@ -1046,7 +1204,10 @@
                     "type": "string"
                   },
                   "style": {
-                    "enum": ["normal", "italic"]
+                    "enum": [
+                      "normal",
+                      "italic"
+                    ]
                   },
                   "unicodeRange": {
                     "type": "string"
@@ -1058,7 +1219,11 @@
         },
         "display": {
           "type": "object",
-          "required": ["family", "fallback", "files"],
+          "required": [
+            "family",
+            "fallback",
+            "files"
+          ],
           "additionalProperties": false,
           "properties": {
             "family": {
@@ -1072,7 +1237,12 @@
               "type": "array",
               "items": {
                 "type": "object",
-                "required": ["file", "weight", "style", "unicodeRange"],
+                "required": [
+                  "file",
+                  "weight",
+                  "style",
+                  "unicodeRange"
+                ],
                 "additionalProperties": false,
                 "properties": {
                   "file": {
@@ -1083,7 +1253,10 @@
                     "type": "string"
                   },
                   "style": {
-                    "enum": ["normal", "italic"]
+                    "enum": [
+                      "normal",
+                      "italic"
+                    ]
                   },
                   "unicodeRange": {
                     "type": "string"
@@ -1095,7 +1268,11 @@
         },
         "mono": {
           "type": "object",
-          "required": ["family", "fallback", "files"],
+          "required": [
+            "family",
+            "fallback",
+            "files"
+          ],
           "additionalProperties": false,
           "properties": {
             "family": {
@@ -1109,7 +1286,12 @@
               "type": "array",
               "items": {
                 "type": "object",
-                "required": ["file", "weight", "style", "unicodeRange"],
+                "required": [
+                  "file",
+                  "weight",
+                  "style",
+                  "unicodeRange"
+                ],
                 "additionalProperties": false,
                 "properties": {
                   "file": {
@@ -1120,7 +1302,10 @@
                     "type": "string"
                   },
                   "style": {
-                    "enum": ["normal", "italic"]
+                    "enum": [
+                      "normal",
+                      "italic"
+                    ]
                   },
                   "unicodeRange": {
                     "type": "string"

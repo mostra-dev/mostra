@@ -14,6 +14,7 @@
       "!**/node_modules",
       "!**/*.api.md",
       "!**/schemas/**/*.json",
+      "!packages/themes/theme.schema.json",
       "!docs/reference",
       "!docs/design/evaluations",
       "!pnpm-lock.yaml",
