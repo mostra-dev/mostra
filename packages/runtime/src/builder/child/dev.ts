@@ -40,6 +40,7 @@ import {
   STAGING_FILES,
   type VersionRegistry,
 } from "../types.ts";
+import { entryStylesheet, themeAttributes } from "./kit.ts";
 import { type BuildInputs, confinePlugin, mdxPlugin, serverClientStubPlugin } from "./plugins.ts";
 import { type ScanResult, scanArtifact } from "./scan.ts";
 import {
@@ -97,7 +98,11 @@ export async function startDev(
   for (const [name, text] of Object.entries(STAGING_FILES)) await writeFile(join(root, name), text);
   await rm(join(root, "node_modules"), { force: true, recursive: true });
   await linkDirectory(request.nodeModules, join(root, "node_modules"));
-  await writeFile(join(generated, "styles.css"), `@import "tailwindcss" source("../source");\n`);
+  await writeFile(join(generated, "theme.css"), request.kit.themeCss);
+  await writeFile(
+    join(generated, "styles.css"),
+    entryStylesheet(generated, sourceDir, request.kit, "all"),
+  );
   await mkdir(request.outDir, { recursive: true });
   // Vite's pre-bundled dependencies live in the session's root (`cacheDir` below); they are
   // packages the build may import, as the layout they were bundled from is.
@@ -127,7 +132,7 @@ export async function startDev(
     join(generated, "dev-loaded.js"),
     `const served = Number(document.querySelector('meta[name="mostra-dev-served"]')?.content);\nimport.meta.hot?.send(${JSON.stringify(LOADED_EVENT)}, served);\n`,
   );
-  const indexHtml = html(request.manifest.title, request.versionId);
+  const indexHtml = html(request.manifest.title, request.versionId, themeAttributes(request.kit));
 
   /** Builds the server bundle and `registry.json` into the dev version's directory. */
   let lastBundle = "";
@@ -139,7 +144,7 @@ export async function startDev(
       await writeFile(join(generated, "server-entry.js"), serverEntry(scan));
       try {
         await build({
-          ...baseConfig({ stagingDir: root }, sourceDir, [
+          ...baseConfig({ stagingDir: root, kit: request.kit }, sourceDir, [
             confinePlugin(inputs),
             mdxPlugin(),
             react(),
@@ -189,7 +194,7 @@ export async function startDev(
   // only upgrades that carry the secret.
   const hmrServer = createHttpServer();
   const vite: ViteDevServer = await createServer({
-    ...baseConfig({ stagingDir: root }, sourceDir, [
+    ...baseConfig({ stagingDir: root, kit: request.kit }, sourceDir, [
       confinePlugin(inputs),
       mdxPlugin(),
       serverClientStubPlugin(serverModules, sourceDir),

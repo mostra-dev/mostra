@@ -17,6 +17,7 @@ import { type HomeDiagnosticCode, homeDiagnostics } from "./home.ts";
 import { type HostDiagnosticCode, hostDiagnostics } from "./host.ts";
 import { type HygieneDiagnosticCode, hygieneDiagnostics } from "./hygiene.ts";
 // gen:area-imports
+import { type KitDiagnosticCode, kitDiagnostics } from "./kit.ts";
 import { type LicenseDiagnosticCode, licenseDiagnostics } from "./license.ts";
 import { type LiveDiagnosticCode, liveDiagnostics } from "./live.ts";
 import { type ManifestDiagnosticCode, manifestDiagnostics } from "./manifest.ts";
@@ -50,6 +51,7 @@ export { type HomeDiagnosticCode, homeDiagnosticCodes } from "./home.ts";
 export { type HostDiagnosticCode, hostDiagnosticCodes } from "./host.ts";
 export { type HygieneDiagnosticCode, hygieneDiagnosticCodes } from "./hygiene.ts";
 // gen:area-exports
+export { type KitDiagnosticCode, kitDiagnosticCodes } from "./kit.ts";
 export { type LicenseDiagnosticCode, licenseDiagnosticCodes } from "./license.ts";
 export { type LiveDiagnosticCode, liveDiagnosticCodes } from "./live.ts";
 export { type ManifestDiagnosticCode, manifestDiagnosticCodes } from "./manifest.ts";
@@ -73,6 +75,7 @@ export { type VerifyDiagnosticCode, verifyDiagnosticCodes } from "./verify.ts";
 /** Every code in the catalog. Codes are semver surface and are never removed (AX-03). */
 export type KnownDiagnosticCode =
   // gen:area-codes
+  | KitDiagnosticCode
   | LicenseDiagnosticCode
   | PackDiagnosticCode
   | PluginDiagnosticCode
@@ -108,6 +111,7 @@ export type KnownDiagnosticCode =
 /** Every cataloged code with its severity, phase, title, default hint and docs text. */
 export const diagnosticCatalog: Readonly<Record<KnownDiagnosticCode, DiagnosticSpec>> = {
   // gen:area-spreads
+  ...kitDiagnostics,
   ...licenseDiagnostics,
   ...packDiagnostics,
   ...pluginDiagnostics,

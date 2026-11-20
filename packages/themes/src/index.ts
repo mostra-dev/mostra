@@ -56,6 +56,7 @@ export {
   type Face,
   type FontFile,
   isCompleteTheme,
+  layerThemes,
   type Mode,
   type Palette,
   type Stage,

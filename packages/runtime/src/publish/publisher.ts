@@ -66,6 +66,7 @@ import {
 } from "../deps/index.ts";
 import { type Faults, noFaults } from "../faults.ts";
 import type { Gate } from "../gate.ts";
+import { kitBuildFor, kitVersionOf } from "../kit/index.ts";
 import {
   InflightRequests,
   type Ledger,
@@ -531,9 +532,17 @@ export function createPublisher(options: PublisherOptions): Publisher {
 
     // 3. Digests (DATA_MODEL §2).
     const sourceDigest = listingDigest(listed);
+    // The kit and the theme stack (D178): the stack is the manifest's, so the snapshot's digest
+    // covers it and the artifact's own layers; the kit's registry is the layout's, named by its
+    // version; the theme's stylesheet is this release's `@mostra/themes`, named by Mostra's.
+    const { kit, theme } = kitBuildFor({
+      manifest,
+      sourceDir: join(staging, "source"),
+      nodeModules: deps.nodeModules,
+    });
     const environment: BuildEnvironment = {
       mostraVersion: options.runtimeVersion,
-      kitVersion: null,
+      kitVersion: kitVersionOf(deps.nodeModules),
       kitBase: manifest.kit?.base ?? "base",
       mode: manifest.mode ?? "spa",
       lockDigest: deps.lockDigest,
@@ -550,13 +559,15 @@ export function createPublisher(options: PublisherOptions): Publisher {
         stagingDir: staging,
         sourceDir: source.root,
         manifest,
-        warnings: extracted.warnings,
+        warnings: [...extracted.warnings, ...theme.warnings],
         artifactId,
         identityKnown,
         sourceDigest,
         envDigest,
         versionId,
         nodeModules: deps.nodeModules,
+        kit,
+        theme: { stack: theme.stack, default: theme.default },
       },
       source,
       listed,
@@ -581,6 +592,7 @@ export function createPublisher(options: PublisherOptions): Publisher {
       versionId: prepared.versionId,
       nodeModules: staged.deps.nodeModules,
       outDir: out,
+      kit: prepared.kit,
     });
     if (!built.ok) return { ok: false, diagnostics: built.diagnostics };
     faults.at("publish:after-build");

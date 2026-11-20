@@ -23,6 +23,7 @@ import {
   STAGING_FILES,
   type VersionRegistry,
 } from "../types.ts";
+import { entryStylesheet, kitResolvePlugin, themeAttributes } from "./kit.ts";
 import {
   type BuildInputs,
   confinePlugin,
@@ -36,9 +37,9 @@ import { type ScanResult, scanArtifact } from "./scan.ts";
 /** Where generated build files live inside the staging directory (never in the snapshot). */
 export const GENERATED = ".mostra-build";
 
-export const html = (title: string, versionId: string): string =>
+export const html = (title: string, versionId: string, attributes = ""): string =>
   `<!doctype html>
-<html lang="en">
+<html lang="en"${attributes}>
   <head>
     <meta charset="utf-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1" />
@@ -164,7 +165,7 @@ export function diagnose(error: unknown, sourceDir: string): Diagnostic {
 }
 
 export function baseConfig(
-  request: Pick<BuildRequest, "stagingDir">,
+  request: Pick<BuildRequest, "stagingDir" | "kit">,
   sourceDir: string,
   plugins: PluginOption[],
 ): InlineConfig {
@@ -179,13 +180,13 @@ export function baseConfig(
     base: "/",
     mode: "production",
     resolve: {
-      alias: [{ find: /^@\//, replacement: `${sourceDir}/` }],
       dedupe: ["react", "react-dom"],
     },
     // Settings given here are never searched for: no PostCSS config, from anywhere above the
     // home, is loaded or run (VR-01). Tailwind is a plugin of its own.
     css: { postcss: {} },
-    plugins,
+    // `@/…` is the artifact's root, then the kit's registry for its base (ROUND-3 §1.1).
+    plugins: [kitResolvePlugin(sourceDir, request.kit), ...plugins],
   };
 }
 
@@ -266,10 +267,14 @@ export async function buildSpa(input: BuildRequest): Promise<BuildResponse> {
   await linkDirectory(request.nodeModules, join(request.stagingDir, "node_modules"));
   await writeFile(
     join(request.stagingDir, "index.html"),
-    html(request.manifest.title, request.versionId),
+    html(request.manifest.title, request.versionId, themeAttributes(request.kit)),
   );
   await writeFile(join(generated, "entry.js"), clientEntry(request, scan));
-  await writeFile(join(generated, "styles.css"), `@import "tailwindcss" source("../source");\n`);
+  await writeFile(join(generated, "theme.css"), request.kit.themeCss);
+  await writeFile(
+    join(generated, "styles.css"),
+    entryStylesheet(generated, sourceDir, request.kit),
+  );
   if (scan.hasLive) await writeFile(join(generated, "mostra-env.d.ts"), LIVE_DECLARATION);
 
   const serverModules = new Map<string, readonly ServerFunctionEntry[]>(

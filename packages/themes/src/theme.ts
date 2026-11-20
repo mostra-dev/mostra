@@ -407,12 +407,12 @@ export function isCompleteTheme(layer: ThemeLayer): layer is Theme {
 }
 
 /**
- * The theme a stack makes (D178 item 2): its first entry, a complete theme, with each later layer
- * over it, later winning, and the CSS of every layer in order. The result is checked as any theme
- * is, so a layer that breaks a text pair is named in the `ThemeError`; a caller that must not
- * refuse (a page's own layer, D68) reports it instead.
+ * The theme a stack makes (D178 item 2), unchecked: its first entry, a complete theme, with each
+ * later layer over it, later winning, and the CSS of every layer in order. `composeThemes` is
+ * this, checked; a caller that must build a stack below contrast (a page's look is its author's,
+ * D68) uses this and reports the check's problems itself.
  */
-export function composeThemes(first: Theme, ...layers: readonly ThemeLayer[]): Theme {
+export function layerThemes(first: Theme, layers: readonly ThemeLayer[]): Theme {
   let theme: Theme = first;
   for (const layer of layers) {
     const css = [theme.css, layer.css].filter((part) => part !== undefined && part !== "");
@@ -437,5 +437,13 @@ export function composeThemes(first: Theme, ...layers: readonly ThemeLayer[]): T
       ...(css.length > 0 ? { css: css.join("\n") } : {}),
     };
   }
-  return layers.length === 0 ? first : defineTheme(theme);
+  return theme;
+}
+
+/**
+ * The theme a stack makes, checked as any theme is (`layerThemes`, then `defineTheme`), so a
+ * layer that breaks a text pair is named in the `ThemeError`.
+ */
+export function composeThemes(first: Theme, ...layers: readonly ThemeLayer[]): Theme {
+  return layers.length === 0 ? first : defineTheme(layerThemes(first, layers));
 }

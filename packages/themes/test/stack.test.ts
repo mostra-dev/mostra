@@ -66,15 +66,16 @@ describe("the built-in themes", () => {
 describe("an artifact's stylesheet", () => {
   const css = kitStylesheet(arcata, { faceUrl: (file) => `/faces/${file}` });
 
-  it("writes no selector with specificity, so any rule of the artifact's own wins", () => {
-    const selectors = [...css.matchAll(/^\s*([^@/\s][^{\n]*?)\s*\{\s*$/gm)].map((m) =>
+  it("lets any rule of the artifact's own win: tokens of no specificity, element rules layered", () => {
+    const [outside, base = ""] = css.split("@layer base {");
+    const selectors = [...(outside ?? "").matchAll(/^\s*([^@/\s][^{\n]*?)\s*\{\s*$/gm)].map((m) =>
       (m[1] as string).trim(),
     );
-    expect(selectors.length).toBeGreaterThan(5);
-    for (const selector of selectors) {
-      if (selector.startsWith("@") || selector === "") continue;
-      expect(selector, selector).toMatch(/^:where\(/);
-    }
+    expect(selectors.length).toBeGreaterThan(3);
+    for (const selector of selectors) expect(selector, selector).toMatch(/^:where\(/);
+    // Everything else sits in Tailwind's base layer, which unlayered CSS always overrides.
+    expect(base).toContain("h1 {");
+    expect(base.trimEnd().endsWith("}")).toBe(true);
   });
 
   it("gives light and dark, the device's dark unless the page chose light, and a person's choice", () => {

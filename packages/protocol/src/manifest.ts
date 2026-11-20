@@ -122,8 +122,11 @@ export interface ArtifactManifest {
   readonly mode?: "spa";
   /** The submission policy the artifact requests; the host decides (D39, D63). */
   readonly submission?: SubmissionPolicy;
-  /** The kit's shadcn base (default `base`, D72) and theme. */
-  readonly kit?: { readonly base?: "base" | "radix"; readonly theme?: string };
+  /**
+   * The kit's shadcn base (default `base`, D72) and the theme stack (D178 item 2): a theme, or an
+   * ordered list whose later entries override the earlier ones; `themeStackOf` reads it.
+   */
+  readonly kit?: { readonly base?: "base" | "radix"; readonly theme?: string | readonly string[] };
   /** Live terminal sessions by name (D65). */
   readonly terminals?: Readonly<Record<string, TerminalSpec>>;
   /** Web demos by name (D65). */
@@ -246,7 +249,7 @@ export const ArtifactManifest: z.ZodType<ArtifactManifest> = z
     kit: z
       .object({
         base: z.enum(["base", "radix"]).exactOptional(),
-        theme: z.string().exactOptional(),
+        theme: z.union([z.string(), z.array(z.string()).readonly()]).exactOptional(),
       })
       .exactOptional(),
     terminals: z.record(z.string(), TerminalSpec).readonly().exactOptional(),
@@ -298,5 +301,86 @@ export function manifestProblem(
   if (limit !== undefined && durationMs(limit) > HOSTED_OFFLINE_LIMIT_MAX_MS) {
     return { path: "hosted.offline.limit", message: "an offline limit is at most 7d" };
   }
+  const stack = manifest.kit?.theme;
+  if (stack !== undefined) {
+    const problem = themeStackProblem(typeof stack === "string" ? [stack] : stack);
+    if (problem !== undefined) return { path: "kit.theme", message: problem };
+  }
   return undefined;
+}
+
+/** The theme stack of a page that names none (D178 item 2). */
+export const DEFAULT_THEME_STACK: readonly string[] = ["studio"];
+
+/** The most entries a theme stack may have. */
+export const THEME_STACK_MAX = 8;
+
+/** One entry of a theme stack, by what it names. */
+export type ThemeStackEntry =
+  /** A built-in theme, or one an installed plugin contributes, by its id. */
+  | { readonly kind: "theme"; readonly id: string }
+  /** A CSS file in the artifact, by its path inside it (`./brand.css`). */
+  | { readonly kind: "file"; readonly path: string }
+  /** The colours, radius and faces of the host the page is shown in (D178 item 5). */
+  | { readonly kind: "host" };
+
+/** A theme's id: lower case, `a-z`, digits and hyphens, at most 32 characters. */
+const THEME_ID = /^[a-z][a-z0-9-]{0,31}$/;
+/** A CSS file inside the artifact: `./`, then segments of plain characters, ending in `.css`. */
+const THEME_FILE = /^\.\/[A-Za-z0-9._\-/]{1,200}\.css$/;
+
+/** Whether a stack's file path stays inside the artifact: no empty, `.` or `..` segment. */
+function staysInside(path: string): boolean {
+  return path.split("/").every((segment) => segment !== "" && segment !== "." && segment !== "..");
+}
+
+/** What one entry of a stack names, or `undefined` for text that names nothing. */
+export function themeStackEntry(text: string): ThemeStackEntry | undefined {
+  if (text === "host") return { kind: "host" };
+  if (THEME_ID.test(text) && text !== "none") return { kind: "theme", id: text };
+  if (THEME_FILE.test(text) && staysInside(text.slice(2)))
+    return { kind: "file", path: text.slice(2) };
+  return undefined;
+}
+
+/**
+ * Why a theme stack can't be built, or `undefined` when it can (D178 item 2): `"none"` stands
+ * alone; otherwise the first entry is a theme, which must be complete; the themes come first,
+ * then the artifact's own files, with `"host"` once, after every theme (where a file after it
+ * still overrides it) or last; no entry twice; at most eight.
+ */
+export function themeStackProblem(stack: readonly string[]): string | undefined {
+  if (stack.length === 0) return 'name a theme, or "none" for no theme';
+  if (stack.includes("none")) {
+    return stack.length === 1 ? undefined : '"none" stands alone: it builds no theme at all';
+  }
+  if (stack.length > THEME_STACK_MAX) return `at most ${THEME_STACK_MAX} entries`;
+  if (new Set(stack).size !== stack.length) return "an entry appears twice";
+  const entries = stack.map((text) => ({ text, entry: themeStackEntry(text) }));
+  const unknown = entries.find(({ entry }) => entry === undefined);
+  if (unknown !== undefined) {
+    return `"${unknown.text}" is neither a theme's id, a CSS file of the artifact ("./brand.css") nor "host"`;
+  }
+  if (entries[0]?.entry?.kind !== "theme") {
+    return 'the first entry is a complete theme, such as "studio" or "arcata"; files and "host" go after it';
+  }
+  let seenOther = false;
+  for (const { text, entry } of entries) {
+    if (entry?.kind === "theme" && seenOther) {
+      return `the theme "${text}" comes after a file or "host": themes go first, then the artifact's own files`;
+    }
+    if (entry?.kind !== "theme") seenOther = true;
+  }
+  return undefined;
+}
+
+/** A manifest's theme stack as written, or the default when it names none. */
+export function themeStackOf(manifest: Pick<ArtifactManifest, "kit">): {
+  readonly stack: readonly string[];
+  /** Whether the page named no theme, and wears the default. */
+  readonly default: boolean;
+} {
+  const theme = manifest.kit?.theme;
+  if (theme === undefined) return { stack: DEFAULT_THEME_STACK, default: true };
+  return { stack: typeof theme === "string" ? [theme] : theme, default: false };
 }

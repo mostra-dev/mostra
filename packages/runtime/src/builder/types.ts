@@ -53,6 +53,24 @@ export interface VersionRegistry {
   readonly fields?: FieldCoverage;
 }
 
+/** What a build takes of the kit and the artifact's theme stack (D178, ROUND-3 §1.1). */
+export interface KitBuild {
+  /**
+   * The kit's registry for the artifact's base in the build's layout
+   * (`@mostra/kit/registry/<base>`), from which `@/…` resolves what the artifact has no copy of;
+   * absent when the layout has no kit.
+   */
+  readonly registry?: string;
+  /** The theme stack's stylesheet, inside the build's Tailwind run; empty for `"none"`. */
+  readonly themeCss: string;
+  /** The artifact's own CSS layers, paths inside it, in the stack's order. */
+  readonly themeFiles: readonly string[];
+  /** The theme the stack makes, written on the page's `<html data-theme>`. */
+  readonly themeId?: string;
+  /** Where the host's look goes (`<html data-host-look>`), when the stack has `"host"`. */
+  readonly host?: "over" | "under";
+}
+
 /** What the supervisor asks the builder child to build (`builder/build`). */
 export interface BuildRequest {
   /** The staging directory; the artifact's snapshot is in its `source/`. */
@@ -73,6 +91,8 @@ export interface BuildRequest {
   readonly nodeModules: string;
   /** Where the client build goes; a server build goes beside it in `server/`. */
   readonly outDir: string;
+  /** The kit and the theme stack the page is built with (D178, ROUND-3 §1.1). */
+  readonly kit: KitBuild;
   /**
    * Tests only (`MOSTRA_TEST_FAULTS=builder:build:hang`, issue #18): the child never answers,
    * as a builder stuck in a plugin would, so the build limit or a kill ends it.
@@ -122,6 +142,8 @@ export interface DevRequest {
   /** The dev version's ID, in every page's `mostra-version` meta (D115). */
   readonly versionId: string;
   readonly nodeModules: string;
+  /** The kit and the theme stack, as for a build. */
+  readonly kit: KitBuild;
   /** Where the server bundle and `registry.json` go: the dev version's directory. */
   readonly outDir: string;
   /** The secret every request from the gateway carries; nothing else reaches the dev server. */

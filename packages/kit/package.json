@@ -47,21 +47,11 @@
     "generate": "node --conditions @mostra/source scripts/generate.ts"
   },
   "dependencies": {
+    "@base-ui/react": "catalog:",
     "@mostra/protocol": "workspace:*",
     "@mostra/react": "workspace:*",
     "@mostra/themes": "workspace:*",
-    "tw-animate-css": "catalog:"
-  },
-  "peerDependencies": {
-    "react": "^19"
-  },
-  "devDependencies": {
-    "@base-ui/react": "catalog:",
-    "@mostra/tools": "workspace:*",
     "@shadcn/react": "catalog:",
-    "@types/node": "catalog:",
-    "@types/react": "catalog:",
-    "@types/react-dom": "catalog:",
     "class-variance-authority": "catalog:",
     "cmdk": "catalog:",
     "cn": "catalog:",
@@ -69,16 +59,26 @@
     "input-otp": "catalog:",
     "lucide-react": "catalog:",
     "radix-ui": "catalog:",
-    "react": "catalog:",
     "react-day-picker": "catalog:",
-    "react-dom": "catalog:",
     "react-resizable-panels": "catalog:",
     "recharts": "catalog:",
     "shiki": "catalog:",
     "sonner": "catalog:",
+    "tw-animate-css": "catalog:",
+    "vaul": "catalog:"
+  },
+  "peerDependencies": {
+    "react": "^19"
+  },
+  "devDependencies": {
+    "@mostra/tools": "workspace:*",
+    "@types/node": "catalog:",
+    "@types/react": "catalog:",
+    "@types/react-dom": "catalog:",
+    "react": "catalog:",
+    "react-dom": "catalog:",
     "tsdown": "catalog:",
     "typescript": "catalog:",
-    "vaul": "catalog:",
     "vitest": "catalog:"
   }
 }

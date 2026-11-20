@@ -44,10 +44,13 @@ const UTILITIES: readonly string[] = [
   "--ease-answer: var(--ease-answer);",
 ];
 
-/** The element rules every themed page gets, each of no specificity. */
+/**
+ * The element rules every themed page gets, in Tailwind's base layer after its preflight: any
+ * utility, and any rule of the artifact's own (unlayered), wins over them.
+ */
 const BASE_RULES: readonly (readonly [selector: string, lines: readonly string[]])[] = [
   [
-    ":where(html)",
+    "html",
     [
       "background: var(--background);",
       "color: var(--foreground);",
@@ -60,9 +63,9 @@ const BASE_RULES: readonly (readonly [selector: string, lines: readonly string[]
       "accent-color: var(--primary);",
     ],
   ],
-  [":where(*, ::before, ::after)", ["border-color: var(--border);"]],
+  ["*, ::before, ::after", ["border-color: var(--border);"]],
   [
-    ":where(h1)",
+    "h1",
     [
       "font-family: var(--font-display);",
       "font-size: var(--title-size);",
@@ -73,7 +76,7 @@ const BASE_RULES: readonly (readonly [selector: string, lines: readonly string[]
     ],
   ],
   [
-    ":where(h2)",
+    "h2",
     [
       "font-family: var(--heading-font);",
       "font-size: var(--heading-size);",
@@ -84,7 +87,7 @@ const BASE_RULES: readonly (readonly [selector: string, lines: readonly string[]
     ],
   ],
   [
-    ":where(h3, h4)",
+    "h3, h4",
     [
       "font-family: var(--heading-font);",
       "font-weight: var(--heading-weight);",
@@ -93,16 +96,16 @@ const BASE_RULES: readonly (readonly [selector: string, lines: readonly string[]
       "text-wrap: balance;",
     ],
   ],
-  [":where(p)", ["text-wrap: pretty;"]],
-  [":where(code, kbd, samp, pre)", ["font-family: var(--font-mono);"]],
+  ["p", ["text-wrap: pretty;"]],
+  ["code, kbd, samp, pre", ["font-family: var(--font-mono);"]],
   [
-    ":where(::selection)",
+    "::selection",
     [
       "background: color-mix(in oklab, var(--answer) 45%, transparent);",
       "color: var(--foreground);",
     ],
   ],
-  [":where(:focus-visible)", ["outline: 2px solid var(--ring);", "outline-offset: 2px;"]],
+  [":focus-visible", ["outline: 2px solid var(--ring);", "outline-offset: 2px;"]],
 ];
 
 const block = (selector: string, lines: readonly string[], indent = ""): string =>
@@ -118,8 +121,9 @@ const tokenLines = (values: Readonly<Partial<Record<TokenName, string>>> | undef
  * them (`@theme inline`); the base rules every page gets; then the theme's own rules. The text is
  * deterministic.
  *
- * Every selector it writes is `:where(…)`, of no specificity, so any rule of the artifact's own,
- * the later layers of its stack included, overrides it without `!important`.
+ * Every token block it writes is `:where(…)`, of no specificity, and its element rules sit in
+ * Tailwind's base layer, so any rule of the artifact's own, the later layers of its stack
+ * included, overrides it without `!important`.
  */
 export function kitStylesheet(theme: Theme, options: KitStylesheetOptions = {}): string {
   const faceUrl = options.faceUrl ?? ((file: string) => "./" + file);

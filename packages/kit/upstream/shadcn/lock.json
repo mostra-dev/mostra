@@ -276,7 +276,8 @@
     "radix-nova/trace.json": "8c93a53f594f1cfffd5ab50bd045294c4a2936a0eb63889c4e32862d94b576d5",
     "radix-nova/use-highlighted-code.json": "14ad2a34811ca79f16024a88cb916740f8eee93b68a1e60b897520084f212f1c",
     "radix-nova/use-mobile.json": "730abb80c2f6ec4dafd387d757409ad9d8bbfe37c24a3538ad0fabc06e612f1d",
-    "radix-nova/utils.json": "be67e3e88f3e9a9061c2ea85871c95a8e2324f466bc6c613f9e5d3dcf7ee16a6"
+    "radix-nova/utils.json": "be67e3e88f3e9a9061c2ea85871c95a8e2324f466bc6c613f9e5d3dcf7ee16a6",
+    "tailwind.css": "4c371f7a1ff5d219ae2f7ff28bd256b4346fd546fe46fbae22092e57db2f0fae"
   },
   "installed": "written by shadcn@4.23.0 init -t vite -b <base> -p nova, then add --all --overwrite, with rsc: true, 2026-11-19",
   "shadcn": "4.23.0",

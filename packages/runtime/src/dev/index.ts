@@ -33,10 +33,17 @@ import {
   type SourceRef,
   VersionId,
 } from "@mostra/protocol";
-import type { DevChange, DevChild, DevServerBuild, RenderMode } from "../builder/index.ts";
+import type {
+  DevChange,
+  DevChild,
+  DevServerBuild,
+  KitBuild,
+  RenderMode,
+} from "../builder/index.ts";
 import { type Dependencies, lockKey } from "../deps/index.ts";
 import type { Faults } from "../faults.ts";
 import type { Gate } from "../gate.ts";
+import { kitBuildFor, kitRegistry } from "../kit/index.ts";
 import type { Log } from "../log.ts";
 import { removeTree } from "../platform/index.ts";
 import { handler, type MethodHandler, type Session } from "../protocol-server/index.ts";
@@ -293,6 +300,21 @@ export function createDev(options: DevOptions): Dev {
     const startChild = async (
       described: Awaited<ReturnType<typeof describe>>,
     ): Promise<DevChild> => {
+      // The theme stack as publish builds it (D178); a stack that can't be built is said, and the
+      // preview shows the page with no theme until it can.
+      let kit: KitBuild = { themeCss: "", themeFiles: [] };
+      try {
+        kit = kitBuildFor({
+          manifest: described.manifest,
+          sourceDir: join(root, "source"),
+          nodeModules,
+        }).kit;
+      } catch (error) {
+        if (!(error instanceof RpcError)) throw error;
+        notify("diagnostics", { diagnostics: [error.diagnostic] });
+        const registry = kitRegistry(nodeModules, described.manifest.kit?.base ?? "base");
+        if (registry !== undefined) kit = { ...kit, registry };
+      }
       const started = await options.renderMode().dev(
         {
           root,
@@ -303,6 +325,7 @@ export function createDev(options: DevOptions): Dev {
           nodeModules,
           outDir: versionDir,
           secret,
+          kit,
         },
         {
           server: (build, files) => {

@@ -35,7 +35,7 @@ import {
   type VerifyViewport,
   viewportsFor,
 } from "@mostra/protocol";
-import type { VersionRegistry } from "../builder/index.ts";
+import type { KitBuild, VersionRegistry } from "../builder/index.ts";
 import type { Ledger } from "../ledger/index.ts";
 import type { Log, Redactor } from "../log.ts";
 import type { Registry } from "../registry/index.ts";
@@ -99,6 +99,10 @@ export interface PreparedSource {
   readonly versionId: string;
   /** The `node_modules` the build links (D95). */
   readonly nodeModules: string;
+  /** The kit and the theme stack the build takes (D178). */
+  readonly kit: KitBuild;
+  /** The theme stack as the manifest writes it, and whether it was the default (D178 item 2). */
+  readonly theme: { readonly stack: readonly string[]; readonly default: boolean };
 }
 
 /** A finished build in a directory, as publish lays out a version. */
@@ -392,6 +396,7 @@ export function createVerifier(options: VerifierOptions): Verifier {
         sourceDir: join(prepared.stagingDir, "source"),
         workDir: `${prepared.stagingDir}-check`,
         nodeModules: prepared.nodeModules,
+        ...(prepared.kit.registry !== undefined ? { kitRegistry: prepared.kit.registry } : {}),
         hasLive,
         alreadyReported: (specifier) => reportedByBuild(buildDiagnostics, specifier),
       }).then((outcome) => {
