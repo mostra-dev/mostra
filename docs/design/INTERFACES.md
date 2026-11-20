@@ -60,7 +60,7 @@ export const artifact = defineArtifact({
   links?: { rel: "round-of" | "follows" | "replaces" | (string & {}); artifact: string }[];
   mode?: "spa";                      // D19; "rsc" later
   submission?: { policy: "once"; scope?: "per-artifact" | "per-viewer" } | { policy: "epochs" } | { policy: "none" }; // requested; host decides (D39, D63)
-  kit?: { base?: "base" | "radix"; theme?: string };   // default "base" (D72)
+  kit?: { base?: "base" | "radix"; theme?: string | string[] };   // base default "base" (D72); theme: a stack, default "studio" (D179)
   terminals?: Record<string, { command: string[]; cwd?: string; env?: Record<string, string>; cols?: number; rows?: number; input?: boolean }>;
   demos?: Record<string, { command: string[]; cwd?: string; ready?: string; bridge?: boolean } | { attach: number; bridge?: boolean }>;
   limits?: { heapMb?: number; watchdogMs?: number; idleMinutes?: number };
@@ -217,6 +217,16 @@ Server functions are ordinary async exports of `"use server"` modules. Arguments
 The kit surface is in [rounds/ROUND-3.md](rounds/ROUND-3.md) §1 to §5 (D65): component resolution and `mostra add`, the warm and on-demand sets, tokens, `@mostra/kit/questionnaire`, `/review`, `/motion`, `/deck`, `/terminal`, `/charts` and `/demo`. Two rules are interface-level:
 - Every persisted kit input takes `id` and binds through `useField`.
 - Every kit visual reads the token variables, and accepts `className` and copy-source editing (D68).
+
+**What WP-18 built** (D179), every change additive:
+- **The theme stack.** `kit.theme` is a theme or an ordered list (at most 8): a built-in id (`studio`, `arcata`), a theme an installed plugin contributes, a CSS file in the artifact (`./brand.css`), `"host"`, or `"none"` alone. The first entry is a complete theme; themes come before files and `"host"`. A stack the manifest can't hold is `MOSTRA_MANIFEST_INVALID`; an unknown theme `MOSTRA_KIT_THEME_UNKNOWN`, a missing file `MOSTRA_KIT_THEME_FILE_MISSING`, two of one theme `MOSTRA_KIT_THEME_CONFLICT` (errors at verify and publish); theme data that breaks a WCAG pair `MOSTRA_KIT_THEME_CONTRAST` (a warning). The build compiles the stack in its one Tailwind run, writes `data-theme` (and `data-host-look="over" | "under"` with the `#mostra-host-tokens` table, for `"host"`) on `<html>`, and the stack's CSS and the kit's registry version join `envDigest` (`themeDigest`, `kitVersion`).
+- **Resolution.** `@/components/ui/<name>` and `@mostra/kit/<module>` resolve to the artifact's own file first and the kit's registry item for its base next (build and type check alike); `mostra add <name>` is `pack/add` of the kit's item for the artifact's base, and a kit item's bare `registryDependencies` are the kit's.
+- **Host protocol** (revision `2026-10-10`): `theme/list { artifact? }` → `{ themes: ThemeSummary[], artifact?: { stack, default } }` (`ThemeSummary`: `{ id, name, description, source: "built-in" | "plugin", package?, complete, default }`); `theme/show { theme?, artifact?, css? }` → `{ stack, default, id?, name?, faces?, values?: { base, light, dark }, files, host?, css?, warnings }`; `artifact/verify` takes `theme?` (a stack for that run only), and `VerifyVerdict.theme` is `{ stack, default, requested? }`; `HomeConfig.look` is `HostLook` `{ theme?, variables? }` (the default stack for pages naming none, and MCP Apps' standard variables, values without `; { } < >`).
+- **The bridge.** `ui/initialize`'s `hostContext` carries `theme` (the person's light or dark) and `styles.variables` (a `HostLook`'s); the shell sends `ui/notifications/host-context-changed` (MCP Apps' name) when its switch or the device changes the appearance.
+- **Fields.** `FieldOptions.options`, `FieldOp.options` and each results field's `options` are `FieldOption[]` (`{ value: string | number, label?, recommended? }`, at most 200), so results name an answer by its label (§8).
+- **Plugins.** The manifest's `contributes.themes` is `[{ theme: "./themes/x.json" }]` (artifact scope), each a `ThemeLayer` as `@mostra/themes/theme.schema.json` describes it, checked by `plugin/validate` and at install.
+- **CLI.** `mostra theme list [--artifact]`, `mostra theme show [theme…] [--artifact] [--css]`, `mostra verify --theme <stack> --fix` (`--fix` writes every replace fix inside the artifact, up to three rounds, and the result gains `fixed: [{ file, fixes }]`).
+- **Diagnostics.** The area `KIT` (`THEME_UNKNOWN`, `THEME_FILE_MISSING`, `THEME_CONFLICT`, `THEME_CONTRAST`, `WRONG_BASE`, `CSS_UNPROCESSED`) and `MOSTRA_LINT_API_CHANGED`.
 
 ## 4. Browser protocol (client runtime ↔ gateway)
 

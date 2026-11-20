@@ -1,0 +1,37 @@
+/*
+ * A theme layer that changes only tokens (KT-04): every colour role and the shapes, never the faces,
+ * so a part that fixes its colours can't pass on its text alone. The token-restyle test lays it over
+ * Studio and expects every kit part on the Skill's specimen to look different.
+ */
+:root {
+  --background: oklch(0.95 0.03 140);
+  --foreground: oklch(0.28 0.08 300);
+  --card: oklch(0.92 0.04 90);
+  --card-foreground: oklch(0.3 0.09 20);
+  --popover: oklch(0.93 0.04 60);
+  --popover-foreground: oklch(0.3 0.09 20);
+  --muted: oklch(0.88 0.05 200);
+  --muted-foreground: oklch(0.4 0.08 250);
+  --border: oklch(0.6 0.15 30);
+  --input: oklch(0.5 0.15 150);
+  --ring: oklch(0.5 0.2 330);
+  --primary: oklch(0.45 0.18 150);
+  --primary-foreground: oklch(0.98 0.02 90);
+  --secondary: oklch(0.85 0.08 330);
+  --secondary-foreground: oklch(0.3 0.1 330);
+  --accent: oklch(0.86 0.1 200);
+  --accent-foreground: oklch(0.3 0.1 230);
+  --destructive: oklch(0.45 0.2 300);
+  --destructive-foreground: oklch(0.98 0 0);
+  --success: oklch(0.42 0.12 200);
+  --warning: oklch(0.45 0.12 50);
+  --answer: oklch(0.7 0.2 330);
+  --highlight: oklch(0.45 0.2 250);
+  --chart-1: oklch(0.5 0.2 30);
+  --card-radius: 24px;
+  --control-radius: 2px;
+  --button-radius: 2px;
+  --choice-radius: 2px;
+  --badge-radius: 2px;
+  --rule: oklch(0.6 0.15 30);
+}

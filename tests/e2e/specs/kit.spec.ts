@@ -1,16 +1,40 @@
 /// <reference lib="dom" />
 /**
- * The kit's questionnaire in Chromium, Firefox and WebKit (WP-18, KT-05): every kind of answer
+ * The kit in Chromium, Firefox and WebKit (WP-18): a page keeps its theme and takes a host's look
+ * only where its stack names it (KT-04); a layer of tokens alone restyles every part (KT-04, KT-10);
+ * and the questionnaire (KT-05): every kind of answer
  * saves through its field as the viewer goes, comes back after a reload, waits for the required
  * answer at the trusted Submit, takes an optional single choice back (#159), and arrives in results
  * under its question's label, each choice by the label the viewer saw, with the recommended option
  * named.
  */
+import { cpSync, mkdirSync, readFileSync, writeFileSync } from "node:fs";
+import { dirname, join } from "node:path";
+import { fileURLToPath } from "node:url";
 import { expect, test } from "@playwright/test";
-import { linkFor, openInShell, publishOwn, results, saved, viewerName } from "../support/client.ts";
+import {
+  E2E_FIXTURES,
+  linkFor,
+  openInShell,
+  publishOwn,
+  republish,
+  results,
+  saved,
+  viewerName,
+} from "../support/client.ts";
 import { Client, readRun } from "../support/mostra.ts";
 
 const run = readRun();
+
+/** The Agent Skill's specimen: every kit part on one page. */
+const SPECIMEN = fileURLToPath(
+  new URL("../../../skills/mostra/assets/examples/specimen/", import.meta.url),
+);
+
+/** The kit's registry for the Base UI base: what `mostra add` copies. */
+const KIT_REGISTRY = fileURLToPath(
+  new URL("../../../packages/kit/registry/base/", import.meta.url),
+);
 
 test.describe("the page's theme and a host's look (KT-04, D179 item 5)", () => {
   test("a page keeps its theme, takes a host's look where its stack names host, and follows the shell's light or dark", async ({
@@ -66,6 +90,108 @@ test.describe("the page's theme and a host's look (KT-04, D179 item 5)", () => {
       // The look is the home's: cleared for the suites after this one.
       const clear = await Client.connect(run.socket, { home: { look: {} } });
       clear.close();
+    }
+  });
+});
+
+test.describe("a token change restyles every kit visual (KT-04, KT-10)", () => {
+  test("every part of the Skill's specimen looks different under a layer that changes only tokens", async ({
+    browser,
+  }, info) => {
+    test.setTimeout(240_000);
+    const host = await Client.connect(run.socket);
+    try {
+      // The Skill's specimen, every part on one page, published as it is and then with a layer
+      // that changes only tokens laid over its theme.
+      const dir = join(dirname(run.home), "sources", `restyle-${info.project.name}-${Date.now()}`);
+      cpSync(SPECIMEN, dir, { recursive: true });
+      cpSync(join(E2E_FIXTURES, "restyle", "restyle.css"), join(dir, "restyle.css"));
+      const receipt = await host.call<{ artifactId: string }>("artifact/publish", {
+        source: { path: dir },
+      });
+      const own = { artifactId: receipt.artifactId, dir };
+      // Each build in a browser of its own, so neither shows the other's version.
+      const shots = async (viewer: string): Promise<{ slot: string; png: Buffer }[]> => {
+        const context = await browser.newContext();
+        const page = await context.newPage();
+        const frame = await openInShell(page, await linkFor(host, own.artifactId, viewer));
+        await frame.locator("[data-slot='page']").waitFor();
+        // The page's own ground held the same in both builds: a part whose edges only blend into
+        // a changed ground doesn't count as restyled.
+        await frame.locator("html").evaluate(() => {
+          const style = document.createElement("style");
+          style.textContent = "html, body { background: rgb(128, 128, 128) !important; }";
+          document.head.append(style);
+        });
+        const parts = frame.locator("[data-slot]");
+        // Each visible part, in document order: the same parts in both builds.
+        const visible = await parts.evaluateAll((elements) =>
+          elements.map((element) => {
+            const box = element.getBoundingClientRect();
+            return box.width >= 1 && box.height >= 1 && element.checkVisibility()
+              ? (element.getAttribute("data-slot") ?? "")
+              : undefined;
+          }),
+        );
+        const found: { slot: string; png: Buffer }[] = [];
+        for (const [index, slot] of visible.entries()) {
+          if (slot === undefined) continue;
+          found.push({
+            slot,
+            png: await parts.nth(index).screenshot({ animations: "disabled", caret: "hide" }),
+          });
+        }
+        await context.close();
+        return found;
+      };
+      const before = await shots(viewerName(info));
+      await republish(host, own, (text) =>
+        text.replace('kit: { theme: "studio" }', 'kit: { theme: ["studio", "./restyle.css"] }'),
+      );
+      const after = await shots(viewerName(info, "-restyled"));
+      expect(after.map((part) => part.slot)).toEqual(before.map((part) => part.slot));
+      // The kit's parts on the page: buttons, badges, fields, cards, menus' triggers, tabs, tables,
+      // the layout's figures and sections, the questionnaire's questions.
+      expect(new Set(before.map((part) => part.slot)).size).toBeGreaterThan(40);
+      const unchanged = before
+        .filter((part, index) => part.png.equals(after[index]?.png ?? Buffer.alloc(0)))
+        .map((part) => part.slot);
+      expect(unchanged).toEqual([]);
+    } finally {
+      host.close();
+    }
+  });
+});
+
+test.describe("design freedom: className and a copied part override the kit (KT-10)", () => {
+  test("a className restyles a part, and the artifact's own copy of a part wins over the kit's", async ({
+    page,
+  }, info) => {
+    const host = await Client.connect(run.socket);
+    try {
+      const dir = join(dirname(run.home), "sources", `override-${info.project.name}-${Date.now()}`);
+      cpSync(join(E2E_FIXTURES, "override"), dir, { recursive: true });
+      // The kit's own button, copied as `mostra add button` copies it, then edited.
+      mkdirSync(join(dir, "components", "ui"), { recursive: true });
+      const kitButton = readFileSync(join(KIT_REGISTRY, "components/ui/button.tsx"), "utf8");
+      const edited = kitButton.replace('data-slot="button"', 'data-slot="button" data-copy="mine"');
+      expect(edited).not.toBe(kitButton);
+      writeFileSync(join(dir, "components", "ui", "button.tsx"), edited);
+      const receipt = await host.call<{ artifactId: string }>("artifact/publish", {
+        source: { path: dir },
+      });
+      const frame = await openInShell(
+        page,
+        await linkFor(host, receipt.artifactId, viewerName(info)),
+      );
+      const card = frame.getByTestId("card");
+      await expect(card).toHaveCSS("background-color", "rgb(1, 2, 3)");
+      await expect(card).toHaveCSS("color", "rgb(250, 250, 250)");
+      // The copy rendered, not the kit's: and the kit's other parts still came from the kit.
+      await expect(frame.getByTestId("button")).toHaveAttribute("data-copy", "mine");
+      await expect(frame.getByTestId("badge")).toHaveAttribute("data-slot", "badge");
+    } finally {
+      host.close();
     }
   });
 });
