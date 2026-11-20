@@ -103,7 +103,11 @@ export interface PreparedSource {
   /** The kit and the theme stack the build takes (D179). */
   readonly kit: KitBuild;
   /** The theme stack as the manifest writes it, and whether it was the default (D179 item 2). */
-  readonly theme: { readonly stack: readonly string[]; readonly default: boolean };
+  readonly theme: {
+    readonly stack: readonly string[];
+    readonly default: boolean;
+    readonly requested?: boolean;
+  };
 }
 
 /** A finished build in a directory, as publish lays out a version. */
@@ -794,6 +798,7 @@ export function createVerifier(options: VerifierOptions): Verifier {
       smoke,
       regressions,
       timingsMs: timings,
+      theme: prepared.theme,
     };
     const checkedVerdict = VerifyVerdict.parse(verdict);
     if (

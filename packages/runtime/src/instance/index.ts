@@ -10,6 +10,7 @@
  * ```
  */
 import { readFileSync, statSync } from "node:fs";
+import { readFile } from "node:fs/promises";
 import { dirname, join, relative, resolve } from "node:path";
 import type { Readable, Writable } from "node:stream";
 import { fileURLToPath } from "node:url";
@@ -81,6 +82,7 @@ import {
   type Interaction,
   redactEvents,
 } from "../interaction/index.ts";
+import { themeMethods } from "../kit/index.ts";
 import {
   createLink,
   createOwnerAuthor,
@@ -111,6 +113,7 @@ import {
   artifactMethods,
   canonicalRef,
   createPublisher,
+  extractManifest,
   instanceChecks,
   type Publisher,
   versionDamage,
@@ -957,6 +960,31 @@ async function assemble(home: OwnedHome, options: StartInstanceOptions): Promise
         dependenciesChanged: (artifact) => dev.dependenciesChanged(artifact),
         versionOwner: (versionId) => registry.version(versionId)?.artifactId,
         cacheDir: join(home.path, "cache", "mcp-app"),
+      }),
+      ...themeMethods({
+        artifact: (ref) =>
+          getPublisher().withArtifact(ref, async ({ target, source }) => {
+            const text = await readFile(join(source.root, source.entry), "utf8");
+            const manifest = extractManifest(source.entry, text).manifest ?? {
+              title: source.entry,
+            };
+            // The working lockfile's plugins, from a layout already installed: listing installs nothing.
+            const working = await getDependencies()
+              .working(target, { install: false })
+              .catch(() => undefined);
+            return {
+              manifest,
+              sourceDir: source.root,
+              ...(working?.nodeModules !== undefined
+                ? {
+                    plugins: {
+                      names: working.lock.plugins ?? [],
+                      nodeModules: working.nodeModules,
+                    },
+                  }
+                : {}),
+            };
+          }),
       }),
       ...packMethods({
         packs: getPacks,

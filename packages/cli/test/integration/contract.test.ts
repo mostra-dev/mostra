@@ -65,10 +65,12 @@ async function run(
   args: string[],
   expected: { code: number; ok: boolean; error?: string },
   input?: string,
+  timeoutMs?: number,
 ): Promise<{ ran: Ran; result: unknown }> {
   const ran = await cli([...args, "--json"], {
     env: home.env,
     ...(input !== undefined ? { input } : {}),
+    ...(timeoutMs !== undefined ? { timeoutMs } : {}),
   });
   const value = envelope(ran);
   expect({ code: ran.code, ok: value.ok, error: value.error?.code }, ran.stderr).toEqual({
@@ -958,6 +960,71 @@ describe("every command, with --json and no terminal", () => {
     expect(lines.slice(0, -1).every((line) => "event" in line)).toBe(true);
     covered.add("dev");
   }, 120_000);
+
+  it("verify --fix writes the new form of every changed API and the base's own idiom, then passes (KT-08)", async () => {
+    const dir = join(home.root, "churned");
+    mkdirSync(dir, { recursive: true });
+    const page = `import * as z from "zod";
+import { useField } from "@mostra/react";
+import { Button } from "@/components/ui/button";
+import { Dialog, DialogContent, DialogTitle, DialogTrigger } from "@/components/ui/dialog";
+
+const Email = z.string().email();
+
+export default function Page() {
+  const [email, setEmail] = useField("email", "", { label: "Email" });
+  return (
+    <main className="flex-shrink-0 p-6">
+      <h1 className="bg-gradient-to-r from-primary to-accent">Churned</h1>
+      <label>
+        Email <input value={email} onChange={(event) => setEmail(event.currentTarget.value)} />
+      </label>
+      <p>{Email.safeParse(email).success ? "Valid" : "Not yet"}</p>
+      <Dialog>
+        <DialogTrigger asChild>
+          <Button variant="outline">Open the plan</Button>
+        </DialogTrigger>
+        <DialogContent>
+          <DialogTitle>The plan</DialogTitle>
+        </DialogContent>
+      </Dialog>
+    </main>
+  );
+}
+`;
+    writeFileSync(join(dir, "index.tsx"), page);
+    // Without --fix: the other base's idiom fails the type check, as itself, with its fix.
+    const plain = await run(["verify", dir], { code: 1, ok: true }, undefined, 220_000);
+    const before = VerifyVerdict.parse(plain.result);
+    const codes = before.diagnostics.map((diagnostic) => diagnostic.code);
+    expect(codes).toContain("MOSTRA_KIT_WRONG_BASE");
+    expect(codes.filter((code) => code === "MOSTRA_LINT_API_CHANGED")).toHaveLength(3);
+    expect(codes).not.toContain("MOSTRA_TYPE_ERROR");
+    expect(readFileSync(join(dir, "index.tsx"), "utf8")).toBe(page);
+
+    // Two verifies, one after the fix: each as long as verify takes on a loaded runner.
+    const fixed = await run(["verify", dir, "--fix"], { code: 0, ok: true }, undefined, 220_000);
+    const after = fixed.result as VerifyVerdict & { fixed: { file: string; fixes: number }[] };
+    expect(VerifyVerdict.parse(after).status).toBe("pass");
+    expect(after.fixed).toEqual([{ file: "index.tsx", fixes: 4 }]);
+    expect(
+      after.diagnostics.filter(
+        (d) => d.code.startsWith("MOSTRA_LINT") || d.code.startsWith("MOSTRA_KIT"),
+      ),
+    ).toEqual([]);
+    const text = readFileSync(join(dir, "index.tsx"), "utf8");
+    expect(text).toContain("const Email = z.email();");
+    expect(text).toContain('className="shrink-0 p-6"');
+    expect(text).toContain("bg-linear-to-r from-primary");
+    expect(text).toContain(
+      '<DialogTrigger render={<Button variant="outline" />}>Open the plan</DialogTrigger>',
+    );
+    expect(fixed.ran.stderr).toContain("fixed index.tsx");
+    // Nothing left to fix: --fix says so and changes nothing.
+    const again = await run(["verify", dir, "--fix"], { code: 0, ok: true }, undefined, 220_000);
+    expect((again.result as { fixed: unknown[] }).fixed).toEqual([]);
+    expect(readFileSync(join(dir, "index.tsx"), "utf8")).toBe(text);
+  }, 720_000);
 
   it("a usage error, an unknown command and a timeout end with their codes", async () => {
     await run(["verify"], { code: 2, ok: false, error: "MOSTRA_CLI_USAGE" });

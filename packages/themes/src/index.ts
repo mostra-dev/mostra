@@ -18,7 +18,12 @@ export {
 } from "./css.ts";
 export { HOST_TOKENS, hostTokenValues } from "./host.ts";
 export { escapeHtml, type HtmlValue, html, isSafeHtml, type SafeHtml, text } from "./html.ts";
-export { type KitStylesheetOptions, kitStylesheet } from "./kit.ts";
+export {
+  type KitStylesheetOptions,
+  kitStylesheet,
+  type ThemeValues,
+  themeValues,
+} from "./kit.ts";
 export { type Mail, type MailContent, type MailIdentity, renderMail } from "./mail.ts";
 export {
   APPEARANCE_COOKIE,
@@ -47,6 +52,7 @@ export {
   safeHref,
   signedInLine,
 } from "./pages.ts";
+export { THEME_SCHEMA_ID, themeLayerSchema } from "./schema.ts";
 export {
   APPEARANCES,
   type Appearance,
@@ -58,6 +64,7 @@ export {
   isCompleteTheme,
   layerThemes,
   type Mode,
+  PALETTE_ROLE_NAMES,
   type Palette,
   type Stage,
   THEME_REVISION,

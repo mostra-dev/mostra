@@ -83,6 +83,16 @@ export interface PluginPackEntry {
   readonly item: string;
 }
 
+/**
+ * A theme the plugin carries (D179 item 4): a theme layer as JSON in its package, the
+ * `ThemeLayer` of `@mostra/themes` (schema `@mostra/themes/theme.schema.json`), whose faces'
+ * files are the package's own. An artifact that installs the plugin may name it in `kit.theme`.
+ */
+export interface PluginThemeEntry {
+  /** The theme file: `./themes/brand.json`. */
+  readonly theme: string;
+}
+
 /** What a plugin contributes, by kind. */
 export interface PluginContributes {
   /** Embed engines (`@mostra/contract-embed-engine`). */
@@ -99,6 +109,8 @@ export interface PluginContributes {
   readonly cliCommands?: readonly PluginCommandEntry[];
   /** Source packs it carries: registry items in the package. */
   readonly packs?: readonly PluginPackEntry[];
+  /** Themes it carries, which an artifact's `kit.theme` may name (D179 item 4). */
+  readonly themes?: readonly PluginThemeEntry[];
 }
 
 /** A license the plugin brings with it, declared so Mostra can disclose it before install. */
@@ -179,6 +191,10 @@ const PluginPackEntrySchema: z.ZodType<PluginPackEntry> = z
   .looseObject({ item: packagePath })
   .register(pluginManifestRegistry, { id: "PluginPackEntry" });
 
+const PluginThemeEntrySchema: z.ZodType<PluginThemeEntry> = z
+  .looseObject({ theme: packagePath })
+  .register(pluginManifestRegistry, { id: "PluginThemeEntry" });
+
 const entries = PluginEntrySchema.array().readonly().exactOptional();
 
 const PluginContributesSchema: z.ZodType<PluginContributes> = z
@@ -190,6 +206,7 @@ const PluginContributesSchema: z.ZodType<PluginContributes> = z
     connectors: entries,
     cliCommands: PluginCommandEntrySchema.array().readonly().exactOptional(),
     packs: PluginPackEntrySchema.array().readonly().exactOptional(),
+    themes: PluginThemeEntrySchema.array().readonly().exactOptional(),
   })
   .register(pluginManifestRegistry, { id: "PluginContributes" });
 
@@ -265,10 +282,11 @@ const KNOWN_KEYS: Readonly<Record<string, readonly string[]>> = {
     "examples",
     "platforms",
   ],
-  contributes: [...CONTRACT_NAMES.map((name) => PLUGIN_CONTRACTS[name].key), "packs"],
+  contributes: [...CONTRACT_NAMES.map((name) => PLUGIN_CONTRACTS[name].key), "packs", "themes"],
   entry: ["id", "entry", "export", "title"],
   command: ["command", "entry", "export"],
   pack: ["item"],
+  theme: ["theme"],
   license: ["package", "license", "class", "summary", "url"],
   example: ["id", "path", "baselines"],
 };
@@ -336,7 +354,9 @@ export function checkPluginManifest(value: unknown): ManifestCheck {
           ? KNOWN_KEYS["command"]
           : key === "packs"
             ? KNOWN_KEYS["pack"]
-            : KNOWN_KEYS["entry"];
+            : key === "themes"
+              ? KNOWN_KEYS["theme"]
+              : KNOWN_KEYS["entry"];
       unknownKeys(item, known ?? [], "contributes", key, index);
     });
   }
@@ -407,7 +427,8 @@ export function checkPluginManifest(value: unknown): ManifestCheck {
   if (
     view.contributesObject &&
     contributions === 0 &&
-    (view.contributes["packs"]?.length ?? 0) === 0
+    (view.contributes["packs"]?.length ?? 0) === 0 &&
+    (view.contributes["themes"]?.length ?? 0) === 0
   ) {
     error("The plugin contributes nothing: add an entry to contributes.", "contributes");
   }
@@ -540,7 +561,9 @@ export function manifestScopes(manifest: PluginManifest): readonly ("artifact" |
   const kinds = CONTRACT_NAMES.filter(
     (name) => (manifest.contributes[PLUGIN_CONTRACTS[name].key]?.length ?? 0) > 0,
   );
-  const packs = (manifest.contributes.packs?.length ?? 0) > 0;
+  // Packs and themes belong to the artifact that uses them (D172 item 4, D179 item 4).
+  const packs =
+    (manifest.contributes.packs?.length ?? 0) > 0 || (manifest.contributes.themes?.length ?? 0) > 0;
   const home = !packs && kinds.every((name) => PLUGIN_CONTRACTS[name].scopes.includes("home"));
   return home ? ["artifact", "home"] : ["artifact"];
 }

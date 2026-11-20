@@ -270,13 +270,18 @@ function checkPalette(mode: string, palette: Palette, problems: string[]): void 
   }
 }
 
-/** The roles a palette may have. */
-const PALETTE_ROLES = new Set<string>([
-  ...PAIRS.flatMap(([text, ground]) => [text, ground]),
-  "border",
-  "answer",
-  "chart",
-]);
+/** The roles a palette may have, sorted: every one a theme sets, `highlight` optional. */
+export const PALETTE_ROLE_NAMES: readonly (keyof Palette)[] = [
+  ...new Set<keyof Palette>([
+    ...PAIRS.map(([text]) => text),
+    ...PAIRS.map(([, ground]) => ground),
+    "border",
+    "answer",
+    "chart",
+  ]),
+].sort();
+
+const PALETTE_ROLES = new Set<string>(PALETTE_ROLE_NAMES);
 
 /** Every colour a (possibly partial) palette has: in gamut, and agreeing with its hex. */
 function checkPaletteColors(mode: string, palette: Partial<Palette>, problems: string[]): void {

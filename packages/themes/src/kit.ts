@@ -17,7 +17,7 @@ const KIT_COLORS: readonly string[] = [...TAILWIND_COLORS, "destructive-foregrou
 
 /** The utilities the token contract gives Tailwind: the colours, faces, radii, depths and eases. */
 const UTILITIES: readonly string[] = [
-  ...KIT_COLORS.map((role) => "--color-" + role + ": var(--" + role + ");"),
+  ...KIT_COLORS.map((role) => `--color-${role}: var(--${role});`),
   "--font-sans: var(--font-sans);",
   "--font-display: var(--font-display);",
   "--font-heading: var(--heading-font);",
@@ -109,10 +109,64 @@ const BASE_RULES: readonly (readonly [selector: string, lines: readonly string[]
 ];
 
 const block = (selector: string, lines: readonly string[], indent = ""): string =>
-  [indent + selector + " {", ...lines.map((line) => indent + "  " + line), indent + "}"].join("\n");
+  [`${indent + selector} {`, ...lines.map((line) => `${indent}  ${line}`), `${indent}}`].join("\n");
 
-const tokenLines = (values: Readonly<Partial<Record<TokenName, string>>> | undefined): string[] =>
-  Object.entries(values ?? {}).map(([name, value]) => "--" + name + ": " + value + ";");
+/** The custom properties a theme sets, by mode: what a build declares and a later layer changes. */
+export interface ThemeValues {
+  /** The same in both modes: every contract token at its default, then the faces, radius and motion. */
+  readonly base: Readonly<Record<string, string>>;
+  /** Light mode's colours, then its tokens. */
+  readonly light: Readonly<Record<string, string>>;
+  /** Dark mode's colours, then its tokens. */
+  readonly dark: Readonly<Record<string, string>>;
+}
+
+const entriesOf = (lines: readonly string[]): Record<string, string> => {
+  const out: Record<string, string> = {};
+  for (const line of lines) {
+    const at = line.indexOf(":");
+    out[line.slice(0, at)] = line.slice(at + 1, -1).trim();
+  }
+  return out;
+};
+
+const prefixed = (values: Readonly<Partial<Record<TokenName, string>>> | undefined) =>
+  Object.fromEntries(Object.entries(values ?? {}).map(([name, value]) => [`--${name}`, value]));
+
+/**
+ * Every custom property a theme's stylesheet sets, by name (`--card-radius`), in the order the
+ * stylesheet writes them: what `mostra theme show` prints, and what a theme layer may override.
+ */
+export function themeValues(theme: Theme): ThemeValues {
+  const light = {
+    ...entriesOf(paletteVariables(theme.modes.light)),
+    ...prefixed(theme.tokens?.light),
+  };
+  const dark = {
+    ...entriesOf(paletteVariables(theme.modes.dark)),
+    ...prefixed(theme.tokens?.dark),
+  };
+  const base: Record<string, string> = {
+    ...Object.fromEntries(
+      Object.entries(TOKENS).map(([name, spec]) => [`--${name}`, spec.default]),
+    ),
+    "--highlight": "var(--primary)",
+    "--font-sans": stack(theme.faces.sans),
+    "--font-display": stack(theme.faces.display),
+    "--font-mono": stack(theme.faces.mono),
+    "--radius": theme.radius,
+    "--press-scale": String(theme.motion.pressScale),
+    "--press-ms": `${theme.motion.pressMs}ms`,
+    "--state-ms": `${theme.motion.stateMs}ms`,
+    ...prefixed(theme.tokens?.base),
+  };
+  // A token light mode sets is light's (the root declares light), so it isn't shared too.
+  for (const name of Object.keys(light)) delete base[name];
+  return { base, light, dark };
+}
+
+const declarations = (values: Readonly<Record<string, string>>): string[] =>
+  Object.entries(values).map(([name, value]) => `${name}: ${value};`);
 
 /**
  * A theme as an artifact's build takes it: its faces; every token of the contract at the format's
@@ -126,7 +180,7 @@ const tokenLines = (values: Readonly<Partial<Record<TokenName, string>>> | undef
  * included, overrides it without `!important`.
  */
 export function kitStylesheet(theme: Theme, options: KitStylesheetOptions = {}): string {
-  const faceUrl = options.faceUrl ?? ((file: string) => "./" + file);
+  const faceUrl = options.faceUrl ?? ((file: string) => `./${file}`);
   const faces: string[] = [];
   const seen = new Set<string>();
   for (const face of Object.values(theme.faces)) {
@@ -135,57 +189,29 @@ export function kitStylesheet(theme: Theme, options: KitStylesheetOptions = {}):
       seen.add(file.file);
       faces.push(
         block("@font-face", [
-          'font-family: "' + face.family + '";',
-          "font-style: " + file.style + ";",
+          `font-family: "${face.family}";`,
+          `font-style: ${file.style};`,
           "font-display: swap;",
-          "font-weight: " + file.weight + ";",
-          'src: url("' + faceUrl(file.file) + '") format("woff2");',
-          "unicode-range: " + file.unicodeRange + ";",
+          `font-weight: ${file.weight};`,
+          `src: url("${faceUrl(file.file)}") format("woff2");`,
+          `unicode-range: ${file.unicodeRange};`,
         ]),
       );
     }
   }
-  const shared = [
-    ...Object.entries(TOKENS).map(([name, spec]) => "--" + name + ": " + spec.default + ";"),
-    "--highlight: var(--primary);",
-    "--font-sans: " + stack(theme.faces.sans) + ";",
-    "--font-display: " + stack(theme.faces.display) + ";",
-    "--font-mono: " + stack(theme.faces.mono) + ";",
-    "--radius: " + theme.radius + ";",
-    "--press-scale: " + theme.motion.pressScale + ";",
-    "--press-ms: " + theme.motion.pressMs + "ms;",
-    "--state-ms: " + theme.motion.stateMs + "ms;",
-    ...tokenLines(theme.tokens?.base),
-  ];
-  const light = [
-    "color-scheme: light;",
-    ...paletteVariables(theme.modes.light),
-    ...tokenLines(theme.tokens?.light),
-  ];
-  const dark = [
-    "color-scheme: dark;",
-    ...paletteVariables(theme.modes.dark),
-    ...tokenLines(theme.tokens?.dark),
-  ];
+  const values = themeValues(theme);
+  const shared = declarations(values.base);
+  const light = ["color-scheme: light;", ...declarations(values.light)];
+  const dark = ["color-scheme: dark;", ...declarations(values.dark)];
   return [
-    "/* " +
-      theme.name +
-      " (" +
-      theme.id +
-      "), theme revision " +
-      theme.revision +
-      ": generated by @mostra/themes. */",
+    `/* ${theme.name} (${theme.id}), theme revision ${theme.revision}: generated by @mostra/themes. */`,
     ...faces,
     block(":where(:root)", [...shared, ...light]),
-    "@media (prefers-color-scheme: dark) {\n" +
-      block(':where(:root:not([data-appearance="light"]))', dark, "  ") +
-      "\n}",
+    `@media (prefers-color-scheme: dark) {\n${block(':where(:root:not([data-appearance="light"]))', dark, "  ")}\n}`,
     block(':where(:root[data-appearance="dark"])', dark),
     block(':where(:root[data-appearance="light"])', light),
     block("@theme inline", UTILITIES),
-    "@layer base {\n" +
-      BASE_RULES.map(([selector, lines]) => block(selector, lines, "  ")).join("\n") +
-      "\n}",
+    `@layer base {\n${BASE_RULES.map(([selector, lines]) => block(selector, lines, "  ")).join("\n")}\n}`,
     ...(theme.css !== undefined && theme.css !== "" ? [theme.css] : []),
     "",
   ].join("\n");

@@ -23,7 +23,7 @@
  * createDependencies({ …, plugins: () => plugins }); // verify, publish and deps/add pass the gate
  * ```
  */
-import { existsSync, realpathSync } from "node:fs";
+import { existsSync, readFileSync, realpathSync } from "node:fs";
 import { mkdir, readFile } from "node:fs/promises";
 import { delimiter, dirname, isAbsolute, join, relative, resolve, sep } from "node:path";
 import { fileURLToPath } from "node:url";
@@ -64,6 +64,7 @@ import {
   spdxLicense,
   stampServed,
 } from "@mostra/protocol/plugin";
+import { defineThemeLayer, ThemeError, type ThemeLayer } from "@mostra/themes";
 import semver from "semver";
 import type {
   Dependencies,
@@ -420,6 +421,32 @@ export function createPlugins(options: PluginsOptions): Plugins {
           createDiagnostic("MOSTRA_PLUGIN_ENTRY_INVALID", {
             message: `contributes.packs[${index}]: ${pack.item} isn't a file of ${plugin.name}.`,
             location: at(plugin, ["contributes", "packs", index, "item"]),
+          }),
+        );
+      }
+    });
+    (manifest.contributes.themes ?? []).forEach((entry, index) => {
+      const file = resolve(plugin.dir, entry.theme);
+      const where = at(plugin, ["contributes", "themes", index, "theme"]);
+      if (!existsSync(file) || !isInside(plugin.dir, realpathSync(file))) {
+        found.push(
+          createDiagnostic("MOSTRA_PLUGIN_ENTRY_INVALID", {
+            message: `contributes.themes[${index}]: ${entry.theme} isn't a file of ${plugin.name}.`,
+            location: where,
+          }),
+        );
+        return;
+      }
+      // A theme is data (D179 item 3): checked as `defineThemeLayer` checks it, faces included.
+      try {
+        defineThemeLayer(JSON.parse(readFileSync(file, "utf8")) as ThemeLayer);
+      } catch (error) {
+        const problem =
+          error instanceof ThemeError ? error.problems.join("; ") : (error as Error).message;
+        found.push(
+          createDiagnostic("MOSTRA_PLUGIN_ENTRY_INVALID", {
+            message: `contributes.themes[${index}]: ${entry.theme} isn't a theme: ${problem}.`,
+            location: where,
           }),
         );
       }

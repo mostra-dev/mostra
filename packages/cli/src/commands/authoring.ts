@@ -4,15 +4,17 @@
  * and `deps/add` (INTERFACES §6, §15).
  */
 import { randomUUID } from "node:crypto";
-import { readFile } from "node:fs/promises";
-import { join, resolve } from "node:path";
+import { readFile, stat, writeFile } from "node:fs/promises";
+import { dirname, isAbsolute, join, relative, resolve } from "node:path";
 import {
   ARTIFACT_PROGRESS,
+  applyFixes,
   artifactCreateMethod,
   artifactExportMethod,
   artifactImportMethod,
   artifactPublishMethod,
   artifactVerifyMethod,
+  type DiagnosticFix,
   depsAddMethod,
   packAddMethod,
   pluginExportMethod,
@@ -78,6 +80,14 @@ export const newCommand: CommandDef = defineCommand({
 /** The verdict for people: the status, each diagnostic, the screenshots worth looking at. */
 function verdictText(verdict: VerifyVerdict): string {
   const lines = [`verify: ${verdict.status}`];
+  if (verdict.theme) {
+    const how = verdict.theme.requested
+      ? " (--theme)"
+      : verdict.theme.default
+        ? " (the default: the manifest names no kit.theme)"
+        : "";
+    lines.push(`  theme: ${verdict.theme.stack.join(", ")}${how}`);
+  }
   for (const diagnostic of verdict.diagnostics) {
     const where =
       diagnostic.location && "file" in diagnostic.location
@@ -96,6 +106,44 @@ function verdictText(verdict: VerifyVerdict): string {
   return `${lines.join("\n")}\n`;
 }
 
+/** One file `--fix` changed, and how many fixes it took. */
+export interface FixedFile {
+  /** The file, relative to the artifact. */
+  readonly file: string;
+  readonly fixes: number;
+}
+
+/** The most rounds `--fix` makes: a fix that overlapped another is applied in the next one. */
+const FIX_ROUNDS = 3;
+
+/**
+ * Applies the text fixes a verdict carries to the artifact's files (KT-08): `replace`, `insert`
+ * and `delete` fixes of files inside the artifact, each file read and written whole. A fix naming
+ * a file outside the artifact is left alone. Returns the files changed.
+ */
+export async function applyVerdictFixes(verdict: VerifyVerdict): Promise<FixedFile[]> {
+  const path = verdict.artifact.path;
+  const root = (await stat(path)).isDirectory() ? path : dirname(path);
+  const byFile = new Map<string, DiagnosticFix[]>();
+  for (const diagnostic of verdict.diagnostics) {
+    const fix = diagnostic.fix;
+    if (fix === undefined || fix.kind === "command" || fix.file === undefined) continue;
+    const file = resolve(root, fix.file);
+    const inside = relative(root, file);
+    if (inside === "" || inside.startsWith("..") || isAbsolute(inside)) continue;
+    byFile.set(file, [...(byFile.get(file) ?? []), fix]);
+  }
+  const fixed: FixedFile[] = [];
+  for (const [file, fixes] of [...byFile].sort(([a], [b]) => a.localeCompare(b))) {
+    const text = await readFile(file, "utf8");
+    const after = applyFixes(text, fixes);
+    if (after.applied === 0 || after.text === text) continue;
+    await writeFile(file, after.text);
+    fixed.push({ file: relative(root, file).replaceAll("\\", "/"), fixes: after.applied });
+  }
+  return fixed;
+}
+
 /** `mostra verify <path>`. */
 export const verifyCommand: CommandDef = defineCommand({
   path: ["verify"],
@@ -109,6 +157,19 @@ export const verifyCommand: CommandDef = defineCommand({
       choices: ["on-failure", "always", "never"],
       default: "on-failure",
       summary: "Which screenshots the verdict marks as worth looking at.",
+    },
+    {
+      name: "theme",
+      kind: "list",
+      value: "<theme,…>",
+      summary:
+        "Build the page in this theme stack for this verify only, in place of the manifest's kit.theme (mostra theme list).",
+    },
+    {
+      name: "fix",
+      kind: "boolean",
+      summary:
+        "Apply the fixes verify finds to the artifact's files, then verify again; `fixed` lists the files changed.",
     },
   ],
   output: { type: "VerifyVerdict", topic: "cli" },
@@ -129,11 +190,25 @@ export const verifyCommand: CommandDef = defineCommand({
       | "always"
       | "never"
       | undefined;
-    const verdict = await context.call(artifactVerifyMethod, {
-      source: sourceRef(arg(context, "path"), context.cwd),
-      progressToken,
-      ...(screenshots !== undefined ? { screenshots } : {}),
-    });
+    const source = sourceRef(arg(context, "path"), context.cwd);
+    const theme = context.flags["theme"] as readonly string[] | undefined;
+    const verifyOnce = () =>
+      context.call(artifactVerifyMethod, {
+        source,
+        progressToken,
+        ...(screenshots !== undefined ? { screenshots } : {}),
+        ...(theme !== undefined && theme.length > 0 ? { theme } : {}),
+      });
+    let verdict = await verifyOnce();
+    const fix = context.flags["fix"] === true;
+    const fixed = new Map<string, number>();
+    for (let round = 0; fix && round < FIX_ROUNDS; round++) {
+      const changed = await applyVerdictFixes(verdict);
+      if (changed.length === 0) break;
+      for (const file of changed) fixed.set(file.file, (fixed.get(file.file) ?? 0) + file.fixes);
+      context.log(`verify: fixed ${changed.map((file) => file.file).join(", ")}; verifying again`);
+      verdict = await verifyOnce();
+    }
     context.record({
       event: "verify.result",
       fields: {
@@ -141,9 +216,14 @@ export const verifyCommand: CommandDef = defineCommand({
         codes: verdict.diagnostics.map((diagnostic) => diagnostic.code),
       },
     });
+    const fixedFiles = [...fixed].map(([file, fixes]) => ({ file, fixes }));
+    const fixedText =
+      fixedFiles.length === 0
+        ? "fixed: nothing to fix\n"
+        : `fixed: ${fixedFiles.map((file) => `${file.file} (${file.fixes})`).join(", ")}\n`;
     return {
-      result: verdict,
-      human: verdictText(verdict),
+      result: fix ? { ...verdict, fixed: fixedFiles } : verdict,
+      human: (fix ? fixedText : "") + verdictText(verdict),
       // Only a verdict this CLI knows means passing exits 0: a newer instance's status it doesn't
       // know (#45 lets it arrive) fails the command, never passes it (Opus review of MT-01, 2).
       ...(verdict.status === "pass" ? {} : { exit: EXIT.failure }),

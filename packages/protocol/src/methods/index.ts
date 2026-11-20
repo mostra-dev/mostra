@@ -74,6 +74,8 @@ import { shareStartMethod } from "./share/start.ts";
 import { shareStopMethod } from "./share/stop.ts";
 import { stateGetMethod } from "./state/get.ts";
 import { statePatchMethod } from "./state/patch.ts";
+import { themeListMethod } from "./theme/list.ts";
+import { themeShowMethod } from "./theme/show.ts";
 import { viewDefaultMethod } from "./view/default.ts";
 import { viewLaunchMethod } from "./view/launch.ts";
 import { viewRevokeMethod } from "./view/revoke.ts";
@@ -160,6 +162,8 @@ export const hostMethods: readonly AnyMethod[] = [
   appOpenMethod,
   appRequestMethod,
   appPageMethod,
+  themeListMethod,
+  themeShowMethod,
   // gen:methods
 ];
 

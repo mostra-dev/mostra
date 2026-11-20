@@ -17,6 +17,7 @@ import {
   type ThemeLayer,
   TOKEN_NAMES,
   TOKENS,
+  themeValues,
 } from "@mostra/themes";
 import { describe, expect, it } from "vitest";
 
@@ -38,14 +39,22 @@ describe("the token contract", () => {
     }
   });
 
-  it("reaches the stylesheet: every token at its default, then the theme's value", () => {
+  it("reaches the stylesheet: every token once, at the theme's value or the format's default", () => {
     const css = kitStylesheet(studio);
-    for (const name of TOKEN_NAMES) expect(css).toContain(`--${name}: ${TOKENS[name].default};`);
-    expect(css).toContain("--card-shadow: inset 0 2px 0 var(--rule);");
-    // The theme's value comes after the default, so it wins.
-    expect(css.lastIndexOf("--card-radius: 0px;")).toBeGreaterThan(
-      css.indexOf(`--card-radius: ${TOKENS["card-radius"].default};`),
-    );
+    const root = css.slice(css.indexOf(":where(:root) {"), css.indexOf("@media"));
+    for (const name of TOKEN_NAMES) {
+      const value =
+        studio.tokens?.base?.[name] ?? studio.tokens?.light?.[name] ?? TOKENS[name].default;
+      expect(root.split(`--${name}: `).length - 1, name).toBe(1);
+      expect(root).toContain(`--${name}: ${value};`);
+    }
+    expect(root).toContain("--card-shadow: inset 0 2px 0 var(--rule);");
+    expect(root).toContain("--card-radius: 0px;");
+    // What `mostra theme show` prints is what the stylesheet sets.
+    const values = themeValues(studio);
+    for (const [name, value] of Object.entries({ ...values.base, ...values.light })) {
+      expect(root).toContain(`${name}: ${value};`);
+    }
   });
 });
 

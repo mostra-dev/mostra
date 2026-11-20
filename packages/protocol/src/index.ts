@@ -751,6 +751,18 @@ export {
   statePatchMethod,
 } from "./methods/state/patch.ts";
 export {
+  type ThemeListParams,
+  type ThemeListResult,
+  ThemeSummary,
+  themeListMethod,
+} from "./methods/theme/list.ts";
+export {
+  type ThemeShowParams,
+  type ThemeShowResult,
+  type ThemeShowValues,
+  themeShowMethod,
+} from "./methods/theme/show.ts";
+export {
   type ViewDefaultParams,
   type ViewDefaultResult,
   viewDefaultMethod,
@@ -888,6 +900,7 @@ export {
   VERIFY_RUNNER_METHODS,
   type VerdictAria,
   type VerdictScreenshot,
+  type VerdictTheme,
   VerifyVerdict,
   type VerifyViewport,
   viewportsFor,

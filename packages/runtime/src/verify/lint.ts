@@ -8,9 +8,20 @@
  * a false report makes agents break working code (EVAL-01, D72).
  */
 import { readdir, readFile } from "node:fs/promises";
+import { createRequire } from "node:module";
 import { extname, join } from "node:path";
 import { createDiagnostic, type Diagnostic, type DiagnosticFix } from "@mostra/protocol";
-import { parseSync } from "oxc-parser";
+import type * as Oxc from "oxc-parser";
+
+let oxc: typeof Oxc | undefined;
+/**
+ * Loads the native parser on first use: importing this module loads no native code, so the
+ * platform gate answers before anything platform-specific loads (RT-07), as the ledger does.
+ */
+function parser(): typeof Oxc {
+  oxc ??= createRequire(import.meta.url)("oxc-parser") as typeof Oxc;
+  return oxc;
+}
 
 interface Node {
   readonly type: string;
@@ -602,7 +613,7 @@ export async function lintArtifact(sourceDir: string, base: "base" | "radix"): P
       continue;
     }
     lintCnHelper(lint);
-    const parsed = parseSync(file, text, { lang: lang ?? "tsx" });
+    const parsed = parser().parseSync(file, text, { lang: lang ?? "tsx" });
     if (parsed.errors.length > 0) continue; // The build reports a file that doesn't parse.
     lintScript(lint, parsed.program as unknown as Node, base);
   }

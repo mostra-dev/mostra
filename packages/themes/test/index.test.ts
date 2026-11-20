@@ -23,6 +23,7 @@ import {
   type Theme,
   ThemeError,
   tailwindStylesheet,
+  themeLayerSchema,
   themeStylesheet,
 } from "@mostra/themes";
 import { describe, expect, it } from "vitest";
@@ -133,12 +134,31 @@ describe("stylesheets", () => {
     expect(css).toContain('src: url("./fonts/figtree-latin-wght-normal.woff2")');
   });
 
-  it("give the Agent Skill its Studio stylesheet", () => {
-    const skill = readFileSync(
-      new URL("../../../skills/mostra/assets/studio.css", import.meta.url),
-      "utf8",
+  it("ship the schema of a theme layer, current, which every theme Mostra ships meets", async () => {
+    const file = readFileSync(new URL("../theme.schema.json", import.meta.url), "utf8");
+    expect(file, "run `pnpm --filter @mostra/themes generate`").toBe(
+      `${JSON.stringify(themeLayerSchema(), null, 2)}\n`,
     );
-    expect(skill, "run `pnpm --filter @mostra/themes generate`").toBe(tailwindStylesheet(studio));
+    const { default: Ajv } = await import("ajv");
+    const validate = new Ajv({ strict: true, allErrors: true }).compile(JSON.parse(file));
+    // The themes a page wears are what a plugin's theme files are; the frame and the brand, with its
+    // stage, dress Mostra's own pages.
+    for (const theme of Object.values(ARTIFACT_THEMES)) {
+      expect(validate(JSON.parse(JSON.stringify(theme))), JSON.stringify(validate.errors)).toBe(
+        true,
+      );
+    }
+    // A theme file with a key the format doesn't have, or a token it doesn't know, fails it.
+    expect(validate({ ...JSON.parse(JSON.stringify(studio)), colour: "red" })).toBe(false);
+    expect(
+      validate({
+        revision: THEME_REVISION,
+        id: "x",
+        name: "X",
+        description: "",
+        tokens: { base: { nope: "1" } },
+      }),
+    ).toBe(false);
   });
 
   it("ship as files that equal what the themes generate", () => {

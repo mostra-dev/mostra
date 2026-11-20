@@ -57,6 +57,7 @@ export {
   type PluginManifest,
   PluginManifestSchema,
   type PluginPackEntry,
+  type PluginThemeEntry,
   pluginManifestRegistry,
 } from "./plugin/manifest.ts";
 export {

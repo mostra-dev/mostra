@@ -1,0 +1,2458 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "https://mostradev.com/schemas/theme-layer.schema.json",
+  "title": "Mostra theme layer",
+  "description": "A theme, or a layer over one, of theme revision 2026-11-20 (D179). A complete theme sets every palette role in both modes, its faces, radius and motion.",
+  "type": "object",
+  "required": ["revision", "id", "name", "description"],
+  "additionalProperties": false,
+  "properties": {
+    "$schema": {
+      "type": "string"
+    },
+    "revision": {
+      "type": "string",
+      "pattern": "^\\d{4}-\\d{2}-\\d{2}$"
+    },
+    "id": {
+      "type": "string",
+      "pattern": "^[a-z][a-z0-9-]{0,31}$"
+    },
+    "name": {
+      "type": "string",
+      "minLength": 1,
+      "maxLength": 64
+    },
+    "description": {
+      "type": "string",
+      "maxLength": 280
+    },
+    "modes": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "light": {
+          "type": "object",
+          "additionalProperties": false,
+          "properties": {
+            "accent": {
+              "type": "object",
+              "description": "A colour: OKLCH (lightness 0 to 1, chroma, hue 0 to 360) and the hex it is.",
+              "required": ["oklch", "hex"],
+              "additionalProperties": false,
+              "properties": {
+                "oklch": {
+                  "type": "array",
+                  "items": {
+                    "type": "number"
+                  },
+                  "minItems": 3,
+                  "maxItems": 3
+                },
+                "hex": {
+                  "type": "string",
+                  "pattern": "^#[0-9a-f]{6}$"
+                }
+              }
+            },
+            "accentForeground": {
+              "type": "object",
+              "description": "A colour: OKLCH (lightness 0 to 1, chroma, hue 0 to 360) and the hex it is.",
+              "required": ["oklch", "hex"],
+              "additionalProperties": false,
+              "properties": {
+                "oklch": {
+                  "type": "array",
+                  "items": {
+                    "type": "number"
+                  },
+                  "minItems": 3,
+                  "maxItems": 3
+                },
+                "hex": {
+                  "type": "string",
+                  "pattern": "^#[0-9a-f]{6}$"
+                }
+              }
+            },
+            "answer": {
+              "type": "object",
+              "description": "A colour: OKLCH (lightness 0 to 1, chroma, hue 0 to 360) and the hex it is.",
+              "required": ["oklch", "hex"],
+              "additionalProperties": false,
+              "properties": {
+                "oklch": {
+                  "type": "array",
+                  "items": {
+                    "type": "number"
+                  },
+                  "minItems": 3,
+                  "maxItems": 3
+                },
+                "hex": {
+                  "type": "string",
+                  "pattern": "^#[0-9a-f]{6}$"
+                }
+              }
+            },
+            "background": {
+              "type": "object",
+              "description": "A colour: OKLCH (lightness 0 to 1, chroma, hue 0 to 360) and the hex it is.",
+              "required": ["oklch", "hex"],
+              "additionalProperties": false,
+              "properties": {
+                "oklch": {
+                  "type": "array",
+                  "items": {
+                    "type": "number"
+                  },
+                  "minItems": 3,
+                  "maxItems": 3
+                },
+                "hex": {
+                  "type": "string",
+                  "pattern": "^#[0-9a-f]{6}$"
+                }
+              }
+            },
+            "border": {
+              "type": "object",
+              "description": "A colour: OKLCH (lightness 0 to 1, chroma, hue 0 to 360) and the hex it is.",
+              "required": ["oklch", "hex"],
+              "additionalProperties": false,
+              "properties": {
+                "oklch": {
+                  "type": "array",
+                  "items": {
+                    "type": "number"
+                  },
+                  "minItems": 3,
+                  "maxItems": 3
+                },
+                "hex": {
+                  "type": "string",
+                  "pattern": "^#[0-9a-f]{6}$"
+                }
+              }
+            },
+            "card": {
+              "type": "object",
+              "description": "A colour: OKLCH (lightness 0 to 1, chroma, hue 0 to 360) and the hex it is.",
+              "required": ["oklch", "hex"],
+              "additionalProperties": false,
+              "properties": {
+                "oklch": {
+                  "type": "array",
+                  "items": {
+                    "type": "number"
+                  },
+                  "minItems": 3,
+                  "maxItems": 3
+                },
+                "hex": {
+                  "type": "string",
+                  "pattern": "^#[0-9a-f]{6}$"
+                }
+              }
+            },
+            "cardForeground": {
+              "type": "object",
+              "description": "A colour: OKLCH (lightness 0 to 1, chroma, hue 0 to 360) and the hex it is.",
+              "required": ["oklch", "hex"],
+              "additionalProperties": false,
+              "properties": {
+                "oklch": {
+                  "type": "array",
+                  "items": {
+                    "type": "number"
+                  },
+                  "minItems": 3,
+                  "maxItems": 3
+                },
+                "hex": {
+                  "type": "string",
+                  "pattern": "^#[0-9a-f]{6}$"
+                }
+              }
+            },
+            "chart": {
+              "type": "array",
+              "items": {
+                "type": "object",
+                "description": "A colour: OKLCH (lightness 0 to 1, chroma, hue 0 to 360) and the hex it is.",
+                "required": ["oklch", "hex"],
+                "additionalProperties": false,
+                "properties": {
+                  "oklch": {
+                    "type": "array",
+                    "items": {
+                      "type": "number"
+                    },
+                    "minItems": 3,
+                    "maxItems": 3
+                  },
+                  "hex": {
+                    "type": "string",
+                    "pattern": "^#[0-9a-f]{6}$"
+                  }
+                }
+              },
+              "minItems": 6,
+              "maxItems": 6
+            },
+            "destructive": {
+              "type": "object",
+              "description": "A colour: OKLCH (lightness 0 to 1, chroma, hue 0 to 360) and the hex it is.",
+              "required": ["oklch", "hex"],
+              "additionalProperties": false,
+              "properties": {
+                "oklch": {
+                  "type": "array",
+                  "items": {
+                    "type": "number"
+                  },
+                  "minItems": 3,
+                  "maxItems": 3
+                },
+                "hex": {
+                  "type": "string",
+                  "pattern": "^#[0-9a-f]{6}$"
+                }
+              }
+            },
+            "destructiveForeground": {
+              "type": "object",
+              "description": "A colour: OKLCH (lightness 0 to 1, chroma, hue 0 to 360) and the hex it is.",
+              "required": ["oklch", "hex"],
+              "additionalProperties": false,
+              "properties": {
+                "oklch": {
+                  "type": "array",
+                  "items": {
+                    "type": "number"
+                  },
+                  "minItems": 3,
+                  "maxItems": 3
+                },
+                "hex": {
+                  "type": "string",
+                  "pattern": "^#[0-9a-f]{6}$"
+                }
+              }
+            },
+            "foreground": {
+              "type": "object",
+              "description": "A colour: OKLCH (lightness 0 to 1, chroma, hue 0 to 360) and the hex it is.",
+              "required": ["oklch", "hex"],
+              "additionalProperties": false,
+              "properties": {
+                "oklch": {
+                  "type": "array",
+                  "items": {
+                    "type": "number"
+                  },
+                  "minItems": 3,
+                  "maxItems": 3
+                },
+                "hex": {
+                  "type": "string",
+                  "pattern": "^#[0-9a-f]{6}$"
+                }
+              }
+            },
+            "highlight": {
+              "type": "object",
+              "description": "A colour: OKLCH (lightness 0 to 1, chroma, hue 0 to 360) and the hex it is.",
+              "required": ["oklch", "hex"],
+              "additionalProperties": false,
+              "properties": {
+                "oklch": {
+                  "type": "array",
+                  "items": {
+                    "type": "number"
+                  },
+                  "minItems": 3,
+                  "maxItems": 3
+                },
+                "hex": {
+                  "type": "string",
+                  "pattern": "^#[0-9a-f]{6}$"
+                }
+              }
+            },
+            "input": {
+              "type": "object",
+              "description": "A colour: OKLCH (lightness 0 to 1, chroma, hue 0 to 360) and the hex it is.",
+              "required": ["oklch", "hex"],
+              "additionalProperties": false,
+              "properties": {
+                "oklch": {
+                  "type": "array",
+                  "items": {
+                    "type": "number"
+                  },
+                  "minItems": 3,
+                  "maxItems": 3
+                },
+                "hex": {
+                  "type": "string",
+                  "pattern": "^#[0-9a-f]{6}$"
+                }
+              }
+            },
+            "muted": {
+              "type": "object",
+              "description": "A colour: OKLCH (lightness 0 to 1, chroma, hue 0 to 360) and the hex it is.",
+              "required": ["oklch", "hex"],
+              "additionalProperties": false,
+              "properties": {
+                "oklch": {
+                  "type": "array",
+                  "items": {
+                    "type": "number"
+                  },
+                  "minItems": 3,
+                  "maxItems": 3
+                },
+                "hex": {
+                  "type": "string",
+                  "pattern": "^#[0-9a-f]{6}$"
+                }
+              }
+            },
+            "mutedForeground": {
+              "type": "object",
+              "description": "A colour: OKLCH (lightness 0 to 1, chroma, hue 0 to 360) and the hex it is.",
+              "required": ["oklch", "hex"],
+              "additionalProperties": false,
+              "properties": {
+                "oklch": {
+                  "type": "array",
+                  "items": {
+                    "type": "number"
+                  },
+                  "minItems": 3,
+                  "maxItems": 3
+                },
+                "hex": {
+                  "type": "string",
+                  "pattern": "^#[0-9a-f]{6}$"
+                }
+              }
+            },
+            "popover": {
+              "type": "object",
+              "description": "A colour: OKLCH (lightness 0 to 1, chroma, hue 0 to 360) and the hex it is.",
+              "required": ["oklch", "hex"],
+              "additionalProperties": false,
+              "properties": {
+                "oklch": {
+                  "type": "array",
+                  "items": {
+                    "type": "number"
+                  },
+                  "minItems": 3,
+                  "maxItems": 3
+                },
+                "hex": {
+                  "type": "string",
+                  "pattern": "^#[0-9a-f]{6}$"
+                }
+              }
+            },
+            "popoverForeground": {
+              "type": "object",
+              "description": "A colour: OKLCH (lightness 0 to 1, chroma, hue 0 to 360) and the hex it is.",
+              "required": ["oklch", "hex"],
+              "additionalProperties": false,
+              "properties": {
+                "oklch": {
+                  "type": "array",
+                  "items": {
+                    "type": "number"
+                  },
+                  "minItems": 3,
+                  "maxItems": 3
+                },
+                "hex": {
+                  "type": "string",
+                  "pattern": "^#[0-9a-f]{6}$"
+                }
+              }
+            },
+            "primary": {
+              "type": "object",
+              "description": "A colour: OKLCH (lightness 0 to 1, chroma, hue 0 to 360) and the hex it is.",
+              "required": ["oklch", "hex"],
+              "additionalProperties": false,
+              "properties": {
+                "oklch": {
+                  "type": "array",
+                  "items": {
+                    "type": "number"
+                  },
+                  "minItems": 3,
+                  "maxItems": 3
+                },
+                "hex": {
+                  "type": "string",
+                  "pattern": "^#[0-9a-f]{6}$"
+                }
+              }
+            },
+            "primaryForeground": {
+              "type": "object",
+              "description": "A colour: OKLCH (lightness 0 to 1, chroma, hue 0 to 360) and the hex it is.",
+              "required": ["oklch", "hex"],
+              "additionalProperties": false,
+              "properties": {
+                "oklch": {
+                  "type": "array",
+                  "items": {
+                    "type": "number"
+                  },
+                  "minItems": 3,
+                  "maxItems": 3
+                },
+                "hex": {
+                  "type": "string",
+                  "pattern": "^#[0-9a-f]{6}$"
+                }
+              }
+            },
+            "ring": {
+              "type": "object",
+              "description": "A colour: OKLCH (lightness 0 to 1, chroma, hue 0 to 360) and the hex it is.",
+              "required": ["oklch", "hex"],
+              "additionalProperties": false,
+              "properties": {
+                "oklch": {
+                  "type": "array",
+                  "items": {
+                    "type": "number"
+                  },
+                  "minItems": 3,
+                  "maxItems": 3
+                },
+                "hex": {
+                  "type": "string",
+                  "pattern": "^#[0-9a-f]{6}$"
+                }
+              }
+            },
+            "secondary": {
+              "type": "object",
+              "description": "A colour: OKLCH (lightness 0 to 1, chroma, hue 0 to 360) and the hex it is.",
+              "required": ["oklch", "hex"],
+              "additionalProperties": false,
+              "properties": {
+                "oklch": {
+                  "type": "array",
+                  "items": {
+                    "type": "number"
+                  },
+                  "minItems": 3,
+                  "maxItems": 3
+                },
+                "hex": {
+                  "type": "string",
+                  "pattern": "^#[0-9a-f]{6}$"
+                }
+              }
+            },
+            "secondaryForeground": {
+              "type": "object",
+              "description": "A colour: OKLCH (lightness 0 to 1, chroma, hue 0 to 360) and the hex it is.",
+              "required": ["oklch", "hex"],
+              "additionalProperties": false,
+              "properties": {
+                "oklch": {
+                  "type": "array",
+                  "items": {
+                    "type": "number"
+                  },
+                  "minItems": 3,
+                  "maxItems": 3
+                },
+                "hex": {
+                  "type": "string",
+                  "pattern": "^#[0-9a-f]{6}$"
+                }
+              }
+            },
+            "success": {
+              "type": "object",
+              "description": "A colour: OKLCH (lightness 0 to 1, chroma, hue 0 to 360) and the hex it is.",
+              "required": ["oklch", "hex"],
+              "additionalProperties": false,
+              "properties": {
+                "oklch": {
+                  "type": "array",
+                  "items": {
+                    "type": "number"
+                  },
+                  "minItems": 3,
+                  "maxItems": 3
+                },
+                "hex": {
+                  "type": "string",
+                  "pattern": "^#[0-9a-f]{6}$"
+                }
+              }
+            },
+            "warning": {
+              "type": "object",
+              "description": "A colour: OKLCH (lightness 0 to 1, chroma, hue 0 to 360) and the hex it is.",
+              "required": ["oklch", "hex"],
+              "additionalProperties": false,
+              "properties": {
+                "oklch": {
+                  "type": "array",
+                  "items": {
+                    "type": "number"
+                  },
+                  "minItems": 3,
+                  "maxItems": 3
+                },
+                "hex": {
+                  "type": "string",
+                  "pattern": "^#[0-9a-f]{6}$"
+                }
+              }
+            }
+          }
+        },
+        "dark": {
+          "type": "object",
+          "additionalProperties": false,
+          "properties": {
+            "accent": {
+              "type": "object",
+              "description": "A colour: OKLCH (lightness 0 to 1, chroma, hue 0 to 360) and the hex it is.",
+              "required": ["oklch", "hex"],
+              "additionalProperties": false,
+              "properties": {
+                "oklch": {
+                  "type": "array",
+                  "items": {
+                    "type": "number"
+                  },
+                  "minItems": 3,
+                  "maxItems": 3
+                },
+                "hex": {
+                  "type": "string",
+                  "pattern": "^#[0-9a-f]{6}$"
+                }
+              }
+            },
+            "accentForeground": {
+              "type": "object",
+              "description": "A colour: OKLCH (lightness 0 to 1, chroma, hue 0 to 360) and the hex it is.",
+              "required": ["oklch", "hex"],
+              "additionalProperties": false,
+              "properties": {
+                "oklch": {
+                  "type": "array",
+                  "items": {
+                    "type": "number"
+                  },
+                  "minItems": 3,
+                  "maxItems": 3
+                },
+                "hex": {
+                  "type": "string",
+                  "pattern": "^#[0-9a-f]{6}$"
+                }
+              }
+            },
+            "answer": {
+              "type": "object",
+              "description": "A colour: OKLCH (lightness 0 to 1, chroma, hue 0 to 360) and the hex it is.",
+              "required": ["oklch", "hex"],
+              "additionalProperties": false,
+              "properties": {
+                "oklch": {
+                  "type": "array",
+                  "items": {
+                    "type": "number"
+                  },
+                  "minItems": 3,
+                  "maxItems": 3
+                },
+                "hex": {
+                  "type": "string",
+                  "pattern": "^#[0-9a-f]{6}$"
+                }
+              }
+            },
+            "background": {
+              "type": "object",
+              "description": "A colour: OKLCH (lightness 0 to 1, chroma, hue 0 to 360) and the hex it is.",
+              "required": ["oklch", "hex"],
+              "additionalProperties": false,
+              "properties": {
+                "oklch": {
+                  "type": "array",
+                  "items": {
+                    "type": "number"
+                  },
+                  "minItems": 3,
+                  "maxItems": 3
+                },
+                "hex": {
+                  "type": "string",
+                  "pattern": "^#[0-9a-f]{6}$"
+                }
+              }
+            },
+            "border": {
+              "type": "object",
+              "description": "A colour: OKLCH (lightness 0 to 1, chroma, hue 0 to 360) and the hex it is.",
+              "required": ["oklch", "hex"],
+              "additionalProperties": false,
+              "properties": {
+                "oklch": {
+                  "type": "array",
+                  "items": {
+                    "type": "number"
+                  },
+                  "minItems": 3,
+                  "maxItems": 3
+                },
+                "hex": {
+                  "type": "string",
+                  "pattern": "^#[0-9a-f]{6}$"
+                }
+              }
+            },
+            "card": {
+              "type": "object",
+              "description": "A colour: OKLCH (lightness 0 to 1, chroma, hue 0 to 360) and the hex it is.",
+              "required": ["oklch", "hex"],
+              "additionalProperties": false,
+              "properties": {
+                "oklch": {
+                  "type": "array",
+                  "items": {
+                    "type": "number"
+                  },
+                  "minItems": 3,
+                  "maxItems": 3
+                },
+                "hex": {
+                  "type": "string",
+                  "pattern": "^#[0-9a-f]{6}$"
+                }
+              }
+            },
+            "cardForeground": {
+              "type": "object",
+              "description": "A colour: OKLCH (lightness 0 to 1, chroma, hue 0 to 360) and the hex it is.",
+              "required": ["oklch", "hex"],
+              "additionalProperties": false,
+              "properties": {
+                "oklch": {
+                  "type": "array",
+                  "items": {
+                    "type": "number"
+                  },
+                  "minItems": 3,
+                  "maxItems": 3
+                },
+                "hex": {
+                  "type": "string",
+                  "pattern": "^#[0-9a-f]{6}$"
+                }
+              }
+            },
+            "chart": {
+              "type": "array",
+              "items": {
+                "type": "object",
+                "description": "A colour: OKLCH (lightness 0 to 1, chroma, hue 0 to 360) and the hex it is.",
+                "required": ["oklch", "hex"],
+                "additionalProperties": false,
+                "properties": {
+                  "oklch": {
+                    "type": "array",
+                    "items": {
+                      "type": "number"
+                    },
+                    "minItems": 3,
+                    "maxItems": 3
+                  },
+                  "hex": {
+                    "type": "string",
+                    "pattern": "^#[0-9a-f]{6}$"
+                  }
+                }
+              },
+              "minItems": 6,
+              "maxItems": 6
+            },
+            "destructive": {
+              "type": "object",
+              "description": "A colour: OKLCH (lightness 0 to 1, chroma, hue 0 to 360) and the hex it is.",
+              "required": ["oklch", "hex"],
+              "additionalProperties": false,
+              "properties": {
+                "oklch": {
+                  "type": "array",
+                  "items": {
+                    "type": "number"
+                  },
+                  "minItems": 3,
+                  "maxItems": 3
+                },
+                "hex": {
+                  "type": "string",
+                  "pattern": "^#[0-9a-f]{6}$"
+                }
+              }
+            },
+            "destructiveForeground": {
+              "type": "object",
+              "description": "A colour: OKLCH (lightness 0 to 1, chroma, hue 0 to 360) and the hex it is.",
+              "required": ["oklch", "hex"],
+              "additionalProperties": false,
+              "properties": {
+                "oklch": {
+                  "type": "array",
+                  "items": {
+                    "type": "number"
+                  },
+                  "minItems": 3,
+                  "maxItems": 3
+                },
+                "hex": {
+                  "type": "string",
+                  "pattern": "^#[0-9a-f]{6}$"
+                }
+              }
+            },
+            "foreground": {
+              "type": "object",
+              "description": "A colour: OKLCH (lightness 0 to 1, chroma, hue 0 to 360) and the hex it is.",
+              "required": ["oklch", "hex"],
+              "additionalProperties": false,
+              "properties": {
+                "oklch": {
+                  "type": "array",
+                  "items": {
+                    "type": "number"
+                  },
+                  "minItems": 3,
+                  "maxItems": 3
+                },
+                "hex": {
+                  "type": "string",
+                  "pattern": "^#[0-9a-f]{6}$"
+                }
+              }
+            },
+            "highlight": {
+              "type": "object",
+              "description": "A colour: OKLCH (lightness 0 to 1, chroma, hue 0 to 360) and the hex it is.",
+              "required": ["oklch", "hex"],
+              "additionalProperties": false,
+              "properties": {
+                "oklch": {
+                  "type": "array",
+                  "items": {
+                    "type": "number"
+                  },
+                  "minItems": 3,
+                  "maxItems": 3
+                },
+                "hex": {
+                  "type": "string",
+                  "pattern": "^#[0-9a-f]{6}$"
+                }
+              }
+            },
+            "input": {
+              "type": "object",
+              "description": "A colour: OKLCH (lightness 0 to 1, chroma, hue 0 to 360) and the hex it is.",
+              "required": ["oklch", "hex"],
+              "additionalProperties": false,
+              "properties": {
+                "oklch": {
+                  "type": "array",
+                  "items": {
+                    "type": "number"
+                  },
+                  "minItems": 3,
+                  "maxItems": 3
+                },
+                "hex": {
+                  "type": "string",
+                  "pattern": "^#[0-9a-f]{6}$"
+                }
+              }
+            },
+            "muted": {
+              "type": "object",
+              "description": "A colour: OKLCH (lightness 0 to 1, chroma, hue 0 to 360) and the hex it is.",
+              "required": ["oklch", "hex"],
+              "additionalProperties": false,
+              "properties": {
+                "oklch": {
+                  "type": "array",
+                  "items": {
+                    "type": "number"
+                  },
+                  "minItems": 3,
+                  "maxItems": 3
+                },
+                "hex": {
+                  "type": "string",
+                  "pattern": "^#[0-9a-f]{6}$"
+                }
+              }
+            },
+            "mutedForeground": {
+              "type": "object",
+              "description": "A colour: OKLCH (lightness 0 to 1, chroma, hue 0 to 360) and the hex it is.",
+              "required": ["oklch", "hex"],
+              "additionalProperties": false,
+              "properties": {
+                "oklch": {
+                  "type": "array",
+                  "items": {
+                    "type": "number"
+                  },
+                  "minItems": 3,
+                  "maxItems": 3
+                },
+                "hex": {
+                  "type": "string",
+                  "pattern": "^#[0-9a-f]{6}$"
+                }
+              }
+            },
+            "popover": {
+              "type": "object",
+              "description": "A colour: OKLCH (lightness 0 to 1, chroma, hue 0 to 360) and the hex it is.",
+              "required": ["oklch", "hex"],
+              "additionalProperties": false,
+              "properties": {
+                "oklch": {
+                  "type": "array",
+                  "items": {
+                    "type": "number"
+                  },
+                  "minItems": 3,
+                  "maxItems": 3
+                },
+                "hex": {
+                  "type": "string",
+                  "pattern": "^#[0-9a-f]{6}$"
+                }
+              }
+            },
+            "popoverForeground": {
+              "type": "object",
+              "description": "A colour: OKLCH (lightness 0 to 1, chroma, hue 0 to 360) and the hex it is.",
+              "required": ["oklch", "hex"],
+              "additionalProperties": false,
+              "properties": {
+                "oklch": {
+                  "type": "array",
+                  "items": {
+                    "type": "number"
+                  },
+                  "minItems": 3,
+                  "maxItems": 3
+                },
+                "hex": {
+                  "type": "string",
+                  "pattern": "^#[0-9a-f]{6}$"
+                }
+              }
+            },
+            "primary": {
+              "type": "object",
+              "description": "A colour: OKLCH (lightness 0 to 1, chroma, hue 0 to 360) and the hex it is.",
+              "required": ["oklch", "hex"],
+              "additionalProperties": false,
+              "properties": {
+                "oklch": {
+                  "type": "array",
+                  "items": {
+                    "type": "number"
+                  },
+                  "minItems": 3,
+                  "maxItems": 3
+                },
+                "hex": {
+                  "type": "string",
+                  "pattern": "^#[0-9a-f]{6}$"
+                }
+              }
+            },
+            "primaryForeground": {
+              "type": "object",
+              "description": "A colour: OKLCH (lightness 0 to 1, chroma, hue 0 to 360) and the hex it is.",
+              "required": ["oklch", "hex"],
+              "additionalProperties": false,
+              "properties": {
+                "oklch": {
+                  "type": "array",
+                  "items": {
+                    "type": "number"
+                  },
+                  "minItems": 3,
+                  "maxItems": 3
+                },
+                "hex": {
+                  "type": "string",
+                  "pattern": "^#[0-9a-f]{6}$"
+                }
+              }
+            },
+            "ring": {
+              "type": "object",
+              "description": "A colour: OKLCH (lightness 0 to 1, chroma, hue 0 to 360) and the hex it is.",
+              "required": ["oklch", "hex"],
+              "additionalProperties": false,
+              "properties": {
+                "oklch": {
+                  "type": "array",
+                  "items": {
+                    "type": "number"
+                  },
+                  "minItems": 3,
+                  "maxItems": 3
+                },
+                "hex": {
+                  "type": "string",
+                  "pattern": "^#[0-9a-f]{6}$"
+                }
+              }
+            },
+            "secondary": {
+              "type": "object",
+              "description": "A colour: OKLCH (lightness 0 to 1, chroma, hue 0 to 360) and the hex it is.",
+              "required": ["oklch", "hex"],
+              "additionalProperties": false,
+              "properties": {
+                "oklch": {
+                  "type": "array",
+                  "items": {
+                    "type": "number"
+                  },
+                  "minItems": 3,
+                  "maxItems": 3
+                },
+                "hex": {
+                  "type": "string",
+                  "pattern": "^#[0-9a-f]{6}$"
+                }
+              }
+            },
+            "secondaryForeground": {
+              "type": "object",
+              "description": "A colour: OKLCH (lightness 0 to 1, chroma, hue 0 to 360) and the hex it is.",
+              "required": ["oklch", "hex"],
+              "additionalProperties": false,
+              "properties": {
+                "oklch": {
+                  "type": "array",
+                  "items": {
+                    "type": "number"
+                  },
+                  "minItems": 3,
+                  "maxItems": 3
+                },
+                "hex": {
+                  "type": "string",
+                  "pattern": "^#[0-9a-f]{6}$"
+                }
+              }
+            },
+            "success": {
+              "type": "object",
+              "description": "A colour: OKLCH (lightness 0 to 1, chroma, hue 0 to 360) and the hex it is.",
+              "required": ["oklch", "hex"],
+              "additionalProperties": false,
+              "properties": {
+                "oklch": {
+                  "type": "array",
+                  "items": {
+                    "type": "number"
+                  },
+                  "minItems": 3,
+                  "maxItems": 3
+                },
+                "hex": {
+                  "type": "string",
+                  "pattern": "^#[0-9a-f]{6}$"
+                }
+              }
+            },
+            "warning": {
+              "type": "object",
+              "description": "A colour: OKLCH (lightness 0 to 1, chroma, hue 0 to 360) and the hex it is.",
+              "required": ["oklch", "hex"],
+              "additionalProperties": false,
+              "properties": {
+                "oklch": {
+                  "type": "array",
+                  "items": {
+                    "type": "number"
+                  },
+                  "minItems": 3,
+                  "maxItems": 3
+                },
+                "hex": {
+                  "type": "string",
+                  "pattern": "^#[0-9a-f]{6}$"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "faces": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "sans": {
+          "type": "object",
+          "required": ["family", "fallback", "files"],
+          "additionalProperties": false,
+          "properties": {
+            "family": {
+              "type": "string",
+              "maxLength": 64
+            },
+            "fallback": {
+              "type": "string"
+            },
+            "files": {
+              "type": "array",
+              "items": {
+                "type": "object",
+                "required": ["file", "weight", "style", "unicodeRange"],
+                "additionalProperties": false,
+                "properties": {
+                  "file": {
+                    "type": "string",
+                    "pattern": "^fonts/[a-z0-9-]+\\.woff2$"
+                  },
+                  "weight": {
+                    "type": "string"
+                  },
+                  "style": {
+                    "enum": ["normal", "italic"]
+                  },
+                  "unicodeRange": {
+                    "type": "string"
+                  }
+                }
+              }
+            }
+          }
+        },
+        "display": {
+          "type": "object",
+          "required": ["family", "fallback", "files"],
+          "additionalProperties": false,
+          "properties": {
+            "family": {
+              "type": "string",
+              "maxLength": 64
+            },
+            "fallback": {
+              "type": "string"
+            },
+            "files": {
+              "type": "array",
+              "items": {
+                "type": "object",
+                "required": ["file", "weight", "style", "unicodeRange"],
+                "additionalProperties": false,
+                "properties": {
+                  "file": {
+                    "type": "string",
+                    "pattern": "^fonts/[a-z0-9-]+\\.woff2$"
+                  },
+                  "weight": {
+                    "type": "string"
+                  },
+                  "style": {
+                    "enum": ["normal", "italic"]
+                  },
+                  "unicodeRange": {
+                    "type": "string"
+                  }
+                }
+              }
+            }
+          }
+        },
+        "mono": {
+          "type": "object",
+          "required": ["family", "fallback", "files"],
+          "additionalProperties": false,
+          "properties": {
+            "family": {
+              "type": "string",
+              "maxLength": 64
+            },
+            "fallback": {
+              "type": "string"
+            },
+            "files": {
+              "type": "array",
+              "items": {
+                "type": "object",
+                "required": ["file", "weight", "style", "unicodeRange"],
+                "additionalProperties": false,
+                "properties": {
+                  "file": {
+                    "type": "string",
+                    "pattern": "^fonts/[a-z0-9-]+\\.woff2$"
+                  },
+                  "weight": {
+                    "type": "string"
+                  },
+                  "style": {
+                    "enum": ["normal", "italic"]
+                  },
+                  "unicodeRange": {
+                    "type": "string"
+                  }
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "radius": {
+      "type": "string",
+      "pattern": "^\\d+(\\.\\d+)?(px|rem)$"
+    },
+    "motion": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "pressScale": {
+          "type": "number"
+        },
+        "pressMs": {
+          "type": "number"
+        },
+        "stateMs": {
+          "type": "number"
+        }
+      }
+    },
+    "tokens": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "base": {
+          "type": "object",
+          "additionalProperties": false,
+          "properties": {
+            "body-size": {
+              "type": "string",
+              "maxLength": 400,
+              "description": "Body text's size. Default: 1rem."
+            },
+            "title-size": {
+              "type": "string",
+              "maxLength": 400,
+              "description": "The page title's size (h1). Default: 2.25rem."
+            },
+            "title-weight": {
+              "type": "string",
+              "maxLength": 400,
+              "description": "The page title's weight. Default: 600."
+            },
+            "title-tracking": {
+              "type": "string",
+              "maxLength": 400,
+              "description": "The page title's letter spacing. Default: -0.02em."
+            },
+            "title-leading": {
+              "type": "string",
+              "maxLength": 400,
+              "description": "The page title's line height. Default: 1.1."
+            },
+            "heading-font": {
+              "type": "string",
+              "maxLength": 400,
+              "description": "Section headings' face: var(--font-display) or var(--font-sans). Default: var(--font-display)."
+            },
+            "heading-size": {
+              "type": "string",
+              "maxLength": 400,
+              "description": "Section headings' size (h2). Default: 1.375rem."
+            },
+            "heading-weight": {
+              "type": "string",
+              "maxLength": 400,
+              "description": "Headings' weight. Default: 600."
+            },
+            "heading-tracking": {
+              "type": "string",
+              "maxLength": 400,
+              "description": "Headings' letter spacing. Default: -0.01em."
+            },
+            "card-title-font": {
+              "type": "string",
+              "maxLength": 400,
+              "description": "A card title's face. Default: var(--font-sans)."
+            },
+            "card-title-size": {
+              "type": "string",
+              "maxLength": 400,
+              "description": "A card title's size. Default: 1rem."
+            },
+            "card-title-weight": {
+              "type": "string",
+              "maxLength": 400,
+              "description": "A card title's weight. Default: 600."
+            },
+            "figure-font": {
+              "type": "string",
+              "maxLength": 400,
+              "description": "A figure's number face. Default: var(--font-sans)."
+            },
+            "figure-weight": {
+              "type": "string",
+              "maxLength": 400,
+              "description": "A figure's number weight. Default: 600."
+            },
+            "dialog-title-size": {
+              "type": "string",
+              "maxLength": 400,
+              "description": "A dialog title's size. Default: 1.25rem."
+            },
+            "question-number-color": {
+              "type": "string",
+              "maxLength": 400,
+              "description": "A question's number. Default: var(--muted-foreground)."
+            },
+            "card-radius": {
+              "type": "string",
+              "maxLength": 400,
+              "description": "Cards and panels. Default: var(--radius)."
+            },
+            "control-radius": {
+              "type": "string",
+              "maxLength": 400,
+              "description": "Fields people type in or pick from. Default: var(--radius)."
+            },
+            "button-radius": {
+              "type": "string",
+              "maxLength": 400,
+              "description": "Buttons; 999px makes pills. Default: 999px."
+            },
+            "choice-radius": {
+              "type": "string",
+              "maxLength": 400,
+              "description": "Choices, scale steps and ranked rows. Default: var(--radius)."
+            },
+            "popover-radius": {
+              "type": "string",
+              "maxLength": 400,
+              "description": "Menus, popovers and select lists. Default: var(--radius)."
+            },
+            "dialog-radius": {
+              "type": "string",
+              "maxLength": 400,
+              "description": "Dialogs and sheets. Default: var(--popover-radius)."
+            },
+            "badge-radius": {
+              "type": "string",
+              "maxLength": 400,
+              "description": "Badges. Default: 999px."
+            },
+            "tabs-radius": {
+              "type": "string",
+              "maxLength": 400,
+              "description": "The tab list's track. Default: var(--button-radius)."
+            },
+            "tabs-indicator-radius": {
+              "type": "string",
+              "maxLength": 400,
+              "description": "The active tab's mark. Default: var(--button-radius)."
+            },
+            "thumb-radius": {
+              "type": "string",
+              "maxLength": 400,
+              "description": "Previews inside choices. Default: var(--radius)."
+            },
+            "section-radius": {
+              "type": "string",
+              "maxLength": 400,
+              "description": "Sections of a page. Default: 0px."
+            },
+            "figure-radius": {
+              "type": "string",
+              "maxLength": 400,
+              "description": "One figure of a row. Default: 0px."
+            },
+            "control-h": {
+              "type": "string",
+              "maxLength": 400,
+              "description": "A field's or button's height. Default: 2.75rem."
+            },
+            "control-h-sm": {
+              "type": "string",
+              "maxLength": 400,
+              "description": "A small field's or button's height. Default: 2.25rem."
+            },
+            "card-gap": {
+              "type": "string",
+              "maxLength": 400,
+              "description": "Between the parts of a card. Default: 1rem."
+            },
+            "card-pad-x": {
+              "type": "string",
+              "maxLength": 400,
+              "description": "Inside a card, at its sides. Default: 1.25rem."
+            },
+            "card-pad-top": {
+              "type": "string",
+              "maxLength": 400,
+              "description": "Inside a card, above its first part. Default: 1.25rem."
+            },
+            "card-pad-bottom": {
+              "type": "string",
+              "maxLength": 400,
+              "description": "Inside a card, below its last part. Default: 1.25rem."
+            },
+            "dialog-pad": {
+              "type": "string",
+              "maxLength": 400,
+              "description": "Inside a dialog. Default: 1.5rem."
+            },
+            "menu-pad": {
+              "type": "string",
+              "maxLength": 400,
+              "description": "Inside a menu, around its items. Default: 0.375rem."
+            },
+            "menu-item-radius": {
+              "type": "string",
+              "maxLength": 400,
+              "description": "A menu item: its menu's radius less the menu's padding. Default: max(0px, calc(var(--popover-radius) - var(--menu-pad)))."
+            },
+            "tabs-track-pad": {
+              "type": "string",
+              "maxLength": 400,
+              "description": "Inside the tab list's track. Default: 0.25rem."
+            },
+            "figure-pad": {
+              "type": "string",
+              "maxLength": 400,
+              "description": "Inside one figure. Default: 1.25rem 1.5rem."
+            },
+            "figures-gap": {
+              "type": "string",
+              "maxLength": 400,
+              "description": "Between the figures of a row. Default: 0px."
+            },
+            "section-pad": {
+              "type": "string",
+              "maxLength": 400,
+              "description": "Inside a section. Default: 1.5rem 0 0."
+            },
+            "section-index-size": {
+              "type": "string",
+              "maxLength": 400,
+              "description": "A section number's mark: auto, or a circle's size. Default: auto."
+            },
+            "page-width": {
+              "type": "string",
+              "maxLength": 400,
+              "description": "A page's measure. Default: 60rem."
+            },
+            "page-pad": {
+              "type": "string",
+              "maxLength": 400,
+              "description": "Above and below a page's content. Default: 3rem."
+            },
+            "stack-gap": {
+              "type": "string",
+              "maxLength": 400,
+              "description": "Between a page's blocks. Default: 2.5rem."
+            },
+            "rule": {
+              "type": "string",
+              "maxLength": 400,
+              "description": "The rule a theme draws its sections and cards with. Default: var(--border)."
+            },
+            "card-shadow": {
+              "type": "string",
+              "maxLength": 400,
+              "description": "A card's edge and depth. Default: 0 0 0 1px var(--border)."
+            },
+            "choice-shadow": {
+              "type": "string",
+              "maxLength": 400,
+              "description": "A choice's edge. Default: 0 0 0 1px var(--border)."
+            },
+            "choice-selected-shadow": {
+              "type": "string",
+              "maxLength": 400,
+              "description": "A chosen choice's edge. Default: 0 0 0 2px var(--primary)."
+            },
+            "scale-selected-shadow": {
+              "type": "string",
+              "maxLength": 400,
+              "description": "A chosen step of a scale's edge. Default: 0 0 0 2px var(--foreground)."
+            },
+            "popover-shadow": {
+              "type": "string",
+              "maxLength": 400,
+              "description": "A menu's or popover's edge and depth. Default: 0 0 0 1px var(--border), 0 12px 32px -12px oklch(0 0 0 / 0.25)."
+            },
+            "button-shadow": {
+              "type": "string",
+              "maxLength": 400,
+              "description": "The main button's depth. Default: none."
+            },
+            "control-shadow": {
+              "type": "string",
+              "maxLength": 400,
+              "description": "A field's depth. Default: none."
+            },
+            "section-shadow": {
+              "type": "string",
+              "maxLength": 400,
+              "description": "A section's edge and depth. Default: none."
+            },
+            "section-rule": {
+              "type": "string",
+              "maxLength": 400,
+              "description": "The rule above a section. Default: 2px solid var(--rule)."
+            },
+            "figures-shadow": {
+              "type": "string",
+              "maxLength": 400,
+              "description": "A row of figures' edge. Default: var(--card-shadow)."
+            },
+            "figures-divider": {
+              "type": "string",
+              "maxLength": 400,
+              "description": "The line between figures. Default: var(--border)."
+            },
+            "tabs-track-shadow": {
+              "type": "string",
+              "maxLength": 400,
+              "description": "The tab list's edge. Default: none."
+            },
+            "tabs-indicator-shadow": {
+              "type": "string",
+              "maxLength": 400,
+              "description": "The active tab's mark's depth. Default: var(--choice-shadow)."
+            },
+            "field": {
+              "type": "string",
+              "maxLength": 400,
+              "description": "Inside a field. Default: var(--card)."
+            },
+            "button-outline-border": {
+              "type": "string",
+              "maxLength": 400,
+              "description": "An outlined button's edge. Default: var(--input)."
+            },
+            "button-outline-bg": {
+              "type": "string",
+              "maxLength": 400,
+              "description": "An outlined button's fill. Default: var(--field)."
+            },
+            "choice-bg": {
+              "type": "string",
+              "maxLength": 400,
+              "description": "A choice's fill. Default: var(--card)."
+            },
+            "choice-hover-bg": {
+              "type": "string",
+              "maxLength": 400,
+              "description": "A choice's fill under the pointer. Default: var(--muted)."
+            },
+            "choice-selected-bg": {
+              "type": "string",
+              "maxLength": 400,
+              "description": "A chosen choice's fill. Default: var(--accent)."
+            },
+            "choice-selected-hover-bg": {
+              "type": "string",
+              "maxLength": 400,
+              "description": "A chosen choice's fill under the pointer. Default: var(--choice-selected-bg)."
+            },
+            "choice-selected-fg": {
+              "type": "string",
+              "maxLength": 400,
+              "description": "Text on a chosen choice. Default: var(--card-foreground)."
+            },
+            "scale-selected-bg": {
+              "type": "string",
+              "maxLength": 400,
+              "description": "A chosen step of a scale: the answer's mark. Default: var(--answer)."
+            },
+            "scale-selected-fg": {
+              "type": "string",
+              "maxLength": 400,
+              "description": "Text on a chosen step of a scale. Default: var(--foreground)."
+            },
+            "choice-selected-muted": {
+              "type": "string",
+              "maxLength": 400,
+              "description": "Secondary text on a chosen choice. Default: var(--muted-foreground)."
+            },
+            "menu-highlight": {
+              "type": "string",
+              "maxLength": 400,
+              "description": "The item a menu's pointer or keys are on. Default: var(--accent)."
+            },
+            "menu-highlight-fg": {
+              "type": "string",
+              "maxLength": 400,
+              "description": "Text on that item. Default: var(--accent-foreground)."
+            },
+            "tabs-track-bg": {
+              "type": "string",
+              "maxLength": 400,
+              "description": "The tab list's track. Default: var(--muted)."
+            },
+            "tabs-indicator-bg": {
+              "type": "string",
+              "maxLength": 400,
+              "description": "The active tab's mark. Default: var(--card)."
+            },
+            "tabs-indicator-fill": {
+              "type": "string",
+              "maxLength": 400,
+              "description": "1: the mark fills the tab; 0: it underlines it. Default: 1."
+            },
+            "tabs-indicator-line": {
+              "type": "string",
+              "maxLength": 400,
+              "description": "The underline's thickness when the mark underlines. Default: 2px."
+            },
+            "tabs-active-fg": {
+              "type": "string",
+              "maxLength": 400,
+              "description": "The active tab's text. Default: var(--foreground)."
+            },
+            "section-bg": {
+              "type": "string",
+              "maxLength": 400,
+              "description": "A section's fill. Default: transparent."
+            },
+            "section-index-color": {
+              "type": "string",
+              "maxLength": 400,
+              "description": "A section's number. Default: var(--muted-foreground)."
+            },
+            "section-index-bg": {
+              "type": "string",
+              "maxLength": 400,
+              "description": "A section number's mark. Default: transparent."
+            },
+            "figure-bg": {
+              "type": "string",
+              "maxLength": 400,
+              "description": "One figure's fill. Default: transparent."
+            },
+            "figures-bg": {
+              "type": "string",
+              "maxLength": 400,
+              "description": "A row of figures' fill. Default: var(--card)."
+            },
+            "ease-out": {
+              "type": "string",
+              "maxLength": 400,
+              "description": "How things arrive. Default: cubic-bezier(0.23, 1, 0.32, 1)."
+            },
+            "ease-answer": {
+              "type": "string",
+              "maxLength": 400,
+              "description": "How an answer's dot drops in. Default: cubic-bezier(0.34, 1.56, 0.64, 1)."
+            },
+            "answer-ms": {
+              "type": "string",
+              "maxLength": 400,
+              "description": "How long it takes. Default: 400ms."
+            }
+          }
+        },
+        "light": {
+          "type": "object",
+          "additionalProperties": false,
+          "properties": {
+            "body-size": {
+              "type": "string",
+              "maxLength": 400,
+              "description": "Body text's size. Default: 1rem."
+            },
+            "title-size": {
+              "type": "string",
+              "maxLength": 400,
+              "description": "The page title's size (h1). Default: 2.25rem."
+            },
+            "title-weight": {
+              "type": "string",
+              "maxLength": 400,
+              "description": "The page title's weight. Default: 600."
+            },
+            "title-tracking": {
+              "type": "string",
+              "maxLength": 400,
+              "description": "The page title's letter spacing. Default: -0.02em."
+            },
+            "title-leading": {
+              "type": "string",
+              "maxLength": 400,
+              "description": "The page title's line height. Default: 1.1."
+            },
+            "heading-font": {
+              "type": "string",
+              "maxLength": 400,
+              "description": "Section headings' face: var(--font-display) or var(--font-sans). Default: var(--font-display)."
+            },
+            "heading-size": {
+              "type": "string",
+              "maxLength": 400,
+              "description": "Section headings' size (h2). Default: 1.375rem."
+            },
+            "heading-weight": {
+              "type": "string",
+              "maxLength": 400,
+              "description": "Headings' weight. Default: 600."
+            },
+            "heading-tracking": {
+              "type": "string",
+              "maxLength": 400,
+              "description": "Headings' letter spacing. Default: -0.01em."
+            },
+            "card-title-font": {
+              "type": "string",
+              "maxLength": 400,
+              "description": "A card title's face. Default: var(--font-sans)."
+            },
+            "card-title-size": {
+              "type": "string",
+              "maxLength": 400,
+              "description": "A card title's size. Default: 1rem."
+            },
+            "card-title-weight": {
+              "type": "string",
+              "maxLength": 400,
+              "description": "A card title's weight. Default: 600."
+            },
+            "figure-font": {
+              "type": "string",
+              "maxLength": 400,
+              "description": "A figure's number face. Default: var(--font-sans)."
+            },
+            "figure-weight": {
+              "type": "string",
+              "maxLength": 400,
+              "description": "A figure's number weight. Default: 600."
+            },
+            "dialog-title-size": {
+              "type": "string",
+              "maxLength": 400,
+              "description": "A dialog title's size. Default: 1.25rem."
+            },
+            "question-number-color": {
+              "type": "string",
+              "maxLength": 400,
+              "description": "A question's number. Default: var(--muted-foreground)."
+            },
+            "card-radius": {
+              "type": "string",
+              "maxLength": 400,
+              "description": "Cards and panels. Default: var(--radius)."
+            },
+            "control-radius": {
+              "type": "string",
+              "maxLength": 400,
+              "description": "Fields people type in or pick from. Default: var(--radius)."
+            },
+            "button-radius": {
+              "type": "string",
+              "maxLength": 400,
+              "description": "Buttons; 999px makes pills. Default: 999px."
+            },
+            "choice-radius": {
+              "type": "string",
+              "maxLength": 400,
+              "description": "Choices, scale steps and ranked rows. Default: var(--radius)."
+            },
+            "popover-radius": {
+              "type": "string",
+              "maxLength": 400,
+              "description": "Menus, popovers and select lists. Default: var(--radius)."
+            },
+            "dialog-radius": {
+              "type": "string",
+              "maxLength": 400,
+              "description": "Dialogs and sheets. Default: var(--popover-radius)."
+            },
+            "badge-radius": {
+              "type": "string",
+              "maxLength": 400,
+              "description": "Badges. Default: 999px."
+            },
+            "tabs-radius": {
+              "type": "string",
+              "maxLength": 400,
+              "description": "The tab list's track. Default: var(--button-radius)."
+            },
+            "tabs-indicator-radius": {
+              "type": "string",
+              "maxLength": 400,
+              "description": "The active tab's mark. Default: var(--button-radius)."
+            },
+            "thumb-radius": {
+              "type": "string",
+              "maxLength": 400,
+              "description": "Previews inside choices. Default: var(--radius)."
+            },
+            "section-radius": {
+              "type": "string",
+              "maxLength": 400,
+              "description": "Sections of a page. Default: 0px."
+            },
+            "figure-radius": {
+              "type": "string",
+              "maxLength": 400,
+              "description": "One figure of a row. Default: 0px."
+            },
+            "control-h": {
+              "type": "string",
+              "maxLength": 400,
+              "description": "A field's or button's height. Default: 2.75rem."
+            },
+            "control-h-sm": {
+              "type": "string",
+              "maxLength": 400,
+              "description": "A small field's or button's height. Default: 2.25rem."
+            },
+            "card-gap": {
+              "type": "string",
+              "maxLength": 400,
+              "description": "Between the parts of a card. Default: 1rem."
+            },
+            "card-pad-x": {
+              "type": "string",
+              "maxLength": 400,
+              "description": "Inside a card, at its sides. Default: 1.25rem."
+            },
+            "card-pad-top": {
+              "type": "string",
+              "maxLength": 400,
+              "description": "Inside a card, above its first part. Default: 1.25rem."
+            },
+            "card-pad-bottom": {
+              "type": "string",
+              "maxLength": 400,
+              "description": "Inside a card, below its last part. Default: 1.25rem."
+            },
+            "dialog-pad": {
+              "type": "string",
+              "maxLength": 400,
+              "description": "Inside a dialog. Default: 1.5rem."
+            },
+            "menu-pad": {
+              "type": "string",
+              "maxLength": 400,
+              "description": "Inside a menu, around its items. Default: 0.375rem."
+            },
+            "menu-item-radius": {
+              "type": "string",
+              "maxLength": 400,
+              "description": "A menu item: its menu's radius less the menu's padding. Default: max(0px, calc(var(--popover-radius) - var(--menu-pad)))."
+            },
+            "tabs-track-pad": {
+              "type": "string",
+              "maxLength": 400,
+              "description": "Inside the tab list's track. Default: 0.25rem."
+            },
+            "figure-pad": {
+              "type": "string",
+              "maxLength": 400,
+              "description": "Inside one figure. Default: 1.25rem 1.5rem."
+            },
+            "figures-gap": {
+              "type": "string",
+              "maxLength": 400,
+              "description": "Between the figures of a row. Default: 0px."
+            },
+            "section-pad": {
+              "type": "string",
+              "maxLength": 400,
+              "description": "Inside a section. Default: 1.5rem 0 0."
+            },
+            "section-index-size": {
+              "type": "string",
+              "maxLength": 400,
+              "description": "A section number's mark: auto, or a circle's size. Default: auto."
+            },
+            "page-width": {
+              "type": "string",
+              "maxLength": 400,
+              "description": "A page's measure. Default: 60rem."
+            },
+            "page-pad": {
+              "type": "string",
+              "maxLength": 400,
+              "description": "Above and below a page's content. Default: 3rem."
+            },
+            "stack-gap": {
+              "type": "string",
+              "maxLength": 400,
+              "description": "Between a page's blocks. Default: 2.5rem."
+            },
+            "rule": {
+              "type": "string",
+              "maxLength": 400,
+              "description": "The rule a theme draws its sections and cards with. Default: var(--border)."
+            },
+            "card-shadow": {
+              "type": "string",
+              "maxLength": 400,
+              "description": "A card's edge and depth. Default: 0 0 0 1px var(--border)."
+            },
+            "choice-shadow": {
+              "type": "string",
+              "maxLength": 400,
+              "description": "A choice's edge. Default: 0 0 0 1px var(--border)."
+            },
+            "choice-selected-shadow": {
+              "type": "string",
+              "maxLength": 400,
+              "description": "A chosen choice's edge. Default: 0 0 0 2px var(--primary)."
+            },
+            "scale-selected-shadow": {
+              "type": "string",
+              "maxLength": 400,
+              "description": "A chosen step of a scale's edge. Default: 0 0 0 2px var(--foreground)."
+            },
+            "popover-shadow": {
+              "type": "string",
+              "maxLength": 400,
+              "description": "A menu's or popover's edge and depth. Default: 0 0 0 1px var(--border), 0 12px 32px -12px oklch(0 0 0 / 0.25)."
+            },
+            "button-shadow": {
+              "type": "string",
+              "maxLength": 400,
+              "description": "The main button's depth. Default: none."
+            },
+            "control-shadow": {
+              "type": "string",
+              "maxLength": 400,
+              "description": "A field's depth. Default: none."
+            },
+            "section-shadow": {
+              "type": "string",
+              "maxLength": 400,
+              "description": "A section's edge and depth. Default: none."
+            },
+            "section-rule": {
+              "type": "string",
+              "maxLength": 400,
+              "description": "The rule above a section. Default: 2px solid var(--rule)."
+            },
+            "figures-shadow": {
+              "type": "string",
+              "maxLength": 400,
+              "description": "A row of figures' edge. Default: var(--card-shadow)."
+            },
+            "figures-divider": {
+              "type": "string",
+              "maxLength": 400,
+              "description": "The line between figures. Default: var(--border)."
+            },
+            "tabs-track-shadow": {
+              "type": "string",
+              "maxLength": 400,
+              "description": "The tab list's edge. Default: none."
+            },
+            "tabs-indicator-shadow": {
+              "type": "string",
+              "maxLength": 400,
+              "description": "The active tab's mark's depth. Default: var(--choice-shadow)."
+            },
+            "field": {
+              "type": "string",
+              "maxLength": 400,
+              "description": "Inside a field. Default: var(--card)."
+            },
+            "button-outline-border": {
+              "type": "string",
+              "maxLength": 400,
+              "description": "An outlined button's edge. Default: var(--input)."
+            },
+            "button-outline-bg": {
+              "type": "string",
+              "maxLength": 400,
+              "description": "An outlined button's fill. Default: var(--field)."
+            },
+            "choice-bg": {
+              "type": "string",
+              "maxLength": 400,
+              "description": "A choice's fill. Default: var(--card)."
+            },
+            "choice-hover-bg": {
+              "type": "string",
+              "maxLength": 400,
+              "description": "A choice's fill under the pointer. Default: var(--muted)."
+            },
+            "choice-selected-bg": {
+              "type": "string",
+              "maxLength": 400,
+              "description": "A chosen choice's fill. Default: var(--accent)."
+            },
+            "choice-selected-hover-bg": {
+              "type": "string",
+              "maxLength": 400,
+              "description": "A chosen choice's fill under the pointer. Default: var(--choice-selected-bg)."
+            },
+            "choice-selected-fg": {
+              "type": "string",
+              "maxLength": 400,
+              "description": "Text on a chosen choice. Default: var(--card-foreground)."
+            },
+            "scale-selected-bg": {
+              "type": "string",
+              "maxLength": 400,
+              "description": "A chosen step of a scale: the answer's mark. Default: var(--answer)."
+            },
+            "scale-selected-fg": {
+              "type": "string",
+              "maxLength": 400,
+              "description": "Text on a chosen step of a scale. Default: var(--foreground)."
+            },
+            "choice-selected-muted": {
+              "type": "string",
+              "maxLength": 400,
+              "description": "Secondary text on a chosen choice. Default: var(--muted-foreground)."
+            },
+            "menu-highlight": {
+              "type": "string",
+              "maxLength": 400,
+              "description": "The item a menu's pointer or keys are on. Default: var(--accent)."
+            },
+            "menu-highlight-fg": {
+              "type": "string",
+              "maxLength": 400,
+              "description": "Text on that item. Default: var(--accent-foreground)."
+            },
+            "tabs-track-bg": {
+              "type": "string",
+              "maxLength": 400,
+              "description": "The tab list's track. Default: var(--muted)."
+            },
+            "tabs-indicator-bg": {
+              "type": "string",
+              "maxLength": 400,
+              "description": "The active tab's mark. Default: var(--card)."
+            },
+            "tabs-indicator-fill": {
+              "type": "string",
+              "maxLength": 400,
+              "description": "1: the mark fills the tab; 0: it underlines it. Default: 1."
+            },
+            "tabs-indicator-line": {
+              "type": "string",
+              "maxLength": 400,
+              "description": "The underline's thickness when the mark underlines. Default: 2px."
+            },
+            "tabs-active-fg": {
+              "type": "string",
+              "maxLength": 400,
+              "description": "The active tab's text. Default: var(--foreground)."
+            },
+            "section-bg": {
+              "type": "string",
+              "maxLength": 400,
+              "description": "A section's fill. Default: transparent."
+            },
+            "section-index-color": {
+              "type": "string",
+              "maxLength": 400,
+              "description": "A section's number. Default: var(--muted-foreground)."
+            },
+            "section-index-bg": {
+              "type": "string",
+              "maxLength": 400,
+              "description": "A section number's mark. Default: transparent."
+            },
+            "figure-bg": {
+              "type": "string",
+              "maxLength": 400,
+              "description": "One figure's fill. Default: transparent."
+            },
+            "figures-bg": {
+              "type": "string",
+              "maxLength": 400,
+              "description": "A row of figures' fill. Default: var(--card)."
+            },
+            "ease-out": {
+              "type": "string",
+              "maxLength": 400,
+              "description": "How things arrive. Default: cubic-bezier(0.23, 1, 0.32, 1)."
+            },
+            "ease-answer": {
+              "type": "string",
+              "maxLength": 400,
+              "description": "How an answer's dot drops in. Default: cubic-bezier(0.34, 1.56, 0.64, 1)."
+            },
+            "answer-ms": {
+              "type": "string",
+              "maxLength": 400,
+              "description": "How long it takes. Default: 400ms."
+            }
+          }
+        },
+        "dark": {
+          "type": "object",
+          "additionalProperties": false,
+          "properties": {
+            "body-size": {
+              "type": "string",
+              "maxLength": 400,
+              "description": "Body text's size. Default: 1rem."
+            },
+            "title-size": {
+              "type": "string",
+              "maxLength": 400,
+              "description": "The page title's size (h1). Default: 2.25rem."
+            },
+            "title-weight": {
+              "type": "string",
+              "maxLength": 400,
+              "description": "The page title's weight. Default: 600."
+            },
+            "title-tracking": {
+              "type": "string",
+              "maxLength": 400,
+              "description": "The page title's letter spacing. Default: -0.02em."
+            },
+            "title-leading": {
+              "type": "string",
+              "maxLength": 400,
+              "description": "The page title's line height. Default: 1.1."
+            },
+            "heading-font": {
+              "type": "string",
+              "maxLength": 400,
+              "description": "Section headings' face: var(--font-display) or var(--font-sans). Default: var(--font-display)."
+            },
+            "heading-size": {
+              "type": "string",
+              "maxLength": 400,
+              "description": "Section headings' size (h2). Default: 1.375rem."
+            },
+            "heading-weight": {
+              "type": "string",
+              "maxLength": 400,
+              "description": "Headings' weight. Default: 600."
+            },
+            "heading-tracking": {
+              "type": "string",
+              "maxLength": 400,
+              "description": "Headings' letter spacing. Default: -0.01em."
+            },
+            "card-title-font": {
+              "type": "string",
+              "maxLength": 400,
+              "description": "A card title's face. Default: var(--font-sans)."
+            },
+            "card-title-size": {
+              "type": "string",
+              "maxLength": 400,
+              "description": "A card title's size. Default: 1rem."
+            },
+            "card-title-weight": {
+              "type": "string",
+              "maxLength": 400,
+              "description": "A card title's weight. Default: 600."
+            },
+            "figure-font": {
+              "type": "string",
+              "maxLength": 400,
+              "description": "A figure's number face. Default: var(--font-sans)."
+            },
+            "figure-weight": {
+              "type": "string",
+              "maxLength": 400,
+              "description": "A figure's number weight. Default: 600."
+            },
+            "dialog-title-size": {
+              "type": "string",
+              "maxLength": 400,
+              "description": "A dialog title's size. Default: 1.25rem."
+            },
+            "question-number-color": {
+              "type": "string",
+              "maxLength": 400,
+              "description": "A question's number. Default: var(--muted-foreground)."
+            },
+            "card-radius": {
+              "type": "string",
+              "maxLength": 400,
+              "description": "Cards and panels. Default: var(--radius)."
+            },
+            "control-radius": {
+              "type": "string",
+              "maxLength": 400,
+              "description": "Fields people type in or pick from. Default: var(--radius)."
+            },
+            "button-radius": {
+              "type": "string",
+              "maxLength": 400,
+              "description": "Buttons; 999px makes pills. Default: 999px."
+            },
+            "choice-radius": {
+              "type": "string",
+              "maxLength": 400,
+              "description": "Choices, scale steps and ranked rows. Default: var(--radius)."
+            },
+            "popover-radius": {
+              "type": "string",
+              "maxLength": 400,
+              "description": "Menus, popovers and select lists. Default: var(--radius)."
+            },
+            "dialog-radius": {
+              "type": "string",
+              "maxLength": 400,
+              "description": "Dialogs and sheets. Default: var(--popover-radius)."
+            },
+            "badge-radius": {
+              "type": "string",
+              "maxLength": 400,
+              "description": "Badges. Default: 999px."
+            },
+            "tabs-radius": {
+              "type": "string",
+              "maxLength": 400,
+              "description": "The tab list's track. Default: var(--button-radius)."
+            },
+            "tabs-indicator-radius": {
+              "type": "string",
+              "maxLength": 400,
+              "description": "The active tab's mark. Default: var(--button-radius)."
+            },
+            "thumb-radius": {
+              "type": "string",
+              "maxLength": 400,
+              "description": "Previews inside choices. Default: var(--radius)."
+            },
+            "section-radius": {
+              "type": "string",
+              "maxLength": 400,
+              "description": "Sections of a page. Default: 0px."
+            },
+            "figure-radius": {
+              "type": "string",
+              "maxLength": 400,
+              "description": "One figure of a row. Default: 0px."
+            },
+            "control-h": {
+              "type": "string",
+              "maxLength": 400,
+              "description": "A field's or button's height. Default: 2.75rem."
+            },
+            "control-h-sm": {
+              "type": "string",
+              "maxLength": 400,
+              "description": "A small field's or button's height. Default: 2.25rem."
+            },
+            "card-gap": {
+              "type": "string",
+              "maxLength": 400,
+              "description": "Between the parts of a card. Default: 1rem."
+            },
+            "card-pad-x": {
+              "type": "string",
+              "maxLength": 400,
+              "description": "Inside a card, at its sides. Default: 1.25rem."
+            },
+            "card-pad-top": {
+              "type": "string",
+              "maxLength": 400,
+              "description": "Inside a card, above its first part. Default: 1.25rem."
+            },
+            "card-pad-bottom": {
+              "type": "string",
+              "maxLength": 400,
+              "description": "Inside a card, below its last part. Default: 1.25rem."
+            },
+            "dialog-pad": {
+              "type": "string",
+              "maxLength": 400,
+              "description": "Inside a dialog. Default: 1.5rem."
+            },
+            "menu-pad": {
+              "type": "string",
+              "maxLength": 400,
+              "description": "Inside a menu, around its items. Default: 0.375rem."
+            },
+            "menu-item-radius": {
+              "type": "string",
+              "maxLength": 400,
+              "description": "A menu item: its menu's radius less the menu's padding. Default: max(0px, calc(var(--popover-radius) - var(--menu-pad)))."
+            },
+            "tabs-track-pad": {
+              "type": "string",
+              "maxLength": 400,
+              "description": "Inside the tab list's track. Default: 0.25rem."
+            },
+            "figure-pad": {
+              "type": "string",
+              "maxLength": 400,
+              "description": "Inside one figure. Default: 1.25rem 1.5rem."
+            },
+            "figures-gap": {
+              "type": "string",
+              "maxLength": 400,
+              "description": "Between the figures of a row. Default: 0px."
+            },
+            "section-pad": {
+              "type": "string",
+              "maxLength": 400,
+              "description": "Inside a section. Default: 1.5rem 0 0."
+            },
+            "section-index-size": {
+              "type": "string",
+              "maxLength": 400,
+              "description": "A section number's mark: auto, or a circle's size. Default: auto."
+            },
+            "page-width": {
+              "type": "string",
+              "maxLength": 400,
+              "description": "A page's measure. Default: 60rem."
+            },
+            "page-pad": {
+              "type": "string",
+              "maxLength": 400,
+              "description": "Above and below a page's content. Default: 3rem."
+            },
+            "stack-gap": {
+              "type": "string",
+              "maxLength": 400,
+              "description": "Between a page's blocks. Default: 2.5rem."
+            },
+            "rule": {
+              "type": "string",
+              "maxLength": 400,
+              "description": "The rule a theme draws its sections and cards with. Default: var(--border)."
+            },
+            "card-shadow": {
+              "type": "string",
+              "maxLength": 400,
+              "description": "A card's edge and depth. Default: 0 0 0 1px var(--border)."
+            },
+            "choice-shadow": {
+              "type": "string",
+              "maxLength": 400,
+              "description": "A choice's edge. Default: 0 0 0 1px var(--border)."
+            },
+            "choice-selected-shadow": {
+              "type": "string",
+              "maxLength": 400,
+              "description": "A chosen choice's edge. Default: 0 0 0 2px var(--primary)."
+            },
+            "scale-selected-shadow": {
+              "type": "string",
+              "maxLength": 400,
+              "description": "A chosen step of a scale's edge. Default: 0 0 0 2px var(--foreground)."
+            },
+            "popover-shadow": {
+              "type": "string",
+              "maxLength": 400,
+              "description": "A menu's or popover's edge and depth. Default: 0 0 0 1px var(--border), 0 12px 32px -12px oklch(0 0 0 / 0.25)."
+            },
+            "button-shadow": {
+              "type": "string",
+              "maxLength": 400,
+              "description": "The main button's depth. Default: none."
+            },
+            "control-shadow": {
+              "type": "string",
+              "maxLength": 400,
+              "description": "A field's depth. Default: none."
+            },
+            "section-shadow": {
+              "type": "string",
+              "maxLength": 400,
+              "description": "A section's edge and depth. Default: none."
+            },
+            "section-rule": {
+              "type": "string",
+              "maxLength": 400,
+              "description": "The rule above a section. Default: 2px solid var(--rule)."
+            },
+            "figures-shadow": {
+              "type": "string",
+              "maxLength": 400,
+              "description": "A row of figures' edge. Default: var(--card-shadow)."
+            },
+            "figures-divider": {
+              "type": "string",
+              "maxLength": 400,
+              "description": "The line between figures. Default: var(--border)."
+            },
+            "tabs-track-shadow": {
+              "type": "string",
+              "maxLength": 400,
+              "description": "The tab list's edge. Default: none."
+            },
+            "tabs-indicator-shadow": {
+              "type": "string",
+              "maxLength": 400,
+              "description": "The active tab's mark's depth. Default: var(--choice-shadow)."
+            },
+            "field": {
+              "type": "string",
+              "maxLength": 400,
+              "description": "Inside a field. Default: var(--card)."
+            },
+            "button-outline-border": {
+              "type": "string",
+              "maxLength": 400,
+              "description": "An outlined button's edge. Default: var(--input)."
+            },
+            "button-outline-bg": {
+              "type": "string",
+              "maxLength": 400,
+              "description": "An outlined button's fill. Default: var(--field)."
+            },
+            "choice-bg": {
+              "type": "string",
+              "maxLength": 400,
+              "description": "A choice's fill. Default: var(--card)."
+            },
+            "choice-hover-bg": {
+              "type": "string",
+              "maxLength": 400,
+              "description": "A choice's fill under the pointer. Default: var(--muted)."
+            },
+            "choice-selected-bg": {
+              "type": "string",
+              "maxLength": 400,
+              "description": "A chosen choice's fill. Default: var(--accent)."
+            },
+            "choice-selected-hover-bg": {
+              "type": "string",
+              "maxLength": 400,
+              "description": "A chosen choice's fill under the pointer. Default: var(--choice-selected-bg)."
+            },
+            "choice-selected-fg": {
+              "type": "string",
+              "maxLength": 400,
+              "description": "Text on a chosen choice. Default: var(--card-foreground)."
+            },
+            "scale-selected-bg": {
+              "type": "string",
+              "maxLength": 400,
+              "description": "A chosen step of a scale: the answer's mark. Default: var(--answer)."
+            },
+            "scale-selected-fg": {
+              "type": "string",
+              "maxLength": 400,
+              "description": "Text on a chosen step of a scale. Default: var(--foreground)."
+            },
+            "choice-selected-muted": {
+              "type": "string",
+              "maxLength": 400,
+              "description": "Secondary text on a chosen choice. Default: var(--muted-foreground)."
+            },
+            "menu-highlight": {
+              "type": "string",
+              "maxLength": 400,
+              "description": "The item a menu's pointer or keys are on. Default: var(--accent)."
+            },
+            "menu-highlight-fg": {
+              "type": "string",
+              "maxLength": 400,
+              "description": "Text on that item. Default: var(--accent-foreground)."
+            },
+            "tabs-track-bg": {
+              "type": "string",
+              "maxLength": 400,
+              "description": "The tab list's track. Default: var(--muted)."
+            },
+            "tabs-indicator-bg": {
+              "type": "string",
+              "maxLength": 400,
+              "description": "The active tab's mark. Default: var(--card)."
+            },
+            "tabs-indicator-fill": {
+              "type": "string",
+              "maxLength": 400,
+              "description": "1: the mark fills the tab; 0: it underlines it. Default: 1."
+            },
+            "tabs-indicator-line": {
+              "type": "string",
+              "maxLength": 400,
+              "description": "The underline's thickness when the mark underlines. Default: 2px."
+            },
+            "tabs-active-fg": {
+              "type": "string",
+              "maxLength": 400,
+              "description": "The active tab's text. Default: var(--foreground)."
+            },
+            "section-bg": {
+              "type": "string",
+              "maxLength": 400,
+              "description": "A section's fill. Default: transparent."
+            },
+            "section-index-color": {
+              "type": "string",
+              "maxLength": 400,
+              "description": "A section's number. Default: var(--muted-foreground)."
+            },
+            "section-index-bg": {
+              "type": "string",
+              "maxLength": 400,
+              "description": "A section number's mark. Default: transparent."
+            },
+            "figure-bg": {
+              "type": "string",
+              "maxLength": 400,
+              "description": "One figure's fill. Default: transparent."
+            },
+            "figures-bg": {
+              "type": "string",
+              "maxLength": 400,
+              "description": "A row of figures' fill. Default: var(--card)."
+            },
+            "ease-out": {
+              "type": "string",
+              "maxLength": 400,
+              "description": "How things arrive. Default: cubic-bezier(0.23, 1, 0.32, 1)."
+            },
+            "ease-answer": {
+              "type": "string",
+              "maxLength": 400,
+              "description": "How an answer's dot drops in. Default: cubic-bezier(0.34, 1.56, 0.64, 1)."
+            },
+            "answer-ms": {
+              "type": "string",
+              "maxLength": 400,
+              "description": "How long it takes. Default: 400ms."
+            }
+          }
+        }
+      }
+    },
+    "css": {
+      "type": "string",
+      "maxLength": 65536
+    }
+  }
+}
