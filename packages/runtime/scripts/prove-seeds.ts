@@ -198,6 +198,14 @@ const SEEDS: readonly Seed[] = [
     check: e2e("design freedom"),
     e2e: true,
   },
+  {
+    requirement: "KT-10",
+    name: "freedom: a page that asks for no theme gets one anyway",
+    file: "src/kit/stack.ts",
+    from: '  if (stack.length === 1 && stack[0] === "none") {',
+    to: '  if (stack.length === 1 && stack[0] === "nothing") {',
+    check: integration("verify.test.ts", "uses nothing of the kit"),
+  },
   // MT-06: signing out (#204) and the metering window (#203). Each item's check goes red on a
   // violation planted where it is enforced (`--only MT-06`, `--name "sign-out:"` for one item).
   {

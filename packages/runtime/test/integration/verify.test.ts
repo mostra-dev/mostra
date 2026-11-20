@@ -1190,6 +1190,47 @@ export default function Page() { return <main><h1>Count {count}</h1></main>; }
 
 describe("the kit's forms through verify (WP-18)", () => {
   it(
+    "verifies a page that uses nothing of the kit cleanly, in the default theme or none (KT-10)",
+    async () => {
+      // Design freedom (D68): nothing enforces the kit. A page with its own markup and its own
+      // stylesheet, which imports no part, passes with no warning, said to wear Studio by default;
+      // with `theme: "none"` no theme is built at all.
+      const page = (theme: string | undefined): Record<string, string> => ({
+        "index.tsx": `import { defineArtifact } from "@mostra/react";
+import "./own.css";
+
+export const artifact = defineArtifact({ title: "Own look"${theme === undefined ? "" : `, kit: { theme: "${theme}" }`} });
+
+export default function Page() {
+  return (
+    <main className="own">
+      <h1>Own look</h1>
+      <p className="mt-2 text-sm">Nothing here comes from the kit.</p>
+    </main>
+  );
+}
+`,
+        "own.css": ".own { max-width: 40rem; margin: 3rem auto; font-family: Georgia, serif; }\n",
+      });
+      const plain = await verify(artifact("own-look", page(undefined)));
+      expect(codes(plain, "error")).toEqual([]);
+      expect(codes(plain, "warning")).toEqual([]);
+      expect(plain.theme).toMatchObject({ stack: ["studio"], default: true });
+      const bare = artifact("own-look-bare", page("none"));
+      const none = await verify(bare);
+      expect(codes(none, "error")).toEqual([]);
+      expect(codes(none, "warning")).toEqual([]);
+      expect(none.theme).toMatchObject({ stack: ["none"], default: false });
+      const shown = result(
+        await client.call("theme/show", { artifact: { path: bare }, css: true }),
+      ) as { stack: string[]; css?: string };
+      expect(shown.stack).toEqual(["none"]);
+      expect(shown.css ?? "").toBe("");
+    },
+    VERIFY_MS,
+  );
+
+  it(
     "judges an input unbound only when its value changed and nothing saved (#158)",
     async () => {
       const dir = artifact("radios", {
