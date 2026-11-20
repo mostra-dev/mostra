@@ -1,0 +1,84 @@
+{
+  "name": "@mostra/kit",
+  "version": "0.17.0",
+  "description": "Mostra's kit: shadcn components for the Base UI and Radix bases, shaped by the themes' tokens, and the questionnaire and form parts that save as fields.",
+  "license": "Apache-2.0",
+  "author": "The Mostra Authors",
+  "homepage": "https://github.com/mostra-dev/mostra/tree/main/packages/kit#readme",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/mostra-dev/mostra.git",
+    "directory": "packages/kit"
+  },
+  "bugs": "https://github.com/mostra-dev/mostra/issues",
+  "type": "module",
+  "sideEffects": [
+    "*.css"
+  ],
+  "exports": {
+    ".": {
+      "@mostra/source": "./src/index.ts",
+      "types": "./dist/index.d.ts",
+      "default": "./dist/index.js"
+    },
+    "./kit.css": "./css/kit.css",
+    "./registry/*": "./registry/*",
+    "./package.json": "./package.json"
+  },
+  "files": [
+    "dist",
+    "src",
+    "!src/**/*.test.ts",
+    "css",
+    "registry"
+  ],
+  "engines": {
+    "node": ">=22.19"
+  },
+  "publishConfig": {
+    "access": "public",
+    "provenance": true
+  },
+  "scripts": {
+    "build": "tsdown",
+    "typecheck": "tsc -b",
+    "test": "vitest run",
+    "api": "mostra-tools api",
+    "generate": "node --conditions @mostra/source scripts/generate.ts"
+  },
+  "dependencies": {
+    "@mostra/protocol": "workspace:*",
+    "@mostra/react": "workspace:*",
+    "@mostra/themes": "workspace:*",
+    "tw-animate-css": "catalog:"
+  },
+  "peerDependencies": {
+    "react": "^19"
+  },
+  "devDependencies": {
+    "@base-ui/react": "catalog:",
+    "@mostra/tools": "workspace:*",
+    "@shadcn/react": "catalog:",
+    "@types/node": "catalog:",
+    "@types/react": "catalog:",
+    "@types/react-dom": "catalog:",
+    "class-variance-authority": "catalog:",
+    "cmdk": "catalog:",
+    "cn": "catalog:",
+    "embla-carousel-react": "catalog:",
+    "input-otp": "catalog:",
+    "lucide-react": "catalog:",
+    "radix-ui": "catalog:",
+    "react": "catalog:",
+    "react-day-picker": "catalog:",
+    "react-dom": "catalog:",
+    "react-resizable-panels": "catalog:",
+    "recharts": "catalog:",
+    "shiki": "catalog:",
+    "sonner": "catalog:",
+    "tsdown": "catalog:",
+    "typescript": "catalog:",
+    "vaul": "catalog:",
+    "vitest": "catalog:"
+  }
+}

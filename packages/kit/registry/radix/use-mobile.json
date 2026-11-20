@@ -1,0 +1,14 @@
+{
+  "$schema": "https://ui.shadcn.com/schema/registry-item.json",
+  "name": "use-mobile",
+  "type": "registry:hook",
+  "files": [
+    {
+      "path": "hooks/use-mobile.ts",
+      "type": "registry:hook"
+    }
+  ],
+  "mostra": {
+    "base": "radix"
+  }
+}

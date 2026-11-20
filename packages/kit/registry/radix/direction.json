@@ -1,0 +1,17 @@
+{
+  "$schema": "https://ui.shadcn.com/schema/registry-item.json",
+  "name": "direction",
+  "type": "registry:ui",
+  "dependencies": [
+    "radix-ui"
+  ],
+  "files": [
+    {
+      "path": "components/ui/direction.tsx",
+      "type": "registry:ui"
+    }
+  ],
+  "mostra": {
+    "base": "radix"
+  }
+}

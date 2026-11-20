@@ -1,0 +1,29 @@
+{
+  "$schema": "https://ui.shadcn.com/schema/registry-item.json",
+  "name": "sidebar",
+  "type": "registry:ui",
+  "dependencies": [
+    "class-variance-authority",
+    "cn",
+    "lucide-react",
+    "radix-ui"
+  ],
+  "registryDependencies": [
+    "button",
+    "separator",
+    "sheet",
+    "tooltip",
+    "input",
+    "use-mobile",
+    "skeleton"
+  ],
+  "files": [
+    {
+      "path": "components/ui/sidebar.tsx",
+      "type": "registry:ui"
+    }
+  ],
+  "mostra": {
+    "base": "radix"
+  }
+}

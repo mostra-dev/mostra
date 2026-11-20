@@ -1,0 +1,19 @@
+{
+  "$schema": "https://ui.shadcn.com/schema/registry-item.json",
+  "name": "marker",
+  "type": "registry:ui",
+  "dependencies": [
+    "class-variance-authority",
+    "cn",
+    "radix-ui"
+  ],
+  "files": [
+    {
+      "path": "components/ui/marker.tsx",
+      "type": "registry:ui"
+    }
+  ],
+  "mostra": {
+    "base": "radix"
+  }
+}

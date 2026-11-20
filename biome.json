@@ -18,7 +18,9 @@
       "!docs/design/evaluations",
       "!pnpm-lock.yaml",
       "!**/fixtures",
-      "!packages/themes/css"
+      "!packages/themes/css",
+      "!packages/kit/registry",
+      "!packages/kit/upstream"
     ]
   },
   "formatter": {

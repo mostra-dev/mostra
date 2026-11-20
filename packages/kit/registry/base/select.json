@@ -1,0 +1,19 @@
+{
+  "$schema": "https://ui.shadcn.com/schema/registry-item.json",
+  "name": "select",
+  "type": "registry:ui",
+  "dependencies": [
+    "@base-ui/react",
+    "cn",
+    "lucide-react"
+  ],
+  "files": [
+    {
+      "path": "components/ui/select.tsx",
+      "type": "registry:ui"
+    }
+  ],
+  "mostra": {
+    "base": "base"
+  }
+}
