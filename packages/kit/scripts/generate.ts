@@ -42,6 +42,33 @@ const FOLDER: Record<string, string> = {
   "registry:lib": "lib",
   "registry:hook": "hooks",
 };
+/**
+ * The kit's own modules, as registry items too: `@mostra/kit/<module>` resolves to the artifact's
+ * `components/mostra/<module>.tsx` when it has one, else to the kit's, so `mostra add <name>` makes
+ * the copy that then wins (ROUND-3 §1.1, KT-10).
+ */
+const KIT_ITEMS = [
+  {
+    name: "mostra-questionnaire",
+    module: "questionnaire",
+    title: "Questionnaire",
+    description:
+      "Questions people answer, each answer a field: choices, scales, rankings, text, comments, sections and progress.",
+  },
+] as const;
+
+/** The packages a file imports, by package name, without React. */
+function packagesOf(content: string): string[] {
+  const names = new Set<string>();
+  for (const match of content.matchAll(/from "([^".][^"]*)"/g)) {
+    const specifier = match[1] as string;
+    if (specifier.startsWith("@/")) continue;
+    const parts = specifier.split("/");
+    names.add(specifier.startsWith("@") ? parts.slice(0, 2).join("/") : (parts[0] as string));
+  }
+  return [...names].filter((name) => name !== "react" && name !== "react-dom").sort();
+}
+
 /** Where the vendored project holds each folder (`src/components/ui` was copied as `ui`). */
 const INSTALLED: Record<string, string> = { "components/ui": "ui", lib: "lib", hooks: "hooks" };
 
@@ -141,6 +168,30 @@ for (const [base, style] of Object.entries(BASES) as [Base, string][]) {
       type: item.type,
       ...(item.title !== undefined ? { title: item.title } : {}),
       ...(item.description !== undefined ? { description: item.description } : {}),
+    });
+  }
+  // The kit's own modules (`@mostra/kit/<name>`), the same in every base: an item each, its file
+  // at `components/mostra/<name>.tsx`, where `@mostra/kit/<name>` finds the artifact's copy first.
+  for (const own of KIT_ITEMS) {
+    const content = readFileSync(join(ROOT, "src", `${own.module}.tsx`), "utf8");
+    const path = `components/mostra/${own.module}.tsx`;
+    emit(join(base, path), content);
+    const item = {
+      $schema: "https://ui.shadcn.com/schema/registry-item.json",
+      name: own.name,
+      type: "registry:component",
+      title: own.title,
+      description: own.description,
+      dependencies: packagesOf(content),
+      files: [{ path, type: "registry:component", target: path }],
+      mostra: { base },
+    };
+    emit(join(base, `${own.name}.json`), `${JSON.stringify(item, null, 2)}\n`);
+    index.push({
+      name: own.name,
+      type: "registry:component",
+      title: own.title,
+      description: own.description,
     });
   }
   emit(

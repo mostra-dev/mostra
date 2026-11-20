@@ -21,6 +21,11 @@
       "types": "./dist/index.d.ts",
       "default": "./dist/index.js"
     },
+    "./questionnaire": {
+      "@mostra/source": "./src/questionnaire.tsx",
+      "types": "./dist/questionnaire.d.ts",
+      "default": "./dist/questionnaire.js"
+    },
     "./kit.css": "./css/kit.css",
     "./registry/*": "./registry/*",
     "./package.json": "./package.json"

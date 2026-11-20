@@ -13,6 +13,7 @@ import {
   createDiagnostic,
   type FieldConflict,
   type FieldOp,
+  type FieldOption,
   type FieldScope,
   type FieldState,
   isFieldId,
@@ -53,6 +54,8 @@ export interface FieldRow {
   readonly required: number | null;
   /** The number of the version whose view last wrote the field (D109); null for agents and hosts. */
   readonly version_number: number | null;
+  /** The options its value is chosen from, as JSON (`FieldOption[]`), when it names them. */
+  readonly options_json: string | null;
 }
 
 /**
@@ -111,6 +114,9 @@ export function fieldState(row: FieldRow): FieldState {
     ...(row.label !== null ? { label: row.label } : {}),
     ...(row.required !== null ? { required: row.required === 1 } : {}),
     ...(row.sensitive === 1 ? { sensitive: true } : {}),
+    ...(row.options_json !== null
+      ? { options: JSON.parse(row.options_json) as FieldOption[] }
+      : {}),
   };
 }
 
@@ -311,14 +317,17 @@ export function applyMutation(db: LedgerDb, input: MutationInput): MutationOutco
     size += Buffer.byteLength(json, "utf8") - oldSize;
     const label = op.label ?? row?.label ?? null;
     const required = op.required !== undefined ? (op.required ? 1 : 0) : (row?.required ?? null);
+    const options =
+      op.options !== undefined ? JSON.stringify(op.options) : (row?.options_json ?? null);
     writes.push(() =>
       db.run(
-        `INSERT INTO field (document_id, field_id, value_json, deleted, field_rev, updated_by_json, updated_at, sensitive, label, required, version_number)
-         VALUES (?, ?, ?, 0, ?, ?, ?, ?, ?, ?, ?)
+        `INSERT INTO field (document_id, field_id, value_json, deleted, field_rev, updated_by_json, updated_at, sensitive, label, required, version_number, options_json)
+         VALUES (?, ?, ?, 0, ?, ?, ?, ?, ?, ?, ?, ?)
          ON CONFLICT (document_id, field_id) DO UPDATE SET value_json = excluded.value_json, deleted = 0,
            field_rev = excluded.field_rev, updated_by_json = excluded.updated_by_json,
            updated_at = excluded.updated_at, sensitive = excluded.sensitive, label = excluded.label,
-           required = excluded.required, version_number = excluded.version_number`,
+           required = excluded.required, version_number = excluded.version_number,
+           options_json = excluded.options_json`,
         document.id,
         op.id,
         json,
@@ -329,6 +338,7 @@ export function applyMutation(db: LedgerDb, input: MutationInput): MutationOutco
         label,
         required,
         input.versionNumber ?? null,
+        options,
       ),
     );
     changes.push(

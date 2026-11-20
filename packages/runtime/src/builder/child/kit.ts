@@ -28,19 +28,30 @@ export function findUnder(root: string, rest: string): string | undefined {
 }
 
 /**
+ * The kit module a specifier names (`@mostra/kit/questionnaire`), as the path its file has in an
+ * artifact and in the kit's registry (`components/mostra/questionnaire`), or `undefined`.
+ */
+export function kitModulePath(source: string): string | undefined {
+  const match = /^@mostra\/kit\/([a-z][a-z0-9-]*)$/.exec(source.split("?")[0] ?? "");
+  return match ? `components/mostra/${match[1] as string}` : undefined;
+}
+
+/**
  * `@/…` as an artifact means it (ROUND-3 §1.1): the artifact's own file when it has one, else the
  * kit's copy of that registry item for the artifact's base, read in place, so a page imports
  * `@/components/ui/button` with nothing installed and `mostra add button` makes the copy that then
  * wins. The kit's own files resolve `@/…` the same way, so a copied `button.tsx` is the button a
- * kit dialog uses too.
+ * kit dialog uses too. A kit module (`@mostra/kit/questionnaire`) resolves by the same rule, from
+ * `components/mostra/`, so `mostra add mostra-questionnaire` makes a copy the page then uses.
  */
 export function kitResolvePlugin(sourceDir: string, kit: KitBuild): Plugin {
   return {
     name: "mostra:kit-resolve",
     enforce: "pre",
     resolveId(source) {
-      if (!source.startsWith("@/")) return null;
-      const rest = source.slice(2).split("?")[0] ?? "";
+      const module = kitModulePath(source);
+      if (!source.startsWith("@/") && module === undefined) return null;
+      const rest = module ?? source.slice(2).split("?")[0] ?? "";
       const own = findUnder(sourceDir, rest);
       if (own !== undefined) return own;
       if (kit.registry !== undefined) {
@@ -60,8 +71,8 @@ const importPath = (from: string, to: string): string => {
 
 /** The files whose imports can name `@/…`. */
 const CODE = new Set([".ts", ".tsx", ".js", ".jsx", ".mjs", ".mts", ".mdx"]);
-/** `@/…` in an import or export, static or dynamic. */
-const KIT_IMPORT = /(?:from|import)\s*\(?\s*["'](@\/[^"'\s]+)["']/g;
+/** `@/…` or a kit module (`@mostra/kit/<name>`) in an import or export, static or dynamic. */
+const KIT_IMPORT = /(?:from|import)\s*\(?\s*["'](@\/[^"'\s]+|@mostra\/kit\/[a-z][a-z0-9-]*)["']/g;
 
 function codeFiles(dir: string): string[] {
   const found: string[] = [];
@@ -89,7 +100,8 @@ export function kitFilesUsed(sourceDir: string, registry: string): string[] {
       return;
     }
     for (const match of text.matchAll(KIT_IMPORT)) {
-      const rest = (match[1] as string).slice(2);
+      const specifier = match[1] as string;
+      const rest = kitModulePath(specifier) ?? specifier.slice(2);
       if (findUnder(sourceDir, rest) !== undefined) continue;
       const kitFile = findUnder(registry, rest);
       if (kitFile === undefined || used.has(kitFile)) continue;

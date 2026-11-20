@@ -10,6 +10,7 @@
 import {
   type Actor,
   type ControlRequest,
+  type FieldOption,
   type FieldScope,
   mostraControlsRequest,
   type SubmissionSummary,
@@ -112,6 +113,11 @@ export interface FieldOptions<T> {
   readonly validate?: StandardSchema<T> | ((value: T) => string | undefined);
   /** `viewer` (default): the viewer's draft. `artifact`: shared state every viewer sees (D63). */
   readonly scope?: FieldScope;
+  /**
+   * The options the value is chosen from, as the person sees them, so results name each answer
+   * by its label and say whether it took the recommended one (KT-05).
+   */
+  readonly options?: readonly FieldOption[];
 }
 
 /** What a field is doing (INTERFACES §2.3). */
@@ -233,6 +239,13 @@ export function useField<T>(
         ? settled.error
         : CHECKING;
   const { label, required, sensitive } = options;
+  // The options as one value, so a new array with the same options changes nothing.
+  const optionsKey = options.options === undefined ? undefined : JSON.stringify(options.options);
+  const choices = useMemo(
+    () =>
+      optionsKey === undefined ? undefined : (JSON.parse(optionsKey) as readonly FieldOption[]),
+    [optionsKey],
+  );
 
   // Registered once per mount and ID; the next effect keeps its options current.
   // biome-ignore lint/correctness/useExhaustiveDependencies: options change through updateRegistration.
@@ -245,6 +258,7 @@ export function useField<T>(
         ...(label !== undefined ? { label } : {}),
         ...(required !== undefined ? { required } : {}),
         ...(sensitive !== undefined ? { sensitive } : {}),
+        ...(choices !== undefined ? { options: choices } : {}),
       }),
     // eslint-disable-next-line react-hooks/exhaustive-deps -- the next effect keeps the options current.
     [store, id, scope, first],
@@ -257,6 +271,7 @@ export function useField<T>(
       ...(label !== undefined ? { label } : {}),
       ...(required !== undefined ? { required } : {}),
       ...(sensitive !== undefined ? { sensitive } : {}),
+      ...(choices !== undefined ? { options: choices } : {}),
       ...(error !== undefined ? { error } : {}),
     });
   });
@@ -272,10 +287,11 @@ export function useField<T>(
         ...(label !== undefined ? { label } : {}),
         ...(required !== undefined ? { required } : {}),
         ...(sensitive !== undefined ? { sensitive } : {}),
+        ...(choices !== undefined ? { options: choices } : {}),
         ...(message !== undefined ? { error: message } : {}),
       });
     });
-  }, [store, validation, id, scope, first, label, required, sensitive]);
+  }, [store, validation, id, scope, first, label, required, sensitive, choices]);
 
   const set = useCallback(
     (next: T | ((previous: T) => T)) => {
@@ -295,9 +311,10 @@ export function useField<T>(
         ...(label !== undefined ? { label } : {}),
         ...(required !== undefined ? { required } : {}),
         ...(sensitive !== undefined ? { sensitive } : {}),
+        ...(choices !== undefined ? { options: choices } : {}),
       });
     },
-    [store, key, scope, id, label, required, sensitive, first],
+    [store, key, scope, id, label, required, sensitive, choices, first],
   );
 
   const conflict = store.conflict(key);

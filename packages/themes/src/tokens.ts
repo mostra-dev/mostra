@@ -78,6 +78,7 @@ export const TOKEN_NAMES = [
   "card-shadow",
   "choice-shadow",
   "choice-selected-shadow",
+  "scale-selected-shadow",
   "popover-shadow",
   "button-shadow",
   "control-shadow",
@@ -95,6 +96,8 @@ export const TOKEN_NAMES = [
   "choice-selected-bg",
   "choice-selected-hover-bg",
   "choice-selected-fg",
+  "scale-selected-bg",
+  "scale-selected-fg",
   "choice-selected-muted",
   "menu-highlight",
   "menu-highlight-fg",
@@ -182,6 +185,11 @@ export const TOKENS: Readonly<Record<TokenName, TokenSpec>> = {
   "card-shadow": t("depth", "A card's edge and depth.", "0 0 0 1px var(--border)"),
   "choice-shadow": t("depth", "A choice's edge.", "0 0 0 1px var(--border)"),
   "choice-selected-shadow": t("depth", "A chosen choice's edge.", "0 0 0 2px var(--primary)"),
+  "scale-selected-shadow": t(
+    "depth",
+    "A chosen step of a scale's edge.",
+    "0 0 0 2px var(--foreground)",
+  ),
   "popover-shadow": t(
     "depth",
     "A menu's or popover's edge and depth.",
@@ -209,6 +217,12 @@ export const TOKENS: Readonly<Record<TokenName, TokenSpec>> = {
     "var(--choice-selected-bg)",
   ),
   "choice-selected-fg": t("surface", "Text on a chosen choice.", "var(--card-foreground)"),
+  "scale-selected-bg": t(
+    "surface",
+    "A chosen step of a scale: the answer's mark.",
+    "var(--answer)",
+  ),
+  "scale-selected-fg": t("surface", "Text on a chosen step of a scale.", "var(--foreground)"),
   "choice-selected-muted": t(
     "surface",
     "Secondary text on a chosen choice.",

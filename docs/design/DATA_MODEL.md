@@ -98,7 +98,8 @@ document(id PK, artifact_id, scope CHECK(scope IN ('viewer','artifact')), viewer
                                                     -- makes the artifact-state document (viewer_id NULL) unique too;
                                                     -- a trigger refuses revision or epoch going back
 field(document_id FK, field_id, value_json, deleted BOOLEAN, field_rev INTEGER, updated_by_json, updated_at,
-      sensitive BOOLEAN, label NULL, required NULL, version_number INTEGER NULL, PRIMARY KEY(document_id, field_id))
+      sensitive BOOLEAN, label NULL, required NULL, version_number INTEGER NULL,
+      options_json NULL, PRIMARY KEY(document_id, field_id))      -- options_json: migration 19 (WP-18, D178)
                                                     -- a deleted field keeps its row and revision, so a stale write conflicts;
                                                     -- version_number: the version whose view last wrote it, an orphan's
                                                     -- fromVersion (D109; migration 6 renamed orphaned_from_version)
@@ -195,7 +196,7 @@ Invariants carried by constraints:
 - **Leases:** each port has exactly one lease holder.
 - **Capabilities:** the ledger holds no secret. A token's secret, a session's cookie and its CSRF token are stored only as SHA-256 hashes. A trigger refuses any change to a revoked token and any change to a token's secret, artifact, grant, expiry, version or shell origin, and a default token can't expire (D97, D98).
 
-`snapshot_json` is the canonical answer document, stored in its RFC 8785 (JCS) form: the submission's ID and time, artifact, version and number, view, viewer, channel, policy, epoch and previous submission, stale-view flag, the draft's revision and fields (value, label, required, sensitive), the artifact state's revision and fields, orphans, the action runs started in the view with their state at submit time (at most 100, D130) and the signals raised in the view (the newest 100 within 1 MiB of payloads, with `signalsOmitted` counting the rest and `signalsCompacted` set when compaction may have removed some). A snapshot holds at most 40 Mi characters (`MOSTRA_FIELD_TOO_LARGE` otherwise), so its results always fit one protocol message. Its digest is the SHA-256 of that text. Submissions are write-once: triggers refuse any `UPDATE` or `DELETE` of `submission` (invariant 4), and an insert over an existing submission, which `INSERT OR REPLACE` would otherwise turn into a silent delete. Versions are write-once the same way: triggers refuse any `UPDATE` of `version` and an insert over one (invariant 3); deliveries and tokens refuse an insert over an existing row too, deliveries are never deleted, and `event` is append-only.
+`snapshot_json` is the canonical answer document, stored in its RFC 8785 (JCS) form: the submission's ID and time, artifact, version and number, view, viewer, channel, policy, epoch and previous submission, stale-view flag, the draft's revision and fields (value, label, required, sensitive, and the options the value was chosen from, WP-18), the artifact state's revision and fields, orphans, the action runs started in the view with their state at submit time (at most 100, D130) and the signals raised in the view (the newest 100 within 1 MiB of payloads, with `signalsOmitted` counting the rest and `signalsCompacted` set when compaction may have removed some). A snapshot holds at most 40 Mi characters (`MOSTRA_FIELD_TOO_LARGE` otherwise), so its results always fit one protocol message. Its digest is the SHA-256 of that text. Submissions are write-once: triggers refuse any `UPDATE` or `DELETE` of `submission` (invariant 4), and an insert over an existing submission, which `INSERT OR REPLACE` would otherwise turn into a silent delete. Versions are write-once the same way: triggers refuse any `UPDATE` of `version` and an insert over one (invariant 3); deliveries and tokens refuse an insert over an existing row too, deliveries are never deleted, and `event` is append-only.
 
 ## 4. Event catalog
 
@@ -472,7 +473,7 @@ A route with `adopting_json` takes no push and sends no delivery or run until th
 
 **A hosted home's ledger.** No migration. `delivery_terminal` refuses a change of a delivery's `port_owner` (`ledger/migrations.ts:338-343`), and it stays: adoption rewrites no delivery, because a hosted home's outbox sends each pending delivery to its artifact's owner link as the route names it then (4.5). A delivery's `port_owner` on a hosted home is therefore the link that owned the route when the submission was committed. The adoption commit updates `relay_run.owner_link_id` and `relay_seq` of never-sent runs, which no trigger guards. The new events are rows of the existing `event` table.
 
-**The owner's ledger, migration 19 (WP-34; 18 is WP-17's, D175).** `remote_link` is rebuilt with a local key, and its children reference the key.
+**The owner's ledger, migration 20 (WP-34; 18 is WP-17's, D175, and 19 WP-18's, D178).** `remote_link` is rebuilt with a local key, and its children reference the key.
 
 ```sql
 remote_link(id PK,                       -- local: rl_ + ULID
@@ -495,7 +496,7 @@ relayed_run   gains link_id
 - `server` stays on the children because `origin`, `scope_key` and every message to a person name the server.
 - Credentials: the personal link keeps `<home>/keys/remote/<server key>.json`; an organization link uses `<server key>.<home id>.json`, and the same for `.links.json` (mode 0600, never in the ledger, D44).
 
-**The owner's ledger, migration 19 (WP-35).**
+**The owner's ledger, migration 20 (WP-35).**
 
 ```sql
 ALTER TABLE version ADD COLUMN code TEXT NOT NULL DEFAULT 'full' CHECK (code IN ('full', 'client'));

@@ -288,11 +288,22 @@ export async function buildSpa(input: BuildRequest): Promise<BuildResponse> {
   } catch {
     runtimeDir = undefined;
   }
+  let kitDir: string | undefined;
+  try {
+    kitDir = await realpath(join(request.nodeModules, "@mostra", "kit"));
+  } catch {
+    kitDir = undefined;
+  }
   try {
     await build({
       ...baseConfig(request, sourceDir, [
         fieldHookUsePlugin(
-          { sourceDir, generatedDir: generated, ...(runtimeDir ? { runtimeDir } : {}) },
+          {
+            sourceDir,
+            generatedDir: generated,
+            ...(runtimeDir ? { runtimeDir } : {}),
+            ...(kitDir ? { kitDir } : {}),
+          },
           hookUses,
         ),
         confinePlugin(inputs),

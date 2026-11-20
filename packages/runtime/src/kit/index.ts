@@ -9,7 +9,8 @@
  * // theme.css goes inside the build's Tailwind run, then theme.files, in order.
  * ```
  */
-import { existsSync, readFileSync, statSync } from "node:fs";
+import { createHash } from "node:crypto";
+import { type Dirent, existsSync, readdirSync, readFileSync, statSync } from "node:fs";
 import { join } from "node:path";
 import {
   type ArtifactManifest,
@@ -187,14 +188,41 @@ export function kitRegistry(nodeModules: string, base: "base" | "radix"): string
  * registry is what `@/…` resolves into. `null` for a layout without the kit.
  */
 export function kitVersionOf(nodeModules: string): string | null {
+  const root = join(nodeModules, "@mostra", "kit");
+  let version: unknown;
   try {
-    const manifest = JSON.parse(
-      readFileSync(join(nodeModules, "@mostra", "kit", "package.json"), "utf8"),
-    ) as { version?: unknown };
-    return typeof manifest.version === "string" ? manifest.version : null;
+    version = (
+      JSON.parse(readFileSync(join(root, "package.json"), "utf8")) as { version?: unknown }
+    ).version;
   } catch {
     return null;
   }
+  if (typeof version !== "string") return null;
+  // The release, and a digest of what a build reads of it (its registry and CSS), so a kit whose
+  // files differ under the same release (a development build, a patched install) is another
+  // environment, never a reused verdict (VR-01).
+  const hash = createHash("sha256");
+  const walk = (dir: string, prefix: string): void => {
+    let entries: Dirent[];
+    try {
+      entries = readdirSync(dir, { withFileTypes: true });
+    } catch {
+      return;
+    }
+    for (const entry of entries.sort((a, b) => (a.name < b.name ? -1 : a.name > b.name ? 1 : 0))) {
+      const path = `${prefix}${entry.name}`;
+      if (entry.isDirectory()) walk(join(dir, entry.name), `${path}/`);
+      else if (entry.isFile()) {
+        hash
+          .update(`${path}\0`)
+          .update(readFileSync(join(dir, entry.name)))
+          .update("\0");
+      }
+    }
+  };
+  walk(join(root, "registry"), "registry/");
+  walk(join(root, "css"), "css/");
+  return `${version}+${hash.digest("hex").slice(0, 16)}`;
 }
 
 /** What a build takes of the kit and the theme stack, and the stack as resolved. */

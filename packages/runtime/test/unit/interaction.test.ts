@@ -972,6 +972,61 @@ describe("results (IN-11)", () => {
     expect(results.fields).toContainEqual({ id: "pin", sensitive: true, scope: "viewer" });
   });
 
+  it("names answers by the options they were chosen from, and the recommended one (KT-05)", () => {
+    const { ledger, latest, draft, doSubmit } = submitting(undefined);
+    const options = [
+      { value: "left", label: "Left rail", recommended: true },
+      { value: "top", label: "Top bar" },
+    ];
+    draft([
+      set("intake.layout", "top", { label: "Which layout fits best?", options }),
+      set("intake.took", "left", { label: "Took it", options }),
+      set("intake.blank", "", { label: "Not answered", options }),
+      set("intake.extras", ["search", "pins"], {
+        label: "Which sections?",
+        options: [
+          { value: "search", label: "Search" },
+          { value: "recents", label: "Recents", recommended: true },
+          { value: "pins", label: "Pinned pages" },
+        ],
+      }),
+      set("intake.density", 4, {
+        label: "How dense?",
+        options: [1, 2, 3, 4, 5].map((value) => ({ value, label: String(value) })),
+      }),
+    ]);
+    const { submission } = doSubmit(latest.viewId, 1);
+    const row = ledger.read(
+      (db) =>
+        db.get<SubmissionRow>(
+          "SELECT * FROM submission WHERE id = ?",
+          submission.id,
+        ) as SubmissionRow,
+    );
+    const results = ledger.read((db) => buildResults(db, row));
+    expect(Results.safeParse(results).success).toBe(true);
+    expect(results.fields).toContainEqual({
+      id: "intake.layout",
+      label: "Which layout fits best?",
+      scope: "viewer",
+      options,
+    });
+    const markdown = resultsMarkdown(results, JSON.parse(row.snapshot_json) as Snapshot);
+    expect(markdown).toContain(
+      '- "Which layout fits best?" (`intake.layout`): "Top bar" (`"top"`), not the recommended "Left rail"',
+    );
+    expect(markdown).toContain(
+      '- "Took it" (`intake.took`): "Left rail" (`"left"`), the recommended option',
+    );
+    expect(markdown).toContain(
+      '- "Not answered" (`intake.blank`): no answer (recommended: "Left rail")',
+    );
+    expect(markdown).toContain(
+      '- "Which sections?" (`intake.extras`): "Search" (`"search"`), "Pinned pages" (`"pins"`), not the recommended "Recents"',
+    );
+    expect(markdown).toContain('- "How dense?" (`intake.density`): "4" (`4`)');
+  });
+
   it("nests dotted IDs without merging into a value, and treats __proto__ as a plain key", () => {
     const nested = nestFields({
       a: { value: 1 },

@@ -130,6 +130,66 @@ export function Intake() { const form = useForm({ id: "intake", defaultValues: {
     }
   });
 
+  it("reads the questionnaire's fields from its parts' ids (WP-18)", async () => {
+    const coverage = await scan({
+      "index.tsx": `import { Choice, Question, Questionnaire, Section, TextAnswer } from "@mostra/kit/questionnaire";
+import * as Kit from "@/components/mostra/questionnaire";
+export default function Page() {
+  return (
+    <>
+      <Questionnaire id="intake">
+        <Section title="Layout">
+          <Question id="layout" title="Which layout?" required><Choice value="left">Left</Choice></Question>
+        </Section>
+        <Question id={\`q\${1}\`} title="Computed"><TextAnswer /></Question>
+      </Questionnaire>
+      <Kit.Questionnaire id="round2"><Kit.Question id="notes" title="Notes"><Kit.TextAnswer /></Kit.Question></Kit.Questionnaire>
+    </>
+  );
+}
+`,
+    });
+    expect(coverage.open).toBe(false);
+    expect(ids(coverage)).toEqual([
+      "intake.layout",
+      "intake.layout.comment",
+      "intake.layout.other",
+      "intake.q*",
+      "intake.q*.comment",
+      "intake.q*.other",
+      "round2.notes",
+      "round2.notes.comment",
+      "round2.notes.other",
+    ]);
+    expect(coverage.entries[0]).toEqual(
+      expect.objectContaining({ hook: "questionnaire", label: "Which layout?", required: true }),
+    );
+    const covers = coverageMatcher(coverage);
+    expect(covers("intake.layout")).toBe(true);
+    expect(covers("intake.q7.comment")).toBe(true);
+    expect(covers("intake.gone")).toBe(false);
+  });
+
+  it("opens the coverage for a questionnaire it can't follow (WP-18)", async () => {
+    const reasons = async (text: string) =>
+      (await scan({ "index.tsx": text })).openReasons.map((r) => r.reason);
+    const head = `import { Question, Questionnaire } from "@mostra/kit/questionnaire";\n`;
+    expect(
+      await reasons(`${head}export const Part = () => <Question id="a" title="A" />;`),
+    ).toContain("a <Question> outside a <Questionnaire> in the same file");
+    expect(
+      await reasons(`${head}export default ({ id }: { id: string }) => <Questionnaire id={id} />;`),
+    ).toContain("a <Questionnaire> whose id isn't a string literal");
+    expect(
+      await reasons(
+        `${head}const props = { id: "x" };\nexport default () => <Questionnaire id="q" {...props} />;`,
+      ),
+    ).toContain("a <Questionnaire> whose id isn't a string literal");
+    expect(await reasons(`${head}export const parts = [Question];`)).toContain(
+      "index.tsx uses Question other than as an element",
+    );
+  });
+
   it("covers everything for a version that names no field through @mostra/react", async () => {
     const coverage = await scan({ "index.tsx": "export default function P() { return null; }\n" });
     expect(coverage.open).toBe(true);

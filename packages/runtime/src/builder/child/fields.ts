@@ -26,6 +26,20 @@ const HOOKS: Readonly<Record<string, ReadonlySet<string>>> = {
   "@mostra/react/form": new Set(["useForm"]),
 };
 
+/**
+ * The kit's questionnaire (WP-18), by the module an artifact imports it from: the package, or its
+ * copy in the artifact. Its answers are fields its parts' `id`s name (`<questionnaire>.<question>`,
+ * with `.comment` and `.other` beside each), so the scan reads them from the JSX.
+ */
+const QUESTIONNAIRE_MODULES = new Set([
+  "@mostra/kit/questionnaire",
+  "@/components/mostra/questionnaire",
+]);
+const QUESTIONNAIRE_PARTS = new Set(["Questionnaire", "Question"]);
+
+/** The fields a question's answer may be: the answer, its comment and an answer of its own. */
+const QUESTION_SUFFIXES = ["", ".comment", ".other"];
+
 /** The global objects `storage` hangs off (D53). */
 const GLOBALS = new Set(["window", "globalThis", "self"]);
 
@@ -130,6 +144,9 @@ class FieldScan {
     // Local names of the hooks, and namespaces of their packages.
     const hooks = new Map<string, FieldHook>();
     const namespaces = new Map<string, ReadonlySet<string>>();
+    // Local names of the questionnaire's parts, and namespaces of its module.
+    const parts = new Map<string, string>();
+    const partNamespaces = new Set<string>();
     for (const statement of program["body"] as Node[]) {
       const source =
         statement.type === "ImportDeclaration" ||
@@ -137,6 +154,22 @@ class FieldScan {
         statement.type === "ExportAllDeclaration"
           ? ((statement["source"] as Node | null)?.["value"] as string | undefined)
           : undefined;
+      if (source !== undefined && QUESTIONNAIRE_MODULES.has(source)) {
+        if (statement.type !== "ImportDeclaration") {
+          this.open(`${file} re-exports from ${source}`, at(statement));
+          continue;
+        }
+        for (const specifier of statement["specifiers"] as Node[]) {
+          const local = (specifier["local"] as Node)["name"] as string;
+          if (specifier.type === "ImportNamespaceSpecifier") partNamespaces.add(local);
+          else if (specifier.type === "ImportSpecifier") {
+            const imported = specifier["imported"] as Node;
+            const name = (imported["name"] ?? imported["value"]) as string;
+            if (QUESTIONNAIRE_PARTS.has(name)) parts.set(local, name);
+          }
+        }
+        continue;
+      }
       const exported = source === undefined ? undefined : HOOKS[source];
       if (!exported) continue;
       if (statement.type !== "ImportDeclaration") {
@@ -170,7 +203,39 @@ class FieldScan {
     };
 
     const callees = new Set<Node>();
-    const visit = (node: Node): void => {
+    // The questionnaire part a JSX element is, by its name.
+    const partOf = (element: Node): string | undefined => {
+      const name = (element["openingElement"] as Node)["name"] as Node;
+      if (name.type === "JSXIdentifier") return parts.get(name["name"] as string);
+      if (name.type === "JSXMemberExpression") {
+        const object = name["object"] as Node;
+        const property = (name["property"] as Node)["name"] as string;
+        if (
+          object.type === "JSXIdentifier" &&
+          partNamespaces.has(object["name"] as string) &&
+          QUESTIONNAIRE_PARTS.has(property)
+        )
+          return property;
+      }
+      return undefined;
+    };
+    const visit = (node: Node, questionnaire: string[] | null | undefined): void => {
+      if (node.type === "JSXElement") {
+        const part = partOf(node);
+        if (part === "Questionnaire") {
+          const id = this.jsxId(node, at(node));
+          if (id === undefined)
+            this.open("a <Questionnaire> whose id isn't a string literal", at(node));
+          for (const child of (node["children"] as Node[]) ?? []) visit(child, id ?? null);
+          return;
+        }
+        if (part === "Question") {
+          if (questionnaire === undefined) {
+            // Its questionnaire's ID is somewhere the scan doesn't follow (another component).
+            this.open("a <Question> outside a <Questionnaire> in the same file", at(node));
+          } else if (questionnaire !== null) this.question(node, questionnaire, at(node));
+        }
+      }
       if (node.type === "CallExpression") {
         const callee = node["callee"] as Node;
         const hook = hookOf(callee);
@@ -203,9 +268,9 @@ class FieldScan {
       ) {
         this.storage(at(node));
       }
-      each(node, (child) => visit(child));
+      each(node, (child) => visit(child, questionnaire));
     };
-    visit(program);
+    visit(program, undefined);
 
     // A hook referenced anywhere but as a callee is passed around: its IDs are unknowable.
     const references = (node: Node, parentKey: string, parent: Node | undefined): void => {
@@ -217,6 +282,10 @@ class FieldScan {
         parent?.type !== "ImportNamespaceSpecifier"
       ) {
         const name = node["name"] as string;
+        if (parts.has(name) || partNamespaces.has(name)) {
+          // A part passed around renders where the scan can't see its questionnaire's ID.
+          this.open(`${file} uses ${name} other than as an element`, at(node));
+        }
         if (hooks.has(name) && !callees.has(node)) {
           this.open(`${file} uses ${name} other than by calling it`, at(node));
         }
@@ -234,6 +303,85 @@ class FieldScan {
       each(node, (child, key) => references(child, key, node));
     };
     references(program, "", undefined);
+  }
+
+  /**
+   * The parts of a JSX element's `id` (a string, or a literal or template in braces), unless a
+   * spread after it may replace it.
+   */
+  jsxId(element: Node, _location: FieldLocation): string[] | undefined {
+    let parts: string[] | undefined;
+    for (const attribute of (element["openingElement"] as Node)["attributes"] as Node[]) {
+      if (attribute.type === "JSXSpreadAttribute") {
+        parts = undefined;
+        continue;
+      }
+      const name = attribute["name"] as Node;
+      if (name.type !== "JSXIdentifier" || name["name"] !== "id") continue;
+      const value = attribute["value"] as Node | null;
+      if (value?.type === "Literal" && typeof value["value"] === "string") parts = [value["value"]];
+      else if (value?.type === "JSXExpressionContainer")
+        parts = idParts(value["expression"] as Node);
+      else parts = undefined;
+    }
+    return parts;
+  }
+
+  /** A JSX attribute's literal string or `true`, when the element names it plainly. */
+  jsxLiteral(element: Node, attributeName: string): string | boolean | undefined {
+    let found: string | boolean | undefined;
+    for (const attribute of (element["openingElement"] as Node)["attributes"] as Node[]) {
+      if (attribute.type === "JSXSpreadAttribute") {
+        found = undefined;
+        continue;
+      }
+      const name = attribute["name"] as Node;
+      if (name.type !== "JSXIdentifier" || name["name"] !== attributeName) continue;
+      const value = attribute["value"] as Node | null;
+      if (value === null) found = true;
+      else if (value.type === "Literal" && typeof value["value"] === "string")
+        found = value["value"];
+      else if (value.type === "JSXExpressionContainer") {
+        const expression = unwrap(value["expression"] as Node);
+        found =
+          expression?.type === "Literal" &&
+          (typeof expression["value"] === "string" || typeof expression["value"] === "boolean")
+            ? expression["value"]
+            : undefined;
+      } else found = undefined;
+    }
+    return found;
+  }
+
+  /** A `<Question>` inside a questionnaire whose ID is `questionnaire`: its answer's fields. */
+  question(element: Node, questionnaire: string[], location: FieldLocation): void {
+    const id = this.jsxId(element, location);
+    if (id === undefined) {
+      // A computed question ID keeps the questionnaire's prefix: `<questionnaire>.…`.
+      this.entries.push({
+        template: [...questionnaire.slice(0, -1), `${questionnaire.at(-1) as string}.`, ""],
+        hook: "questionnaire",
+        location,
+      });
+      return;
+    }
+    const joined = [
+      ...questionnaire.slice(0, -1),
+      `${questionnaire.at(-1) as string}.${id[0] as string}`,
+      ...id.slice(1),
+    ];
+    const title = this.jsxLiteral(element, "label") ?? this.jsxLiteral(element, "title");
+    const required = this.jsxLiteral(element, "required");
+    for (const suffix of QUESTION_SUFFIXES) {
+      const parts = [...joined.slice(0, -1), `${joined.at(-1) as string}${suffix}`];
+      this.entries.push({
+        ...(parts.length === 1 ? { id: parts[0] as string } : { template: parts }),
+        hook: "questionnaire",
+        ...(suffix === "" && typeof title === "string" ? { label: title } : {}),
+        ...(suffix === "" && required === true ? { required: true } : {}),
+        location,
+      });
+    }
   }
 
   storage(location: FieldLocation): void {
@@ -317,7 +465,8 @@ class FieldScan {
 }
 
 /** Mentions that make a file worth parsing for fields. */
-const MENTIONS = /@mostra\/react|storage/;
+const MENTIONS =
+  /@mostra\/react|@mostra\/kit\/questionnaire|components\/mostra\/questionnaire|storage/;
 
 /** A file that speaks the browser protocol itself writes fields the scan can't follow. */
 const RAW_PROTOCOL = /_mostra\/v\//;

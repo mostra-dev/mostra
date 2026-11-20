@@ -162,6 +162,36 @@ export const DocumentRevision: z.ZodType<DocumentRevision> = z
     description: "A draft's or artifact state's revision: a non-negative decimal integer string.",
   });
 
+/** The most options one field may name (D178's questionnaire, and any choice an author makes). */
+export const FIELD_OPTIONS_MAX = 200;
+
+/**
+ * One of the options a field's value is chosen from, so results can name an answer by what the
+ * person saw and say whether they took the recommended one (KT-05). A field whose value is an
+ * array (several choices, a ranking) names each of its values the same way.
+ */
+export interface FieldOption {
+  /** The value the field holds when this option is chosen. */
+  readonly value: string | number;
+  /** What the person saw. */
+  readonly label?: string;
+  /** The option the page recommended. */
+  readonly recommended?: boolean;
+}
+
+/** The Zod schema of the `FieldOption` type. */
+export const FieldOption: z.ZodType<FieldOption> = z
+  .object({
+    value: z.union([z.string().max(1024), z.number()]),
+    label: z.string().max(1024).exactOptional(),
+    recommended: z.boolean().exactOptional(),
+  })
+  .register(wireRegistry, {
+    id: "FieldOption",
+    description:
+      "One option a field's value is chosen from: its value, its label, and whether it was recommended.",
+  }) as z.ZodType<FieldOption>;
+
 /**
  * One change to one field. Exactly one of `value` and `delete` is given. The optional metadata
  * travels with the field into results and decides what events redact (D52, D106).
@@ -179,6 +209,8 @@ export interface FieldOp {
   readonly required?: boolean;
   /** Kept in submissions and results, redacted from events and logs (D52). */
   readonly sensitive?: boolean;
+  /** The options its value is chosen from, for results (KT-05, WP-18). */
+  readonly options?: readonly FieldOption[];
 }
 
 /** The Zod schema of the `FieldOp` type. */
@@ -190,6 +222,7 @@ export const FieldOp: z.ZodType<FieldOp> = z
     label: z.string().max(1024).exactOptional(),
     required: z.boolean().exactOptional(),
     sensitive: z.boolean().exactOptional(),
+    options: z.array(FieldOption).max(FIELD_OPTIONS_MAX).readonly().exactOptional(),
   })
   .register(wireRegistry, {
     id: "FieldOp",
@@ -213,6 +246,8 @@ export interface FieldState {
   readonly required?: boolean;
   /** Whether events and logs redact its value (D52). */
   readonly sensitive?: boolean;
+  /** The options its value is chosen from. */
+  readonly options?: readonly FieldOption[];
 }
 
 /** The Zod schema of the `FieldState` type. */
@@ -225,6 +260,7 @@ export const FieldState: z.ZodType<FieldState> = z
     label: z.string().exactOptional(),
     required: z.boolean().exactOptional(),
     sensitive: z.boolean().exactOptional(),
+    options: z.array(FieldOption).readonly().exactOptional(),
   })
   .register(wireRegistry, {
     id: "FieldState",
@@ -627,6 +663,8 @@ export interface Results {
     readonly required?: boolean;
     readonly sensitive?: boolean;
     readonly scope: FieldScope;
+    /** The options its value was chosen from, as the page named them (KT-05). */
+    readonly options?: readonly FieldOption[];
   }[];
   /** Artifact state at `stateRevision`, dotted IDs nested (D63). */
   readonly state?: Readonly<Record<string, unknown>>;
@@ -744,6 +782,7 @@ export const Results: z.ZodType<Results> = z
           required: z.boolean().exactOptional(),
           sensitive: z.boolean().exactOptional(),
           scope: z.enum(["viewer", "artifact"]),
+          options: z.array(FieldOption).readonly().exactOptional(),
         }),
       )
       .readonly(),

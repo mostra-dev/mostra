@@ -18,8 +18,17 @@ export interface ListedFile {
 /** The environment a version is built in; its canonical JSON's SHA-256 is `envDigest`. */
 export interface BuildEnvironment {
   readonly mostraVersion: string;
-  /** The kit's release, or `null` while the runtime ships no kit (WP-18). */
+  /**
+   * The kit's release and a digest of its files (`0.18.0+<16 hex>`), or `null` when the layout
+   * has no kit (WP-18).
+   */
   readonly kitVersion: string | null;
+  /**
+   * SHA-256 of the stylesheet the page's theme stack makes (D178 item 2): what the stack's built-in
+   * and plugin themes are in this release. The stack's names and its local layers are the
+   * source's, so `sourceDigest` covers them.
+   */
+  readonly themeDigest: string;
   readonly kitBase: "base" | "radix";
   readonly mode: "spa";
   /** SHA-256 of the frozen lockfile (`lock.yaml`). */

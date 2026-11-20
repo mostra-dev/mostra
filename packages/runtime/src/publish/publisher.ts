@@ -543,6 +543,7 @@ export function createPublisher(options: PublisherOptions): Publisher {
     const environment: BuildEnvironment = {
       mostraVersion: options.runtimeVersion,
       kitVersion: kitVersionOf(deps.nodeModules),
+      themeDigest: sha256Hex(kit.themeCss),
       kitBase: manifest.kit?.base ?? "base",
       mode: manifest.mode ?? "spa",
       lockDigest: deps.lockDigest,

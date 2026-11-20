@@ -44,13 +44,16 @@ export interface FieldHookUse {
 /**
  * Records every module outside the artifact that imports `@mostra/react` or `@mostra/react/form`
  * (D109): such a package may name fields the artifact's scan can't see, so the version's coverage
- * is open. `@mostra/react` itself and Mostra's generated files don't count. It resolves nothing.
+ * is open. `@mostra/react` itself and Mostra's generated files don't count, nor does the kit,
+ * whose fields the scan reads from the `id`s the artifact gives its parts (WP-18). It resolves
+ * nothing.
  */
 export function fieldHookUsePlugin(
   roots: {
     readonly sourceDir: string;
     readonly generatedDir: string;
     readonly runtimeDir?: string;
+    readonly kitDir?: string;
   },
   uses: FieldHookUse[],
 ): Plugin {
@@ -66,7 +69,8 @@ export function fieldHookUsePlugin(
       if (
         inside(file, roots.sourceDir) ||
         inside(file, roots.generatedDir) ||
-        inside(file, roots.runtimeDir)
+        inside(file, roots.runtimeDir) ||
+        inside(file, roots.kitDir)
       )
         return null;
       if (!uses.some((use) => pathKey(use.importer) === pathKey(file)))

@@ -270,6 +270,12 @@
     {
       "name": "utils",
       "type": "registry:lib"
+    },
+    {
+      "name": "mostra-questionnaire",
+      "type": "registry:component",
+      "title": "Questionnaire",
+      "description": "Questions people answer, each answer a field: choices, scales, rankings, text, comments, sections and progress."
     }
   ]
 }

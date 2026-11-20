@@ -107,7 +107,7 @@ export const TYPECHECK_REVISION: string = createHash("sha256")
       // The declarations' text without this machine's path to them.
       AMBIENT: AMBIENT.replace(VITE_CLIENT?.path ?? "\u0000", "vite/client.d.ts"),
       vite: VITE_CLIENT?.version ?? null,
-      revision: 3,
+      revision: 4,
     }),
   )
   .digest("hex");
@@ -264,7 +264,14 @@ export async function typecheck(options: {
       paths: {
         ...FORCED_OPTIONS.paths,
         ...(options.kitRegistry !== undefined
-          ? { "@/*": [...FORCED_OPTIONS.paths["@/*"], `${options.kitRegistry}/*`] }
+          ? {
+              "@/*": [...FORCED_OPTIONS.paths["@/*"], `${options.kitRegistry}/*`],
+              // A kit module as the build finds it: the artifact's copy, else the kit's (D178).
+              "@mostra/kit/*": [
+                "./source/components/mostra/*",
+                `${options.kitRegistry}/components/mostra/*`,
+              ],
+            }
           : {}),
         ...(server ? { "@mostra/server": [server] } : {}),
       },

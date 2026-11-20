@@ -12,7 +12,7 @@ export interface FieldLocation {
 }
 
 /** The client-runtime call that names a field. */
-export type FieldHook = "useField" | "useChoice" | "useForm" | "storage";
+export type FieldHook = "useField" | "useChoice" | "useForm" | "storage" | "questionnaire";
 
 /** One place the version's code names a field ID. */
 export interface FieldEntry {

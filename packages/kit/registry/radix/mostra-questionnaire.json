@@ -1,0 +1,22 @@
+{
+  "$schema": "https://ui.shadcn.com/schema/registry-item.json",
+  "name": "mostra-questionnaire",
+  "type": "registry:component",
+  "title": "Questionnaire",
+  "description": "Questions people answer, each answer a field: choices, scales, rankings, text, comments, sections and progress.",
+  "dependencies": [
+    "@mostra/react",
+    "cn",
+    "lucide-react"
+  ],
+  "files": [
+    {
+      "path": "components/mostra/questionnaire.tsx",
+      "type": "registry:component",
+      "target": "components/mostra/questionnaire.tsx"
+    }
+  ],
+  "mostra": {
+    "base": "radix"
+  }
+}
