@@ -199,6 +199,15 @@ const SEEDS: readonly Seed[] = [
     e2e: true,
   },
   {
+    requirement: "KT-08",
+    name: "--fix: a fix writes through a link that leads out of the artifact",
+    file: "../cli/src/commands/authoring.ts",
+    from: "    if (!within(file)) continue;\n    byFile.set",
+    to: "    byFile.set",
+    check: unit("fix.test.ts"),
+    cwd: "../cli",
+  },
+  {
     requirement: "KT-10",
     name: "freedom: a page that asks for no theme gets one anyway",
     file: "src/kit/stack.ts",

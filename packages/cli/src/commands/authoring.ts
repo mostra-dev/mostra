@@ -4,8 +4,8 @@
  * and `deps/add` (INTERFACES §6, §15).
  */
 import { randomUUID } from "node:crypto";
-import { readFile, stat, writeFile } from "node:fs/promises";
-import { dirname, isAbsolute, join, relative, resolve } from "node:path";
+import { readFile, realpath, stat, writeFile } from "node:fs/promises";
+import { dirname, isAbsolute, join, relative, resolve, sep } from "node:path";
 import {
   ARTIFACT_PROGRESS,
   applyFixes,
@@ -123,14 +123,26 @@ const FIX_ROUNDS = 3;
  */
 export async function applyVerdictFixes(verdict: VerifyVerdict): Promise<FixedFile[]> {
   const path = verdict.artifact.path;
-  const root = (await stat(path)).isDirectory() ? path : dirname(path);
+  // Real paths, so a link inside the artifact can't carry a write outside it.
+  const root = await realpath((await stat(path)).isDirectory() ? path : dirname(path));
+  const within = (file: string): boolean => {
+    const inside = relative(root, file);
+    return (
+      inside !== "" && inside !== ".." && !inside.startsWith(`..${sep}`) && !isAbsolute(inside)
+    );
+  };
   const byFile = new Map<string, DiagnosticFix[]>();
   for (const diagnostic of verdict.diagnostics) {
     const fix = diagnostic.fix;
     if (fix === undefined || fix.kind === "command" || fix.file === undefined) continue;
-    const file = resolve(root, fix.file);
-    const inside = relative(root, file);
-    if (inside === "" || inside.startsWith("..") || isAbsolute(inside)) continue;
+    let file = resolve(root, fix.file);
+    if (!within(file)) continue;
+    try {
+      file = await realpath(file);
+    } catch {
+      continue; // A file that isn't there has nothing to fix.
+    }
+    if (!within(file)) continue;
     byFile.set(file, [...(byFile.get(file) ?? []), fix]);
   }
   const fixed: FixedFile[] = [];
