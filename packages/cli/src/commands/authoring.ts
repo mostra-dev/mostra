@@ -144,6 +144,9 @@ export async function applyVerdictFixes(verdict: VerifyVerdict): Promise<FixedFi
   return fixed;
 }
 
+/** A bare name, which may name a kit item; a version, a range or a scope makes it an npm spec. */
+const BARE_ITEM = /^[a-z0-9][a-z0-9._-]*$/;
+
 /** `mostra verify <path>`. */
 export const verifyCommand: CommandDef = defineCommand({
   path: ["verify"],
@@ -417,12 +420,12 @@ export const runCommand: CommandDef = defineCommand({
 export const addCommand: CommandDef = defineCommand({
   path: ["add"],
   summary:
-    "Add npm packages to an artifact's lockfile, or copy source-pack items (shadcn registry items) into it.",
+    "Add npm packages to an artifact's lockfile, or copy source-pack items (the kit's, or any shadcn registry item) into it.",
   args: [
     {
       name: "package",
       summary:
-        "npm specs (name, name@version, name@range, name@tag), or items: a URL, a local .json, owner/repo/item on GitHub, @namespace/item, plugin:<package>/<item>.",
+        "Items: a kit part by name (button, dialog, mostra-questionnaire), a URL, a local .json, owner/repo/item on GitHub, @namespace/item, plugin:<package>/<item>; or npm specs (name, name@version, name@range, name@tag). A bare name the kit has is its item.",
       variadic: true,
     },
   ],
@@ -454,7 +457,7 @@ export const addCommand: CommandDef = defineCommand({
   ],
   output: { type: "DepsAddResult | PackAddResult", topic: "cli" },
   exits: [EXIT.failure],
-  example: "add recharts@3 --artifact ./dashboard",
+  example: "add button dialog --artifact ./review",
   async run(context) {
     const packages = context.args["package"];
     if (!Array.isArray(packages) || packages.length === 0)
@@ -466,7 +469,9 @@ export const addCommand: CommandDef = defineCommand({
       const address = parsePackAddress(spec);
       return address?.kind === "file" ? resolve(context.cwd, address.path) : spec;
     });
-    if (!specs.some((spec) => parsePackAddress(spec) !== undefined)) {
+    // A bare name may be a kit item (`mostra add button`, D179 item 7): the instance, which knows
+    // the artifact's base and its kit, decides; a name with a version is always an npm package.
+    if (!specs.some((spec) => parsePackAddress(spec) !== undefined || BARE_ITEM.test(spec))) {
       // Only npm packages: `deps/add`, as before packs existed.
       const accept = context.flags["accept-license"];
       const result = await context.call(depsAddMethod, {

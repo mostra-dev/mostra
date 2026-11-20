@@ -84,7 +84,7 @@ import {
   type Interaction,
   redactEvents,
 } from "../interaction/index.ts";
-import { themeMethods } from "../kit/index.ts";
+import { kitRegistry, themeMethods } from "../kit/index.ts";
 import {
   createLink,
   createOwnerAuthor,
@@ -381,6 +381,14 @@ async function assemble(home: OwnedHome, options: StartInstanceOptions): Promise
       plugins: getPlugins(),
       log,
       env: environment,
+      // The kit's items are the warm set's kit (D179 item 7): what `@/…` resolves into too.
+      kitRegistry: (base) => {
+        try {
+          return kitRegistry(locateWarmSet(environment).nodeModules, base);
+        } catch {
+          return undefined; // No warm set: no kit, and a bare name is an npm package.
+        }
+      },
       // Tests point GitHub registries at a local fake (packs.test.ts).
       ...(environment["MOSTRA_TEST_GITHUB_API"] && environment["MOSTRA_TEST_GITHUB_RAW"]
         ? {
