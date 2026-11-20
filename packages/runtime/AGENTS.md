@@ -212,7 +212,7 @@ the bundle's entry point (D85); it never runs artifact code (RT-02).
   its build from a sandbox (`verify/sandbox.ts`): a scratch ledger in `cache/verify/runs/<run>/`
   with the real interaction, actions, live and gateway code, its own worker pool and two listeners
   on free ports between the lease range and the dynamic ranges (`addressing`'s short-lived ports,
-  32768 to 49151, #95), reached only with links minted there. Nothing reaches
+  32768 to 49151, D178), reached only with links minted there. Nothing reaches
   the home's drafts, state, events, hosts or deliveries, and the human-facing gateway serves
   published versions only. In the sandbox, a function that didn't opt into `dryRun()` is refused
   before anything is recorded (`MOSTRA_VERIFY_ACTION_SKIPPED`), and documents get the verify
