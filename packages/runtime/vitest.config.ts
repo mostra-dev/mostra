@@ -73,7 +73,10 @@ const EXTENSIONS = [
 // 7 s and 10 min 27 s in MT-05's merge queue, 44230190769 and 44224848051) and ran past it on WP-17's
 // `ci:full` run (44270632827), while `extensions` takes about 4 minutes. The dependency suite installs
 // as the plugin and pack suites do. Windows keeps it in `windows`, so its partition is unchanged.
-const CORE_OVERFLOW = ["test/integration/deps.test.ts"];
+// WP-18: the kit through verify (KT-03 to KT-10), which `core` has no room for either (macOS `core`
+// reached its deadline with it on WP-18's `ci:full` run 44793555343).
+const KIT_PARTS = "test/integration/kit-parts.test.ts";
+const CORE_OVERFLOW = ["test/integration/deps.test.ts", KIT_PARTS];
 export const INTEGRATION_GROUPS: Record<string, { include: string[]; exclude: string[] }> = {
   core: {
     include: ["test/integration/**/*.test.ts"],
@@ -117,6 +120,7 @@ export const INTEGRATION_GROUPS: Record<string, { include: string[]; exclude: st
       "test/integration/bundle.test.ts",
       SIGNIN_FACTS,
       OPERATOR_RELAY,
+      "test/integration/verify-secrets.test.ts",
     ],
     exclude: [],
   },
@@ -146,20 +150,13 @@ export const INTEGRATION_GROUPS: Record<string, { include: string[]; exclude: st
     exclude: [],
   },
   // ... and verify with its browser, and `mostra dev`.
-  "windows-verify": {
-    include: [
-      "test/integration/verify.test.ts",
-      "test/integration/verify-secrets.test.ts",
-      "test/integration/dev.test.ts",
-    ],
-    exclude: [],
-  },
+  // `verify.test.ts` alone takes 12 of Windows arm64's 14 minutes since WP-18 (every build carries
+  // its theme): the secrets suite and `mostra dev` go to the lighter groups (WP-18's `ci:full` run
+  // 44793555343: `windows-publish` 7 minutes, `windows-extensions` 5.5).
+  "windows-verify": { include: ["test/integration/verify.test.ts"], exclude: [] },
   // WP-18: the kit through verify, a suite of its own, in the lighter of the verify groups.
-  "windows-verify-failures": {
-    include: [VERIFY_FAILURES, "test/integration/kit-parts.test.ts"],
-    exclude: [],
-  },
-  "windows-extensions": { include: EXTENSIONS, exclude: [] },
+  "windows-verify-failures": { include: [VERIFY_FAILURES, KIT_PARTS], exclude: [] },
+  "windows-extensions": { include: [...EXTENSIONS, DEV], exclude: [] },
   "windows-clients": { include: [], exclude: [] },
 };
 const group = process.env["MOSTRA_TEST_GROUP"];
