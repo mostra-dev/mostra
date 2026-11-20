@@ -1719,6 +1719,15 @@ WP-28 designs and WP-30 builds, in the hosted shell on its trusted origin and ne
 
 *Rejected:* a second retry (a second starvation takes another 11 to 105 minutes to be cancelled, past the queue's 120-minute check timeout, turning a fast failure into a slow one); switching arm64 labels (they starve alike); changing `timeout-minutes` (it doesn't count queued time). Left for a later decision (#212's report): fewer arm64 jobs per run, adding a pull request to the queue only after its own run has finished, and an Intel fallback for the platform-neutral legs.
 
+### D180. The choice between two links says whose each is (#184, M85)
+*Status:* approved at M85 with #207. *Extends* D98 item 8.
+
+1. **Whose each link is.** When the exchange answers 409 `MOSTRA_HYGIENE_SESSION_CONFLICT`, each side names whose it is besides what it allows: a personal link (D104) by `personal` and its viewer's display name only, never the host's `ref` or an email (D168 item 2), or a shared link. The shell writes "A personal link, for <name>." or "A shared link.".
+2. **The personal link first.** When the opened link is personal and the open one isn't, "Use the personal link" is the first choice. Both choices stay offered, and nothing replaces a session silently (D98 item 8).
+3. **A respondent's link is their own.** The hosted `roster/add` and the owner's `share/start` refuse to hand out a respondent link that is the share's own, another respondent's, or one that acts as nobody, naming the respondent and never a secret; a respondent's kept link must act as them. The owner logs its respondents' token IDs (`share.respondents`, IDs only, D97 item 2).
+
+*Why:* two links of the same scopes read the same, and a respondent kept the share's link over his own: MT-04's hosted run left him an unnamed visitor and his roster entry `not-opened` (#184). The reported equality of his link's secret with the share's was not reproduced (18 rounds against this repository's server); the guards make it impossible to print either way, and the token-ID log makes a next sighting checkable.
+
 ## Research consensus adopted
 
 These points were presented as the converged research findings and approved as a set at M5. The decisions above carry their details.
