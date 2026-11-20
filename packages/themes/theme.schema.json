@@ -2,7 +2,7 @@
   "$schema": "http://json-schema.org/draft-07/schema#",
   "$id": "https://mostradev.com/schemas/theme-layer.schema.json",
   "title": "Mostra theme layer",
-  "description": "A theme, or a layer over one, of theme revision 2026-11-20 (D179). A complete theme sets every palette role in both modes, its faces, radius and motion.",
+  "description": "A theme, or a layer over one, of theme revision 2026-11-20 (D181). A complete theme sets every palette role in both modes, its faces, radius and motion.",
   "type": "object",
   "required": [
     "revision",

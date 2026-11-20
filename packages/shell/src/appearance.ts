@@ -1,7 +1,7 @@
 /**
  * Light or dark for the shell's own chrome (D171 item 6): the device's setting until the person
  * chooses with the chrome's one button, then their choice, kept in this origin's storage (a hosted
- * shell keeps no cookie, D165 item 8). The page hears it as an MCP Apps host's `theme` (D179
+ * shell keeps no cookie, D165 item 8). The page hears it as an MCP Apps host's `theme` (D181
  * item 5): a page in a kit theme follows it, and one with its own look keeps it.
  */
 

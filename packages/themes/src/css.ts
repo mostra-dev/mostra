@@ -161,7 +161,7 @@ export function facesStylesheet(
  * rules. It names the faces and falls back to the system's where the page doesn't load them.
  *
  * @deprecated An artifact no longer copies a stylesheet: its build takes its theme stack
- * (`kit.theme`, D179), whose stylesheet is `kitStylesheet`'s. Kept for pages built outside
+ * (`kit.theme`, D181), whose stylesheet is `kitStylesheet`'s. Kept for pages built outside
  * Mostra.
  */
 export function tailwindStylesheet(theme: Theme): string {

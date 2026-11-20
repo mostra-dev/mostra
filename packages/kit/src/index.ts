@@ -1,5 +1,5 @@
 /**
- * `@mostra/kit`: Mostra's kit (D26, D27, D179). Its parts are files more than exports: the
+ * `@mostra/kit`: Mostra's kit (D26, D27, D181). Its parts are files more than exports: the
  * per-base registry (`registry/base/`, `registry/radix/`) that `@/components/ui/<name>` resolves
  * into when the artifact has no copy of its own, and that `mostra add <name>` copies; Mostra's own
  * modules, `@mostra/kit/questionnaire` and `@mostra/kit/layout`, the same in either base; and

@@ -84,7 +84,7 @@ export interface PluginPackEntry {
 }
 
 /**
- * A theme the plugin carries (D179 item 4): a theme layer as JSON in its package, the
+ * A theme the plugin carries (D181 item 4): a theme layer as JSON in its package, the
  * `ThemeLayer` of `@mostra/themes` (schema `@mostra/themes/theme.schema.json`), whose faces'
  * files are the package's own. An artifact that installs the plugin may name it in `kit.theme`.
  */
@@ -109,7 +109,7 @@ export interface PluginContributes {
   readonly cliCommands?: readonly PluginCommandEntry[];
   /** Source packs it carries: registry items in the package. */
   readonly packs?: readonly PluginPackEntry[];
-  /** Themes it carries, which an artifact's `kit.theme` may name (D179 item 4). */
+  /** Themes it carries, which an artifact's `kit.theme` may name (D181 item 4). */
   readonly themes?: readonly PluginThemeEntry[];
 }
 
@@ -370,7 +370,7 @@ export function checkPluginManifest(value: unknown): ManifestCheck {
       unknownKeys(item, known ?? [], "contributes", key, index);
     });
   }
-  // Theme entries the lenient read leaves out (D179 item 4).
+  // Theme entries the lenient read leaves out (D181 item 4).
   const themes = (raw["contributes"] as Record<string, unknown> | undefined)?.["themes"];
   if (themes !== undefined) {
     if (!Array.isArray(themes)) {
@@ -593,7 +593,7 @@ export function manifestScopes(manifest: PluginManifest): readonly ("artifact" |
   const kinds = CONTRACT_NAMES.filter(
     (name) => (manifest.contributes[PLUGIN_CONTRACTS[name].key]?.length ?? 0) > 0,
   );
-  // Packs and themes belong to the artifact that uses them (D172 item 4, D179 item 4).
+  // Packs and themes belong to the artifact that uses them (D172 item 4, D181 item 4).
   const packs =
     (manifest.contributes.packs?.length ?? 0) > 0 || (manifest.contributes.themes?.length ?? 0) > 0;
   const home = !packs && kinds.every((name) => PLUGIN_CONTRACTS[name].scopes.includes("home"));

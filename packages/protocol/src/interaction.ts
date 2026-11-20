@@ -162,7 +162,7 @@ export const DocumentRevision: z.ZodType<DocumentRevision> = z
     description: "A draft's or artifact state's revision: a non-negative decimal integer string.",
   });
 
-/** The most options one field may name (D179's questionnaire, and any choice an author makes). */
+/** The most options one field may name (D181's questionnaire, and any choice an author makes). */
 export const FIELD_OPTIONS_MAX = 200;
 
 /**

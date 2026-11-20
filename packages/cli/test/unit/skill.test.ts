@@ -3,7 +3,7 @@
  * documentation: its frontmatter meets the Agent Skills specification (agentskills.io), every
  * relative link and anchor resolves, every `mostra …` it shows parses under the command
  * definitions, every author-facing export and every command an author uses is documented, and the
- * examples wear a theme they name, built into them rather than copied (D179 item 2). Mechanism
+ * examples wear a theme they name, built into them rather than copied (D181 item 2). Mechanism
  * only: the prose is Mirza's to accept
  * (D149), never tested by its wording.
  */

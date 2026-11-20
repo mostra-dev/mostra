@@ -33,7 +33,7 @@ export interface HomeSettings {
   readonly hostConfigured?: { readonly client: string; readonly at: string };
   /** The licenses a host accepts for every plugin and pack install (D31, `HomeConfig.licenses`). */
   readonly licenses?: { readonly accept: readonly string[] };
-  /** The host's look for the home's pages (D179 item 5, `HomeConfig.look`). */
+  /** The host's look for the home's pages (D181 item 5, `HomeConfig.look`). */
   readonly look?: {
     readonly theme?: string | readonly string[];
     readonly variables?: Readonly<Record<string, string>>;

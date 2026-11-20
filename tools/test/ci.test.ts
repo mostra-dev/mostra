@@ -541,6 +541,18 @@ describe("the CI workflow's shape (D152)", () => {
     expect(handed.filter((entry) => !known.has(entry.split(": ")[1] as string))).toEqual([]);
   });
 
+  it("hands Windows PowerShell its module analysis cache through Turbo (#196)", () => {
+    // Turbo's strict mode drops every variable turbo.json doesn't name, and its built-in list has
+    // neither. Without PSModuleAnalysisCachePath (the runner image's prebuilt cache) each
+    // powershell.exe a test starts spends 22-30 s rebuilding it, against 0.5 s (VERIFIED_FACTS).
+    const turbo = JSON.parse(readFileSync(fromRoot("turbo.json"), "utf8")) as {
+      globalPassThroughEnv?: string[];
+    };
+    expect(turbo.globalPassThroughEnv).toEqual(
+      expect.arrayContaining(["PSModuleAnalysisCachePath", "PSModulePath"]),
+    );
+  });
+
   it("keeps the e2e daemons' logs and ledgers from a failed run (#39)", () => {
     const steps = (jobs["e2e"] as Job).steps ?? [];
     const run = steps.find((step) => step.run?.includes("--job e2e"));
@@ -555,15 +567,24 @@ describe("the CI workflow's shape (D152)", () => {
   });
 
   it("passes ci-ok only on results known to be good", () => {
-    const script = jobs["ci-ok"]?.steps?.find((step) => step.name === "All gates passed")?.run;
-    expect(script).toBeDefined();
+    const step = jobs["ci-ok"]?.steps?.find((step) => step.name === "All gates passed");
+    expect(step?.run).toBe("node tools/check/starved.ts verdict");
+    // The step as CI runs it, over `toJSON(needs)`: the plan, then gates with these results.
     const passes = (results: readonly string[]): boolean =>
-      spawnSync("bash", ["-e", "-c", script as string], {
-        env: { ...process.env, RESULTS: JSON.stringify(results) },
+      spawnSync("bash", ["-e", "-c", step?.run as string], {
+        cwd: fromRoot(),
+        env: {
+          ...process.env,
+          NEEDS: JSON.stringify({
+            plan: { result: "success" },
+            ...Object.fromEntries(results.map((result, i) => [`gate${i}`, { result }])),
+          }),
+        },
         stdio: "ignore",
       }).status === 0;
     expect(passes(["success", "skipped", "success"])).toBe(true);
-    // A leg that never got a runner is `abandoned` (#90's run 40529498029, a macOS leg).
+    // A leg that never got a runner is `abandoned` (#90's run 40529498029, a macOS leg): it fails
+    // unless the starved job retried it and the retry passed (#210, tools/test/starved.test.ts).
     for (const bad of [
       "failure",
       "cancelled",
@@ -574,7 +595,14 @@ describe("the CI workflow's shape (D152)", () => {
     ]) {
       expect(passes(["success", bad, "success"]), bad).toBe(false);
     }
-    expect(passes([])).toBe(false);
+    expect(passes([])).toBe(true);
+    expect(
+      spawnSync("bash", ["-e", "-c", step?.run as string], {
+        cwd: fromRoot(),
+        env: { ...process.env, NEEDS: "{}" },
+        stdio: "ignore",
+      }).status,
+    ).not.toBe(0);
   });
 
   it("never lets ci-ok skip when the plan failed", () => {
@@ -585,7 +613,12 @@ describe("the CI workflow's shape (D152)", () => {
 
   it("runs every job but the plan on the machines the plan lists", () => {
     for (const [name, job] of Object.entries(jobs)) {
-      if (["plan", "ci-ok", "dependency-review"].includes(name)) continue;
+      if (["plan", "ci-ok", "dependency-review", "starved"].includes(name)) continue;
+      // A retry twin runs the legs the starved job hands it (#210, tools/test/starved.test.ts).
+      if (name.endsWith("-retry")) {
+        expect(job.if, name).toContain(`needs.starved.outputs.${name.slice(0, -"-retry".length)}`);
+        continue;
+      }
       if (job.uses) {
         expect(job.if, name).toContain(`needs.plan.outputs.${name}`);
         continue;

@@ -1,5 +1,5 @@
 /**
- * The host's look on a page (D179 item 5, KT-04), in a real browser: the host's light or dark
+ * The host's look on a page (D181 item 5, KT-04), in a real browser: the host's light or dark
  * always applies; its variables reach the page's tokens only where the page's stack names
  * `"host"`, over everything when it is last and under the page's own layers when they follow it.
  */
@@ -47,7 +47,7 @@ afterEach(() => {
   delete root.dataset["appearance"];
 });
 
-describe("a host's look (D179 item 5)", () => {
+describe("a host's look (D181 item 5)", () => {
   it("leaves a page that doesn't name host in its own theme, and still follows light or dark", () => {
     page(undefined);
     applyHostContext(HOST);

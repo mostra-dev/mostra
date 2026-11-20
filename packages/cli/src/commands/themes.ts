@@ -1,5 +1,5 @@
 /**
- * Themes: `theme list` and `theme show`, thin clients of `theme/list` and `theme/show` (D179
+ * Themes: `theme list` and `theme show`, thin clients of `theme/list` and `theme/show` (D181
  * item 6). `verify --theme` tries a stack before the manifest names it (`authoring.ts`).
  */
 import {

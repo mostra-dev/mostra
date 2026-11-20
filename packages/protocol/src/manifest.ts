@@ -123,7 +123,7 @@ export interface ArtifactManifest {
   /** The submission policy the artifact requests; the host decides (D39, D63). */
   readonly submission?: SubmissionPolicy;
   /**
-   * The kit's shadcn base (default `base`, D72) and the theme stack (D179 item 2): a theme, or an
+   * The kit's shadcn base (default `base`, D72) and the theme stack (D181 item 2): a theme, or an
    * ordered list whose later entries override the earlier ones; `themeStackOf` reads it.
    */
   readonly kit?: { readonly base?: "base" | "radix"; readonly theme?: string | readonly string[] };
@@ -309,7 +309,7 @@ export function manifestProblem(
   return undefined;
 }
 
-/** The theme stack of a page that names none (D179 item 2). */
+/** The theme stack of a page that names none (D181 item 2). */
 export const DEFAULT_THEME_STACK: readonly string[] = ["studio"];
 
 /** The most entries a theme stack may have. */
@@ -321,7 +321,7 @@ export type ThemeStackEntry =
   | { readonly kind: "theme"; readonly id: string }
   /** A CSS file in the artifact, by its path inside it (`./brand.css`). */
   | { readonly kind: "file"; readonly path: string }
-  /** The colours, radius and faces of the host the page is shown in (D179 item 5). */
+  /** The colours, radius and faces of the host the page is shown in (D181 item 5). */
   | { readonly kind: "host" };
 
 /** A theme's id: lower case, `a-z`, digits and hyphens, at most 32 characters. */
@@ -344,7 +344,7 @@ export function themeStackEntry(text: string): ThemeStackEntry | undefined {
 }
 
 /**
- * Why a theme stack can't be built, or `undefined` when it can (D179 item 2): `"none"` stands
+ * Why a theme stack can't be built, or `undefined` when it can (D181 item 2): `"none"` stands
  * alone; otherwise the first entry is a theme, which must be complete; the themes come first,
  * then the artifact's own files, with `"host"` once, after every theme (where a file after it
  * still overrides it) or last; no entry twice; at most eight.

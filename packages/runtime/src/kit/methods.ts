@@ -1,5 +1,5 @@
 /**
- * `theme/list` and `theme/show` (D179 item 6): the themes an artifact may name and what a stack
+ * `theme/list` and `theme/show` (D181 item 6): the themes an artifact may name and what a stack
  * makes, read without building anything. The composition root hands in how an artifact's manifest,
  * source and installed plugins are found, so this module reaches no other module's internals.
  */

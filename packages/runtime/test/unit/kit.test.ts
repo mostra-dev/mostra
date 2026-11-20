@@ -1,5 +1,5 @@
 /**
- * The theme stack (D179 items 2 to 6, KT-04, WP-18): what a manifest's `kit.theme` resolves to,
+ * The theme stack (D181 items 2 to 6, KT-04, WP-18): what a manifest's `kit.theme` resolves to,
  * the themes a plugin contributes, and what `theme/list` and `theme/show` answer of them.
  */
 import { mkdirSync, writeFileSync } from "node:fs";
@@ -58,7 +58,7 @@ const codeOf = (fn: () => unknown): string | undefined => {
   return undefined;
 };
 
-describe("a manifest's theme stack (D179 item 2)", () => {
+describe("a manifest's theme stack (D181 item 2)", () => {
   const source = tempDir("kit-source");
   writeFileSync(join(source, "brand.css"), ":root { --primary: oklch(0.5 0.2 30); }\n");
 
@@ -103,7 +103,7 @@ describe("a manifest's theme stack (D179 item 2)", () => {
   });
 });
 
-describe("themes a plugin contributes (D179 item 4)", () => {
+describe("themes a plugin contributes (D181 item 4)", () => {
   it("join the themes a stack may name, as layers over a complete one", () => {
     const { nodeModules, names } = layout({ "acme.json": brand });
     const contributed = contributedThemes(nodeModules, names);
@@ -172,7 +172,7 @@ describe("themes a plugin contributes (D179 item 4)", () => {
   });
 });
 
-describe("what theme/show answers (D179 item 6)", () => {
+describe("what theme/show answers (D181 item 6)", () => {
   it("names the faces and every value by mode, and the stylesheet on request", () => {
     const build = resolveThemeStack({
       manifest: { kit: { theme: "arcata" } },

@@ -2,7 +2,7 @@
  * Writes the themes' stylesheets in `css/` (`css/studio.css`, `css/mostra.css`, `css/frame.css`…),
  * so a bundler or a plain `<link>` takes a theme with no code, and `theme.schema.json`, the schema
  * of a theme layer. The tests fail when any of them is stale. An artifact never copies a
- * stylesheet: its build takes its theme stack (D179).
+ * stylesheet: its build takes its theme stack (D181).
  *
  *   pnpm --filter @mostra/themes generate
  */
@@ -24,7 +24,7 @@ writeFileSync(
 );
 console.log("wrote css/faces.css");
 
-// The JSON Schema of a theme layer, for a plugin's theme files (D179 items 3 and 4).
+// The JSON Schema of a theme layer, for a plugin's theme files (D181 items 3 and 4).
 writeFileSync(
   new URL("../theme.schema.json", import.meta.url),
   `${JSON.stringify(themeLayerSchema(), null, 2)}\n`,

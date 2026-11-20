@@ -213,7 +213,7 @@ function frameSandbox(): string {
 
 function hostContext(ticket: FrameTicket): UiInitializeResult["hostContext"] {
   return {
-    // The shell's own light or dark, the person's choice or the device's (D179 item 5).
+    // The shell's own light or dark, the person's choice or the device's (D181 item 5).
     theme: currentAppearance(),
     ...(ticket.hostStyles ? { styles: { variables: ticket.hostStyles.variables } } : {}),
     displayMode: "fullscreen",
@@ -349,7 +349,7 @@ function Frame(props: {
       },
     });
     onBridge(bridge);
-    // The shell's light or dark reaches the page as a host's theme does (D179 item 5).
+    // The shell's light or dark reaches the page as a host's theme does (D181 item 5).
     const stopAppearance = onAppearance((theme) => bridge.notify(uiHostContextChanged, { theme }));
     return () => {
       stopAppearance();

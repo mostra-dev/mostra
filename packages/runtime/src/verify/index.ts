@@ -100,9 +100,9 @@ export interface PreparedSource {
   readonly versionId: string;
   /** The `node_modules` the build links (D95). */
   readonly nodeModules: string;
-  /** The kit and the theme stack the build takes (D179). */
+  /** The kit and the theme stack the build takes (D181). */
   readonly kit: KitBuild;
-  /** The theme stack as the manifest writes it, and whether it was the default (D179 item 2). */
+  /** The theme stack as the manifest writes it, and whether it was the default (D181 item 2). */
   readonly theme: {
     readonly stack: readonly string[];
     readonly default: boolean;

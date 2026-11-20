@@ -85,7 +85,7 @@ export interface BuiltPage {
   readonly lang: string;
   /**
    * The theme the page wears and where its host's look goes (`data-theme`, `data-host-look` on
-   * `<html>`, D179 items 2 and 5): the page inline keeps them, so its theme's rules and its stack's
+   * `<html>`, D181 items 2 and 5): the page inline keeps them, so its theme's rules and its stack's
    * `"host"` apply there as on the full page.
    */
   readonly theme?: { readonly id?: string; readonly hostLook?: "over" | "under" };

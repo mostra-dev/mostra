@@ -156,7 +156,7 @@ export function connectShell(): Promise<ShellConnection | undefined> {
       throw error;
     }
     bootMark("initialized");
-    // The shell is the page's host (D179 item 5): its light or dark, and a host's look where the
+    // The shell is the page's host (D181 item 5): its light or dark, and a host's look where the
     // page's theme stack names "host", as an MCP Apps host's context is applied.
     let context: Record<string, unknown> = { ...host.hostContext };
     applyHostContext(context);

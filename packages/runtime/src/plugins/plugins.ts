@@ -437,7 +437,7 @@ export function createPlugins(options: PluginsOptions): Plugins {
         );
         return;
       }
-      // A theme is data (D179 item 3): checked as `defineThemeLayer` checks it, faces included.
+      // A theme is data (D181 item 3): checked as `defineThemeLayer` checks it, faces included.
       try {
         defineThemeLayer(JSON.parse(readFileSync(file, "utf8")) as ThemeLayer);
       } catch (error) {

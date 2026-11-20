@@ -1,7 +1,7 @@
 "use client";
 
 /**
- * The host's look on a page (D175 item 6, D179 item 5): inline in an MCP Apps host, and in Mostra's
+ * The host's look on a page (D175 item 6, D181 item 5): inline in an MCP Apps host, and in Mostra's
  * shell, which passes a host's look the same way. The host's theme picks light or dark. Where the
  * page's theme stack names `"host"`, the host's variables are set on the document and Mostra's
  * tokens read them (`--background` from `--color-background-primary` and so on, the table the
@@ -48,7 +48,7 @@ let applied = new Set<string>();
 /**
  * Applies the host's context to the document; called again with each change it sends. The host's
  * light or dark always applies. Its colours, radius and faces apply only where the page's theme
- * stack names `"host"` (D179 item 5, amending D175 item 6): last in the stack, over everything (on
+ * stack names `"host"` (D181 item 5, amending D175 item 6): last in the stack, over everything (on
  * the root's own style); before the page's own layers, under them (a rule of no specificity after
  * the theme's, which any rule of the page's outranks).
  */

@@ -108,6 +108,40 @@ function abilities(scopes: readonly string[]): string[] {
   return words;
 }
 
+/**
+ * One link of the choice between two (D98 item 8): whose it is, then what it allows. Two links
+ * with the same scopes read the same in {@link describeAccess} alone, and a respondent who had
+ * opened the share's own link first kept it over his personal one, answering as nobody (#184).
+ */
+export function describeLink(side: {
+  readonly scopes: readonly string[];
+  readonly expiresAt?: string;
+  readonly version?: number;
+  readonly personal?: boolean;
+  readonly name?: string;
+}): string {
+  const whose =
+    side.personal === true
+      ? side.name
+        ? `A personal link, for ${side.name}. `
+        : "A personal link. "
+      : side.personal === false
+        ? "A shared link. "
+        : "";
+  return `${whose}${describeAccess(side)}`;
+}
+
+/**
+ * Whether the choice puts the opened link first: it is someone's personal link and the one the
+ * browser has is not, so keeping the open one would answer as nobody in particular (#184).
+ */
+export function prefersOffered(conflict: {
+  readonly current: { readonly personal?: boolean };
+  readonly offered: { readonly personal?: boolean };
+}): boolean {
+  return conflict.offered.personal === true && conflict.current.personal !== true;
+}
+
 /** What a link allows, in one sentence, for the choice between two links (D98 item 8). */
 export function describeAccess(access: {
   readonly scopes: readonly string[];

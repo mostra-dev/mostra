@@ -148,7 +148,7 @@ describe("license expressions", () => {
 });
 
 describe("the plugin manifest", () => {
-  it("takes the themes a plugin carries, and warns about entries that aren't one (D179 item 4)", () => {
+  it("takes the themes a plugin carries, and warns about entries that aren't one (D181 item 4)", () => {
     const check = checkPluginManifest({
       name: "dev.acme/brand",
       contracts: {},

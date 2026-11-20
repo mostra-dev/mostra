@@ -54,4 +54,15 @@ describe("the macOS and Linux integration groups (MT-01)", () => {
     }
     expect(INTEGRATION_GROUPS["clients"]?.include).toEqual([]);
   });
+
+  it("run the dependency installs with the plugins and packs, not in `core` (#197)", () => {
+    // `core` ran at its 10-minute deadline on slow macOS runners, `deps` its largest suite
+    // (101-133 s); it is built like the plugins and packs suites (a real daemon, a real pnpm
+    // install child, a local registry), whose group had the room. Windows partitions on its own.
+    const deps = "test/integration/deps.test.ts";
+    expect(INTEGRATION_GROUPS["extensions"]?.include).toContain(deps);
+    expect(INTEGRATION_GROUPS["core"]?.exclude).toContain(deps);
+    expect(INTEGRATION_GROUPS["windows"]?.include).toContain(deps);
+    expect(INTEGRATION_GROUPS["windows-extensions"]?.include).not.toContain(deps);
+  });
 });

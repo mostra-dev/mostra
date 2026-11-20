@@ -294,7 +294,7 @@ describe("the MCP App exporter (D175 item 2, MC-02)", () => {
   });
 });
 
-describe("the page's theme inline (D179 items 2 and 5)", () => {
+describe("the page's theme inline (D181 items 2 and 5)", () => {
   it("keeps the build's theme and where a host's look goes on the page's <html>", () => {
     const built = readBuiltPage(
       '<!doctype html><html lang="de" data-theme="arcata" data-host-look="under"><head><script type="module" src="/assets/index.js"></script></head></html>',

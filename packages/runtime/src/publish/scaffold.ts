@@ -25,7 +25,7 @@ function entry({ artifactId, title }: ScaffoldInput): string {
     "export const artifact = defineArtifact({",
     `  id: ${JSON.stringify(artifactId)},`,
     `  title: ${JSON.stringify(title)},`,
-    '  // The look: Mostra\'s studio or arcata theme, your own layers after it, or "none" (D179).',
+    '  // The look: Mostra\'s studio or arcata theme, your own layers after it, or "none" (D181).',
     '  kit: { theme: "studio" },',
     "});",
     "",

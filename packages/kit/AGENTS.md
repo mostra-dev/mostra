@@ -4,7 +4,7 @@ Audience: artifact authors. Runs in: browser. May import: @mostra/protocol, @mos
 
 ## Purpose
 
-Mostra's kit (D26, D27, D179): the parts an agent's page is built from when it wants to look good
+Mostra's kit (D26, D27, D181): the parts an agent's page is built from when it wants to look good
 without designing a system of its own. Three things, all read from the warm set:
 
 - **The registry** (`registry/base/`, `registry/radix/`): shadcn 4.23.0's components for each base,

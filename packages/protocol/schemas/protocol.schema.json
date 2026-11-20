@@ -3970,7 +3970,7 @@
           "$ref": "#/$defs/HostLook"
         }
       },
-      "description": "Home settings from a spawning host; path is a check against the instance's home (D84), dependencies the dependency policy (D43), submission the home's policy (D102), ports those the host always provides (D105), licenses those it accepts for every install (D31), look its look for the home's pages (D179)."
+      "description": "Home settings from a spawning host; path is a check against the instance's home (D84), dependencies the dependency policy (D43), submission the home's policy (D102), ports those the host always provides (D105), licenses those it accepts for every install (D31), look its look for the home's pages (D181)."
     },
     "HomeId": {
       "type": "string",
@@ -4013,7 +4013,7 @@
           }
         }
       },
-      "description": "A host's look for a home's pages (D179 item 5): the theme stack pages naming none wear, and MCP Apps style variables that pages naming \"host\" take."
+      "description": "A host's look for a home's pages (D181 item 5): the theme stack pages naming none wear, and MCP Apps style variables that pages naming \"host\" take."
     },
     "HostedPushParams": {
       "type": "object",

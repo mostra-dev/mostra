@@ -259,11 +259,11 @@ jobs:
         leg: ${{ fromJSON(needs.plan.outputs.rust) }}
     runs-on: ${{ matrix.leg.runner }}
     # Windows compiles the workspace from cold in about as long as the rest takes (WP-W3).
-    timeout-minutes: ${{ startsWith(matrix.leg.os, 'windows') && 35 || 15 }}
-    defaults:
+    timeout-minutes: &rust-timeout ${{ startsWith(matrix.leg.os, 'windows') && 35 || 15 }}
+    defaults: &rust-defaults
       run:
         shell: bash
-    steps:
+    steps: &rust-steps
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           fetch-depth: 0
@@ -319,11 +319,11 @@ jobs:
       matrix:
         leg: ${{ fromJSON(needs.plan.outputs.conformance) }}
     runs-on: ${{ matrix.leg.runner }}
-    timeout-minutes: ${{ startsWith(matrix.leg.os, 'windows') && 35 || 20 }}
-    defaults:
+    timeout-minutes: &conformance-timeout ${{ startsWith(matrix.leg.os, 'windows') && 35 || 20 }}
+    defaults: &conformance-defaults
       run:
         shell: bash
-    steps:
+    steps: &conformance-steps
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           fetch-depth: 0
@@ -369,10 +369,10 @@ jobs:
       matrix:
         leg: ${{ fromJSON(needs.plan.outputs.integration) }}
     runs-on: ${{ matrix.leg.runner }}
-    timeout-minutes: 15
-    env:
+    timeout-minutes: &integration-timeout 15
+    env: &integration-env
       MOSTRA_TEST_GROUP: ${{ matrix.leg.group }}
-    steps:
+    steps: &integration-steps
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           fetch-depth: 0
@@ -427,7 +427,7 @@ jobs:
         if: failure()
         uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
         with:
-          name: logs-integration-${{ matrix.leg.group }}-${{ matrix.leg.os }}
+          name: logs-integration-${{ matrix.leg.group }}-${{ matrix.leg.os }}${{ matrix.leg.retry && '-retry' || '' }}
           path: ${{ runner.temp }}/mostra-test-logs
           retention-days: 7
           if-no-files-found: ignore
@@ -447,13 +447,13 @@ jobs:
       matrix:
         leg: ${{ fromJSON(needs.plan.outputs.windows) }}
     runs-on: ${{ matrix.leg.runner }}
-    timeout-minutes: 25
-    env:
+    timeout-minutes: &windows-timeout 25
+    env: &windows-env
       MOSTRA_TEST_GROUP: ${{ matrix.leg.group }}
-    defaults:
+    defaults: &windows-defaults
       run:
         shell: bash
-    steps:
+    steps: &windows-steps
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           fetch-depth: 0
@@ -525,7 +525,7 @@ jobs:
         if: failure()
         uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
         with:
-          name: logs-${{ matrix.leg.job }}-${{ matrix.leg.group }}-${{ matrix.leg.os }}
+          name: logs-${{ matrix.leg.job }}-${{ matrix.leg.group }}-${{ matrix.leg.os }}${{ matrix.leg.retry && '-retry' || '' }}
           path: ${{ runner.temp }}/mostra-test-logs
           retention-days: 7
           if-no-files-found: ignore
@@ -546,14 +546,14 @@ jobs:
     runs-on: ${{ matrix.leg.runner }}
     # The tests take about 10 minutes at most; the rest is room for a slow mirror's first run on an
     # image (#58), before its downloads are cached.
-    timeout-minutes: 25
-    env:
+    timeout-minutes: &e2e-timeout 25
+    env: &e2e-env
       MOSTRA_E2E_BROWSER: ${{ matrix.leg.browser }}
       MOSTRA_E2E_SHARD: ${{ matrix.leg.shard || '' }}
-    defaults:
+    defaults: &e2e-defaults
       run:
         shell: bash
-    steps:
+    steps: &e2e-steps
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           fetch-depth: 0
@@ -593,7 +593,7 @@ jobs:
         if: failure()
         uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
         with:
-          name: e2e-traces-${{ matrix.leg.os }}-${{ matrix.leg.browser }}-${{ strategy.job-index }}
+          name: e2e-traces-${{ matrix.leg.os }}-${{ matrix.leg.browser }}-${{ strategy.job-index }}${{ matrix.leg.retry && '-retry' || '' }}
           path: tests/e2e/test-results
           retention-days: 7
       # A trace shows what the browser saw; the daemons' logs and ledgers show what reached Mostra
@@ -602,7 +602,7 @@ jobs:
         if: failure()
         uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
         with:
-          name: e2e-homes-${{ matrix.leg.os }}-${{ matrix.leg.browser }}-${{ strategy.job-index }}
+          name: e2e-homes-${{ matrix.leg.os }}-${{ matrix.leg.browser }}-${{ strategy.job-index }}${{ matrix.leg.retry && '-retry' || '' }}
           path: ${{ runner.temp }}/mostra-e2e-logs
           retention-days: 7
           if-no-files-found: ignore
@@ -641,24 +641,160 @@ jobs:
           fail-on-severity: moderate
           deny-licenses: AGPL-1.0-only, AGPL-1.0-or-later, AGPL-3.0-only, AGPL-3.0-or-later, BUSL-1.1, SSPL-1.0, Elastic-2.0
 
+  # Legs GitHub never gave a runner (#210): its macOS arm64 pool sometimes waits, then cancels a
+  # job with no runner and no step run, and a matrix with such a leg reports `abandoned`, which
+  # ci-ok refuses (D152 item 9). The merge queue decides on this run's ci-ok, so a re-run after it
+  # ends comes too late. This job lists the run's jobs, picks exactly the legs GitHub starved (its
+  # annotation says the job "was not acquired by Runner"), waits until 10 minutes after the last of
+  # them, and hands them to the retry twins below, the release rehearsal to `release-retry`.
+  # Nothing is retried when a gate also failed for its own reasons (tools/check/starved.ts).
+  starved:
+    name: starved
+    needs: [plan, static, unit, hygiene, rust, conformance, integration, windows, e2e, release, dependency-review]
+    if: ${{ !cancelled() && needs.plan.result == 'success' && needs.plan.outputs.run == 'true' && (contains(needs.*.result, 'abandoned') || contains(needs.*.result, 'cancelled') || contains(needs.*.result, 'failure')) }}
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    permissions:
+      contents: read # its checkout
+      actions: read # this run's jobs
+      checks: read # their annotations
+    outputs:
+      rust: ${{ steps.select.outputs.rust }}
+      conformance: ${{ steps.select.outputs.conformance }}
+      integration: ${{ steps.select.outputs.integration }}
+      windows: ${{ steps.select.outputs.windows }}
+      e2e: ${{ steps.select.outputs.e2e }}
+      release: ${{ steps.select.outputs.release }}
+      eligible: ${{ steps.select.outputs.eligible }}
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+          sparse-checkout: tools/check
+      - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
+        with:
+          node-version-file: .node-version
+          package-manager-cache: false
+      - name: The legs GitHub gave no runner
+        id: select
+        env:
+          GH_TOKEN: ${{ github.token }}
+          PLAN: ${{ toJSON(needs.plan.outputs) }}
+        run: node tools/check/starved.ts select
+
+  # Each gate's retry twin runs the starved legs with the gate's own steps, limits and machine
+  # (YAML aliases of the gate's, which a test holds); `retry` on a leg only names its artifacts apart.
+  rust-retry:
+    name: retry · rust (${{ matrix.leg.os }})
+    needs: [plan, starved]
+    if: ${{ !cancelled() && needs.starved.result == 'success' && needs.starved.outputs.rust != '[]' }}
+    strategy:
+      fail-fast: false
+      matrix:
+        leg: ${{ fromJSON(needs.starved.outputs.rust) }}
+    runs-on: ${{ matrix.leg.runner }}
+    timeout-minutes: *rust-timeout
+    defaults: *rust-defaults
+    steps: *rust-steps
+
+  conformance-retry:
+    name: retry · conformance (${{ matrix.leg.os }})
+    needs: [plan, starved]
+    if: ${{ !cancelled() && needs.starved.result == 'success' && needs.starved.outputs.conformance != '[]' }}
+    strategy:
+      fail-fast: false
+      matrix:
+        leg: ${{ fromJSON(needs.starved.outputs.conformance) }}
+    runs-on: ${{ matrix.leg.runner }}
+    timeout-minutes: *conformance-timeout
+    defaults: *conformance-defaults
+    steps: *conformance-steps
+
+  integration-retry:
+    name: retry · integration (${{ matrix.leg.os }}, ${{ matrix.leg.group }})
+    needs: [plan, starved]
+    if: ${{ !cancelled() && needs.starved.result == 'success' && needs.starved.outputs.integration != '[]' }}
+    strategy:
+      fail-fast: false
+      matrix:
+        leg: ${{ fromJSON(needs.starved.outputs.integration) }}
+    runs-on: ${{ matrix.leg.runner }}
+    timeout-minutes: *integration-timeout
+    env: *integration-env
+    steps: *integration-steps
+
+  windows-retry:
+    name: retry · ${{ matrix.leg.job }} (${{ matrix.leg.os }}${{ matrix.leg.job == 'integration' && format(', {0}', matrix.leg.group) || '' }})
+    needs: [plan, starved]
+    if: ${{ !cancelled() && needs.starved.result == 'success' && needs.starved.outputs.windows != '[]' }}
+    strategy:
+      fail-fast: false
+      matrix:
+        leg: ${{ fromJSON(needs.starved.outputs.windows) }}
+    runs-on: ${{ matrix.leg.runner }}
+    timeout-minutes: *windows-timeout
+    env: *windows-env
+    defaults: *windows-defaults
+    steps: *windows-steps
+
+  e2e-retry:
+    name: retry · e2e (${{ matrix.leg.os }}, ${{ matrix.leg.browser }}${{ matrix.leg.shard && format(', {0}', matrix.leg.shard) || '' }})
+    needs: [plan, starved]
+    if: ${{ !cancelled() && needs.starved.result == 'success' && needs.starved.outputs.e2e != '[]' }}
+    strategy:
+      fail-fast: false
+      matrix:
+        leg: ${{ fromJSON(needs.starved.outputs.e2e) }}
+    runs-on: ${{ matrix.leg.runner }}
+    timeout-minutes: *e2e-timeout
+    env: *e2e-env
+    defaults: *e2e-defaults
+    steps: *e2e-steps
+
+  # What is left of the rehearsal: the starved legs and what waited on them, from the artifacts the
+  # first call kept (release-build.yml's `resume`).
+  release-retry:
+    name: retry · release
+    needs: [plan, starved]
+    if: ${{ !cancelled() && needs.starved.result == 'success' && needs.starved.outputs.release != '' }}
+    uses: ./.github/workflows/release-build.yml
+    with:
+      version: ${{ needs.plan.outputs.version }}
+      rehearse: ${{ needs.plan.outputs.rehearse == 'true' }}
+      mode: fresh
+      node: ${{ needs.plan.outputs.node }}
+      platforms: ${{ toJSON(fromJSON(needs.plan.outputs.release).platforms) }}
+      npm-smoke: ${{ toJSON(fromJSON(needs.plan.outputs.release).npmSmoke) }}
+      linux-runner: ${{ fromJSON(needs.plan.outputs.release).linux }}
+      rehearsal: true
+      resume: ${{ needs.starved.outputs.release }}
+
   # The one check the main ruleset requires, on pull requests and in the merge queue: green only
-  # when every job above passed or was skipped by the plan. It is skipped itself only when the plan
+  # when every gate passed or was skipped by the plan, or GitHub gave some of its legs no runner and
+  # their retry passed (#210). It is skipped itself only when the plan
   # ran and decided the run checks nothing, which happens only for a bot's draft (that GitHub won't
   # merge) and a nightly run already done; a plan that failed fails it.
   ci-ok:
     name: ci-ok
     if: always() && (needs.plan.result != 'success' || needs.plan.outputs.run == 'true')
     needs:
-      [plan, static, unit, hygiene, rust, conformance, integration, windows, e2e, release, dependency-review]
+      [plan, static, unit, hygiene, rust, conformance, integration, windows, e2e, release, dependency-review, starved, rust-retry, conformance-retry, integration-retry, windows-retry, e2e-retry, release-retry]
     runs-on: ubuntu-latest
-    timeout-minutes: 2
+    timeout-minutes: 5
     steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+          sparse-checkout: tools/check
+      - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
+        with:
+          node-version-file: .node-version
+          package-manager-cache: false
       - name: All gates passed
         env:
-          RESULTS: ${{ toJSON(needs.*.result) }}
+          NEEDS: ${{ toJSON(needs) }}
         # Passes only on results known to be good: a job that ran and passed, or one the plan left
         # out. Anything else fails, `abandoned` included (a leg that never got a runner, which a
-        # list of bad results let through on #90) and any result GitHub adds (D152 item 9).
-        run: |
-          echo "$RESULTS"
-          echo "$RESULTS" | jq -e 'length > 0 and all(.[]; . == "success" or . == "skipped")' > /dev/null
+        # list of bad results let through on #90) and any result GitHub adds (D152 item 9), unless
+        # the starved job named the gate and its retry twin passed (#210).
+        run: node tools/check/starved.ts verdict

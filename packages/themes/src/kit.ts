@@ -1,5 +1,5 @@
 /**
- * A theme as an artifact's build takes it (D179 items 2 and 3): the stylesheet the builder puts
+ * A theme as an artifact's build takes it (D181 items 2 and 3): the stylesheet the builder puts
  * inside the build's one Tailwind run, after `tailwindcss` and the kit's own CSS.
  */
 import { paletteVariables, stack, TAILWIND_COLORS } from "./css.ts";

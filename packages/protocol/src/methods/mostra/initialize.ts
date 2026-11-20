@@ -97,7 +97,7 @@ export interface HomeConfig {
    */
   readonly licenses?: LicensePolicy;
   /**
-   * The host's look for the pages of this home (D179 item 5), kept in `config.json`: the theme
+   * The host's look for the pages of this home (D181 item 5), kept in `config.json`: the theme
    * stack a page that names none wears (`theme`, in place of Studio), and the host's own variables
    * (`variables`, MCP Apps' standardized `--color-*`, `--font-*` and `--border-radius-*`), which
    * the shell passes to every page as an MCP Apps host does and which a page takes where its stack
@@ -106,7 +106,7 @@ export interface HomeConfig {
   readonly look?: HostLook;
 }
 
-/** A host's look for a home's pages (`HomeConfig.look`, D179 item 5). */
+/** A host's look for a home's pages (`HomeConfig.look`, D181 item 5). */
 export interface HostLook {
   /** The theme stack a page that names none wears, written as `kit.theme` is. */
   readonly theme?: string | readonly string[];
@@ -138,7 +138,7 @@ export const HostLook: z.ZodType<HostLook> = z
   .register(wireRegistry, {
     id: "HostLook",
     description:
-      "A host's look for a home's pages (D179 item 5): the theme stack pages naming none wear, and MCP Apps style variables that pages naming \"host\" take.",
+      "A host's look for a home's pages (D181 item 5): the theme stack pages naming none wear, and MCP Apps style variables that pages naming \"host\" take.",
   });
 
 /** How packages enter an artifact's lockfile (D43). */
@@ -249,7 +249,7 @@ export const HomeConfig: z.ZodType<HomeConfig> = z
   .register(wireRegistry, {
     id: "HomeConfig",
     description:
-      "Home settings from a spawning host; path is a check against the instance's home (D84), dependencies the dependency policy (D43), submission the home's policy (D102), ports those the host always provides (D105), licenses those it accepts for every install (D31), look its look for the home's pages (D179).",
+      "Home settings from a spawning host; path is a check against the instance's home (D84), dependencies the dependency policy (D43), submission the home's policy (D102), ports those the host always provides (D105), licenses those it accepts for every install (D31), look its look for the home's pages (D181).",
   });
 
 /** The Zod schema of the `InstanceInfo` type. */

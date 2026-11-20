@@ -10,7 +10,9 @@
     "MOSTRA_TEST_OTHER_USER",
     "MOSTRA_TEST_OTHER_PASSWORD",
     "MOSTRA_TEST_LOG_DIR",
-    "MOSTRA_E2E_LOG_DIR"
+    "MOSTRA_E2E_LOG_DIR",
+    "PSModuleAnalysisCachePath",
+    "PSModulePath"
   ],
   "tasks": {
     "build": {

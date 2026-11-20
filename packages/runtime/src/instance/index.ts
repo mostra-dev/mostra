@@ -144,7 +144,7 @@ import {
   workerLimits,
 } from "../workers/index.ts";
 
-/** The most variables a host's look (`HomeConfig.look.variables`, D179 item 9) may give. */
+/** The most variables a host's look (`HomeConfig.look.variables`, D181 item 9) may give. */
 const HOST_LOOK_VARIABLES_MAX = 256;
 
 /** Options for {@link startInstance}. */
@@ -384,7 +384,7 @@ async function assemble(home: OwnedHome, options: StartInstanceOptions): Promise
       plugins: getPlugins(),
       log,
       env: environment,
-      // The kit's items are the warm set's kit (D179 item 7): what `@/…` resolves into too.
+      // The kit's items are the warm set's kit (D181 item 7): what `@/…` resolves into too.
       kitRegistry: (base) => {
         try {
           return kitRegistry(locateWarmSet(environment).nodeModules, base);

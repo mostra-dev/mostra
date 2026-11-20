@@ -12,6 +12,10 @@
 #   npm-smoke   the packed packages through npm on an older Node.js: create-mostra, verify, publish
 #   npm-old-node  the packed packages on Node.js 20, which they refuse with a diagnostic
 #
+# With `resume` (CI's retry of legs GitHub gave no runner, #210) only what is left runs: a job whose
+# part is empty is skipped, and a job runs after one skipped that way as after one that passed,
+# from the artifacts the first call uploaded (a starved leg never uploaded any, so no name repeats).
+#
 # Bundles always build and smoke-test on GitHub's runners, the images a published release is built
 # on; only the packing and the old-Node.js check may run on Blacksmith (`linux-runner`). Nothing
 # here publishes or holds a credential that could: release.yml's publish job downloads the
@@ -61,6 +65,13 @@ on:
           (release.yml) leaves it false and needs every platform's bundle
         type: boolean
         default: false
+      resume:
+        description: >-
+          A rehearsal's second try at what GitHub gave no runner (CI's `starved` job, #210): JSON
+          naming what is left (`bundle`, `smoke` and `npmSmoke` legs; `packages`, `oldNode` and
+          `image` true or false), run from the first call's artifacts; empty runs everything
+        type: string
+        default: ""
 
 permissions:
   contents: read
@@ -74,10 +85,11 @@ env:
 jobs:
   bundle:
     name: bundle (${{ matrix.platform }})
+    if: ${{ inputs.resume == '' || toJSON(fromJSON(inputs.resume || '{}').bundle) != '[]' }}
     strategy:
       fail-fast: false
       matrix:
-        include: ${{ fromJSON(inputs.platforms) }}
+        include: ${{ inputs.resume == '' && fromJSON(inputs.platforms) || fromJSON(inputs.resume || '{}').bundle }}
     runs-on: ${{ matrix.runner }}
     timeout-minutes: 40
     # Windows runs the same steps in Git's bash.
@@ -138,10 +150,11 @@ jobs:
   smoke:
     name: smoke (${{ matrix.platform }}, no Node.js)
     needs: bundle
+    if: ${{ !cancelled() && (needs.bundle.result == 'success' || (inputs.resume != '' && needs.bundle.result == 'skipped')) && (inputs.resume == '' || toJSON(fromJSON(inputs.resume || '{}').smoke) != '[]') }}
     strategy:
       fail-fast: false
       matrix:
-        include: ${{ fromJSON(inputs.platforms) }}
+        include: ${{ inputs.resume == '' && fromJSON(inputs.platforms) || fromJSON(inputs.resume || '{}').smoke }}
     runs-on: ${{ matrix.runner }}
     timeout-minutes: 30
     defaults:
@@ -234,6 +247,7 @@ jobs:
   packages:
     name: packages (pins, pack, npm publish --dry-run)
     needs: bundle
+    if: ${{ !cancelled() && (needs.bundle.result == 'success' || (inputs.resume != '' && needs.bundle.result == 'skipped')) && (inputs.resume == '' || fromJSON(inputs.resume || '{}').packages) }}
     runs-on: ${{ inputs.linux-runner }}
     timeout-minutes: 20
     steps:
@@ -297,11 +311,12 @@ jobs:
 
   npm-smoke:
     name: npm-smoke (${{ matrix.platform }}, Node.js 22)
-    needs: packages
+    needs: [bundle, packages]
+    if: ${{ !cancelled() && (needs.bundle.result == 'success' || (inputs.resume != '' && needs.bundle.result == 'skipped')) && (needs.packages.result == 'success' || (inputs.resume != '' && needs.packages.result == 'skipped')) && (inputs.resume == '' || toJSON(fromJSON(inputs.resume || '{}').npmSmoke) != '[]') }}
     strategy:
       fail-fast: false
       matrix:
-        include: ${{ fromJSON(inputs.npm-smoke) }}
+        include: ${{ inputs.resume == '' && fromJSON(inputs.npm-smoke) || fromJSON(inputs.resume || '{}').npmSmoke }}
     runs-on: ${{ matrix.runner }}
     timeout-minutes: 30
     defaults:
@@ -350,7 +365,8 @@ jobs:
   # A Node.js too old to start Mostra: refused at once with MOSTRA_ENV_NODE_UNSUPPORTED.
   npm-old-node:
     name: npm-old-node (Node.js 20)
-    needs: packages
+    needs: [bundle, packages]
+    if: ${{ !cancelled() && (needs.bundle.result == 'success' || (inputs.resume != '' && needs.bundle.result == 'skipped')) && (needs.packages.result == 'success' || (inputs.resume != '' && needs.packages.result == 'skipped')) && (inputs.resume == '' || fromJSON(inputs.resume || '{}').oldNode) }}
     runs-on: ${{ inputs.linux-runner }}
     timeout-minutes: 10
     steps:
@@ -375,7 +391,7 @@ jobs:
   image:
     name: image (linux/amd64)
     needs: bundle
-    if: contains(inputs.platforms, 'linux-x64')
+    if: ${{ !cancelled() && (needs.bundle.result == 'success' || (inputs.resume != '' && needs.bundle.result == 'skipped')) && contains(inputs.platforms, 'linux-x64') && (inputs.resume == '' || fromJSON(inputs.resume || '{}').image) }}
     runs-on: ubuntu-24.04
     timeout-minutes: 20
     steps:

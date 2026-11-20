@@ -11,7 +11,7 @@
  *   public, sent only to GitHub's API;
  * - `@namespace/item`: through the artifact's `components.json` `registries`, a URL template
  *   (`{name}`, `{style}`) or `{ url, params, headers }` with `${VAR}` read from the environment;
- * - a bare name: the kit's item of that name for the artifact's base (D172 item 12, D179 item 7)
+ * - a bare name: the kit's item of that name for the artifact's base (D172 item 12, D181 item 7)
  *   when `mostra add` names it or a kit item's `registryDependencies` do; in any other item's
  *   `registryDependencies`, shadcn's own registry (`REGISTRY_URL`, as shadcn reads it, else
  *   `https://ui.shadcn.com/r`), at the style `components.json` names (`new-york-v4` when it names
@@ -66,7 +66,7 @@ export interface ReadContext {
   /** Where GitHub's API and raw files are (tests point them at a local fake). */
   readonly github?: { readonly api: string; readonly raw: string };
   /**
-   * The kit's item file of a bare name for the artifact's base, when the kit has one (D179 item
+   * The kit's item file of a bare name for the artifact's base, when the kit has one (D181 item
    * 7): a bare name `mostra add` or a kit item names resolves there before shadcn's registry.
    */
   readonly kitItem?: (name: string) => string | undefined;

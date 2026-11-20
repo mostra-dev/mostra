@@ -461,7 +461,7 @@ describe("shadcn's own items, unchanged (EX-03)", () => {
   });
 });
 
-describe("the kit's parts by name (D179 item 7, KT-03)", () => {
+describe("the kit's parts by name (D181 item 7, KT-03)", () => {
   const KIT = fileURLToPath(new URL("../../../kit/registry/", import.meta.url));
 
   it("copies a kit part for the artifact's base, with its kit dependencies, byte for byte", async () => {

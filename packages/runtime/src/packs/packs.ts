@@ -313,7 +313,7 @@ export function createPacks(options: PacksOptions): Packs {
   return {
     async add(input) {
       const components = input.kind === "dir" ? await readComponentsJson(input.root) : undefined;
-      // A bare name the kit has an item of, for the artifact's base, is that item (D179 item 7):
+      // A bare name the kit has an item of, for the artifact's base, is that item (D181 item 7):
       // `mostra add button`. Any other bare name, or one with a version, is an npm package.
       const registry = options.kitRegistry?.(input.base);
       const kitItem = (name: string): string | undefined => {

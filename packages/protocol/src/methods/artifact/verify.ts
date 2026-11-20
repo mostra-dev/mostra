@@ -20,7 +20,7 @@ export interface ArtifactVerifyParams {
   readonly progressToken?: string;
   /**
    * A theme stack to build the page in for this verify only, in place of the manifest's
-   * `kit.theme` (D179 item 6): to try a look before writing it into the manifest. A verdict
+   * `kit.theme` (D181 item 6): to try a look before writing it into the manifest. A verdict
    * verified so is never reused by a publish.
    */
   readonly theme?: string | readonly string[];

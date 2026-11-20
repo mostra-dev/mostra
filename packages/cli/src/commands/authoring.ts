@@ -469,7 +469,7 @@ export const addCommand: CommandDef = defineCommand({
       const address = parsePackAddress(spec);
       return address?.kind === "file" ? resolve(context.cwd, address.path) : spec;
     });
-    // A bare name may be a kit item (`mostra add button`, D179 item 7): the instance, which knows
+    // A bare name may be a kit item (`mostra add button`, D181 item 7): the instance, which knows
     // the artifact's base and its kit, decides; a name with a version is always an npm package.
     if (!specs.some((spec) => parsePackAddress(spec) !== undefined || BARE_ITEM.test(spec))) {
       // Only npm packages: `deps/add`, as before packs existed.

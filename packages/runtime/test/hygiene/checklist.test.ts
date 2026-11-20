@@ -418,6 +418,35 @@ describe("one link per browser and artifact, never replaced silently (D98 item 8
     expect(now.json<{ scopes: string[] }>().scopes).toEqual(["view"]);
   });
 
+  it("says whose each link is, by display name only, so a shared and a personal link differ (#184)", async () => {
+    const shared = await gateway.link(receipt.artifactId);
+    const sams = await gateway.link(receipt.artifactId, {
+      viewer: { ref: "sam@example.com", name: "Sam Okafor" },
+    });
+    const unnamed = await gateway.link(receipt.artifactId, { viewer: { ref: "ada-ref-184" } });
+    secrets.push(
+      parseLink(shared.url).secret,
+      parseLink(sams.url).secret,
+      parseLink(unnamed.url).secret,
+    );
+    const browser = new Browser();
+    const open = await openLink(browser, shared.url);
+    const exchange = (token: string) =>
+      browser.fetchJson(open.link.shell, `${api()}/session`, { body: { token } });
+    const conflict = await exchange(parseLink(sams.url).secret);
+    expect(code(conflict)).toBe("409 MOSTRA_HYGIENE_SESSION_CONFLICT");
+    expect(conflict.json()).toMatchObject({
+      current: { personal: false },
+      offered: { personal: true, name: "Sam Okafor" },
+    });
+    expect((conflict.json() as { current: object }).current).not.toHaveProperty("name");
+    // A viewer without a name is still personal; the host's ref never reaches the page (D168).
+    const other = await exchange(parseLink(unnamed.url).secret);
+    expect(other.json()).toMatchObject({ offered: { personal: true } });
+    expect(JSON.stringify(other.json())).not.toContain("ada-ref-184");
+    expect(JSON.stringify(conflict.json())).not.toContain("sam@example.com");
+  });
+
   it("replaces a session whose link died without asking", async () => {
     const first = await gateway.link(receipt.artifactId);
     const second = await gateway.link(receipt.artifactId);

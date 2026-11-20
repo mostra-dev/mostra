@@ -36,7 +36,7 @@ const KIT_REGISTRY = fileURLToPath(
   new URL("../../../packages/kit/registry/base/", import.meta.url),
 );
 
-test.describe("the page's theme and a host's look (KT-04, D179 item 5)", () => {
+test.describe("the page's theme and a host's look (KT-04, D181 item 5)", () => {
   test("a page keeps its theme, takes a host's look where its stack names host, and follows the shell's light or dark", async ({
     page,
   }, info) => {

@@ -28,7 +28,7 @@ export function packMethods(options: {
             root: source.root,
             kind: source.kind,
             entry: source.entry,
-            // The base the artifact's manifest names, whose kit items bare names are (D179 item 7).
+            // The base the artifact's manifest names, whose kit items bare names are (D181 item 7).
             base:
               extractManifest(source.entry, await readFile(join(source.root, source.entry), "utf8"))
                 .manifest?.kit?.base ?? "base",

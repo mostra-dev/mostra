@@ -4,7 +4,7 @@ import { Diagnostic } from "../../diagnostics/diagnostic.ts";
 import { defineMethod, type MethodDefinition } from "../../method.ts";
 import { wireRegistry } from "../../wire-registry.ts";
 
-/** The params of `theme/show` (INTERFACES §6, D179 item 6). */
+/** The params of `theme/show` (INTERFACES §6, D181 item 6). */
 export interface ThemeShowParams {
   /**
    * A theme, or a stack of them, to show; with `artifact`, it is resolved for that artifact (its

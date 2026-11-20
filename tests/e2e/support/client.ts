@@ -105,19 +105,75 @@ export async function openInShell(page: Page, url: string): Promise<FrameLocator
   // The shell is ready once its frame greeted it, so the frame's content is there. Playwright's
   // Firefox on Windows has not reached it, after the worker-mode bootstrap's navigation, even to
   // run a script in it, while the frame worked for the shell (#135: CI run 43012158370 on #138).
-  // The page is healthy, so this loads it again once, as the shell's own recovery would, and
-  // records it on the test; a second time fails at once naming Playwright's frame tree.
+  // Its frame list then still named the frame at the bootstrap's `/_mostra/enter`: Playwright's
+  // own record of the frame was stale. Loading the page again in place (`page.reload()`) kept it
+  // lost (run 43706243208), so this loads the page afresh once (`reopenInShell`), records it on
+  // the test with Playwright's frames, and a second time fails at once, saying also whether a
+  // fresh page of the same browser reaches the frame.
   if (await frameReached(frame)) return frame;
+  const lost = await frameTree(page);
   test.info().annotations.push({
     type: "issue",
-    description: `#135: Playwright reached no body in a ready shell's frame and loaded the page again once (${await frameTree(page)})`,
+    description: `#135: Playwright reached no body in a ready shell's frame and loaded the page afresh once; its frames were:\n${lost}`,
   });
-  await page.reload();
-  await shellReady(page);
+  await reopenInShell(page);
   if (await frameReached(frame)) return frame;
   throw new Error(
-    `#135: the shell is ready but Playwright reaches no body in its frame, twice.\nPlaywright's frames:\n${await frameTree(page)}\n${await rendering(page)}`,
+    `#135: the shell is ready but Playwright reaches no body in its frame, twice.\nPlaywright's frames the first time:\n${lost}\nand the second:\n${await frameTree(page)}\n${await freshPageReaches(page)}\n${await rendering(page)}`,
   );
+}
+
+/**
+ * Loads the shell's page afresh where it is and waits until the shell is ready: away to
+ * `about:blank` first, so the shell's and its frame's documents are new ones that Playwright
+ * tracks from their start, where `page.reload()` reloads the documents it lost track of (#135).
+ * It loads the page's own address, as a reload would, so a hosted link isn't exchanged again.
+ */
+export async function reopenInShell(page: Page): Promise<void> {
+  const here = page.url();
+  await page.goto("about:blank");
+  await gotoShell(page, here);
+  await shellReady(page);
+}
+
+/**
+ * Whether a fresh page of the same browser context reaches the shell page's frame, within 20 s: says
+ * whether a frame Playwright lost is the page's (its record of that page) or every page's (#135).
+ */
+async function freshPageReaches(page: Page): Promise<string> {
+  const url = page.url();
+  const fresh = await page.context().newPage();
+  let timer: ReturnType<typeof setTimeout> | undefined;
+  const probe = (async () => {
+    await gotoShell(fresh, url);
+    await expect(fresh.locator("html")).toHaveAttribute("data-shell", "ready", { timeout: 10_000 });
+    const reached = await fresh
+      .frameLocator("iframe.mostra-frame")
+      .locator("body")
+      .waitFor({ state: "attached", timeout: 5_000 })
+      .then(
+        () => true,
+        () => false,
+      );
+    return `A fresh page of the same browser ${reached ? "reached" : "didn't reach"} the frame's body.`;
+  })().catch(
+    (error: unknown) =>
+      `A fresh page of the same browser didn't get that far: ${(error as Error).message.split("\n")[0]}`,
+  );
+  try {
+    return await Promise.race([
+      probe,
+      new Promise<string>((done) => {
+        timer = setTimeout(
+          () => done("A fresh page of the same browser had no ready shell and frame within 20 s."),
+          20_000,
+        );
+      }),
+    ]);
+  } finally {
+    clearTimeout(timer);
+    await fresh.close().catch(() => undefined);
+  }
 }
 
 /** Waits until the shell says it is ready, or fails saying what each document renders (#39). */

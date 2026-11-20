@@ -95,7 +95,7 @@ export interface BridgeHostContext {
   readonly platform?: "web" | "desktop" | "mobile";
   /**
    * The host's look (MCP Apps' `styles`): its standardized CSS variables (`--color-*`, `--font-*`,
-   * `--border-radius-*`). A page takes them only where its theme stack names `"host"` (D179
+   * `--border-radius-*`). A page takes them only where its theme stack names `"host"` (D181
    * item 5); a host embedding Mostra sets them with `HomeConfig.look`.
    */
   readonly styles?: { readonly variables?: Readonly<Record<string, string>> };

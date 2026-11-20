@@ -122,7 +122,7 @@ export interface PublisherOptions {
   /** The home's submission policy (`HomeConfig.submission`, D102), read at each publish. */
   readonly homePolicy?: () => SubmissionPolicy | undefined;
   /**
-   * The theme stack a page that names none wears in this home (`HomeConfig.look.theme`, D179
+   * The theme stack a page that names none wears in this home (`HomeConfig.look.theme`, D181
    * item 5), read at each publish and verify; absent, Studio.
    */
   readonly homeTheme?: () => string | readonly string[] | undefined;
@@ -539,12 +539,12 @@ export function createPublisher(options: PublisherOptions): Publisher {
 
     // 3. Digests (DATA_MODEL §2).
     const sourceDigest = listingDigest(listed);
-    // The kit and the theme stack (D179): the stack is the manifest's, so the snapshot's digest
+    // The kit and the theme stack (D181): the stack is the manifest's, so the snapshot's digest
     // covers it and the artifact's own layers; the kit's registry is the layout's, named by its
     // version; the theme's stylesheet is this release's `@mostra/themes`, named by Mostra's.
-    // `verify --theme` builds in another stack for that run only (D179 item 6): the theme's
+    // `verify --theme` builds in another stack for that run only (D181 item 6): the theme's
     // digest below covers the stack built, so its verdict is never a publish's.
-    // A page that names no theme wears the home's default (a host's, D179 item 5), else Studio.
+    // A page that names no theme wears the home's default (a host's, D181 item 5), else Studio.
     const homeTheme = manifest.kit?.theme === undefined ? options.homeTheme?.() : undefined;
     const stackOverride = themeOverride ?? homeTheme;
     const kitManifest =
@@ -553,7 +553,7 @@ export function createPublisher(options: PublisherOptions): Publisher {
       manifest: kitManifest,
       sourceDir: join(staging, "source"),
       nodeModules: deps.nodeModules,
-      // Themes the artifact's plugins contribute (D179 item 4), from the layout the build reads.
+      // Themes the artifact's plugins contribute (D181 item 4), from the layout the build reads.
       contributed: contributedThemes(deps.nodeModules, parseLock(deps.lock).plugins ?? []),
     });
     const environment: BuildEnvironment = {

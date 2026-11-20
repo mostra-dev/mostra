@@ -227,7 +227,7 @@ export interface VerifyVerdict {
   /** How long each stage took, in milliseconds, and `total`. */
   readonly timingsMs: Readonly<Record<string, number>>;
   /**
-   * The theme stack the page was built in (D179 items 2 and 6, WP-18): as the manifest writes it,
+   * The theme stack the page was built in (D181 items 2 and 6, WP-18): as the manifest writes it,
    * or as `artifact/verify`'s `theme` gave it; `default` when the page names none and wears Studio.
    * Absent when the source couldn't be read.
    */

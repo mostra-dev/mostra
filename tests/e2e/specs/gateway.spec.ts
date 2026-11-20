@@ -519,7 +519,9 @@ test.describe("one artifact against the others and against its shell (Claude rev
       const second = await page.context().newPage();
       await second.goto(narrow.url);
       await expect(second.locator("html")).toHaveAttribute("data-shell", "choosing");
-      await expect(second.getByText("The link you just opened: Can view.")).toBeVisible();
+      await expect(
+        second.getByText("The link you just opened: A shared link. Can view."),
+      ).toBeVisible();
       await second.getByRole("button", { name: "Keep the link I have" }).click();
       await expect(second.locator("html")).toHaveAttribute("data-shell", "ready", {
         timeout: 15_000,
@@ -534,6 +536,38 @@ test.describe("one artifact against the others and against its shell (Claude rev
         timeout: 15_000,
       });
       expect(await scopes(third)).toEqual(["view"]);
+    } finally {
+      client.close();
+    }
+  });
+
+  test("a personal link opened over a shared one says whose it is and comes first (#184)", async ({
+    page,
+  }) => {
+    const client = await Client.connect(run.socket);
+    try {
+      const sams = await client.call<{ url: string }>("view/url", {
+        artifact: { artifactId: run.receipts.directory.artifactId },
+        viewer: { ref: "sam-184@example.com", name: "Sam Okafor" },
+      });
+      await openShell(page, run.receipts.directory.url);
+      const second = await page.context().newPage();
+      await second.goto(sams.url);
+      await expect(second.locator("html")).toHaveAttribute("data-shell", "choosing");
+      await expect(
+        second.getByText("The link you just opened: A personal link, for Sam Okafor."),
+      ).toBeVisible();
+      await expect(second.getByText("The link you have open: A shared link.")).toBeVisible();
+      // The host's ref never reaches the page (D168 item 2).
+      await expect(second.getByText("sam-184@example.com")).toHaveCount(0);
+      const buttons = second.locator(".mostra-actions button");
+      await expect(buttons.first()).toHaveText("Use the personal link");
+      await expect(buttons.first()).toHaveClass(/mostra-primary/);
+      await expect(buttons.nth(1)).toHaveText("Keep the link I have");
+      await buttons.first().click();
+      await expect(second.locator("html")).toHaveAttribute("data-shell", "ready", {
+        timeout: 15_000,
+      });
     } finally {
       client.close();
     }

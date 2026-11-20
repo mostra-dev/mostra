@@ -14,6 +14,7 @@ import {
   linkFor,
   openInShell,
   publishOwn,
+  reopenInShell,
   republish,
   results,
   saved,
@@ -140,6 +141,25 @@ test.describe("a frame whose load fails (D157, #66)", () => {
   // random local ports collide with closed connections) shows the browser's error page, which never
   // greets the shell: the shell enters the frame again with a new ticket.
   const enter = (url: URL): boolean => url.pathname === "/_mostra/enter";
+  // The frame's own session read, not the shell's `/a/…/_mostra/session`.
+  const sessionRead = (url: URL): boolean => url.pathname === "/_mostra/session";
+  // D157 item 1 bounds the re-entries of a frame that doesn't greet, at three (RELOAD_LIMIT in
+  // `packages/shell/src/viewer.tsx`); it doesn't promise how many a slow runner needs: a reloaded
+  // frame that greets later than the shell's 6 s wait is entered once more (#174).
+  const RELOAD_LIMIT = 3;
+  /** How many times the shell entered the frame again: at least one, within the bound. */
+  const reEntries = async (page: import("@playwright/test").Page): Promise<number> => {
+    const count = Number(await page.locator("html").getAttribute("data-frame-reloads"));
+    expect(count, "the shell's re-entries (data-frame-reloads)").toBeGreaterThanOrEqual(1);
+    expect(count, "the shell's re-entries (data-frame-reloads)").toBeLessThanOrEqual(RELOAD_LIMIT);
+    if (count > 1) {
+      test.info().annotations.push({
+        type: "issue",
+        description: `#174: the reloaded frame greeted late and the shell entered it ${count} times`,
+      });
+    }
+    return count;
+  };
 
   test("is loaded again, and the page works as if it had loaded the first time", async ({
     page,
@@ -160,7 +180,7 @@ test.describe("a frame whose load fails (D157, #66)", () => {
       await expect(page.locator("html")).toHaveAttribute("data-shell", "ready", {
         timeout: 45_000,
       });
-      await expect(page.locator("html")).toHaveAttribute("data-frame-reloads", "1");
+      await reEntries(page);
       await page.unrouteAll({ behavior: "wait" });
       const frame = page.frameLocator("iframe.mostra-frame");
       await expect(frame.getByTestId("mode")).toHaveText("live");
@@ -180,6 +200,59 @@ test.describe("a frame whose load fails (D157, #66)", () => {
     }
   });
 
+  test("is loaded again as often as it needs within the bound when the reloaded frame greets late (#174)", async ({
+    page,
+  }, info) => {
+    // A slow runner, made deterministic: the first load fails, and the reloaded frame's session
+    // read answers only after 12 s, so it greets past the shell's 6 s wait and the shell enters
+    // it once more. D157 item 1 allows that; the page then works as if it had loaded the first
+    // time. Pinning one re-entry failed this way on slow Windows runners (#174).
+    test.setTimeout(120_000);
+    const client = await Client.connect(run.socket);
+    try {
+      const own = await publishOwn(client, run.home, info);
+      let refused = 0;
+      const refuseOnce = async (route: import("@playwright/test").Route): Promise<void> => {
+        if (refused >= 1) return route.fallback();
+        refused += 1;
+        await route.abort("connectionrefused");
+        await page.unroute(enter, refuseOnce);
+      };
+      let delayed = 0;
+      const delayOnce = async (route: import("@playwright/test").Route): Promise<void> => {
+        if (delayed >= 1) return route.fallback();
+        delayed += 1;
+        await new Promise((resolve) => setTimeout(resolve, 12_000));
+        // The shell has replaced that frame by now, so its request may be gone.
+        await route.fallback().catch(() => undefined);
+      };
+      await page.route(enter, refuseOnce);
+      await page.route(sessionRead, delayOnce);
+      await gotoShell(page, await linkFor(client, own.artifactId, viewerName(info)));
+      await expect(page.locator("html")).toHaveAttribute("data-shell", "ready", {
+        timeout: 90_000,
+      });
+      expect(await reEntries(page)).toBeGreaterThanOrEqual(2);
+      await page.unrouteAll({ behavior: "ignoreErrors" });
+      const frame = page.frameLocator("iframe.mostra-frame");
+      await expect(frame.getByTestId("mode")).toHaveText("live");
+      const typing = await watchTyping(page, frame);
+      await frame.getByTestId("notes").fill("after a late greeting");
+      await frame.getByTestId("name").fill("Ana");
+      await typing.typed("notes", "after a late greeting");
+      await typing.typed("name", "Ana");
+      await saved(page);
+      await page.locator("#mostra-submit").click();
+      await expect(page.locator("#mostra-submit")).toHaveText("Submitted");
+      const done = (await results(client, own.artifactId)) as { answers: Record<string, unknown> };
+      expect(done.answers).toMatchObject({ notes: "after a late greeting", name: "Ana" });
+      expect(refused).toBe(1);
+      expect(delayed).toBe(1);
+    } finally {
+      client.close();
+    }
+  });
+
   test("isn't replaced when it greets while its new ticket is on its way (the GPT review of MT-02b)", async ({
     page,
   }, info) => {
@@ -191,7 +264,6 @@ test.describe("a frame whose load fails (D157, #66)", () => {
       // 4 and 8 s), and the shell asks for a ticket to load it again meanwhile; that request is
       // held until the frame has greeted, then answered.
       const started = Date.now();
-      const sessionRead = (url: URL): boolean => url.pathname === "/_mostra/session";
       const failForAWhile = async (route: import("@playwright/test").Route): Promise<void> => {
         if (Date.now() - started > 10_000) return route.fallback();
         await route.abort("connectionrefused");
@@ -216,10 +288,14 @@ test.describe("a frame whose load fails (D157, #66)", () => {
         timeout: 40_000,
       });
       await page.unroute(sessionRead, failForAWhile);
-      // The ticket that came after the greeting was dropped: the same frame stays, and works.
+      // Every ticket that came after the greeting was dropped: the same frame stays, and works.
+      // How many the shell asked for isn't the guarantee: a held ticket that ran out of its 10 s
+      // is an attempt of its own, so a slow runner asked for a third (#174). The bound is the
+      // first entry's and RELOAD_LIMIT more.
       await page.waitForTimeout(3_000);
       expect(await page.locator("iframe.mostra-frame").getAttribute("data-mostra-view")).toBe(view);
-      expect(tickets).toBe(2);
+      expect(tickets).toBeGreaterThanOrEqual(2);
+      expect(tickets).toBeLessThanOrEqual(1 + RELOAD_LIMIT);
       const frame = page.frameLocator("iframe.mostra-frame");
       await frame.getByTestId("notes").fill("kept in the frame that greeted");
       await saved(page);
@@ -325,6 +401,36 @@ test.describe("a frame whose load fails (D157, #66)", () => {
       await page.waitForTimeout(8_000);
       expect(refused).toBe(4);
       await page.unrouteAll({ behavior: "wait" });
+    } finally {
+      client.close();
+    }
+  });
+});
+
+test.describe("the suites' recovery when Playwright loses a ready frame (#135)", () => {
+  test("loading the shell's page afresh where it is keeps the view, what it saved, and a working Submit", async ({
+    page,
+  }, info) => {
+    const client = await Client.connect(run.socket);
+    try {
+      const own = await publishOwn(client, run.home, info);
+      const frame = await openInShell(
+        page,
+        await linkFor(client, own.artifactId, viewerName(info)),
+      );
+      await frame.getByTestId("name").fill("Ana");
+      await saved(page);
+      await reopenInShell(page);
+      const again = page.frameLocator("iframe.mostra-frame");
+      await expect(again.getByTestId("name")).toHaveValue("Ana");
+      const typing = await watchTyping(page, again);
+      await again.getByTestId("notes").fill("after a fresh load");
+      await typing.typed("notes", "after a fresh load");
+      await saved(page);
+      await page.locator("#mostra-submit").click();
+      await expect(page.locator("#mostra-submit")).toHaveText("Submitted");
+      const done = (await results(client, own.artifactId)) as { answers: Record<string, unknown> };
+      expect(done.answers).toMatchObject({ name: "Ana", notes: "after a fresh load" });
     } finally {
       client.close();
     }

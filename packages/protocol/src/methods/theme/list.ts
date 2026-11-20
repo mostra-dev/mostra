@@ -3,7 +3,7 @@ import { SourceRef } from "../../artifact.ts";
 import { defineMethod, type MethodDefinition } from "../../method.ts";
 import { wireRegistry } from "../../wire-registry.ts";
 
-/** The params of `theme/list` (INTERFACES §6, D179 item 6). */
+/** The params of `theme/list` (INTERFACES §6, D181 item 6). */
 export interface ThemeListParams {
   /** An artifact whose installed plugins' themes to list too, and whose stack to name. */
   readonly artifact?: SourceRef;

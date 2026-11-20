@@ -245,7 +245,7 @@ export interface FrameTicket extends ViewContext {
   /** On a remote server: what the hosted shell's trusted chrome shows around the page (D161). */
   readonly hosted?: HostedChrome;
   /**
-   * The host's look (`HomeConfig.look.variables`, D179 item 5): MCP Apps' style variables, which
+   * The host's look (`HomeConfig.look.variables`, D181 item 5): MCP Apps' style variables, which
    * the shell passes the page in its host context (`styles.variables`), as an MCP Apps host does.
    */
   readonly hostStyles?: { readonly variables: Readonly<Record<string, string>> };

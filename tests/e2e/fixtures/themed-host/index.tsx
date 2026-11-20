@@ -2,7 +2,7 @@ import { defineArtifact } from "@mostra/react";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 
-// The themed fixture, its stack naming the host's look over Studio (D179 item 5).
+// The themed fixture, its stack naming the host's look over Studio (D181 item 5).
 export const artifact = defineArtifact({ title: "Themed fixture", kit: { theme: ["studio", "host"] } });
 
 export default function Page() {

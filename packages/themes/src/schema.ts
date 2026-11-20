@@ -1,5 +1,5 @@
 /**
- * The JSON Schema of a theme layer (D179 items 3 and 4): what a plugin's `contributes.themes` file
+ * The JSON Schema of a theme layer (D181 items 3 and 4): what a plugin's `contributes.themes` file
  * holds, `@mostra/themes/theme.schema.json`. It is made from the format itself (the palette's roles
  * and the token contract), so it can't drift; `defineThemeLayer` stays the check that decides,
  * contrast included, which a schema can't express.
@@ -77,7 +77,7 @@ export function themeLayerSchema(): Record<string, unknown> {
     $schema: "http://json-schema.org/draft-07/schema#",
     $id: THEME_SCHEMA_ID,
     title: "Mostra theme layer",
-    description: `A theme, or a layer over one, of theme revision ${THEME_REVISION} (D179). A complete theme sets every palette role in both modes, its faces, radius and motion.`,
+    description: `A theme, or a layer over one, of theme revision ${THEME_REVISION} (D181). A complete theme sets every palette role in both modes, its faces, radius and motion.`,
     type: "object",
     required: ["revision", "id", "name", "description"],
     additionalProperties: false,
