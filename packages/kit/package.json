@@ -26,6 +26,11 @@
       "types": "./dist/questionnaire.d.ts",
       "default": "./dist/questionnaire.js"
     },
+    "./layout": {
+      "@mostra/source": "./src/layout.tsx",
+      "types": "./dist/layout.d.ts",
+      "default": "./dist/layout.js"
+    },
     "./kit.css": "./css/kit.css",
     "./registry/*": "./registry/*",
     "./package.json": "./package.json"

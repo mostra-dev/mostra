@@ -18,6 +18,7 @@ import {
 import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
 import { ArtifactId, VerifyVerdict } from "@mostra/protocol";
+import { ARTIFACT_THEMES } from "@mostra/themes";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
 import { skillSampleArtifact } from "../skill-samples.ts";
 import {
@@ -173,6 +174,30 @@ describe("WP-03's fixtures pass with no error or warning (AU-01, AU-02; the nega
       },
       VERIFY_MS,
     );
+  }
+
+  // Every kit part in both bases (KT-03), in every theme an artifact can name (KT-04): the Skill's
+  // specimen is the Base UI page, and its fixture twin the same page in Radix's idioms. Each
+  // type-checks under verify's strict check, builds, renders and passes axe with nothing to say.
+  for (const [base, specimen] of [
+    ["base", join(SKILL_EXAMPLES, "specimen")],
+    ["radix", join(FIXTURES, "specimen-radix")],
+  ] as const) {
+    for (const theme of Object.keys(ARTIFACT_THEMES)) {
+      it(
+        `renders every kit part in the ${base} base and the ${theme} theme`,
+        async () => {
+          const dir = join(tempDir(`verify-specimen-${base}-${theme}`), "specimen");
+          cpSync(specimen, dir, { recursive: true });
+          const verdict = await verify(dir, { theme });
+          expect(codes(verdict, "error")).toEqual([]);
+          expect(codes(verdict, "warning")).toEqual([]);
+          expect(verdict.status).toBe("pass");
+          expect(verdict.theme).toMatchObject({ stack: [theme] });
+        },
+        VERIFY_MS,
+      );
+    }
   }
 
   it(

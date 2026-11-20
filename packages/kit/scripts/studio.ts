@@ -168,6 +168,15 @@ export const CLASS_RULES: readonly ClassRule[] = [
 
 /** Whole class strings of one part, as shadcn writes them, and what the kit writes instead. */
 export const CLASS_CHANGES: readonly (readonly [from: string, to: string])[] = [
+  // A tinted badge's text: its tone mixed toward the text colour, so it holds 4.5:1 on its own
+  // tint over any card (the tone alone is 4.5:1 on the card, not on the tint).
+  [
+    '"bg-destructive/10 text-destructive focus-visible:ring-destructive/20 dark:bg-destructive/20 dark:focus-visible:ring-destructive/40 [a]:hover:bg-destructive/20"',
+    '"bg-destructive/10 text-[color-mix(in_oklab,var(--destructive)_72%,var(--foreground))] focus-visible:ring-destructive/20 dark:bg-destructive/20 dark:focus-visible:ring-destructive/40 [a]:hover:bg-destructive/20"',
+  ],
+  // The card's content: inset as its header and footer are (a single class, which the rules,
+  // reading class lists, leave alone).
+  ['cn("px-(--card-spacing)", className)', 'cn("px-(--card-pad-x)", className)'],
   // The button: the theme's radius, depth and heights, the press, and hover by mixing.
   [
     "group/button inline-flex shrink-0 items-center justify-center rounded-lg border border-transparent bg-clip-padding text-sm font-medium whitespace-nowrap transition-all outline-none select-none focus-visible:border-ring focus-visible:ring-3 focus-visible:ring-ring/50 active:not-aria-[haspopup]:translate-y-px disabled:pointer-events-none disabled:opacity-50 aria-invalid:border-destructive aria-invalid:ring-3 aria-invalid:ring-destructive/20 dark:aria-invalid:border-destructive/50 dark:aria-invalid:ring-destructive/40 [&_svg]:pointer-events-none [&_svg]:shrink-0 [&_svg:not([class*='size-'])]:size-4",
@@ -327,8 +336,34 @@ export const FILE_CHANGES: Readonly<Record<string, (code: string, base: string) 
     if (!code.includes(anchor)) throw new Error("badge.tsx no longer has its link variant.");
     return code.replace(
       anchor,
-      `${anchor}        accent: "bg-accent text-accent-foreground",\n        success: "bg-success/12 text-success",\n        warning: "bg-warning/12 text-warning",\n`,
+      `${anchor}        accent: "bg-accent text-accent-foreground",\n        success: "bg-success/12 text-[color-mix(in_oklab,var(--success)_72%,var(--foreground))]",\n        warning: "bg-warning/12 text-[color-mix(in_oklab,var(--warning)_72%,var(--foreground))]",\n`,
     );
+  },
+  // Radix's slider names its root, while a screen reader meets its thumbs (role slider): the
+  // name given to the slider (`aria-label`, `aria-labelledby`) is each thumb's too.
+  "components/ui/slider.tsx": (code, base) => {
+    if (base !== "radix") return code;
+    const params = "  max = 100,\n  ...props\n}";
+    const thumb = '        <SliderPrimitive.Thumb\n          data-slot="slider-thumb"\n';
+    if (!code.includes(params) || !code.includes(thumb)) {
+      throw new Error("slider.tsx (Radix) no longer has its props or its thumbs where expected.");
+    }
+    return code
+      .replace(
+        params,
+        '  max = 100,\n  "aria-label": ariaLabel,\n  "aria-labelledby": ariaLabelledBy,\n  ...props\n}',
+      )
+      .replace(
+        thumb,
+        `${thumb}          aria-label={ariaLabel}\n          aria-labelledby={ariaLabelledBy}\n`,
+      );
+  },
+  // A table wider than the page scrolls in its own frame, which the keyboard must reach too
+  // (axe's scrollable-region-focusable): it takes the focus.
+  "components/ui/table.tsx": (code) => {
+    const anchor = '      data-slot="table-container"\n';
+    if (!code.includes(anchor)) throw new Error("table.tsx no longer has its container.");
+    return code.replace(anchor, `${anchor}      tabIndex={0}\n`);
   },
 };
 

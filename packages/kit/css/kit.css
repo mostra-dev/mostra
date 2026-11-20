@@ -9,15 +9,16 @@
 
 /*
  * Dark is the device's setting unless the page chose light, or the page's own choice
- * (`<html data-appearance>`), as every Mostra surface follows it (D171 item 6).
+ * (`<html data-appearance>`), as every Mostra surface follows it (D171 item 6). It holds for the
+ * root itself too, so a theme layer can write its dark tokens as `:root { @variant dark { … } }`.
  */
 @custom-variant dark {
   @media (prefers-color-scheme: dark) {
-    &:where(:root:not([data-appearance="light"]) *) {
+    &:where(:root:not([data-appearance="light"]), :root:not([data-appearance="light"]) *) {
       @slot;
     }
   }
-  &:where([data-appearance="dark"] *) {
+  &:where([data-appearance="dark"], [data-appearance="dark"] *) {
     @slot;
   }
 }

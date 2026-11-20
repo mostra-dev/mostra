@@ -1,8 +1,15 @@
 /**
- * `@mostra/kit`: TODO, what this package gives artifact authors.
+ * `@mostra/kit`: Mostra's kit (D26, D27, D179). Its parts are files more than exports: the
+ * per-base registry (`registry/base/`, `registry/radix/`) that `@/components/ui/<name>` resolves
+ * into when the artifact has no copy of its own, and that `mostra add <name>` copies; Mostra's own
+ * modules, `@mostra/kit/questionnaire` and `@mostra/kit/layout`, the same in either base; and
+ * `kit.css`, the utilities every theme's stylesheet builds on. Themes are `@mostra/themes`.
  *
  * @packageDocumentation
  */
 
-/** The package name. A placeholder export: replace it with the package's real interface. */
-export const PACKAGE_NAME: string = "@mostra/kit";
+/** The kit's own modules, each `@mostra/kit/<name>` and the registry item `mostra-<name>`. */
+export const KIT_MODULES: readonly ["questionnaire", "layout"] = ["questionnaire", "layout"];
+
+/** The shadcn bases the kit carries a registry for (D27); `base`, Base UI, is the default (D72). */
+export const KIT_BASES: readonly ["base", "radix"] = ["base", "radix"];

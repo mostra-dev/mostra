@@ -113,9 +113,9 @@ describe("write this, not that (KT-08)", () => {
       "index.tsx",
       `import { motion } from "motion/react";
 import * as z from "zod";
-import { useTable } from "@tanstack/react-table";
+import { createColumnHelper, useTable } from "@tanstack/react-table";
 const string = { email: () => 1 };
-export const s = [z.email(), z.string().min(1).email(), string.email(), useTable];
+export const s = [z.email(), z.string().min(1).email(), string.email(), useTable, createColumnHelper];
 export const A = () => <div className="shrink-0 grow bg-linear-to-r bg-(--brand) shadow-sm">The flex-grow is fine in prose</div>;
 `,
     );

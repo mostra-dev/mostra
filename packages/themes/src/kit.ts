@@ -13,7 +13,7 @@ export interface KitStylesheetOptions {
 }
 
 /** Every Tailwind colour utility the kit's token contract makes (`bg-card`, `text-highlight`…). */
-const KIT_COLORS: readonly string[] = [...TAILWIND_COLORS, "destructive-foreground", "highlight"];
+const KIT_COLORS: readonly string[] = [...TAILWIND_COLORS, "highlight"];
 
 /** The utilities the token contract gives Tailwind: the colours, faces, radii, depths and eases. */
 const UTILITIES: readonly string[] = [

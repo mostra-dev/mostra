@@ -272,6 +272,12 @@
       "type": "registry:component",
       "title": "Questionnaire",
       "description": "Questions people answer, each answer a field: choices, scales, rankings, text, comments, sections and progress."
+    },
+    {
+      "name": "mostra-layout",
+      "type": "registry:component",
+      "title": "Page layout",
+      "description": "The page's frame in its theme: the page with its title, its sections and a row of figures."
     }
   ]
 }

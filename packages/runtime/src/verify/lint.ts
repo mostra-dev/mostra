@@ -81,7 +81,11 @@ const ZOD_FORMATS = new Set([
 ]);
 const ZOD_ISO = new Set(["datetime", "date", "time", "duration"]);
 
-/** TanStack Table 8's API, which version 9 keeps in `@tanstack/react-table/legacy`. */
+/**
+ * TanStack Table 8's API, which version 9 keeps in `@tanstack/react-table/legacy`. Version 9 has a
+ * `createColumnHelper` of its own (`<TFeatures, TData>`), so that name moves only beside one of
+ * version 8's others, in code written for version 8.
+ */
 const TABLE_LEGACY: Readonly<Record<string, string>> = {
   useReactTable: "useLegacyTable",
   createColumnHelper: "legacyCreateColumnHelper",
@@ -400,7 +404,8 @@ function lintScript(lint: FileLint, program: Node, base: "base" | "radix"): void
           specifier.type === "ImportSpecifier" &&
           Object.hasOwn(TABLE_LEGACY, ((specifier["imported"] as Node)["name"] as string) ?? ""),
       );
-      if (legacy.length === 0) continue;
+      const named = (specifier: Node): string => (specifier["imported"] as Node)["name"] as string;
+      if (legacy.every((specifier) => named(specifier) === "createColumnHelper")) continue;
       const kept = specifiers
         .filter((specifier) => !legacy.includes(specifier))
         .map((specifier) => lint.text.slice(specifier.start, specifier.end));

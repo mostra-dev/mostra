@@ -55,6 +55,13 @@ const KIT_ITEMS = [
     description:
       "Questions people answer, each answer a field: choices, scales, rankings, text, comments, sections and progress.",
   },
+  {
+    name: "mostra-layout",
+    module: "layout",
+    title: "Page layout",
+    description:
+      "The page's frame in its theme: the page with its title, its sections and a row of figures.",
+  },
 ] as const;
 
 /** The packages a file imports, by package name, without React. */

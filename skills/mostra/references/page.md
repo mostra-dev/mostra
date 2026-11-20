@@ -40,6 +40,7 @@ export const artifact = defineArtifact({
   description: "Approve or change the plan for next quarter.",
   family: "proposal",                      // questionnaire, proposal, prototype, review, dashboard, deck, demo, inbox, tasks, or your own word
   submission: { policy: "once" },         // see answers.md; the host running Mostra may override it
+  kit: { theme: "studio" },               // the look: a theme stack, and base: "radix" for Radix's parts (design.md)
   links: [{ rel: "round-of", artifact: "art_…" }],
   limits: { heapMb: 1024, watchdogMs: 10000, idleMinutes: 10 },
 });
@@ -74,8 +75,8 @@ The entry's default export then becomes the layout every page renders inside, re
 
 ## Styles and assets
 
-- Tailwind CSS 4 is always on: write utility classes, with no configuration file. Theme values live in CSS (`@theme`), as in [design.md](design.md).
-- Import your own CSS from the page (`import "./styles.css"`). A stylesheet that defines `@theme` or `@layer base` starts with `@import "tailwindcss";`.
+- Tailwind CSS 4 is always on: write utility classes, with no configuration file. The page's theme stack (`kit: { theme }`) gives it its colors, faces and shapes ([design.md](design.md#themes)).
+- A stylesheet of your own goes in the stack (`kit: { theme: ["studio", "./brand.css"] }`), where Tailwind reads it, so `@theme`, `@apply` and tokens work there. Plain CSS can also be imported from the page (`import "./extra.css"`); one imported that way that uses `@theme` or `@apply` starts with `@import "tailwindcss";`.
 - Files in `public/` are served at the root: `public/logo.svg` is `/logo.svg`. Use root-relative paths.
 - Fonts and images load from the artifact; a page makes no third-party request unless you write one.
 
