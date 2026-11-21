@@ -29,12 +29,14 @@ const HOOKS: Readonly<Record<string, ReadonlySet<string>>> = {
 /**
  * The kit's questionnaire (WP-18), by the module an artifact imports it from: the package, or its
  * copy in the artifact. Its answers are fields its parts' `id`s name (`<questionnaire>.<question>`,
- * with `.comment` and `.other` beside each), so the scan reads them from the JSX.
+ * with `.comment` and `.other` beside each), so the scan reads them from the JSX. Imported any other
+ * way, the build opens the coverage (`fieldHookUsePlugin`).
  */
-const QUESTIONNAIRE_MODULES = new Set([
+export const KIT_FIELD_MODULES: ReadonlySet<string> = new Set([
   "@mostra/kit/questionnaire",
   "@/components/mostra/questionnaire",
 ]);
+const QUESTIONNAIRE_MODULES = KIT_FIELD_MODULES;
 const QUESTIONNAIRE_PARTS = new Set(["Questionnaire", "Question"]);
 
 /** The fields a question's answer may be: the answer, its comment and an answer of its own. */

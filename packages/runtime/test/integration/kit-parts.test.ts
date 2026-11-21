@@ -4,7 +4,7 @@
  * (KT-05, #158). A suite of its own, apart from `verify.test.ts`, so neither group's machine runs
  * past its deadline (Windows arm64's `windows-verify` ran 14 minutes with them, REPO_STANDARDS §6).
  */
-import { cpSync, mkdirSync, writeFileSync } from "node:fs";
+import { cpSync, mkdirSync, readdirSync, readFileSync, writeFileSync } from "node:fs";
 import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
 import { VerifyVerdict } from "@mostra/protocol";
@@ -184,6 +184,201 @@ export default function Page() {
       expect(find(verdict, "MOSTRA_FIELD_UNBOUND").map((d) => d.message)).toEqual([
         expect.stringContaining('"Search"'),
       ]);
+    },
+    VERIFY_MS,
+  );
+
+  it(
+    "keeps a version's field coverage exact only where the scan saw the questionnaire's ids (Opus review 2)",
+    async () => {
+      // Each page also names a field of its own, so its coverage would otherwise be exact.
+      const page = (
+        imports: string,
+        body: string,
+      ): string => `import { defineArtifact, useField } from "@mostra/react";
+${imports}
+
+export const artifact = defineArtifact({ title: "Survey" });
+
+export function Note() {
+  const [note, setNote] = useField("note", "", { label: "Note" });
+  return <input aria-label="Note" value={note} onChange={(event) => setNote(event.currentTarget.value)} />;
+}
+
+${body}
+`;
+      const survey =
+        '<Questionnaire id="survey" title="Survey"><Question id="name" title="Your name"><TextAnswer /></Question></Questionnaire>';
+      const pages: Record<string, string> = {
+        seen: page(
+          'import { Question, Questionnaire, TextAnswer } from "@mostra/kit/questionnaire";',
+          `export default function Page() {\n  return ${survey};\n}`,
+        ),
+        lazy: page(
+          'import { lazy, Suspense } from "react";',
+          `const Survey = lazy(async () => {
+  const { Question, Questionnaire, TextAnswer } = await import("@mostra/kit/questionnaire");
+  return { default: () => ${survey} };
+});
+
+export default function Page() {
+  return <Suspense fallback={null}><Survey /></Suspense>;
+}`,
+        ),
+        registry: page(
+          "// @ts-expect-error: the registry's files are the kit's sources, not its typed entries\nimport { Question, Questionnaire, TextAnswer } from \"@mostra/kit/registry/base/components/mostra/questionnaire.tsx\";",
+          `export default function Page() {\n  return ${survey};\n}`,
+        ),
+      };
+      const coverage: Record<string, { open: boolean; reasons: string[]; ids: string[] }> = {};
+      for (const [name, text] of Object.entries(pages)) {
+        const dir = artifact(`coverage-${name}`, { "index.tsx": text });
+        const receipt = result(
+          await client.call("artifact/publish", { source: { path: dir }, force: true }, VERIFY_MS),
+        ) as { versionId: string };
+        const registry = JSON.parse(
+          readFileSync(join(home.home, "versions", receipt.versionId, "registry.json"), "utf8"),
+        ) as {
+          fields: { open: boolean; openReasons: { reason: string }[]; entries: { id?: string }[] };
+        };
+        coverage[name] = {
+          open: registry.fields.open,
+          reasons: registry.fields.openReasons.map((reason) => reason.reason),
+          ids: registry.fields.entries.flatMap((entry) =>
+            entry.id !== undefined ? [entry.id] : [],
+          ),
+        };
+      }
+      // Imported as the scan reads it: exact, with the question's fields.
+      expect(coverage["seen"]?.reasons).toEqual([]);
+      expect(coverage["seen"]?.open).toBe(false);
+      expect(coverage["seen"]?.ids).toContain("survey.name");
+      // Through import(), or a path into the kit's registry: the scan can't see the ids, so the
+      // version's coverage is open and says why, never exact without them.
+      for (const name of ["lazy", "registry"]) {
+        expect(coverage[name]?.open, name).toBe(true);
+        expect(coverage[name]?.reasons.join("\n"), name).toMatch(/the kit's questionnaire/);
+      }
+    },
+    VERIFY_MS,
+  );
+
+  it(
+    "resolves @/ with its query in code, and @/ in a stylesheet and in a theme layer (Opus review 3, 4)",
+    async () => {
+      const png = Buffer.from(
+        "89504e470d0a1a0a0000000d4948445200000001000000010806000000" +
+          "1f15c4890000000d4944415478da63f8cfc0f01f0005000201a5d2b6c90000000049454e44ae426082",
+        "hex",
+      );
+      const dir = artifact("at-paths", {
+        "index.tsx": `import { defineArtifact } from "@mostra/react";
+import notes from "@/notes.md?raw";
+import heroUrl from "@/hero.png?url";
+import "@/styles.css";
+
+export const artifact = defineArtifact({ title: "Paths", kit: { theme: ["studio", "./brand.css"] } });
+
+export default function Page() {
+  return (
+    <main>
+      <h1>Paths</h1>
+      <pre data-notes>{notes}</pre>
+      <img src={heroUrl} alt="Hero" width={1} height={1} />
+      <div className="banner">Banner</div>
+      <div className="brand">Brand</div>
+    </main>
+  );
+}
+`,
+        "notes.md": "# Notes from the raw import\n",
+        "styles.css": '@import "@/more.css";\n.banner { background: url("@/hero.png"); }\n',
+        "more.css": ".banner { min-height: 2rem; }\n",
+        "brand.css": '.brand { background-image: url("@/hero.png"); }\n',
+      });
+      writeFileSync(join(dir, "hero.png"), png);
+      const verdict = await verify(dir);
+      expect(codes(verdict, "error")).toEqual([]);
+      expect(codes(verdict, "warning")).toEqual([]);
+      const receipt = result(
+        await client.call("artifact/publish", { source: { path: dir } }, VERIFY_MS),
+      ) as { versionId: string };
+      const assets = join(home.home, "versions", receipt.versionId, "client", "assets");
+      const files = readdirSync(assets);
+      const text = (pattern: RegExp): string =>
+        files
+          .filter((file) => pattern.test(file))
+          .map((file) => readFileSync(join(assets, file), "utf8"))
+          .join("\n");
+      // `?raw` brought the file's text, `?url` its URL; the stylesheet's `@import` and both
+      // stylesheets' `url()`s reached the artifact's own files.
+      expect(text(/\.js$/)).toContain("# Notes from the raw import");
+      const css = text(/\.css$/);
+      expect(css).toContain("min-height:2rem");
+      expect(css).not.toContain("@/");
+      // The image is small enough to be inlined; either way both stylesheets' urls reached it.
+      const hero = /url\("?(?:\/assets\/hero-[^")]*\.png|data:image\/png;base64,[^")]+)"?\)/g;
+      expect(css.match(hero)?.length ?? 0).toBeGreaterThanOrEqual(2);
+    },
+    VERIFY_MS,
+  );
+
+  it(
+    "builds, verifies and shows a page that names no theme in the home's default stack, which names only what every page has (D181 item 5; Opus review 6, 13)",
+    async () => {
+      const dir = artifact("home-default", {
+        "index.tsx": `import { defineArtifact } from "@mostra/react";
+
+export const artifact = defineArtifact({ title: "Plain" });
+
+export default function Page() {
+  return <main><h1>Plain</h1></main>;
+}
+`,
+      });
+      // A connection initializes once: each setting of the home's look is a host's own.
+      const configure = async (look: Record<string, unknown>): Promise<Message> => {
+        const host = await connectTo(daemon.status.socket as string);
+        try {
+          return await host.call("mostra/initialize", initializeParams({ home: { look } }));
+        } finally {
+          host.close();
+        }
+      };
+      try {
+        // A file or a plugin's theme isn't on every page: refused now, not at the next publish.
+        for (const theme of [["studio", "./brand.css"], ["studio", "acme"], "acme"]) {
+          const refused = await configure({ theme });
+          expect(refused.error?.data.code, JSON.stringify(theme)).toBe(
+            "MOSTRA_HOST_INVALID_PARAMS",
+          );
+        }
+        expect((await configure({ theme: ["arcata", "host"] })).error).toBeUndefined();
+        const verdict = await verify(dir);
+        expect(codes(verdict, "error")).toEqual([]);
+        expect(verdict.theme).toEqual({ stack: ["arcata", "host"], default: true });
+        const listed = result(await client.call("theme/list", { artifact: { path: dir } })) as {
+          artifact: { stack: string[]; default: boolean };
+        };
+        expect(listed.artifact).toEqual({ stack: ["arcata", "host"], default: true });
+        const shown = result(await client.call("theme/show", { artifact: { path: dir } })) as {
+          id?: string;
+          stack: string[];
+          default: boolean;
+        };
+        expect([shown.id, shown.stack, shown.default]).toEqual([
+          "arcata",
+          ["arcata", "host"],
+          true,
+        ]);
+        // Another stack for one look is that stack, never a default.
+        const other = result(
+          await client.call("theme/show", { artifact: { path: dir }, theme: "studio" }),
+        ) as { stack: string[]; default: boolean };
+        expect([other.stack, other.default]).toEqual([["studio"], false]);
+      } finally {
+        expect((await configure({})).error).toBeUndefined();
+      }
     },
     VERIFY_MS,
   );

@@ -4,10 +4,10 @@
  * which puts the theme stack inside the build's one Tailwind run.
  */
 import { existsSync, readdirSync, readFileSync, statSync } from "node:fs";
-import { extname, join, relative } from "node:path";
+import { extname, isAbsolute, join, relative } from "node:path";
 import { HOST_TOKENS } from "@mostra/themes";
 import type { Plugin } from "vite";
-import { isUnder } from "../../platform/index.ts";
+import { isUnder, pathKey } from "../../platform/index.ts";
 import type { KitBuild } from "../types.ts";
 
 /** The extensions `@/…` tries, in the order Vite tries them for a relative import. */
@@ -50,18 +50,37 @@ export function kitResolvePlugin(sourceDir: string, kit: KitBuild): Plugin {
     name: "mostra:kit-resolve",
     enforce: "pre",
     resolveId(source) {
-      const module = kitModulePath(source);
-      if (!source.startsWith("@/") && module === undefined) return null;
-      const rest = module ?? source.slice(2).split("?")[0] ?? "";
+      // A query (`?raw`, `?url`, `?inline`, `?worker`) says how the file is taken: it stays on
+      // what this resolves to (Opus review of WP-18, finding 3).
+      const at = source.indexOf("?");
+      const [path, query] = at === -1 ? [source, ""] : [source.slice(0, at), source.slice(at)];
+      const rest = kitRest(sourceDir, path);
+      if (rest === undefined) return null;
       const own = findUnder(sourceDir, rest);
-      if (own !== undefined) return own;
+      if (own !== undefined) return own + query;
       if (kit.registry !== undefined) {
         const kitFile = findUnder(kit.registry, rest);
-        if (kitFile !== undefined) return kitFile;
+        if (kitFile !== undefined) return kitFile + query;
       }
       return null;
     },
   };
+}
+
+/**
+ * The artifact-relative path an import names under `@/…`: written so (`@/components/ui/button`),
+ * as a kit module (`@mostra/kit/questionnaire`), or as the `@/` alias rewrote it, an absolute path
+ * in the artifact's root (the alias is there for stylesheets, whose `@import` and `url()` Vite
+ * resolves without plugins). `undefined` for any other import.
+ */
+export function kitRest(sourceDir: string, path: string): string | undefined {
+  const module = kitModulePath(path);
+  if (module !== undefined) return module;
+  if (path.startsWith("@/")) return path.slice(2);
+  if (isAbsolute(path) && isUnder(path, sourceDir) && pathKey(path) !== pathKey(sourceDir)) {
+    return relative(sourceDir, path).split("\\").join("/");
+  }
+  return undefined;
 }
 
 /** A path for a CSS `@import` from the generated directory. */

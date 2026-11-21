@@ -101,9 +101,12 @@ export function withPackageUses(
   };
   const openReasons = [
     ...fields.openReasons,
-    ...[...new Set(uses.map((use) => packageOf(use.importer)))].map((name) => ({
-      reason: `the package ${name} uses @mostra/react's field hooks`,
-    })),
+    ...[
+      ...new Set(
+        uses.filter((use) => use.reason === undefined).map((use) => packageOf(use.importer)),
+      ),
+    ].map((name) => ({ reason: `the package ${name} uses @mostra/react's field hooks` })),
+    ...uses.flatMap((use) => (use.reason !== undefined ? [{ reason: use.reason }] : [])),
   ];
   return { ...fields, open: openReasons.length > 0, openReasons };
 }
@@ -168,6 +171,8 @@ export function baseConfig(
   request: Pick<BuildRequest, "stagingDir" | "kit">,
   sourceDir: string,
   plugins: PluginOption[],
+  /** Plugins that watch every import as written, so they run before the kit's resolution. */
+  observers: PluginOption[] = [],
 ): InlineConfig {
   return {
     root: request.stagingDir,
@@ -180,13 +185,18 @@ export function baseConfig(
     base: "/",
     mode: "production",
     resolve: {
+      // `@/…` in a stylesheet (`@import`, `url()`) as in code: Vite resolves a stylesheet's
+      // imports with its aliases and never a plugin (Opus review of WP-18, finding 4). The alias
+      // hands code's `@/…` on as a path in the artifact's root, which the kit's resolution below
+      // takes the same way, falling back to the kit's registry.
+      alias: [{ find: /^@\//, replacement: `${sourceDir}/` }],
       dedupe: ["react", "react-dom"],
     },
     // Settings given here are never searched for: no PostCSS config, from anywhere above the
     // home, is loaded or run (VR-01). Tailwind is a plugin of its own.
     css: { postcss: {} },
     // `@/…` is the artifact's root, then the kit's registry for its base (ROUND-3 §1.1).
-    plugins: [kitResolvePlugin(sourceDir, request.kit), ...plugins],
+    plugins: [...observers, kitResolvePlugin(sourceDir, request.kit), ...plugins],
   };
 }
 
@@ -301,22 +311,28 @@ export async function buildSpa(input: BuildRequest): Promise<BuildResponse> {
   }
   try {
     await build({
-      ...baseConfig(request, sourceDir, [
-        fieldHookUsePlugin(
-          {
-            sourceDir,
-            generatedDir: generated,
-            ...(runtimeDir ? { runtimeDir } : {}),
-            ...(kitDir ? { kitDir } : {}),
-          },
-          hookUses,
-        ),
-        confinePlugin(inputs),
-        mdxPlugin(),
-        serverClientStubPlugin(serverModules, sourceDir),
-        react(),
-        tailwind(),
-      ]),
+      ...baseConfig(
+        request,
+        sourceDir,
+        [
+          confinePlugin(inputs),
+          mdxPlugin(),
+          serverClientStubPlugin(serverModules, sourceDir),
+          react(),
+          tailwind(),
+        ],
+        [
+          fieldHookUsePlugin(
+            {
+              sourceDir,
+              generatedDir: generated,
+              ...(runtimeDir ? { runtimeDir } : {}),
+              ...(kitDir ? { kitDir } : {}),
+            },
+            hookUses,
+          ),
+        ],
+      ),
       // The artifact's public/ is served as-is at the root (INTERFACES §2.1).
       publicDir: join(sourceDir, "public"),
       build: {
