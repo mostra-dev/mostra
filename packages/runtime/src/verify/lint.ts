@@ -517,7 +517,13 @@ function lintScript(lint: FileLint, program: Node, base: "base" | "radix"): void
       lintClassList(lint, lint.text.slice(node.start + 1, node.end - 1), node.start + 1);
     } else if (node.type === "TemplateLiteral") {
       for (const quasi of node["quasis"] as Node[]) {
-        lintClassList(lint, lint.text.slice(quasi.start, quasi.end), quasi.start);
+        // A template element's span takes in its delimiters (the backtick, `${`, `}`): the text
+        // between them is its raw value (Opus review of WP-18, finding 10).
+        const raw = (quasi["value"] as { readonly raw?: string } | undefined)?.raw ?? "";
+        if (raw === "") continue;
+        const at = lint.text.slice(quasi.start, quasi.end).indexOf(raw);
+        if (at === -1) continue;
+        lintClassList(lint, raw, quasi.start + at);
       }
     } else if (node.type === "ObjectExpression") {
       for (const property of node["properties"] as Node[]) {
@@ -561,19 +567,27 @@ function lintScript(lint: FileLint, program: Node, base: "base" | "radix"): void
   visit(program);
 }
 
-/** Tailwind 3's directives in a stylesheet: one `@import "tailwindcss";` in Tailwind 4. */
+/**
+ * Tailwind 3's directives in a stylesheet: one `@import "tailwindcss";` in Tailwind 4, or nothing
+ * in a layer of the theme stack, which joins the build's one Tailwind run already: importing
+ * Tailwind there would run its reset again after the theme's own rules (Opus review of WP-18,
+ * finding 7).
+ */
 function lintStylesheet(lint: FileLint, layers: ReadonlySet<string>): void {
+  const layer = layers.has(lint.file);
   const directives = [...lint.text.matchAll(/@tailwind\s+(base|components|utilities)\s*;/g)];
   directives.forEach((directive, index) => {
     lint.report(
       "Tailwind CSS 4",
-      '`@tailwind` directives are one `@import "tailwindcss";` in Tailwind CSS 4; the old ones do nothing.',
+      layer
+        ? "`@tailwind` directives do nothing in Tailwind CSS 4, and a layer of kit.theme is in the build's Tailwind run already: they go."
+        : '`@tailwind` directives are one `@import "tailwindcss";` in Tailwind CSS 4; the old ones do nothing.',
       directive.index,
       directive.index + directive[0].length,
-      index === 0 ? '@import "tailwindcss";' : "",
+      index === 0 && !layer ? '@import "tailwindcss";' : "",
     );
   });
-  if (directives.length > 0 || layers.has(lint.file)) return;
+  if (directives.length > 0 || layer) return;
   // Tailwind's directives in a stylesheet Tailwind never processes: neither a layer of the theme
   // stack (which joins the build's one Tailwind run) nor a stylesheet that imports Tailwind.
   const comments = lint.text.replace(/\/\*[\s\S]*?\*\//g, (comment) => " ".repeat(comment.length));

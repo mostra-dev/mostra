@@ -130,6 +130,37 @@ export const A = () => <div className="shrink-0 grow bg-linear-to-r bg-(--brand)
     expect(tailwind4Class("shrink-0")).toBeUndefined();
     expect(tailwind4Class("bg-[#fff]")).toBeUndefined();
   });
+
+  it("finds the first and the last class of a template's text, and fixes each in place (Opus review 10)", async () => {
+    const before =
+      "export const A = ({ x }: { x: string }) => (\n  <div className={`flex-shrink-0 p-2 ${x} bg-gradient-to-r`} />\n);\n";
+    const result = await fixed("index.tsx", before);
+    expect(result.found.map((d) => d.message)).toEqual([
+      expect.stringContaining("`flex-shrink-0`"),
+      expect.stringContaining("`bg-gradient-to-r`"),
+    ]);
+    expect(result.text).toBe(
+      "export const A = ({ x }: { x: string }) => (\n  <div className={`shrink-0 p-2 ${x} bg-linear-to-r`} />\n);\n",
+    );
+    expect(result.again).toEqual([]);
+  });
+
+  it("deletes Tailwind 3's directives from a layer of the theme stack, which imports nothing (Opus review 7)", async () => {
+    const root = tempDir("lint-layer-directives");
+    const text = "@tailwind base;\n@tailwind utilities;\n.brand { color: red; }\n";
+    writeFileSync(join(root, "brand.css"), text);
+    const found = (await lintArtifact(root, "base", ["brand.css"])).diagnostics;
+    expect(found.map((d) => d.code)).toEqual([
+      "MOSTRA_LINT_API_CHANGED",
+      "MOSTRA_LINT_API_CHANGED",
+    ]);
+    const after = applyFixes(
+      text,
+      found.flatMap((d) => (d.fix !== undefined ? [d.fix] : [])),
+    );
+    expect(after.text).not.toContain("tailwindcss");
+    expect(after.text).toBe("\n\n.brand { color: red; }\n");
+  });
 });
 
 describe("Tailwind CSS that Tailwind never reads (MOSTRA_KIT_CSS_UNPROCESSED)", () => {
