@@ -1003,10 +1003,15 @@ describe("every command, with --json and no terminal", () => {
   it("verify --fix writes the new form of every changed API and the base's own idiom, then passes (KT-08)", async () => {
     const dir = join(home.root, "churned");
     mkdirSync(dir, { recursive: true });
+    // The smoke test is off: this checks the lint, the type check and the fixes, and each of the
+    // four verifies would otherwise spend its smoke budget clicking the dialog (clients ran past
+    // its deadline on macOS with it, WP-18's ci:full run 44914565149).
     const page = `import * as z from "zod";
-import { useField } from "@mostra/react";
+import { defineArtifact, useField } from "@mostra/react";
 import { Button } from "@/components/ui/button";
 import { Dialog, DialogContent, DialogTitle, DialogTrigger } from "@/components/ui/dialog";
+
+export const artifact = defineArtifact({ title: "Churned", verify: { smoke: false } });
 
 const Email = z.string().email();
 

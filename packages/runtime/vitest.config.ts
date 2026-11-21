@@ -43,6 +43,7 @@ const REMOTE_HOSTING = [
   "test/integration/team-hosted.test.ts",
 ];
 const SIGNIN_FACTS = "test/integration/signin-facts.test.ts";
+const ANONYMOUS_VOLUME = "test/integration/anonymous-volume.test.ts";
 const OPERATOR_RELAY = "test/integration/operator-relay.test.ts";
 const REMOTE_ACCESS = [
   "test/integration/operator.test.ts",
@@ -51,7 +52,7 @@ const REMOTE_ACCESS = [
   "test/integration/remote-mcp-apps.test.ts",
   "test/integration/signin.test.ts",
   "test/integration/hosted-rules.test.ts",
-  "test/integration/anonymous-volume.test.ts",
+  ANONYMOUS_VOLUME,
   "test/integration/remote-mcp-conformance.test.ts",
   "test/integration/server-pages.test.ts",
   "test/integration/signout.test.ts",
@@ -104,8 +105,12 @@ export const INTEGRATION_GROUPS: Record<string, { include: string[]; exclude: st
     exclude: [],
   },
   // The remote server and the relay (WP-29), as `remote` is on macOS and Linux.
+  // The anonymous-volume suite (about 100 s) runs in `windows-extensions`: `windows-remote` reached
+  // its 14 minutes on a slow Windows arm64 runner with it (WP-18's ci:full run 44914565149).
   "windows-remote": {
-    include: REMOTE.filter((file) => file !== SIGNIN_FACTS && file !== OPERATOR_RELAY),
+    include: REMOTE.filter(
+      (file) => file !== SIGNIN_FACTS && file !== OPERATOR_RELAY && file !== ANONYMOUS_VOLUME,
+    ),
     exclude: [],
   },
   "windows-publish": {
@@ -155,7 +160,7 @@ export const INTEGRATION_GROUPS: Record<string, { include: string[]; exclude: st
   "windows-verify": { include: ["test/integration/verify.test.ts"], exclude: [] },
   // WP-18: the kit through verify, a suite of its own, in the lighter of the verify groups.
   "windows-verify-failures": { include: [VERIFY_FAILURES, KIT_PARTS], exclude: [] },
-  "windows-extensions": { include: [...EXTENSIONS, DEV], exclude: [] },
+  "windows-extensions": { include: [...EXTENSIONS, DEV, ANONYMOUS_VOLUME], exclude: [] },
   "windows-clients": { include: [], exclude: [] },
 };
 const group = process.env["MOSTRA_TEST_GROUP"];
