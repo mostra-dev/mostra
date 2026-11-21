@@ -103,4 +103,40 @@ One independent review of `git diff origin/main...wp/18-kit` under D172 item 0: 
 - **The fifth** (44810820842, on `4da90fc1`): green on every job and leg, Windows arm64 and the six-platform release rehearsal included.
 - **The sixth** (44914565149, after the review's fixes): the hook watcher of finding 2 resolved every import itself, and a confined import's refusal came back as `MOSTRA_BUILD_FAILED` (`publish.test.ts` finding 5, `ancestors.test.ts`): it now follows only imports that can name the kit and leaves every refusal to the build. The CLI's `--fix` contract test took 335 s of four verifies' smoke tests, past macOS `clients`' deadline: its page turns the smoke test off (38 s). Windows arm64's `windows-remote` reached its 14 minutes on a slow runner: the anonymous-volume suite runs in `windows-extensions` on Windows.
 - **The seventh** (44919847696): two failures, neither of WP-18's code. #194's keyboard-only case in `surfaces.spec.ts` on macOS Chromium, recorded there; and Windows arm64's `windows-clients` at its deadline with the TypeScript reference host's conformance suite still running, a suite that takes 680 to 700 s there on `main` too: filed as #225, and the kit now runs in a Windows group of its own (`windows-conformance`).
+- **The eighth** (44925804016): every job green, Windows arm64's `windows-conformance` included, but `surfaces.spec.ts`'s dark case on macOS Chromium: #152's step (the frame's radio after the sign-in returned, waited 526 times), recorded there.
+- **The ninth** (44935374752, on `efbd2377`, with the plugin theme's face fixed): green on every job and leg.
+- **`main`'s nightly run** (44898874910, before this package) failed once on macOS WebKit: the remote server of `surfaces.spec.ts` couldn't bind the port its spec had probed (`EADDRINUSE`). The suites' servers took a port by listening and closing at once, then started a daemon, whose short-lived listeners use the same range, before the server bound it; and `surfaces.spec.ts` probed two ports that way, which could be the same one. Filed as #226 and fixed here: `reserveShortLivedPort()` holds each port until just before its server starts.
 - **A pre-push run:** MT-05's `data-marks.test.ts` compared two millisecond timestamps of an open and a close that landed in the same millisecond under load; the close now waits for a later millisecond, the check as strict as before.
+
+## Deviations
+
+- **Studio is opinionated, not quiet.** D141 item 1 and D171 item 3 had it quiet; D181 (M86) makes it the editorial direction, with Arcata beside it, and keeps every value overridable (D68).
+- **The questionnaire is built on native inputs, not shadcn's Questionnaire primitive** (ROUND-3 §1.4). The primitive submits its own form and keeps its steps' state itself, which clashes with the trusted Submit and with answers that live in fields; native radios, checkboxes and inputs work in either base and bind through `useField` (D181 item 10).
+- **The Skill's `assets/studio.css` and its examples' copies are gone** (D162 item 1). A theme is built into each version from the manifest's stack, so no stylesheet is copied (D181 item 2); `tailwindStylesheet` stays exported, deprecated.
+- **The kit vendors shadcn's CLI output, not its registry's JSON.** The raw items carry an icon placeholder and style markers the CLI rewrites on install, so the kit pins what `shadcn add` writes for both styles (`upstream/shadcn/`, README there), and #219 covers raw items by URL.
+- **The shell and the server's own pages wear `frame`, not Studio** (D181 item 8, amending D171 item 2), and a page follows its frame's light or dark (D181 item 9).
+- **`mostra add <name>`** routes a bare name that is a kit item to the kit, asking the instance which names those are (`pack/kit`, additive); any other stays an npm package (D181 items 7 and 13).
+- **Ledger migration 19 is this package's** (field options); WP-34's planned migration is 20 (DATA_MODEL, ORGANIZATION-HOMES, WP-34's specification).
+- **Size budgets** raised for `@mostra/protocol` and `@mostra/react` (D181 item 12); `@mostra/kit`'s modules have budgets of their own.
+- **CI's groups** were rebalanced for the kit suite and the theme every build now carries (REPO_STANDARDS §6), and the conformance kit has a Windows group of its own (#225).
+
+## Untested boundaries
+
+- **Plugin themes from a real registry:** a theme plugin installs from the suites' local registry through the real install child; npm itself, and a marketplace, aren't in this package (D181 item 4 leaves the marketplace for later).
+- **Real chat hosts with kit pages:** the MCP Apps path is the ext-apps reference host in three engines (`mcp-apps.spec.ts`), not Claude Desktop or another host again (WP-17 ran Claude Desktop).
+- **Real Safari and a real phone:** WebKit and the 390 px viewport only.
+- **Screen readers:** the kit's parts pass axe in both bases and themes; no VoiceOver pass.
+- **Agents writing with the kit:** no live-model evaluation ran (D34); WP-27 re-runs EVAL-01 on the real toolchain.
+- **`mostra add` of shadcn's raw `base-nova` and `radix-nova` items by URL:** #219, on WP-19's milestone.
+
+## Issues at the closeout
+
+| Issue | State | What was done |
+|---|---|---|
+| #158 | Closed by #215 | Verify judges a control unbound only when its value changed |
+| #159 | Closed by #215 | The kit's optional single choice offers "Clear my answer" |
+| #225 | Closed by #215 | The conformance kit runs in `windows-conformance` on Windows |
+| #226 | Closed by #215 | A remote server's ports are held until it starts |
+| #219 | Open, WP-19 | Raw shadcn items by URL keep their placeholders; in WP-19's specification |
+| #220 | Open, no milestone | A worker's command line read through PowerShell once waited 40 s on Windows arm64; no package here touches it (D155 item 7) |
+| #152, #194 | Open, WP-20 | Their occurrences in this package's runs recorded on each |
