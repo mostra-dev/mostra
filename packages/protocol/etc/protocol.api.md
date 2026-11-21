@@ -1362,6 +1362,9 @@ export const FIELD_ID_MAX_LENGTH = 256;
 export const FIELD_OPTIONS_MAX = 200;
 
 // @public
+export const FIELD_OPTIONS_MAX_BYTES: number;
+
+// @public
 export interface FieldConflict {
     readonly deleted?: true;
     readonly id: string;
@@ -2426,6 +2429,20 @@ export interface PackItemSummary {
     readonly requiredBy?: string;
     readonly source: string;
     readonly type: string;
+}
+
+// @public
+export const packKitMethod: MethodDefinition<PackKitParams, PackKitResult>;
+
+// @public
+export interface PackKitParams {
+    readonly artifact?: SourceRef;
+}
+
+// @public
+export interface PackKitResult {
+    readonly base: "base" | "radix";
+    readonly items: readonly string[];
 }
 
 // @public

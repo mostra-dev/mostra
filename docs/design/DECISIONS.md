@@ -98,6 +98,7 @@
 | M91 | 2026-11-19T22:59:34Z | Answered the second review page: Arcata (flat fields of colour, round shapes, bold Jost, a choice filling with blu) replaces Atelier as the second theme's direction, "very good in dark mode", but needs a second pass: softer panels in light, a chosen option readable under the pointer, menu highlights concentric with their popup, a tighter dialog, a better select; and in both themes the tab indicator should move rather than jump. Recorded under D181. |
 | M92 | 2026-11-20T03:31:20Z | On the shell and a server's own pages wearing the new Studio: "I _really_ love the current (unchanged) look of the shell … I trust you there." |
 | M93 | 2026-11-20T08:53:21Z | Accepted WP-18's agent-facing and viewer-facing prose ahead of the package's end (D149): "Btw, you have my acceptance for the prose, no need for a review." The diagnostic hints and docs of the `KIT` and `LINT` areas, the questionnaire's own words, the Skill's design and library references and the package's AGENTS.md and README files are accepted as the session writes them. Recorded under D181. |
+| M94 | 2026-11-21T12:01:50Z | After the Opus review of WP-18 was posted: "I think Opus is enough for this WP" (D172 item 0's one review); and of the final review screens (the specimen, a decision, an inbox and a dashboard, in Studio and Arcata): "I absolutely love the pages, approved and accepted!" Recorded under D181. |
 | M38 | 2026-10-24T18:18:49Z | Accepted WP-W2 after its release, and delegated the three open points of its closeout ("I trust you to make the most robust, high-quality, well-thought decisions on all the points you mentioned"): Firefox on Windows arm64, the slow-flush hypothesis of #66, and the Mostra HQ roadmap update. Recorded under D151. |
 | M37 | 2026-10-24T09:53:18Z | Accepted the WP-W2 candidate and D151 ("Approved!"), and started its Claude Opus review; the review's ten findings were fixed under D151 before the merge (D149, D151). Recorded as D151. |
 | M36 | 2026-10-23T17:08:27Z | Accepted WP-W1 after its Claude Opus review: "100% approved", D150 and the package's agent-facing prose with it (D149), and allowed the matching Mostra HQ update. Recorded as D150. |
@@ -1757,7 +1758,7 @@ WP-28 designs and WP-30 builds, in the hosted shell on its trusted origin and ne
 
 *Rejected:* a generated stylesheet copied into each artifact (theme updates never reach it, regenerating it loses the agent's edits, and swapping a layer means rewriting it; D171 rejected two copies of one fact); Studio applied with nothing saying so; a partial first layer completed silently by Studio; a chat host's look always overriding the page's chosen theme.
 
-*Source:* M86, M87, M88, M89, M90, M91, M92; the package's prose accepted as written at M93 (D149).
+*Source:* M86, M87, M88, M89, M90, M91, M92; the package's prose accepted as written at M93 (D149); the final screens accepted, and one Opus review judged enough, at M94.
 
 ## Research consensus adopted
 
