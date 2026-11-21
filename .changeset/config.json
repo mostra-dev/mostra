@@ -11,6 +11,7 @@
     [
       "@mostra/cli",
       "@mostra/conformance",
+      "@mostra/kit",
       "@mostra/mcp",
       "@mostra/plugin-mcp-app",
       "@mostra/protocol",

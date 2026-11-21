@@ -62,10 +62,12 @@ import {
   type Dependencies,
   type DependencyTarget,
   lockKey,
+  parseLock,
   type Resolution,
 } from "../deps/index.ts";
 import { type Faults, noFaults } from "../faults.ts";
 import type { Gate } from "../gate.ts";
+import { contributedThemes, kitBuildFor, kitVersionOf } from "../kit/index.ts";
 import {
   InflightRequests,
   type Ledger,
@@ -119,6 +121,11 @@ export interface PublisherOptions {
   readonly faults?: Faults;
   /** The home's submission policy (`HomeConfig.submission`, D102), read at each publish. */
   readonly homePolicy?: () => SubmissionPolicy | undefined;
+  /**
+   * The theme stack a page that names none wears in this home (`HomeConfig.look.theme`, D181
+   * item 5), read at each publish and verify; absent, Studio.
+   */
+  readonly homeTheme?: () => string | readonly string[] | undefined;
   /** The verifier, made on first use: publish's gate and `artifact/verify` (D41, D138). */
   readonly verifier: () => Verifier;
   /**
@@ -496,6 +503,7 @@ export function createPublisher(options: PublisherOptions): Publisher {
     provisional: string,
     identityKnown: boolean,
     staging: string,
+    themeOverride?: string | readonly string[],
   ): Promise<Staged> => {
     // 1. Snapshot, then read the manifest from the snapshot: what is built is what was read.
     const files = await listSource(source);
@@ -531,9 +539,30 @@ export function createPublisher(options: PublisherOptions): Publisher {
 
     // 3. Digests (DATA_MODEL §2).
     const sourceDigest = listingDigest(listed);
+    // The kit and the theme stack (D181): the stack is the manifest's, so the snapshot's digest
+    // covers it and the artifact's own layers; the kit's registry is the layout's, named by its
+    // version; the theme's stylesheet is this release's `@mostra/themes`, named by Mostra's.
+    // `verify --theme` builds in another stack for that run only (D181 item 6): the theme's
+    // digest below covers the stack built, so its verdict is never a publish's.
+    // A page that names no theme wears the home's default (a host's, D181 item 5), else Studio.
+    const homeTheme = options.homeTheme?.();
+    const { kit, theme } = kitBuildFor({
+      manifest,
+      ...(homeTheme !== undefined ? { homeTheme } : {}),
+      ...(themeOverride !== undefined ? { override: themeOverride } : {}),
+      sourceDir: join(staging, "source"),
+      nodeModules: deps.nodeModules,
+      // Themes the artifact's plugins contribute (D181 item 4), from the layout the build reads.
+      contributed: contributedThemes(deps.nodeModules, parseLock(deps.lock).plugins ?? []),
+    });
     const environment: BuildEnvironment = {
       mostraVersion: options.runtimeVersion,
-      kitVersion: null,
+      kitVersion: kitVersionOf(deps.nodeModules),
+      themeDigest: sha256Hex(
+        [kit.themeCss, ...kit.themeFiles, kit.host ?? "", themeOverride ? "requested" : ""].join(
+          "\0",
+        ),
+      ),
       kitBase: manifest.kit?.base ?? "base",
       mode: manifest.mode ?? "spa",
       lockDigest: deps.lockDigest,
@@ -550,13 +579,20 @@ export function createPublisher(options: PublisherOptions): Publisher {
         stagingDir: staging,
         sourceDir: source.root,
         manifest,
-        warnings: extracted.warnings,
+        warnings: [...extracted.warnings, ...theme.warnings],
         artifactId,
         identityKnown,
         sourceDigest,
         envDigest,
         versionId,
         nodeModules: deps.nodeModules,
+        kit,
+        theme: {
+          stack: theme.stack,
+          // The page named none: it wears the home's default, or Studio.
+          default: theme.default,
+          ...(themeOverride !== undefined ? { requested: true } : {}),
+        },
       },
       source,
       listed,
@@ -581,6 +617,7 @@ export function createPublisher(options: PublisherOptions): Publisher {
       versionId: prepared.versionId,
       nodeModules: staged.deps.nodeModules,
       outDir: out,
+      kit: prepared.kit,
     });
     if (!built.ok) return { ok: false, diagnostics: built.diagnostics };
     faults.at("publish:after-build");
@@ -690,12 +727,12 @@ export function createPublisher(options: PublisherOptions): Publisher {
         progress?.("prepare");
         let ready: Staged;
         try {
-          ready = await prepare(path, source, provisional, identityKnown, staging);
+          ready = await prepare(path, source, provisional, identityKnown, staging, params.theme);
         } catch (error) {
           // A manifest or the dependencies that can't be read are the verdict, not a failure of verify.
           if (
             error instanceof RpcError &&
-            /^MOSTRA_(MANIFEST|DEP|ARTIFACT|BUILD|PLUGIN|LICENSE)_/.test(error.diagnostic.code)
+            /^MOSTRA_(MANIFEST|DEP|ARTIFACT|BUILD|PLUGIN|LICENSE|KIT)_/.test(error.diagnostic.code)
           ) {
             return failedVerdict(path, error.diagnostic);
           }

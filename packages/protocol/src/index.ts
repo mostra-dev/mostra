@@ -86,6 +86,7 @@ export {
   type SubmitBlocker,
   type UiInitializeParams,
   type UiInitializeResult,
+  uiHostContextChanged,
   uiInitialize,
   uiInitialized,
   uiOpenLink,
@@ -170,10 +171,14 @@ export {
   homeDiagnosticCodes,
   hostDiagnosticCodes,
   hygieneDiagnosticCodes,
+  type KitDiagnosticCode,
   type KnownDiagnosticCode,
+  kitDiagnosticCodes,
   type LicenseDiagnosticCode,
+  type LintDiagnosticCode,
   type LiveDiagnosticCode,
   licenseDiagnosticCodes,
+  lintDiagnosticCodes,
   liveDiagnosticCodes,
   type ManifestDiagnosticCode,
   manifestDiagnosticCodes,
@@ -221,6 +226,7 @@ export {
   DiagnosticPhase,
   DiagnosticSeverity,
 } from "./diagnostics/diagnostic.ts";
+export { type AppliedFixes, applyFixes } from "./diagnostics/fixes.ts";
 export {
   type AreaCatalog,
   DEFAULT_DOCS_BASE,
@@ -278,8 +284,11 @@ export {
   EventRecord,
   EventTypePattern,
   FIELD_ID_MAX_LENGTH,
+  FIELD_OPTIONS_MAX,
+  FIELD_OPTIONS_MAX_BYTES,
   FieldConflict,
   FieldOp,
+  FieldOption,
   type FieldScope,
   FieldState,
   isFieldId,
@@ -302,6 +311,7 @@ export {
   type ArtifactFamily,
   ArtifactLink,
   ArtifactManifest,
+  DEFAULT_THEME_STACK,
   type DemoSpec,
   HOSTED_OFFLINE_LIMIT_DEFAULT,
   HOSTED_OFFLINE_LIMIT_MAX_MS,
@@ -312,6 +322,11 @@ export {
   TALLY_CHOICES_MIN,
   TallySpec,
   type TerminalSpec,
+  THEME_STACK_MAX,
+  type ThemeStackEntry,
+  themeStackEntry,
+  themeStackOf,
+  themeStackProblem,
 } from "./manifest.ts";
 export {
   APP_TOOLS,
@@ -489,6 +504,7 @@ export {
   ClientInfo,
   DependencyPolicy,
   HomeConfig,
+  HostLook,
   InstanceCapabilities,
   InstanceInfo,
   type MostraInitializeParams,
@@ -508,6 +524,7 @@ export {
   type PackItemSummary,
   packAddMethod,
 } from "./methods/pack/add.ts";
+export { type PackKitParams, type PackKitResult, packKitMethod } from "./methods/pack/kit.ts";
 export {
   type PluginAddParams,
   type PluginAddResult,
@@ -738,6 +755,18 @@ export {
   statePatchMethod,
 } from "./methods/state/patch.ts";
 export {
+  type ThemeListParams,
+  type ThemeListResult,
+  ThemeSummary,
+  themeListMethod,
+} from "./methods/theme/list.ts";
+export {
+  type ThemeShowParams,
+  type ThemeShowResult,
+  type ThemeShowValues,
+  themeShowMethod,
+} from "./methods/theme/show.ts";
+export {
   type ViewDefaultParams,
   type ViewDefaultResult,
   viewDefaultMethod,
@@ -875,6 +904,7 @@ export {
   VERIFY_RUNNER_METHODS,
   type VerdictAria,
   type VerdictScreenshot,
+  type VerdictTheme,
   VerifyVerdict,
   type VerifyViewport,
   viewportsFor,

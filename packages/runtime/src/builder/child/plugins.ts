@@ -12,6 +12,7 @@ import remarkGfm from "remark-gfm";
 import type { Plugin } from "vite";
 import { isUnder, pathKey } from "../../platform/index.ts";
 import type { ServerFunctionEntry } from "../types.ts";
+import { KIT_FIELD_MODULES } from "./fields.ts";
 import { SCRIPT, startsWithUseServer } from "./scan.ts";
 
 /** Compiles `.mdx` files to JavaScript with React's JSX runtime, frontmatter removed (MDX 3). */
@@ -39,39 +40,113 @@ export function mdxPlugin(): Plugin {
 export interface FieldHookUse {
   /** The importing module's path, relative to the build's `node_modules` when it is a package. */
   readonly importer: string;
+  /** Why the version's coverage is open, when it isn't the package's own use of the hooks. */
+  readonly reason?: string;
 }
 
 /**
  * Records every module outside the artifact that imports `@mostra/react` or `@mostra/react/form`
  * (D109): such a package may name fields the artifact's scan can't see, so the version's coverage
- * is open. `@mostra/react` itself and Mostra's generated files don't count. It resolves nothing.
+ * is open. `@mostra/react` itself and Mostra's generated files don't count. Nor does the kit, whose
+ * fields the scan reads from the `id`s the artifact gives its parts (WP-18), but only where the
+ * scan saw how its parts are used: a kit module with field hooks that is reached any other way (an
+ * `import()`, a path into the kit's registry, a package that wraps it) opens the coverage too
+ * (Opus review of WP-18, finding 2). It resolves nothing for the build.
  */
 export function fieldHookUsePlugin(
   roots: {
     readonly sourceDir: string;
     readonly generatedDir: string;
     readonly runtimeDir?: string;
+    readonly kitDir?: string;
   },
   uses: FieldHookUse[],
 ): Plugin {
   const inside = (file: string, dir: string | undefined): boolean =>
     dir !== undefined && isUnder(file, dir);
+  const real = (file: string): string => (existsSync(file) ? realpathSync(file) : file);
+  // The kit's modules that use the field hooks, and every import that reached a kit module.
+  const kitHookModules = new Set<string>();
+  const kitImports: { importer: string; source: string; kind: string; target: string }[] = [];
+  // An import as the artifact wrote it: the `@/` alias hands `@/…` on as a path in its root.
+  const specifierOf = (source: string): string => {
+    const path = source.split("?")[0] ?? source;
+    if (!isAbsolute(path) || !inside(path, roots.sourceDir)) return path;
+    const rest = relative(roots.sourceDir, path).replaceAll("\\", "/");
+    return `@/${rest.replace(/\.(tsx|ts|jsx|js)$/, "")}`;
+  };
   return {
     name: "mostra:field-hook-use",
     enforce: "pre",
-    resolveId(source, importer) {
-      if (source !== "@mostra/react" && source !== "@mostra/react/form") return null;
+    async resolveId(source, importer, options) {
       if (importer === undefined || importer.startsWith("\0")) return null;
-      const file = existsSync(importer) ? realpathSync(importer) : importer;
-      if (
-        inside(file, roots.sourceDir) ||
-        inside(file, roots.generatedDir) ||
-        inside(file, roots.runtimeDir)
-      )
+      const from = real(importer.split("?")[0] ?? importer);
+      if (source === "@mostra/react" || source === "@mostra/react/form") {
+        if (inside(from, roots.kitDir)) {
+          kitHookModules.add(pathKey(from));
+          return null;
+        }
+        if (
+          inside(from, roots.sourceDir) ||
+          inside(from, roots.generatedDir) ||
+          inside(from, roots.runtimeDir)
+        )
+          return null;
+        if (!uses.some((use) => pathKey(use.importer) === pathKey(from)))
+          uses.push({ importer: from });
         return null;
-      if (!uses.some((use) => pathKey(use.importer) === pathKey(file)))
-        uses.push({ importer: file });
+      }
+      if (roots.kitDir === undefined || source.startsWith("\0")) return null;
+      // Only an import that can name the kit is followed (`@mostra/kit…`, `@/…`, or the `@/`
+      // alias's path in the artifact's root); any other is the build's own to resolve, and its
+      // refusal (a confined import, a missing package) the build's own to report.
+      const path = source.split("?")[0] ?? source;
+      const mayReachKit =
+        path.startsWith("@mostra/kit") ||
+        path.startsWith("@/") ||
+        (isAbsolute(path) && inside(path, roots.sourceDir));
+      if (!mayReachKit) return null;
+      let resolved: Awaited<ReturnType<typeof this.resolve>>;
+      try {
+        resolved = await this.resolve(source, importer, { ...options, skipSelf: true });
+      } catch {
+        return null;
+      }
+      const id = resolved?.id.split("?")[0];
+      if (id === undefined || id.startsWith("\0") || !isAbsolute(id)) return null;
+      const target = real(id);
+      if (inside(target, roots.kitDir)) {
+        const kind = (options as { readonly kind?: string }).kind ?? "import-statement";
+        kitImports.push({ importer: from, source, kind, target: pathKey(target) });
+      }
       return null;
+    },
+    buildEnd() {
+      for (const edge of kitImports) {
+        if (!kitHookModules.has(edge.target)) continue;
+        // The kit's own modules reach each other; the scan follows the artifact's imports.
+        if (inside(edge.importer, roots.kitDir)) continue;
+        const seen =
+          inside(edge.importer, roots.sourceDir) &&
+          edge.kind === "import-statement" &&
+          KIT_FIELD_MODULES.has(specifierOf(edge.source));
+        if (seen) continue;
+        const where = inside(edge.importer, roots.sourceDir)
+          ? relative(roots.sourceDir, edge.importer).replaceAll("\\", "/")
+          : edge.importer;
+        const how =
+          edge.kind === "dynamic-import"
+            ? "imports it with import()"
+            : KIT_FIELD_MODULES.has(specifierOf(edge.source))
+              ? "isn't one of the artifact's own files"
+              : `imports it as "${specifierOf(edge.source)}", not as @mostra/kit/questionnaire`;
+        if (!uses.some((use) => use.reason !== undefined && use.importer === edge.importer)) {
+          uses.push({
+            importer: edge.importer,
+            reason: `${where} uses the kit's questionnaire where the field scan can't see its ids (it ${how})`,
+          });
+        }
+      }
     },
   };
 }

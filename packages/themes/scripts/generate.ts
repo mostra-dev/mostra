@@ -1,18 +1,13 @@
 /**
- * Writes the themes' stylesheets in `css/` (`css/studio.css`, `css/mostra.css`), so a bundler or a
- * plain `<link>` takes a theme with no code, and the Agent Skill's Studio stylesheet with every
- * example's copy of it. The tests fail when any of them is stale.
+ * Writes the themes' stylesheets in `css/` (`css/studio.css`, `css/mostra.css`, `css/frame.css`…),
+ * so a bundler or a plain `<link>` takes a theme with no code, and `theme.schema.json`, the schema
+ * of a theme layer. The tests fail when any of them is stale. An artifact never copies a
+ * stylesheet: its build takes its theme stack (D181).
  *
  *   pnpm --filter @mostra/themes generate
  */
-import { mkdirSync, readdirSync, writeFileSync } from "node:fs";
-import {
-  facesStylesheet,
-  studio,
-  THEMES,
-  tailwindStylesheet,
-  themeStylesheet,
-} from "@mostra/themes";
+import { mkdirSync, writeFileSync } from "node:fs";
+import { facesStylesheet, studio, THEMES, themeLayerSchema, themeStylesheet } from "@mostra/themes";
 
 mkdirSync(new URL("../css/", import.meta.url), { recursive: true });
 for (const theme of Object.values(THEMES)) {
@@ -22,19 +17,16 @@ for (const theme of Object.values(THEMES)) {
   );
   console.log(`wrote css/${theme.id}.css`);
 }
-// The faces alone, which the Skill's Studio stylesheet imports (every theme shares them).
+// The faces alone, for a page that names the theme's faces in its own stylesheet.
 writeFileSync(
   new URL("../css/faces.css", import.meta.url),
   facesStylesheet(studio, { assetBase: "../" }),
 );
 console.log("wrote css/faces.css");
 
-// The Agent Skill's baseline stylesheet and every example's copy of it (the CLI's skill test holds
-// the copies equal): Studio, as an artifact takes it.
-const skill = new URL("../../../skills/mostra/assets/", import.meta.url);
-const css = tailwindStylesheet(studio);
-writeFileSync(new URL("studio.css", skill), css);
-for (const example of readdirSync(new URL("examples/", skill))) {
-  writeFileSync(new URL(`examples/${example}/styles.css`, skill), css);
-}
-console.log("wrote skills/mostra/assets/studio.css and its examples' copies");
+// The JSON Schema of a theme layer, for a plugin's theme files (D181 items 3 and 4).
+writeFileSync(
+  new URL("../theme.schema.json", import.meta.url),
+  `${JSON.stringify(themeLayerSchema(), null, 2)}\n`,
+);
+console.log("wrote theme.schema.json");

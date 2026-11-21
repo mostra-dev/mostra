@@ -192,6 +192,15 @@ export type ExternalBaseAnswer =
   | { readonly kind: "failed" }
   | { readonly kind: "away" };
 
+/** The ticket's `hostStyles`, when the home has a host's look with variables. */
+function hostStylesOf(variables: Readonly<Record<string, string>> | undefined): {
+  hostStyles?: { variables: Readonly<Record<string, string>> };
+} {
+  return variables !== undefined && Object.keys(variables).length > 0
+    ? { hostStyles: { variables } }
+    : {};
+}
+
 /** Options for {@link createGateway}. */
 export interface GatewayOptions {
   readonly ledger: Ledger;
@@ -255,6 +264,11 @@ export interface GatewayOptions {
   readonly linkLimit?: (artifactId: string, count: number) => Promise<void>;
   /** Whether a version's worker is parked (WP-08): its frame ticket tells the shell. */
   readonly parked?: (versionId: string) => boolean;
+  /**
+   * The host's look's variables (`HomeConfig.look.variables`, D181 item 5), read at each frame
+   * ticket: the shell passes them to the page as an MCP Apps host does.
+   */
+  readonly hostStyles?: () => Readonly<Record<string, string>> | undefined;
   /**
    * The delivery target the gateway serves pages for (D111): `live` for viewers, `verify` for a
    * verify run's sandbox (D138), whose tickets name it and whose documents get
@@ -1638,6 +1652,7 @@ export function createGateway(options: GatewayOptions): Gateway {
             }
           : {}),
         ...(chrome ? { hosted: chrome } : {}),
+        ...hostStylesOf(options.hostStyles?.()),
       };
       return jsonResponse(answer);
     };

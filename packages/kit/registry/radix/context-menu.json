@@ -1,0 +1,19 @@
+{
+  "$schema": "https://ui.shadcn.com/schema/registry-item.json",
+  "name": "context-menu",
+  "type": "registry:ui",
+  "dependencies": [
+    "cn",
+    "lucide-react",
+    "radix-ui"
+  ],
+  "files": [
+    {
+      "path": "components/ui/context-menu.tsx",
+      "type": "registry:ui"
+    }
+  ],
+  "mostra": {
+    "base": "radix"
+  }
+}

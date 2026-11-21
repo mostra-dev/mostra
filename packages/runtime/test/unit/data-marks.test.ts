@@ -190,6 +190,9 @@ describe("an open home's high-water marks (MT-05)", () => {
     const ledger = await server.ledger();
     const before = server.row()?.updated_at;
     const head = append(ledger);
+    // The row's time is in milliseconds: the close must land in a later one than the open, or a
+    // write and no write look the same (it did once, under load, on WP-18's pre-push run).
+    await new Promise((resolve) => setTimeout(resolve, 5));
     // Closed before a tick could write the moved head: the closing write records it.
     await server.data.closeHome("hom_1");
     expect(server.row()?.updated_at).not.toBe(before);

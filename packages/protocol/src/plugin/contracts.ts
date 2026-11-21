@@ -124,6 +124,8 @@ export const CORE_COMMANDS: readonly (readonly string[])[] = [
   ["telemetry", "on"],
   ["telemetry", "status"],
   ["term", "dump"],
+  ["theme", "list"],
+  ["theme", "show"],
   ["verify"],
   ["wait"],
 ];

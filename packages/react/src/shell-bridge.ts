@@ -16,12 +16,14 @@ import {
   mostraReady,
   OPEN_LINK_SCHEMES,
   type UiInitializeResult,
+  uiHostContextChanged,
   uiInitialize,
   uiInitialized,
   uiOpenLink,
   type Viewer,
 } from "@mostra/protocol";
 import { inlineOpenLink } from "./runtime/inline-sink.ts";
+import { applyHostContext } from "./runtime/mcp-theme.ts";
 
 /**
  * The version this page's build belongs to: its `<meta name="mostra-version">`, which Mostra's
@@ -154,6 +156,17 @@ export function connectShell(): Promise<ShellConnection | undefined> {
       throw error;
     }
     bootMark("initialized");
+    // The shell is the page's host (D181 item 5): its light or dark, and a host's look where the
+    // page's theme stack names "host", as an MCP Apps host's context is applied.
+    let context: Record<string, unknown> = { ...host.hostContext };
+    applyHostContext(context);
+    listeners.add({
+      notification: (message, params) => {
+        if (message !== uiHostContextChanged) return;
+        context = { ...context, ...(params as Record<string, unknown>) };
+        applyHostContext(context);
+      },
+    });
     bridge.notify(uiInitialized, {});
     return {
       shellOrigin,

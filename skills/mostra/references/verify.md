@@ -34,18 +34,22 @@ The human output prints `verify: pass` or `verify: fail`, each diagnostic with i
   "aria": [{ "viewport": "desktop", "path": "…/desktop.aria.yml", "summary": "3 headings, 1 button, 1 textbox, landmarks: main" }],
   "smoke": { "interactions": 3, "skippedActions": [], "stateChanges": 3 },
   "regressions": {},
+  "theme": { "stack": ["studio"], "default": false },
   "timingsMs": { "build": 36, "typecheck": 538, "render": 9548, "smoke": 2492, "total": 13898 }
 }
 ```
 
-`status` is `fail` exactly when there is an error. Diagnostics come errors first; identical ones fold into one with a `count`. `mostra docs <CODE>` prints any code's page with an example fix.
+`status` is `fail` exactly when there is an error. Diagnostics come errors first; identical ones fold into one with a `count`. `mostra docs <CODE>` prints any code's page with an example fix. `theme` is the theme stack the page was built in, `default: true` when the manifest names none.
+
+- **`--fix`** writes every fix verify offers (an older API's new form, the other base's idiom) into your files, prints the files it changed, and verifies again; read the files before you publish.
+- **`--theme <stack>`** builds the page in another theme stack for this run only (`--theme arcata`, `--theme arcata,./brand.css`), so you can compare looks without editing the manifest.
 
 ## Errors, warnings and hints
 
 | Severity | Means | Examples |
 |---|---|---|
 | error | Something is definitely broken; publish refuses it | type and build errors, uncaught page errors, console errors, failed requests to the page's own origin, a blank page, a page that never gets ready, duplicate or unstable field IDs, a manifest that can't be read |
-| warning | Worth checking; publish allows it | axe's serious findings, failed requests to other sites, a failing live source, a package without types, a secret the page needed that isn't set, every regression, a control with no visible effect |
+| warning | Worth checking; publish allows it | axe's serious findings, failed requests to other sites, a failing live source, a package without types, a secret the page needed that isn't set, every regression, a control with no visible effect, an older API's form (`MOSTRA_LINT_API_CHANGED`) |
 | hint | Information | an input not bound to a field (`MOSTRA_FIELD_UNBOUND`, fine for a search box or a draft you don't want saved), an action skipped in verify, axe's minor findings, the smoke test's budget, no baseline yet |
 
 Warnings that begin with **"Observed only"** (`MOSTRA_SMOKE_NO_EFFECT`, `MOSTRA_REGRESSION_*`) report what verify saw, such as a button whose click changed nothing visible or a page that changed since the last version. Look at the screenshot and decide; when the behavior is what you intended, change nothing.

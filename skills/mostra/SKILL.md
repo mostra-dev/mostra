@@ -46,6 +46,7 @@ Each step ends when its check holds. Don't hand a link out before step 4 passes.
      title: "Sidebar redesign: your call",
      description: "Pick a direction and say why.",
      submission: { policy: "once" },
+     kit: { theme: "studio" },
    });
 
    export default function Page() {
@@ -56,7 +57,7 @@ Each step ends when its check holds. Don't hand a link out before step 4 passes.
    }
    ```
 
-   Mostra draws the Submit button in its own frame around your page; `useSubmitControl` names it, and `required` fields block it until they're answered. Make it look considered: [references/design.md](references/design.md) has a baseline stylesheet and the rules for pages people answer. *Done when* every answer you need is a field with a label.
+   Mostra draws the Submit button in its own frame around your page; `useSubmitControl` names it, and `required` fields block it until they're answered. Make it look considered: name a theme (`kit: { theme: "studio" }`) and build from the kit's parts, which need no install; [references/design.md](references/design.md) has the themes, the parts and the rules for pages people answer. *Done when* every answer you need is a field with a label.
 4. **Verify until it passes.** `mostra verify <dir> --screenshots always`. It type-checks, builds, renders the page headlessly, clicks through it, runs an accessibility check and screenshots it at 1280×800 and 390×844. Fix every error, then **open both screenshots and look at them** (about 1,300 and 450 image tokens). Warnings that start with "Observed only" describe what verify saw; judge them, and leave working code alone. *Done when* the status is `pass` and the screenshots show what you meant at both sizes. More in [references/verify.md](references/verify.md).
 5. **Publish.** `mostra publish <dir>` prints the version and the capability URL. Publishing again after an edit makes a new version; open pages offer the person the new one, and answers carry over by field ID. *Done when* you have the link.
 6. **Hand the link over.** Say who is asking and why, what the page is for, and roughly how long it takes. For the person at this machine, `mostra open <dir> --browser` opens it in their browser, and its output says when none could be opened. For a phone or another person, see [references/sharing.md](references/sharing.md): one link is one person's draft, so give each person their own link. For several people, name them with `mostra roster add` and wait for all of them: [references/teams.md](references/teams.md). *Done when* the person has the link and knows what to do.
@@ -68,6 +69,7 @@ Each step ends when its check holds. Don't hand a link out before step 4 passes.
 | Need | Use | Reference |
 |---|---|---|
 | Save an answer, a choice, a note | `useField(id, initial, { label, required, validate })` | [answers.md](references/answers.md) |
+| Questions with choices, scales, rankings and text | `Questionnaire`, `Question`, `Choice` from `@mostra/kit/questionnaire` | [answers.md](references/answers.md) |
 | A form with validation | `useForm` from `@mostra/react/form` (react-hook-form) | [answers.md](references/answers.md) |
 | Name or confirm the trusted Submit | `useSubmitControl({ label, confirm })` | [answers.md](references/answers.md) |
 | Let the person ping you without submitting | `useSignal(name).send(payload)`, then `mostra wait <dir> --until signal:<name>` | [answers.md](references/answers.md) |
@@ -78,8 +80,9 @@ Each step ends when its check holds. Don't hand a link out before step 4 passes.
 | State everyone shares and you can edit | `useField(id, initial, { scope: "artifact" })`, `mostra state set` | [long-lived.md](references/long-lived.md) |
 | Show who answered, who is here, who changed what | `useRespondents()`, `usePresence({ cursor })`, a shared field's `meta.updatedBy` | [teams.md](references/teams.md) |
 | Several pages, packages, MDX, images | `pages/`, any npm import, `index.mdx`, `public/` | [page.md](references/page.md) |
+| A look: a theme, buttons, cards, dialogs, a page's frame | `kit: { theme }`, `@/components/ui/<name>`, `@mostra/kit/layout` | [design.md](references/design.md) |
 | Charts, tables, animation, UI primitives | the preinstalled libraries | [libraries.md](references/libraries.md) |
-| Someone else's component, exporter or command | `mostra add <item>` (shadcn registry items), `mostra plugin add <package>` | [plugins.md](references/plugins.md) |
+| Someone else's component, theme, exporter or command | `mostra add <item>` (shadcn registry items), `mostra plugin add <package>` | [plugins.md](references/plugins.md) |
 | Show what Mostra can do ("Should I use Mostra?") | one live page for the person's own work, published, answered and grown with them | [walkthrough.md](references/walkthrough.md) |
 
 ## Rules verify enforces
@@ -97,6 +100,7 @@ Each step ends when its check holds. Don't hand a link out before step 4 passes.
 | `MOSTRA_TYPE_ERROR` | Fix the TypeScript error at the location given |
 | `MOSTRA_BUILD_UNRESOLVED` | Import from inside the artifact, or a package by its name |
 | `MOSTRA_MANIFEST_NOT_LITERAL` | Write the manifest's values as literals |
+| `MOSTRA_LINT_API_CHANGED`, `MOSTRA_KIT_WRONG_BASE` | An older API, or the other base's idiom: `mostra verify <dir> --fix` writes the fix it names |
 | `MOSTRA_FIELD_DUPLICATE_ID`, `MOSTRA_FIELD_ID_UNSTABLE` | Give each field one stable ID |
 | `MOSTRA_RUNTIME_PAGE_ERROR`, `MOSTRA_CONSOLE_ERROR`, `MOSTRA_RUNTIME_BLANK` | Fix the page's runtime error; look at the screenshot |
 | `MOSTRA_VERIFY_ACTION_SKIPPED` | A hint: that action didn't run in verify. Add a `dryRun()` branch if you want it exercised |
@@ -114,7 +118,7 @@ Read the one you need when you need it.
 |---|---|
 | [references/page.md](references/page.md) | Structuring the artifact: files, manifest, pages, packages, MDX, links out, `window.storage` |
 | [references/answers.md](references/answers.md) | Collecting answers: fields, forms, submission policies, signals, choices, `wait` and `results` |
-| [references/design.md](references/design.md) | Before writing the page's markup: the baseline stylesheet and the design rules |
+| [references/design.md](references/design.md) | Before writing the page's markup: the themes, the kit's parts and the design rules |
 | [references/verify.md](references/verify.md) | Verify fails, or you want to understand a verdict, screenshots or `mostra dev` |
 | [references/server.md](references/server.md) | The page must do something real: actions, secrets, idempotency |
 | [references/long-lived.md](references/long-lived.md) | A page that lives for days: shared state, live data, `none` policy, always-on |
@@ -125,4 +129,4 @@ Read the one you need when you need it.
 | [references/mcp.md](references/mcp.md) | You work through Mostra's tools (`artifact_create` and the rest) instead of the `mostra` command |
 | [references/walkthrough.md](references/walkthrough.md) | Show what Mostra can do: the person asks whether to use Mostra, or what it can do |
 
-Three complete artifacts that pass verify, to copy from: [assets/examples/decision/](assets/examples/decision/) (a choice with a reason), [assets/examples/inbox/](assets/examples/inbox/) (drafted replies with real Send actions) and [assets/examples/dashboard/](assets/examples/dashboard/) (live data and a shared list). The same guide is `mostra docs guide`, and each reference `mostra docs guide/<name>`.
+Four complete artifacts that pass verify, to copy from: [assets/examples/decision/](assets/examples/decision/) (a choice with a reason), [assets/examples/inbox/](assets/examples/inbox/) (drafted replies with real Send actions), [assets/examples/dashboard/](assets/examples/dashboard/) (live data and a shared list) and [assets/examples/specimen/](assets/examples/specimen/) (every part of the kit). The same guide is `mostra docs guide`, and each reference `mostra docs guide/<name>`.

@@ -23,6 +23,7 @@ import {
   STAGING_FILES,
   type VersionRegistry,
 } from "../types.ts";
+import { entryStylesheet, hostTokensElement, kitResolvePlugin, themeAttributes } from "./kit.ts";
 import {
   type BuildInputs,
   confinePlugin,
@@ -36,14 +37,14 @@ import { type ScanResult, scanArtifact } from "./scan.ts";
 /** Where generated build files live inside the staging directory (never in the snapshot). */
 export const GENERATED = ".mostra-build";
 
-export const html = (title: string, versionId: string): string =>
+export const html = (title: string, versionId: string, attributes = "", head = ""): string =>
   `<!doctype html>
-<html lang="en">
+<html lang="en"${attributes}>
   <head>
     <meta charset="utf-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1" />
     <meta name="mostra-version" content="${versionId}" />
-    <title>${title.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;")}</title>
+    <title>${title.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;")}</title>${head}
   </head>
   <body>
     <div id="root"></div>
@@ -100,9 +101,12 @@ export function withPackageUses(
   };
   const openReasons = [
     ...fields.openReasons,
-    ...[...new Set(uses.map((use) => packageOf(use.importer)))].map((name) => ({
-      reason: `the package ${name} uses @mostra/react's field hooks`,
-    })),
+    ...[
+      ...new Set(
+        uses.filter((use) => use.reason === undefined).map((use) => packageOf(use.importer)),
+      ),
+    ].map((name) => ({ reason: `the package ${name} uses @mostra/react's field hooks` })),
+    ...uses.flatMap((use) => (use.reason !== undefined ? [{ reason: use.reason }] : [])),
   ];
   return { ...fields, open: openReasons.length > 0, openReasons };
 }
@@ -164,9 +168,11 @@ export function diagnose(error: unknown, sourceDir: string): Diagnostic {
 }
 
 export function baseConfig(
-  request: Pick<BuildRequest, "stagingDir">,
+  request: Pick<BuildRequest, "stagingDir" | "kit">,
   sourceDir: string,
   plugins: PluginOption[],
+  /** Plugins that watch every import as written, so they run before the kit's resolution. */
+  observers: PluginOption[] = [],
 ): InlineConfig {
   return {
     root: request.stagingDir,
@@ -179,13 +185,18 @@ export function baseConfig(
     base: "/",
     mode: "production",
     resolve: {
+      // `@/…` in a stylesheet (`@import`, `url()`) as in code: Vite resolves a stylesheet's
+      // imports with its aliases and never a plugin (Opus review of WP-18, finding 4). The alias
+      // hands code's `@/…` on as a path in the artifact's root, which the kit's resolution below
+      // takes the same way, falling back to the kit's registry.
       alias: [{ find: /^@\//, replacement: `${sourceDir}/` }],
       dedupe: ["react", "react-dom"],
     },
     // Settings given here are never searched for: no PostCSS config, from anywhere above the
     // home, is loaded or run (VR-01). Tailwind is a plugin of its own.
     css: { postcss: {} },
-    plugins,
+    // `@/…` is the artifact's root, then the kit's registry for its base (ROUND-3 §1.1).
+    plugins: [...observers, kitResolvePlugin(sourceDir, request.kit), ...plugins],
   };
 }
 
@@ -266,10 +277,19 @@ export async function buildSpa(input: BuildRequest): Promise<BuildResponse> {
   await linkDirectory(request.nodeModules, join(request.stagingDir, "node_modules"));
   await writeFile(
     join(request.stagingDir, "index.html"),
-    html(request.manifest.title, request.versionId),
+    html(
+      request.manifest.title,
+      request.versionId,
+      themeAttributes(request.kit),
+      hostTokensElement(request.kit),
+    ),
   );
   await writeFile(join(generated, "entry.js"), clientEntry(request, scan));
-  await writeFile(join(generated, "styles.css"), `@import "tailwindcss" source("../source");\n`);
+  await writeFile(join(generated, "theme.css"), request.kit.themeCss);
+  await writeFile(
+    join(generated, "styles.css"),
+    entryStylesheet(generated, sourceDir, request.kit),
+  );
   if (scan.hasLive) await writeFile(join(generated, "mostra-env.d.ts"), LIVE_DECLARATION);
 
   const serverModules = new Map<string, readonly ServerFunctionEntry[]>(
@@ -283,19 +303,36 @@ export async function buildSpa(input: BuildRequest): Promise<BuildResponse> {
   } catch {
     runtimeDir = undefined;
   }
+  let kitDir: string | undefined;
+  try {
+    kitDir = await realpath(join(request.nodeModules, "@mostra", "kit"));
+  } catch {
+    kitDir = undefined;
+  }
   try {
     await build({
-      ...baseConfig(request, sourceDir, [
-        fieldHookUsePlugin(
-          { sourceDir, generatedDir: generated, ...(runtimeDir ? { runtimeDir } : {}) },
-          hookUses,
-        ),
-        confinePlugin(inputs),
-        mdxPlugin(),
-        serverClientStubPlugin(serverModules, sourceDir),
-        react(),
-        tailwind(),
-      ]),
+      ...baseConfig(
+        request,
+        sourceDir,
+        [
+          confinePlugin(inputs),
+          mdxPlugin(),
+          serverClientStubPlugin(serverModules, sourceDir),
+          react(),
+          tailwind(),
+        ],
+        [
+          fieldHookUsePlugin(
+            {
+              sourceDir,
+              generatedDir: generated,
+              ...(runtimeDir ? { runtimeDir } : {}),
+              ...(kitDir ? { kitDir } : {}),
+            },
+            hookUses,
+          ),
+        ],
+      ),
       // The artifact's public/ is served as-is at the root (INTERFACES §2.1).
       publicDir: join(sourceDir, "public"),
       build: {

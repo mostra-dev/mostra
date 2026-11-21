@@ -20,6 +20,7 @@ import {
   type EventRecord,
   type FieldConflict,
   type FieldOp,
+  type FieldOption,
   type FieldScope,
   isFieldId,
   MutationId,
@@ -83,6 +84,8 @@ export interface Registration {
   readonly label?: string;
   readonly required?: boolean;
   readonly sensitive?: boolean;
+  /** The options its value is chosen from (KT-05). */
+  readonly options?: readonly FieldOption[];
   /** The validation message of its current value, if any. */
   readonly error?: string;
   /** The hook that named it, for `verify`'s field-ID checks (D138): `useField` unless stated. */
@@ -718,6 +721,7 @@ export class Store {
       entry.registration.label === next.label &&
       entry.registration.required === next.required &&
       entry.registration.sensitive === next.sensitive &&
+      entry.registration.options === next.options &&
       entry.registration.error === next.error
     )
       return;
@@ -761,6 +765,7 @@ export class Store {
       readonly label?: string;
       readonly required?: boolean;
       readonly sensitive?: boolean;
+      readonly options?: readonly FieldOption[];
       readonly immediate?: boolean;
       readonly delete?: boolean;
     } = {},
@@ -788,12 +793,14 @@ export class Store {
     const label = options.label ?? earlierOp?.label ?? registered?.label;
     const required = options.required ?? earlierOp?.required ?? registered?.required;
     const sensitive = options.sensitive ?? earlierOp?.sensitive ?? registered?.sensitive;
+    const choices = options.options ?? earlierOp?.options ?? registered?.options;
     const op: FieldOp = {
       id,
       ...(options.delete || value === undefined ? { delete: true as const } : { value }),
       ...(label !== undefined ? { label } : {}),
       ...(required !== undefined ? { required } : {}),
       ...(sensitive !== undefined ? { sensitive } : {}),
+      ...(choices !== undefined ? { options: choices } : {}),
     };
     if (this.mode === "local") {
       this.#localWrite(key, op.delete ? undefined : op.value);
@@ -1394,6 +1401,7 @@ export class Store {
         ...(registration.label !== undefined ? { label: registration.label } : {}),
         ...(registration.required !== undefined ? { required: registration.required } : {}),
         ...(registration.sensitive !== undefined ? { sensitive: registration.sensitive } : {}),
+        ...(registration.options !== undefined ? { options: registration.options } : {}),
       });
     }
     const flushed = await this.flush();

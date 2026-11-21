@@ -13,6 +13,7 @@ import {
   DeliveryId,
   type DeliveryState,
   type DeliveryStatus,
+  type FieldOption,
   type OrphanedField,
   RpcError,
   SubmissionId,
@@ -53,6 +54,8 @@ export interface SnapshotField {
   readonly label?: string;
   readonly required?: boolean;
   readonly sensitive?: boolean;
+  /** The options its value was chosen from (KT-05). */
+  readonly options?: readonly FieldOption[];
 }
 
 /**
@@ -254,6 +257,9 @@ function snapshotFields(rows: readonly FieldRow[]): Record<string, SnapshotField
         ...(row.label !== null ? { label: row.label } : {}),
         ...(row.required !== null ? { required: row.required === 1 } : {}),
         ...(row.sensitive === 1 ? { sensitive: true } : {}),
+        ...(row.options_json !== null
+          ? { options: JSON.parse(row.options_json) as FieldOption[] }
+          : {}),
       },
     ]),
   );

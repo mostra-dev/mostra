@@ -4,7 +4,7 @@ import { createRoot } from "react-dom/client";
 import { applyAppearance } from "./appearance.ts";
 import { bootMark } from "./boot-marks.ts";
 import { Shell } from "./shell.tsx";
-import "@mostra/themes/css/studio.css";
+import "@mostra/themes/css/frame.css";
 import "./shell.css";
 
 bootMark("script");

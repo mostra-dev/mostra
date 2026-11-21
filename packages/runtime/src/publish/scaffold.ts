@@ -19,19 +19,18 @@ export const SCAFFOLD_PATHS: readonly string[] = ["index.tsx", "AGENTS.md", "CLA
 
 function entry({ artifactId, title }: ScaffoldInput): string {
   return [
+    'import { Page } from "@mostra/kit/layout";',
     'import { defineArtifact } from "@mostra/react";',
     "",
     "export const artifact = defineArtifact({",
     `  id: ${JSON.stringify(artifactId)},`,
     `  title: ${JSON.stringify(title)},`,
+    '  // The look: Mostra\'s studio or arcata theme, your own layers after it, or "none" (D181).',
+    '  kit: { theme: "studio" },',
     "});",
     "",
-    "export default function Page() {",
-    "  return (",
-    '    <main className="mx-auto max-w-2xl p-8">',
-    '      <h1 className="text-2xl font-semibold">{artifact.title}</h1>',
-    "    </main>",
-    "  );",
+    "export default function Artifact() {",
+    "  return <Page title={artifact.title} />;",
     "}",
     "",
   ].join("\n");
@@ -51,7 +50,7 @@ function agents({ title, version }: ScaffoldInput): string {
     "",
     "## Work on it",
     "",
-    "1. Edit `index.tsx`: ordinary React 19 and TypeScript with Tailwind CSS 4, with no `package.json` or build configuration.",
+    "1. Edit `index.tsx`: ordinary React 19 and TypeScript with Tailwind CSS 4, with no `package.json` or build configuration. Its look is the theme `kit.theme` names; build from the kit's parts (`@/components/ui/button`, `@mostra/kit/layout`, `@mostra/kit/questionnaire`), which need no install.",
     "2. Run `mostra verify .` until it reports `pass`, and look at both screenshots it lists (`--screenshots always` lists them every time).",
     "3. Run `mostra publish .`. It prints the private link: whoever holds it can use the page.",
     "4. Give the link to the person, saying who is asking and why. Then run `mostra wait . --until submitted` and `mostra results .`.",

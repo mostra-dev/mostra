@@ -15,13 +15,12 @@ import { configDefaults, defineConfig } from "vitest/config";
 const VERIFY_SUITES = "test/integration/verify*.test.ts";
 const VERIFY_FAILURES = "test/integration/verify-failures.test.ts";
 const DEV = "test/integration/dev.test.ts";
+const FAULTS = ["test/integration/publish-faults.test.ts", "test/integration/lifecycle.test.ts"];
 // The binding's heartbeat suite waits out a proxy's real 60 s idle limit and a 45 s silence
-// (WP-29): about two minutes, so it joins the shorter group.
-const FAULTS = [
-  "test/integration/publish-faults.test.ts",
-  "test/integration/lifecycle.test.ts",
-  "test/integration/heartbeat.test.ts",
-];
+// (WP-29): about two minutes. It joined `verify-failures`, the shorter group then; since WP-18 made
+// each verify build its theme, that group passed its 10 minutes on macOS (MT-03 saw it near them;
+// WP-18's `ci:full` run 44802962232), so it runs beside the binding's other suites in `remote`.
+const HEARTBEAT = "test/integration/heartbeat.test.ts";
 // The remote server's suites: real servers and owners, each half a machine of its own on macOS and
 // Linux so neither nor `core` passes its deadline. `remote` (WP-29): the server, the binding, the
 // owner's link, hosting and the relay. `remote-access` (WP-30, MT-03): sign-in, OAuth, the
@@ -44,6 +43,7 @@ const REMOTE_HOSTING = [
   "test/integration/team-hosted.test.ts",
 ];
 const SIGNIN_FACTS = "test/integration/signin-facts.test.ts";
+const ANONYMOUS_VOLUME = "test/integration/anonymous-volume.test.ts";
 const OPERATOR_RELAY = "test/integration/operator-relay.test.ts";
 const REMOTE_ACCESS = [
   "test/integration/operator.test.ts",
@@ -52,7 +52,7 @@ const REMOTE_ACCESS = [
   "test/integration/remote-mcp-apps.test.ts",
   "test/integration/signin.test.ts",
   "test/integration/hosted-rules.test.ts",
-  "test/integration/anonymous-volume.test.ts",
+  ANONYMOUS_VOLUME,
   "test/integration/remote-mcp-conformance.test.ts",
   "test/integration/server-pages.test.ts",
   "test/integration/signout.test.ts",
@@ -73,14 +73,17 @@ const EXTENSIONS = [
 // 7 s and 10 min 27 s in MT-05's merge queue, 44230190769 and 44224848051) and ran past it on WP-17's
 // `ci:full` run (44270632827), while `extensions` takes about 4 minutes. The dependency suite installs
 // as the plugin and pack suites do. Windows keeps it in `windows`, so its partition is unchanged.
-const CORE_OVERFLOW = ["test/integration/deps.test.ts"];
+// WP-18: the kit through verify (KT-03 to KT-10), which `core` has no room for either (macOS `core`
+// reached its deadline with it on WP-18's `ci:full` run 44793555343).
+const KIT_PARTS = "test/integration/kit-parts.test.ts";
+const CORE_OVERFLOW = ["test/integration/deps.test.ts", KIT_PARTS];
 export const INTEGRATION_GROUPS: Record<string, { include: string[]; exclude: string[] }> = {
   core: {
     include: ["test/integration/**/*.test.ts"],
-    exclude: [VERIFY_SUITES, DEV, ...FAULTS, ...REMOTE, ...EXTENSIONS, ...CORE_OVERFLOW],
+    exclude: [VERIFY_SUITES, DEV, ...FAULTS, HEARTBEAT, ...REMOTE, ...EXTENSIONS, ...CORE_OVERFLOW],
   },
   extensions: { include: [...EXTENSIONS, ...CORE_OVERFLOW], exclude: [] },
-  remote: { include: REMOTE_HOSTING, exclude: [] },
+  remote: { include: [...REMOTE_HOSTING, HEARTBEAT], exclude: [] },
   "remote-access": { include: REMOTE_ACCESS, exclude: [] },
   verify: { include: [VERIFY_SUITES, DEV], exclude: [VERIFY_FAILURES] },
   "verify-failures": { include: [VERIFY_FAILURES, ...FAULTS], exclude: [] },
@@ -102,8 +105,12 @@ export const INTEGRATION_GROUPS: Record<string, { include: string[]; exclude: st
     exclude: [],
   },
   // The remote server and the relay (WP-29), as `remote` is on macOS and Linux.
+  // The anonymous-volume suite (about 100 s) runs in `windows-extensions`: `windows-remote` reached
+  // its 14 minutes on a slow Windows arm64 runner with it (WP-18's ci:full run 44914565149).
   "windows-remote": {
-    include: REMOTE.filter((file) => file !== SIGNIN_FACTS && file !== OPERATOR_RELAY),
+    include: REMOTE.filter(
+      (file) => file !== SIGNIN_FACTS && file !== OPERATOR_RELAY && file !== ANONYMOUS_VOLUME,
+    ),
     exclude: [],
   },
   "windows-publish": {
@@ -117,6 +124,7 @@ export const INTEGRATION_GROUPS: Record<string, { include: string[]; exclude: st
       "test/integration/bundle.test.ts",
       SIGNIN_FACTS,
       OPERATOR_RELAY,
+      "test/integration/verify-secrets.test.ts",
     ],
     exclude: [],
   },
@@ -146,17 +154,16 @@ export const INTEGRATION_GROUPS: Record<string, { include: string[]; exclude: st
     exclude: [],
   },
   // ... and verify with its browser, and `mostra dev`.
-  "windows-verify": {
-    include: [
-      "test/integration/verify.test.ts",
-      "test/integration/verify-secrets.test.ts",
-      "test/integration/dev.test.ts",
-    ],
-    exclude: [],
-  },
-  "windows-verify-failures": { include: [VERIFY_FAILURES], exclude: [] },
-  "windows-extensions": { include: EXTENSIONS, exclude: [] },
+  // `verify.test.ts` alone takes 12 of Windows arm64's 14 minutes since WP-18 (every build carries
+  // its theme): the secrets suite and `mostra dev` go to the lighter groups (WP-18's `ci:full` run
+  // 44793555343: `windows-publish` 7 minutes, `windows-extensions` 5.5).
+  "windows-verify": { include: ["test/integration/verify.test.ts"], exclude: [] },
+  // WP-18: the kit through verify, a suite of its own, in the lighter of the verify groups.
+  "windows-verify-failures": { include: [VERIFY_FAILURES, KIT_PARTS], exclude: [] },
+  "windows-extensions": { include: [...EXTENSIONS, DEV, ANONYMOUS_VOLUME], exclude: [] },
   "windows-clients": { include: [], exclude: [] },
+  // The conformance kit's TypeScript reference host, apart from the other clients (WP-18, #225).
+  "windows-conformance": { include: [], exclude: [] },
 };
 const group = process.env["MOSTRA_TEST_GROUP"];
 const integrationFiles = group

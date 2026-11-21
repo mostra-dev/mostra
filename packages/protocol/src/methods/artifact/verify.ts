@@ -18,6 +18,12 @@ export interface ArtifactVerifyParams {
    * client accepts them in `mostra/initialize`.
    */
   readonly progressToken?: string;
+  /**
+   * A theme stack to build the page in for this verify only, in place of the manifest's
+   * `kit.theme` (D181 item 6): to try a look before writing it into the manifest. A verdict
+   * verified so is never reused by a publish.
+   */
+  readonly theme?: string | readonly string[];
 }
 
 /** The result of `artifact/verify`: the verdict, also cached for the publish that follows (D41). */
@@ -28,6 +34,9 @@ const params: z.ZodType<ArtifactVerifyParams> = z
     source: SourceRef,
     screenshots: ScreenshotPolicy.exactOptional(),
     progressToken: z.string().min(1).max(200).exactOptional(),
+    theme: z
+      .union([z.string().min(1).max(200), z.array(z.string().min(1).max(200)).max(8).readonly()])
+      .exactOptional(),
   })
   .register(wireRegistry, { id: "ArtifactVerifyParams" });
 

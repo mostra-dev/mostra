@@ -35,7 +35,7 @@ import {
   type VerifyViewport,
   viewportsFor,
 } from "@mostra/protocol";
-import type { VersionRegistry } from "../builder/index.ts";
+import type { KitBuild, VersionRegistry } from "../builder/index.ts";
 import type { Ledger } from "../ledger/index.ts";
 import type { Log, Redactor } from "../log.ts";
 import type { Registry } from "../registry/index.ts";
@@ -60,10 +60,11 @@ export {
 } from "./sandbox.ts";
 
 import { renamePath } from "../platform/index.ts";
+import { lintArtifact, type WrongBaseSite } from "./lint.ts";
 
 /** The revision of verify's rules: a cached verdict made under other rules is never reused. */
 export const VERIFY_REVISION: string = createHash("sha256")
-  .update(`verify 2 ${TYPECHECK_REVISION}`)
+  .update(`verify 4 ${TYPECHECK_REVISION}`)
   .digest("hex")
   .slice(0, 16);
 
@@ -99,12 +100,49 @@ export interface PreparedSource {
   readonly versionId: string;
   /** The `node_modules` the build links (D95). */
   readonly nodeModules: string;
+  /** The kit and the theme stack the build takes (D181). */
+  readonly kit: KitBuild;
+  /** The theme stack as the manifest writes it, and whether it was the default (D181 item 2). */
+  readonly theme: {
+    readonly stack: readonly string[];
+    readonly default: boolean;
+    readonly requested?: boolean;
+  };
 }
 
 /** A finished build in a directory, as publish lays out a version. */
 export type BuildOutcome =
   | { readonly ok: true; readonly outputDigest: string; readonly registry: VersionRegistry }
   | { readonly ok: false; readonly diagnostics: readonly Diagnostic[] };
+
+/**
+ * A type error the type check reports where the lint found the other base's idiom (TS2322 on
+ * `asChild` in a Base UI artifact, or on `render` in a Radix one) is `MOSTRA_KIT_WRONG_BASE`, with
+ * the element rewritten in the artifact's base as its fix (KT-08, VERIFIED_FACTS: kit components).
+ */
+export function wrongBaseOf(
+  diagnostic: Diagnostic,
+  sites: readonly WrongBaseSite[],
+  base: "base" | "radix",
+): Diagnostic {
+  if (diagnostic.code !== "MOSTRA_TYPE_ERROR" || !diagnostic.location) return diagnostic;
+  const location = diagnostic.location;
+  if (!("file" in location)) return diagnostic;
+  const site = sites.find(
+    (candidate) =>
+      candidate.file === location.file &&
+      candidate.line === location.line &&
+      diagnostic.message.includes(`'${candidate.attribute}'`),
+  );
+  if (site === undefined) return diagnostic;
+  const other = base === "base" ? "Radix" : "Base UI";
+  const own = base === "base" ? "Base UI" : "Radix";
+  return createDiagnostic("MOSTRA_KIT_WRONG_BASE", {
+    message: `\`${site.attribute}\` is ${other}'s way to compose a part, and this artifact's base is ${own} (${diagnostic.message.split(":")[0]}).`,
+    location,
+    ...(site.fix ? { fix: site.fix } : {}),
+  });
+}
 
 /** Options for {@link createVerifier}. */
 export interface VerifierOptions {
@@ -379,7 +417,8 @@ export function createVerifier(options: VerifierOptions): Verifier {
     const compileStart = Date.now();
     const hasLive = existsSync(join(prepared.stagingDir, "source", "live.ts"));
     let buildDiagnostics: readonly Diagnostic[] = [];
-    const [built, checked] = await Promise.all([
+    const base = prepared.manifest.kit?.base ?? "base";
+    const [built, checked, linted] = await Promise.all([
       buildInto(prepared, run).then((outcome) => {
         time("build", compileStart);
         if (!outcome.ok) buildDiagnostics = outcome.diagnostics;
@@ -392,22 +431,30 @@ export function createVerifier(options: VerifierOptions): Verifier {
         sourceDir: join(prepared.stagingDir, "source"),
         workDir: `${prepared.stagingDir}-check`,
         nodeModules: prepared.nodeModules,
+        ...(prepared.kit.registry !== undefined ? { kitRegistry: prepared.kit.registry } : {}),
         hasLive,
         alreadyReported: (specifier) => reportedByBuild(buildDiagnostics, specifier),
       }).then((outcome) => {
         time("typecheck", compileStart);
         return outcome;
       }),
+      // The kit's lint, beside them (KT-08): it reads the snapshot, so a build reused from the
+      // cache is linted too, and a build an old import broke still gets the fix.
+      lintArtifact(join(prepared.stagingDir, "source"), base, prepared.kit.themeFiles),
     ]);
     diagnostics.push(...(built.ok ? [] : built.diagnostics));
+    // The kit's lint (KT-08): changed APIs with their fixes, found whether or not the build ran.
+    diagnostics.push(...linted.diagnostics);
     // A module the build already couldn't resolve isn't reported twice (D138 item 8). The type
     // check's own callback may run before the build ends, so its TS2307s are matched again here.
     diagnostics.push(
-      ...checked.diagnostics.filter((diagnostic) => {
-        if (built.ok || diagnostic.code !== "MOSTRA_TYPE_ERROR") return true;
-        const missing = /^TS2307: .*?'([^']+)'/.exec(diagnostic.message)?.[1];
-        return missing === undefined || !reportedByBuild(built.diagnostics, missing);
-      }),
+      ...checked.diagnostics
+        .filter((diagnostic) => {
+          if (built.ok || diagnostic.code !== "MOSTRA_TYPE_ERROR") return true;
+          const missing = /^TS2307: .*?'([^']+)'/.exec(diagnostic.message)?.[1];
+          return missing === undefined || !reportedByBuild(built.diagnostics, missing);
+        })
+        .map((diagnostic) => wrongBaseOf(diagnostic, linted.wrongBase, base)),
     );
 
     const regressions: {
@@ -751,6 +798,7 @@ export function createVerifier(options: VerifierOptions): Verifier {
       smoke,
       regressions,
       timingsMs: timings,
+      theme: prepared.theme,
     };
     const checkedVerdict = VerifyVerdict.parse(verdict);
     if (

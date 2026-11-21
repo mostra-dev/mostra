@@ -142,6 +142,7 @@ const exporter: Exporter = defineExporter<ExporterDefinition>({
     const html = pageHtml({
       title: version.title,
       lang: built.lang,
+      ...(built.theme !== undefined ? { theme: built.theme } : {}),
       versionId: version.versionId,
       css: cssParts.join("\n"),
       code: bundled.code,

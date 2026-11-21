@@ -11,9 +11,11 @@
  *   public, sent only to GitHub's API;
  * - `@namespace/item`: through the artifact's `components.json` `registries`, a URL template
  *   (`{name}`, `{style}`) or `{ url, params, headers }` with `${VAR}` read from the environment;
- * - a bare name (in `registryDependencies`): shadcn's own registry (`REGISTRY_URL`, as shadcn
- *   reads it, else `https://ui.shadcn.com/r`), at the style `components.json` names
- *   (`new-york-v4` when it names none);
+ * - a bare name: the kit's item of that name for the artifact's base (D172 item 12, D181 item 7)
+ *   when `mostra add` names it or a kit item's `registryDependencies` do; in any other item's
+ *   `registryDependencies`, shadcn's own registry (`REGISTRY_URL`, as shadcn reads it, else
+ *   `https://ui.shadcn.com/r`), at the style `components.json` names (`new-york-v4` when it names
+ *   none), so a shadcn item installs exactly as shadcn installs it (EX-03);
  * - `plugin:<package>/<item>`: a pack an installed plugin carries (`contributes.packs`).
  */
 import { realpathSync } from "node:fs";
@@ -63,7 +65,17 @@ export interface ReadContext {
   readonly pluginItem: (pkg: string, item: string) => Promise<string | undefined>;
   /** Where GitHub's API and raw files are (tests point them at a local fake). */
   readonly github?: { readonly api: string; readonly raw: string };
+  /**
+   * The kit's item file of a bare name for the artifact's base, when the kit has one (D181 item
+   * 7): a bare name `mostra add` or a kit item names resolves there before shadcn's registry.
+   */
+  readonly kitItem?: (name: string) => string | undefined;
+  /** The kit's registry directory for the artifact's base, whose items' dependencies are the kit's. */
+  readonly kitRegistry?: string;
 }
+
+/** A bare item name, as `mostra add button` and `registryDependencies` write one. */
+export const BARE_NAME: RegExp = /^[a-z0-9][a-z0-9._-]*$/i;
 
 /** The parts of a `components.json` Mostra reads. */
 export interface ComponentsJson {
@@ -685,7 +697,15 @@ export async function readItems(
       }
       return parsed;
     }
-    if (/^[a-z0-9][a-z0-9._-]*$/i.test(text)) return { kind: "name", name: text };
+    if (BARE_NAME.test(text)) {
+      // A kit item's dependencies are the kit's own parts; any other item's are shadcn's (EX-03).
+      const fromKit =
+        context.kitRegistry !== undefined &&
+        from?.base !== undefined &&
+        isInside(realpathSync(context.kitRegistry), realpathSync(from.base));
+      const kit = fromKit ? context.kitItem?.(text) : undefined;
+      return kit !== undefined ? { kind: "file", path: kit } : { kind: "name", name: text };
+    }
     throw fail("MOSTRA_PACK_ADDRESS_INVALID", `"${text}" isn't a registry item address.`);
   };
 
@@ -733,7 +753,9 @@ export async function readItems(
   };
 
   for (const spec of specs) {
-    const address = parsePackAddress(spec);
+    const kit = BARE_NAME.test(spec) ? context.kitItem?.(spec) : undefined;
+    const address: PackAddress | undefined =
+      kit !== undefined ? { kind: "file", path: kit } : parsePackAddress(spec);
     if (address === undefined) {
       throw fail("MOSTRA_PACK_ADDRESS_INVALID", `"${spec}" isn't a registry item address.`);
     }

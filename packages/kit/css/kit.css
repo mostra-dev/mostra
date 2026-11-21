@@ -1,0 +1,59 @@
+/*
+ * The kit's CSS, which every themed build includes after Tailwind (D181): the animations and
+ * variants shadcn's components use, the dark variant that follows the page's appearance, and
+ * the kit's two motions, the press and the answer dropping in. The colours, faces, shapes and
+ * depths come from the theme stack, never from here.
+ */
+@import "tw-animate-css";
+@import "./shadcn.css";
+
+/*
+ * Dark is the device's setting unless the page chose light, or the page's own choice
+ * (`<html data-appearance>`), as every Mostra surface follows it (D171 item 6). It holds for the
+ * root itself too, so a theme layer can write its dark tokens as `:root { @variant dark { … } }`.
+ */
+@custom-variant dark {
+  @media (prefers-color-scheme: dark) {
+    &:where(:root:not([data-appearance="light"]), :root:not([data-appearance="light"]) *) {
+      @slot;
+    }
+  }
+  &:where([data-appearance="dark"], [data-appearance="dark"] *) {
+    @slot;
+  }
+}
+
+/* An answer arrives as a dot that drops in (the brand's signature move, D181 item 1). */
+@keyframes answer-drop {
+  from {
+    transform: translateY(-5px) scale(0.4);
+    opacity: 0;
+  }
+  to {
+    transform: none;
+    opacity: 1;
+  }
+}
+
+@utility animate-answer {
+  animation: answer-drop var(--answer-ms) var(--ease-answer) both;
+  @media (prefers-reduced-motion: reduce) {
+    animation: none;
+  }
+}
+
+/* A control that presses: it scales a little while held, and changes colour on hover. */
+@utility press {
+  transition-property: transform, background-color, border-color, color, box-shadow;
+  transition-duration:
+    var(--press-ms), var(--state-ms), var(--state-ms), var(--state-ms), var(--state-ms);
+  transition-timing-function: var(--ease-out);
+  &:active:not(:disabled):not([aria-disabled="true"]) {
+    transform: scale(var(--press-scale));
+  }
+  @media (prefers-reduced-motion: reduce) {
+    &:active:not(:disabled) {
+      transform: none;
+    }
+  }
+}

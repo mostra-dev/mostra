@@ -33,10 +33,17 @@ import {
   type SourceRef,
   VersionId,
 } from "@mostra/protocol";
-import type { DevChange, DevChild, DevServerBuild, RenderMode } from "../builder/index.ts";
-import { type Dependencies, lockKey } from "../deps/index.ts";
+import type {
+  DevChange,
+  DevChild,
+  DevServerBuild,
+  KitBuild,
+  RenderMode,
+} from "../builder/index.ts";
+import { type Dependencies, lockKey, parseLock } from "../deps/index.ts";
 import type { Faults } from "../faults.ts";
 import type { Gate } from "../gate.ts";
+import { contributedThemes, kitBuildFor, kitRegistry } from "../kit/index.ts";
 import type { Log } from "../log.ts";
 import { removeTree } from "../platform/index.ts";
 import { handler, type MethodHandler, type Session } from "../protocol-server/index.ts";
@@ -64,6 +71,8 @@ export interface DevOptions {
   readonly bindAddress: string;
   /** Sends a notification to one connection; false when it couldn't. */
   readonly notify: (session: number, method: string, params: DevNotifyParams) => boolean;
+  /** The home's theme stack for a page that names none (`HomeConfig.look.theme`, D181 item 5). */
+  readonly homeTheme?: () => string | readonly string[] | undefined;
   /** Test fault points (`dev:after-child`: setting up a dev server that started fails). */
   readonly faults?: Faults;
 }
@@ -170,6 +179,8 @@ export function createDev(options: DevOptions): Dev {
     let settleTimer: ReturnType<typeof setTimeout> | undefined;
     let outputDigest = "";
     let nodeModules = "";
+    // The plugins the layout's lockfile records, whose themes a stack may name (D181 item 4).
+    let lockPlugins: readonly string[] = [];
     let manifestKey = "";
     let artifactId = "";
     const mirrored = new Map<string, string>();
@@ -267,6 +278,7 @@ export function createDev(options: DevOptions): Dev {
         return resolved;
       });
       await writeFile(join(versionDir, "lock.yaml"), resolution.lock);
+      lockPlugins = parseLock(resolution.lock).plugins ?? [];
       return resolution.nodeModules;
     };
 
@@ -293,6 +305,24 @@ export function createDev(options: DevOptions): Dev {
     const startChild = async (
       described: Awaited<ReturnType<typeof describe>>,
     ): Promise<DevChild> => {
+      // The theme stack as publish builds it (D181); a stack that can't be built is said, and the
+      // preview shows the page with no theme until it can.
+      let kit: KitBuild = { themeCss: "", themeFiles: [] };
+      try {
+        const homeTheme = options.homeTheme?.();
+        kit = kitBuildFor({
+          manifest: described.manifest,
+          sourceDir: join(root, "source"),
+          nodeModules,
+          contributed: contributedThemes(nodeModules, lockPlugins),
+          ...(homeTheme !== undefined ? { homeTheme } : {}),
+        }).kit;
+      } catch (error) {
+        if (!(error instanceof RpcError)) throw error;
+        notify("diagnostics", { diagnostics: [error.diagnostic] });
+        const registry = kitRegistry(nodeModules, described.manifest.kit?.base ?? "base");
+        if (registry !== undefined) kit = { ...kit, registry };
+      }
       const started = await options.renderMode().dev(
         {
           root,
@@ -303,6 +333,7 @@ export function createDev(options: DevOptions): Dev {
           nodeModules,
           outDir: versionDir,
           secret,
+          kit,
         },
         {
           server: (build, files) => {

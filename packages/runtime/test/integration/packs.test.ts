@@ -461,6 +461,80 @@ describe("shadcn's own items, unchanged (EX-03)", () => {
   });
 });
 
+describe("the kit's parts by name (D181 item 7, KT-03)", () => {
+  const KIT = fileURLToPath(new URL("../../../kit/registry/", import.meta.url));
+
+  it("copies a kit part for the artifact's base, with its kit dependencies, byte for byte", async () => {
+    const target = await start();
+    const dir = artifact();
+    const asked = requests.length;
+    const result = ok<PackResult>(
+      await target.client.call("pack/add", { artifact: { path: dir }, specs: ["dialog"] }),
+    );
+    // The dialog needs the kit's button: its bare dependency is the kit's, not shadcn's.
+    expect(result.items.map((item) => item.name)).toEqual(["button", "dialog"]);
+    for (const file of ["components/ui/button.tsx", "components/ui/dialog.tsx"]) {
+      expect(readFileSync(join(dir, file), "utf8"), file).toBe(
+        readFileSync(join(KIT, "base", file), "utf8"),
+      );
+    }
+    // Nothing was asked of shadcn's registry.
+    expect(requests.slice(asked)).toEqual([]);
+    expect(result.packages.every((pkg) => pkg.warm)).toBe(true);
+
+    // A Radix artifact gets Radix's.
+    const radix = artifact({
+      "index.tsx":
+        'import { defineArtifact } from "@mostra/react";\nexport const artifact = defineArtifact({ title: "Radix", kit: { base: "radix" } });\nexport default function Page() { return <p>Hello</p>; }\n',
+    });
+    // `pack/kit` names the items an artifact's base offers, so a client tells them from npm
+    // packages (Opus review 9): Base UI's `toast` is only in its base.
+    const kitOf = async (path?: string) =>
+      ok<{ base: string; items: string[] }>(
+        await target.client.call("pack/kit", path === undefined ? {} : { artifact: { path } }),
+      );
+    const baseKit = await kitOf(dir);
+    expect(baseKit.base).toBe("base");
+    expect(baseKit.items).toEqual(
+      expect.arrayContaining(["button", "dialog", "toast", "mostra-questionnaire"]),
+    );
+    expect(baseKit.items).not.toContain("zod");
+    const radixKit = await kitOf(radix);
+    expect(radixKit.base).toBe("radix");
+    expect(radixKit.items).toEqual(expect.arrayContaining(["button", "sonner", "mostra-layout"]));
+    expect(radixKit.items).not.toContain("toast");
+    expect((await kitOf()).base).toBe("base");
+    ok(await target.client.call("pack/add", { artifact: { path: radix }, specs: ["button"] }));
+    expect(readFileSync(join(radix, "components/ui/button.tsx"), "utf8")).toBe(
+      readFileSync(join(KIT, "radix", "components/ui/button.tsx"), "utf8"),
+    );
+    expect(readFileSync(join(radix, "components/ui/button.tsx"), "utf8")).not.toBe(
+      readFileSync(join(KIT, "base", "components/ui/button.tsx"), "utf8"),
+    );
+
+    // The copy wins, and the page builds with it.
+    writeFileSync(
+      join(dir, "index.tsx"),
+      'import { Button } from "@/components/ui/button";\nexport default function Page() { return <Button>Go</Button>; }\n',
+    );
+    ok(await target.client.call("artifact/publish", { source: { path: dir } }));
+  });
+
+  it("keeps a name the kit lacks, or one with a version, an npm package", async () => {
+    const target = await start();
+    const dir = artifact();
+    const result = ok<PackResult>(
+      await target.client.call("pack/add", {
+        artifact: { path: dir },
+        specs: ["mostra-questionnaire", "fixture-engine@2.0.0"],
+      }),
+    );
+    expect(result.items.map((item) => item.name)).toEqual(["mostra-questionnaire"]);
+    expect(existsSync(join(dir, "components/mostra/questionnaire.tsx"))).toBe(true);
+    expect(result.packages.map((pkg) => pkg.name)).toContain("fixture-engine");
+  });
+});
+
 describe("GitHub registries and Mostra's own packs", () => {
   it("installs from a repository's registry at the commit its ref names, with the item's CSS", async () => {
     const target = await start();

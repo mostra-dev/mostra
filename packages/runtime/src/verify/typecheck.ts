@@ -107,7 +107,7 @@ export const TYPECHECK_REVISION: string = createHash("sha256")
       // The declarations' text without this machine's path to them.
       AMBIENT: AMBIENT.replace(VITE_CLIENT?.path ?? "\u0000", "vite/client.d.ts"),
       vite: VITE_CLIENT?.version ?? null,
-      revision: 2,
+      revision: 4,
     }),
   )
   .digest("hex");
@@ -241,6 +241,11 @@ export async function typecheck(options: {
   readonly hasLive: boolean;
   /** Whether a TS2307 for this import repeats what the build or dependency stage said. */
   readonly alreadyReported: (specifier: string) => boolean;
+  /**
+   * The kit's registry for the artifact's base, where `@/…` resolves after the artifact's own
+   * files (ROUND-3 §1.1), as the build resolves it.
+   */
+  readonly kitRegistry?: string;
   readonly timeoutMs?: number;
 }): Promise<TypecheckOutcome> {
   const { workDir } = options;
@@ -256,7 +261,20 @@ export async function typecheck(options: {
     const server = serverTypes();
     const forced = {
       ...FORCED_OPTIONS,
-      paths: { ...FORCED_OPTIONS.paths, ...(server ? { "@mostra/server": [server] } : {}) },
+      paths: {
+        ...FORCED_OPTIONS.paths,
+        ...(options.kitRegistry !== undefined
+          ? {
+              "@/*": [...FORCED_OPTIONS.paths["@/*"], `${options.kitRegistry}/*`],
+              // A kit module as the build finds it: the artifact's copy, else the kit's (D181).
+              "@mostra/kit/*": [
+                "./source/components/mostra/*",
+                `${options.kitRegistry}/components/mostra/*`,
+              ],
+            }
+          : {}),
+        ...(server ? { "@mostra/server": [server] } : {}),
+      },
     };
     // The build's options first, the artifact's own configuration over them, Mostra's forced
     // ones last (an `extends` array applies in order).

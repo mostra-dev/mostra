@@ -26,3 +26,6 @@ __pycache__/
 
 # A release writes the bundle pins into the crate before packaging it (D143)
 crates/mostra-host/bundles.json
+
+# The kit registry check's scratch projects
+packages/kit/.check/

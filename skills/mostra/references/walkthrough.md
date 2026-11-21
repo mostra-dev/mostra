@@ -57,7 +57,7 @@ Name the two people: the person, and someone they name (a colleague, or themselv
 
 ## 3. Build the page
 
-`mostra new <dir> --title "<title>"`, then write one page with these five parts. Keep each part small and the whole page considered: read [design.md](design.md) before the markup, and copy the baseline stylesheet it names.
+`mostra new <dir> --title "<title>"`, then write one page with these five parts. Keep each part small and the whole page considered: read [design.md](design.md) before the markup, name one of its themes in the manifest and build from the kit's parts.
 
 1. **A dashboard that is live.** A short text summary, a chart and one number that updates by itself.
    - The chart's data comes from a live source in `live.ts` (`defineLive` with `load`), read with `useLive`.

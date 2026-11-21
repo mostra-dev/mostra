@@ -951,4 +951,14 @@ export const MIGRATIONS: readonly Migration[] = [
       );
     },
   },
+  {
+    version: 19,
+    name: "the options a field's value is chosen from",
+    up(db) {
+      // A field names the options its value is chosen from (`FieldOp.options`, KT-05), so results
+      // say what the person saw and whether they took the recommended one; a row kept before has
+      // none.
+      db.exec("ALTER TABLE field ADD COLUMN options_json TEXT");
+    },
+  },
 ];

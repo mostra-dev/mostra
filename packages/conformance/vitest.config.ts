@@ -12,8 +12,9 @@ const integration =
   group === undefined ||
   group === "" ||
   group === "clients" ||
-  // Windows runs the clients' suites in its own group (WP-W3).
-  group === "windows-clients"
+  // Windows runs the kit in a group of its own: about 11.5 of its 14 minutes on arm64, too much
+  // beside the other clients' suites (WP-18, #225).
+  group === "windows-conformance"
     ? ["test/integration/**/*.test.ts"]
     : [];
 

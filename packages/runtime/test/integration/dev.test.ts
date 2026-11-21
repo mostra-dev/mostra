@@ -120,6 +120,32 @@ describe("mostra dev (VR-08)", () => {
     await page.close();
   }, 120_000);
 
+  it("previews a page that names no theme in the home's default stack, as publish builds it (Opus review 6)", async () => {
+    const own = join(tempDir("dev-home-theme"), "plain");
+    writeDevFixture(own);
+    // A connection initializes once: each setting of the home's look is a host's own.
+    const look = async (value: Record<string, unknown>): Promise<void> => {
+      const host = await connectTo(gateway.daemon.status.socket as string);
+      ok(await host.call("mostra/initialize", initializeParams({ home: { look: value } })));
+      host.close();
+    };
+    await look({ theme: ["arcata"] });
+    try {
+      const started = ok<{ url: string }>(
+        await client.call("dev/start", { source: { path: own } }, 120_000),
+      );
+      const page = await browser.newPage();
+      await page.goto(started.url);
+      const frame = page.frameLocator("iframe");
+      await expect
+        .poll(() => frame.locator("html").getAttribute("data-theme"), { timeout: 30_000 })
+        .toBe("arcata");
+      await page.close();
+    } finally {
+      await look({});
+    }
+  }, 120_000);
+
   it("takes an editor's save that moves the old file aside for a save, and a deletion for a deletion (WP-W2)", async () => {
     writeDevFixture(dir);
     writeFileSync(join(dir, "notes.txt"), "kept until deleted\n");

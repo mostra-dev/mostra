@@ -21,6 +21,7 @@ const tree = [file("index.tsx", "export default 1;\n"), file("data/a.json", "[1]
 const environment = {
   mostraVersion: "0.1.0",
   kitVersion: null,
+  themeDigest: sha256Hex("theme"),
   kitBase: "base" as const,
   mode: "spa" as const,
   lockDigest: sha256Hex("lock"),
@@ -67,11 +68,12 @@ describe("sourceDigest (DATA_MODEL §2)", () => {
 });
 
 describe("envDigest (DATA_MODEL §2)", () => {
-  it("changes with every field: Mostra and kit versions, base, lockfile, build config, browser protocol", () => {
+  it("changes with every field: Mostra and kit versions, theme, base, lockfile, build config, browser protocol", () => {
     const base = environmentDigest(environment);
     const changed = [
       { ...environment, mostraVersion: "0.1.1" },
       { ...environment, kitVersion: "1.0.0" },
+      { ...environment, themeDigest: sha256Hex("theme 2") },
       { ...environment, kitBase: "radix" as const },
       { ...environment, lockDigest: sha256Hex("lock 2") },
       { ...environment, buildConfigDigest: sha256Hex("config 2") },

@@ -14,11 +14,15 @@
       "!**/node_modules",
       "!**/*.api.md",
       "!**/schemas/**/*.json",
+      "!packages/themes/theme.schema.json",
       "!docs/reference",
       "!docs/design/evaluations",
       "!pnpm-lock.yaml",
       "!**/fixtures",
-      "!packages/themes/css"
+      "!packages/themes/css",
+      "!packages/kit/registry",
+      "!packages/kit/upstream",
+      "!packages/kit/css/shadcn.css"
     ]
   },
   "formatter": {
@@ -74,6 +78,10 @@
     }
   },
   "overrides": [
+    {
+      "includes": ["packages/kit/css/**"],
+      "css": { "parser": { "tailwindDirectives": true } }
+    },
     {
       "includes": ["skills/**"],
       "css": { "parser": { "tailwindDirectives": true } },
