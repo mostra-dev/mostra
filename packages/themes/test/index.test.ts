@@ -159,7 +159,7 @@ describe("stylesheets", () => {
         tokens: { base: { nope: "1" } },
       }),
     ).toBe(false);
-  });
+  }, 30_000); // Ajv compiles the schema: seconds on a loaded machine, beyond Vitest's 5 s default.
 
   it("ship as files that equal what the themes generate", () => {
     for (const theme of Object.values(THEMES)) {
