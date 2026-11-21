@@ -26,7 +26,7 @@ import {
   viewerName,
 } from "../support/client.ts";
 import { BIN, Client, removeTree, startDaemon } from "../support/mostra.ts";
-import { shortLivedPort } from "../support/ports.ts";
+import { reserveShortLivedPort } from "../support/ports.ts";
 
 test.describe("a hosted link (RM-02, §18.4)", () => {
   test.describe.configure({ mode: "serial" });
@@ -36,7 +36,11 @@ test.describe("a hosted link (RM-02, §18.4)", () => {
   let client: Client | undefined;
 
   test.beforeAll(async () => {
-    port = await shortLivedPort();
+    // Held until the server starts: the daemon, started first, binds short-lived listeners in the
+    // same range, and a port only probed was taken once before the server bound it (EADDRINUSE in
+    // surfaces.spec.ts, main's nightly run 44898874910).
+    const reserved = await reserveShortLivedPort();
+    port = reserved.port;
     daemon = await startDaemon({ env: { MOSTRA_TEST_SERVER_ADDRESS: `127.0.0.1:${port}` } });
     const data = join(daemon.root, "server");
     mkdirSync(data, { recursive: true });
@@ -50,6 +54,7 @@ test.describe("a hosted link (RM-02, §18.4)", () => {
         identityProviders: [{ id: "dev", kind: "development", label: "Development" }],
       }),
     );
+    await reserved.release();
     server = spawn(
       process.execPath,
       [BIN, "server", "--data", data, "--config", config, "--listen", `127.0.0.1:${port}`],

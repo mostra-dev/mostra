@@ -37,10 +37,24 @@ export async function listenShortLived(server: Server, host = "127.0.0.1"): Prom
   throw new Error(`No port between ${FIRST} and ${LAST} was free on ${host} after 64 tries.`);
 }
 
-/** A port of the range that was free a moment ago, for a server another process starts. */
-export async function shortLivedPort(): Promise<number> {
-  const probe = createServer();
-  const port = await listenShortLived(probe);
-  await new Promise<void>((resolve) => probe.close(() => resolve()));
-  return port;
+/**
+ * A port of the range, held by a listener of this process until `release()`: for a server another
+ * process starts on it later, so nothing else takes it in between (a daemon started meanwhile
+ * binds its own short-lived listeners in the same range). Release it just before that server
+ * starts; releasing twice does nothing.
+ */
+export async function reserveShortLivedPort(): Promise<{
+  readonly port: number;
+  release(): Promise<void>;
+}> {
+  const holder = createServer();
+  const port = await listenShortLived(holder);
+  let released: Promise<void> | undefined;
+  return {
+    port,
+    release: () => {
+      released ??= new Promise<void>((resolve) => holder.close(() => resolve()));
+      return released;
+    },
+  };
 }
