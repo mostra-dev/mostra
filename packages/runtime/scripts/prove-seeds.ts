@@ -330,6 +330,24 @@ const SEEDS: readonly Seed[] = [
     to: '  if ((element as HTMLElement).isContentEditable) return "";',
     check: integration("kit-parts.test.ts", "Opus review 12"),
   },
+  {
+    requirement: "KT-04",
+    name: "review 11: a file's change that changes nothing passes the generator",
+    file: "../kit/scripts/generate.ts",
+    from: "        if (content !== before) usedFiles.add(`${folder}/${name}`);",
+    to: "        usedFiles.add(`${folder}/${name}`);",
+    check: ["test/generate.test.ts", "-t", "changes nothing"],
+    cwd: "../kit",
+  },
+  {
+    requirement: "KT-04",
+    name: "review 11: a rule that no longer installs its token passes the generator",
+    file: "../kit/scripts/studio.ts",
+    from: "      const missing = (rule.requires ?? []).filter((name) => !classes.includes(name));",
+    to: "      const missing: string[] = [];",
+    check: ["test/generate.test.ts", "-t", "installs a token"],
+    cwd: "../kit",
+  },
   // MT-06: signing out (#204) and the metering window (#203). Each item's check goes red on a
   // violation planted where it is enforced (`--only MT-06`, `--name "sign-out:"` for one item).
   {

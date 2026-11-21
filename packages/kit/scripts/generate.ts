@@ -139,8 +139,11 @@ for (const [base, style] of Object.entries(BASES) as [Base, string][]) {
       content = restyle(content, `${folder}/${name}`, usedClasses);
       const change = FILE_CHANGES[`${folder}/${name}`];
       if (change !== undefined) {
+        const before = content;
         content = change(content, base);
-        usedFiles.add(`${folder}/${name}`);
+        // A file's change counts where it changed the file, in either base: one that does nothing
+        // in both fails the generator, as a class change does (Opus review of WP-18, finding 11).
+        if (content !== before) usedFiles.add(`${folder}/${name}`);
       }
       emit(join(base, path), content);
       for (const match of content.matchAll(/from "([^".][^"]*)"/g)) {

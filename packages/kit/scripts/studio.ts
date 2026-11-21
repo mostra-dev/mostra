@@ -22,6 +22,12 @@ export interface ClassRule {
   readonly map: Readonly<Record<string, string | null>>;
   /** Classes to add when the rule applies. */
   readonly add?: readonly string[];
+  /**
+   * Classes the rule's list must hold once it applied: the tokens its replacements install. A list
+   * without one (shadcn renamed the class the rule replaces) fails the generator, rather than
+   * ship a part that ignores the theme (Opus review of WP-18, finding 11).
+   */
+  readonly requires?: readonly string[];
 }
 
 const has = (classes: ReadonlySet<string>, ...names: string[]): boolean =>
@@ -72,6 +78,7 @@ export const CLASS_RULES: readonly ClassRule[] = [
       "duration-100": "duration-150",
     },
     add: ["shadow-popover"],
+    requires: ["rounded-(--dialog-radius)", "p-(--dialog-pad)"],
   },
   {
     // Menus, popovers, select lists, hover cards, toasts: the popover's radius and depth.
@@ -90,6 +97,7 @@ export const CLASS_RULES: readonly ClassRule[] = [
       "p-1": "p-(--menu-pad)",
     },
     add: ["shadow-popover"],
+    requires: ["rounded-popover"],
   },
   {
     // Sheets and drawers: a panel at the window's edge, with the popover's depth.
@@ -115,6 +123,7 @@ export const CLASS_RULES: readonly ClassRule[] = [
       "pr-1.5": "pr-2.5",
       "text-sm": "text-[0.9375rem]",
     },
+    requires: ["rounded-(--menu-item-radius)"],
   },
   {
     // Fields people type in or pick from: the theme's field, edge, radius and height.
@@ -140,6 +149,7 @@ export const CLASS_RULES: readonly ClassRule[] = [
       "focus-visible:ring-ring/50": "focus-visible:ring-ring/30",
     },
     add: ["shadow-control", "duration-(--state-ms)"],
+    requires: ["rounded-control"],
   },
   {
     // Cards: the theme's card radius and depth, and its spacing.
@@ -154,6 +164,7 @@ export const CLASS_RULES: readonly ClassRule[] = [
       "*:[img:last-child]:rounded-b-xl": "*:[img:last-child]:rounded-b-card",
     },
     add: ["shadow-card"],
+    requires: ["rounded-card"],
   },
   {
     // A card's parts: inset by the theme's card padding.
@@ -374,6 +385,34 @@ export const FILE_CHANGES: Readonly<Record<string, (code: string, base: string) 
 const STRING = /"((?:[^"\\\n]|\\.)*)"/g;
 const CLASS_NAME = /^[!-~]+$/;
 
+/** A class that sets a part's whole radius, or its shadow, as Tailwind names its scale. */
+const RADIUS = /^rounded(-(none|xs|sm|md|lg|xl|2xl|3xl|4xl|full))?$/;
+const SHADOW = /^shadow(-(2xs|xs|sm|md|lg|xl|2xl))?$/;
+/** The kit's own radius and shadow classes, which read a theme's tokens. */
+const TOKEN_RADIUS = /^rounded-(\(--[a-z-]+\)|popover|card|control|button|choice|badge)$/;
+const TOKEN_SHADOW = /^shadow-(popover|card|control|button|choice)$/;
+
+/**
+ * A restyled class list keeps only the theme's radius and shadow where the kit gave it one: a
+ * radius or shadow of shadcn's beside it (one a newer shadcn renamed, say `rounded-3xl`) would
+ * override the theme's, so the generator fails on it rather than ship a part that ignores the
+ * tokens (Opus review of WP-18, finding 11).
+ */
+function settled(classes: readonly string[], file: string): void {
+  for (const [token, raw, what] of [
+    [TOKEN_RADIUS, RADIUS, "radius"],
+    [TOKEN_SHADOW, SHADOW, "shadow"],
+  ] as const) {
+    if (!classes.some((name) => token.test(name))) continue;
+    const left = classes.filter((name) => raw.test(name));
+    if (left.length > 0) {
+      throw new Error(
+        `${file}: the kit gave a class list the theme's ${what}, and shadcn's ${left.join(", ")} stays beside it; map it in studio.ts.`,
+      );
+    }
+  }
+}
+
 /**
  * Applies the kit's changes to one file of an item, recording which changes found their place
  * (`used`), so the generator can fail on one that no longer does.
@@ -390,8 +429,10 @@ export function restyle(code: string, file: string, used: Map<string, number>): 
     if (names.length < 2 || !names.every((name) => CLASS_NAME.test(name))) return literal;
     let classes = names;
     let changed = false;
+    const applied = new Set<ClassRule>();
     for (const rule of CLASS_RULES) {
       if (!rule.when(new Set(classes), file)) continue;
+      applied.add(rule);
       used.set(`rule: ${rule.name}`, (used.get(`rule: ${rule.name}`) ?? 0) + 1);
       changed = true;
       const next: string[] = [];
@@ -401,6 +442,16 @@ export function restyle(code: string, file: string, used: Map<string, number>): 
       }
       for (const name of rule.add ?? []) if (!next.includes(name)) next.push(name);
       classes = next;
+    }
+    if (changed) settled(classes, file);
+    for (const rule of CLASS_RULES) {
+      if (!applied.has(rule)) continue;
+      const missing = (rule.requires ?? []).filter((name) => !classes.includes(name));
+      if (missing.length > 0) {
+        throw new Error(
+          `${file}: the rule "${rule.name}" applied to "${names.join(" ")}" but left it without ${missing.join(", ")}; shadcn's classes changed, so map the new ones in studio.ts.`,
+        );
+      }
     }
     return changed ? `"${classes.join(" ")}"` : literal;
   });
