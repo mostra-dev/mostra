@@ -289,6 +289,39 @@ const SEEDS: readonly Seed[] = [
     to: "          false ||",
     check: integration("kit-parts.test.ts", "home's default"),
   },
+  {
+    requirement: "KT-08",
+    name: "review 7: --fix imports Tailwind again in a layer of the theme stack",
+    file: "src/verify/lint.ts",
+    from: '      index === 0 && !layer ? \'@import "tailwindcss";\' : "",',
+    to: '      index === 0 ? \'@import "tailwindcss";\' : "",',
+    check: unit("lint.test.ts", "Opus review 7"),
+  },
+  {
+    requirement: "KT-08",
+    name: "review 10: a template's first and last class are read with its delimiters",
+    file: "src/verify/lint.ts",
+    from: "        lintClassList(lint, raw, quasi.start + at);",
+    to: "        lintClassList(lint, lint.text.slice(quasi.start, quasi.end), quasi.start);",
+    check: unit("lint.test.ts", "Opus review 10"),
+  },
+  {
+    requirement: "KT-05",
+    name: "review 8: a field's options escape its document's size",
+    file: "src/interaction/fields.ts",
+    from: '    size += Buffer.byteLength(json, "utf8") + Buffer.byteLength(options ?? "", "utf8") - oldSize;',
+    to: '    size += Buffer.byteLength(json, "utf8") - oldSize;',
+    check: unit("interaction.test.ts", "Opus review 8"),
+  },
+  {
+    requirement: "KT-05",
+    name: "review 8: a page sends options past what a field carries, and every save is refused",
+    file: "../react/src/hooks.ts",
+    from: "      optionsKey === undefined || optionsProblem !== undefined",
+    to: "      optionsKey === undefined",
+    check: ["--project", "browser", "test/browser/hooks.test.tsx", "-t", "Opus review 8"],
+    cwd: "../react",
+  },
   // MT-06: signing out (#204) and the metering window (#203). Each item's check goes red on a
   // violation planted where it is enforced (`--only MT-06`, `--name "sign-out:"` for one item).
   {

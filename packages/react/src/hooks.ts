@@ -10,6 +10,8 @@
 import {
   type Actor,
   type ControlRequest,
+  FIELD_OPTIONS_MAX,
+  FIELD_OPTIONS_MAX_BYTES,
   type FieldOption,
   type FieldScope,
   mostraControlsRequest,
@@ -192,6 +194,30 @@ function updatedByOf(
 const warned = new Set<string>();
 
 /**
+ * Why a field's options can't be stored with it, or `undefined`: more than the protocol takes
+ * (`FIELD_OPTIONS_MAX` options of at most 1024 characters, `FIELD_OPTIONS_MAX_BYTES` of JSON).
+ */
+function optionsTooMuch(key: string | undefined): string | undefined {
+  if (key === undefined) return undefined;
+  const options = JSON.parse(key) as readonly FieldOption[];
+  if (options.length > FIELD_OPTIONS_MAX) {
+    return `names ${options.length} options, more than the ${FIELD_OPTIONS_MAX} a field keeps; its answers are saved without their labels.`;
+  }
+  const long = options.find(
+    (option) =>
+      String(option.value).length > 1024 ||
+      (option.label !== undefined && option.label.length > 1024),
+  );
+  if (long !== undefined) {
+    return "has an option whose value or label is longer than 1024 characters; its answers are saved without their labels.";
+  }
+  if (new TextEncoder().encode(key).length > FIELD_OPTIONS_MAX_BYTES) {
+    return "has options larger than 64 KiB of JSON; its answers are saved without their labels.";
+  }
+  return undefined;
+}
+
+/**
  * A persisted value with a stable field ID (D52). It behaves like `useState`: the value the viewer
  * sees, a setter, and what the field is doing. Edits save to Mostra as the viewer works, survive
  * reloads, closed tabs and other devices, reach other tabs, and carry over to newer versions by
@@ -241,11 +267,19 @@ export function useField<T>(
   const { label, required, sensitive } = options;
   // The options as one value, so a new array with the same options changes nothing.
   const optionsKey = options.options === undefined ? undefined : JSON.stringify(options.options);
+  // Options past what a field may carry would make every save of it refused: the field saves
+  // without them, and the page says why on its console, which verify reports.
+  const optionsProblem = useMemo(() => optionsTooMuch(optionsKey), [optionsKey]);
   const choices = useMemo(
     () =>
-      optionsKey === undefined ? undefined : (JSON.parse(optionsKey) as readonly FieldOption[]),
-    [optionsKey],
+      optionsKey === undefined || optionsProblem !== undefined
+        ? undefined
+        : (JSON.parse(optionsKey) as readonly FieldOption[]),
+    [optionsKey, optionsProblem],
   );
+  useEffect(() => {
+    if (optionsProblem !== undefined) console.error(`Mostra: the field ${id} ${optionsProblem}`);
+  }, [id, optionsProblem]);
 
   // Registered once per mount and ID; the next effect keeps its options current.
   // biome-ignore lint/correctness/useExhaustiveDependencies: options change through updateRegistration.

@@ -285,6 +285,7 @@ export {
   EventTypePattern,
   FIELD_ID_MAX_LENGTH,
   FIELD_OPTIONS_MAX,
+  FIELD_OPTIONS_MAX_BYTES,
   FieldConflict,
   FieldOp,
   FieldOption,

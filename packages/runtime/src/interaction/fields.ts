@@ -11,6 +11,7 @@ import {
   type Actor,
   canonicalJson,
   createDiagnostic,
+  FIELD_OPTIONS_MAX_BYTES,
   type FieldConflict,
   type FieldOp,
   type FieldOption,
@@ -205,6 +206,12 @@ function checkOps(ops: readonly FieldOp[]): Map<string, string | undefined> {
     if (Buffer.byteLength(json, "utf8") > FIELD_VALUE_MAX_BYTES) {
       throw tooLarge(`The value of ${op.id} is larger than 1 MiB of JSON.`);
     }
+    if (
+      op.options !== undefined &&
+      Buffer.byteLength(JSON.stringify(op.options), "utf8") > FIELD_OPTIONS_MAX_BYTES
+    ) {
+      throw tooLarge(`The options of ${op.id} are larger than 64 KiB of JSON.`);
+    }
     encoded.set(op.id, json);
   }
   return encoded;
@@ -294,7 +301,13 @@ export function applyMutation(db: LedgerDb, input: MutationInput): MutationOutco
     }
     applied.push(op.id);
     const json = encoded.get(op.id);
-    const oldSize = row && row.deleted === 0 ? Buffer.byteLength(row.value_json, "utf8") : 0;
+    // A field's size in its document is its value and its options, while it holds a value (the
+    // options a page names are stored with it, Opus review of WP-18, finding 8).
+    const oldSize =
+      row && row.deleted === 0
+        ? Buffer.byteLength(row.value_json, "utf8") +
+          Buffer.byteLength(row.options_json ?? "", "utf8")
+        : 0;
     const sensitive = op.sensitive ?? (row ? row.sensitive === 1 : false);
     if (json === undefined) {
       // Deleting what isn't there changes nothing and needs no new revision.
@@ -314,11 +327,11 @@ export function applyMutation(db: LedgerDb, input: MutationInput): MutationOutco
       changes.push({ id: op.id, deleted: true });
       continue;
     }
-    size += Buffer.byteLength(json, "utf8") - oldSize;
     const label = op.label ?? row?.label ?? null;
     const required = op.required !== undefined ? (op.required ? 1 : 0) : (row?.required ?? null);
     const options =
       op.options !== undefined ? JSON.stringify(op.options) : (row?.options_json ?? null);
+    size += Buffer.byteLength(json, "utf8") + Buffer.byteLength(options ?? "", "utf8") - oldSize;
     writes.push(() =>
       db.run(
         `INSERT INTO field (document_id, field_id, value_json, deleted, field_rev, updated_by_json, updated_at, sensitive, label, required, version_number, options_json)

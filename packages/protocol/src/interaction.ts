@@ -166,6 +166,13 @@ export const DocumentRevision: z.ZodType<DocumentRevision> = z
 export const FIELD_OPTIONS_MAX = 200;
 
 /**
+ * The most bytes of JSON one field's options may take (WP-18, after the Opus review): they are
+ * stored with the field and count toward its document's 16 MiB, so a field's labels stay a small
+ * part of it.
+ */
+export const FIELD_OPTIONS_MAX_BYTES: number = 64 * 1024;
+
+/**
  * One of the options a field's value is chosen from, so results can name an answer by what the
  * person saw and say whether they took the recommended one (KT-05). A field whose value is an
  * array (several choices, a ranking) names each of its values the same way.
