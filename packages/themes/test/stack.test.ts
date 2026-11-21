@@ -8,6 +8,7 @@ import {
   arcata,
   composeThemes,
   defineThemeLayer,
+  type FontFile,
   isCompleteTheme,
   kitStylesheet,
   oklch,
@@ -150,8 +151,44 @@ describe("a stack (D181 item 2)", () => {
       defineThemeLayer(layer({ tokens: { base: { field: "url(https://x)" } } })),
     ).toThrow(ThemeError);
     expect(() => defineThemeLayer(layer({ css: '@import "https://example.com/x.css";' }))).toThrow(
-      /no @import and no url/,
+      /no @import, no escapes/,
     );
+  });
+
+  it("refuses CSS, a face or a name that could add rules or fetch from elsewhere (Opus review 1)", () => {
+    const loads = [
+      'html { background: image-set("https://x.example/t.png" 1x); }',
+      'html { background: -webkit-image-set("https://x.example/t.png" 1x); }',
+      "html { background: \\75 rl(https://x.example/t.png); }",
+      '@\\69mport "https://x.example/x.css";',
+      'html { background: image("https://x.example/t.png"); }',
+      "html { background: cross-fade(red, blue); }",
+      'html { background: src("https://x.example/t.png"); }',
+    ];
+    for (const css of loads) {
+      expect(() => defineThemeLayer(layer({ css })), css).toThrow(/no @import, no escapes/);
+    }
+    for (const field of ['image-set("https://x" 1x)', "a\\62", 'src("x")']) {
+      expect(() => defineThemeLayer(layer({ tokens: { base: { field } } })), field).toThrow(
+        /isn't a value a token can hold/,
+      );
+    }
+    const file = studio.faces.sans.files[0] as FontFile;
+    const face = (changes: Partial<FontFile>) =>
+      layer({ faces: { sans: { ...studio.faces.sans, files: [{ ...file, ...changes }] } } });
+    const breakout = 'U+0-FF;} html{background:image-set("https://x.example/t.png" 1x)} x{a:b';
+    expect(() => defineThemeLayer(face({ unicodeRange: breakout }))).toThrow(/unicodeRange/);
+    expect(() => defineThemeLayer(face({ weight: "400; } html { x" }))).toThrow(/weight/);
+    expect(() => defineThemeLayer(face({ style: "normal; } x {" as never }))).toThrow(/style/);
+    expect(() =>
+      defineThemeLayer(face({ weight: "300 900", unicodeRange: "U+0000-00FF, U+0131" })),
+    ).not.toThrow();
+    expect(() => defineThemeLayer(layer({ name: "Brand */ html { x: y } /*" }))).toThrow(
+      /name: no "\*\/"/,
+    );
+    expect(() => defineThemeLayer(layer({ description: "One\nline" }))).toThrow(/description/);
+    // Written into a comment as it can stand there, should a theme's name reach one unchecked.
+    expect(kitStylesheet({ ...studio, name: "A */ b" })).toContain("/* A * / b (studio)");
   });
 
   it("tells a complete theme from a layer", () => {

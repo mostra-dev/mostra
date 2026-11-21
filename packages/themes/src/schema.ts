@@ -47,9 +47,13 @@ const face = {
         additionalProperties: false,
         properties: {
           file: { type: "string", pattern: "^fonts/[a-z0-9-]+\\.woff2$" },
-          weight: { type: "string" },
+          weight: { type: "string", pattern: "^[1-9][0-9]{0,2}( [1-9][0-9]{0,2})?$" },
           style: { enum: ["normal", "italic"] },
-          unicodeRange: { type: "string" },
+          unicodeRange: {
+            type: "string",
+            pattern:
+              "^[Uu]\\+[0-9A-Fa-f?]{1,6}(-[0-9A-Fa-f]{1,6})?(, ?[Uu]\\+[0-9A-Fa-f?]{1,6}(-[0-9A-Fa-f]{1,6})?)*$",
+          },
         },
       },
     },

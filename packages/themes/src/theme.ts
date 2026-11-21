@@ -6,7 +6,13 @@
  * refused with the reason.
  */
 import { type Color, contrast, isHex, oklchToHex } from "./color.ts";
-import { isTokenName, isTokenValue, type TokenValues } from "./tokens.ts";
+import {
+  hasControl,
+  isTokenName,
+  isTokenValue,
+  loadsResource,
+  type TokenValues,
+} from "./tokens.ts";
 
 /**
  * The revision of the theme format. Fields are only ever added within a revision (invariant 10); a
@@ -309,6 +315,16 @@ function checkLayer(layer: ThemeLayer, problems: string[]): void {
     );
   }
   if (layer.name.trim() === "" || layer.name.length > 64) problems.push("name: 1 to 64 characters");
+  // The name and description are words a person reads; Mostra writes the name into a stylesheet's
+  // first comment (as `commentText` makes it), so neither may hold what ends one or a line.
+  for (const [key, text] of [
+    ["name", layer.name],
+    ["description", layer.description],
+  ] as const) {
+    if (text.includes("*/") || hasControl(text)) {
+      problems.push(`${key}: no "*/" and no control characters`);
+    }
+  }
   if (layer.description.length > 280) problems.push("description: at most 280 characters");
   for (const [role, face] of Object.entries(layer.faces ?? {})) {
     if (face === undefined) continue;
@@ -317,6 +333,22 @@ function checkLayer(layer: ThemeLayer, problems: string[]): void {
     for (const file of face.files) {
       if (!/^fonts\/[a-z0-9-]+\.woff2$/.test(file.file)) {
         problems.push(`faces.${role}: "${file.file}" isn't a woff2 file under fonts/`);
+      }
+      // Each goes into an `@font-face` as it is, so each must be exactly what CSS takes there.
+      if (!/^[1-9]\d{0,2}( [1-9]\d{0,2})?$/.test(file.weight)) {
+        problems.push(
+          `faces.${role}: weight "${file.weight}" isn't a weight or a range (400, 300 900)`,
+        );
+      }
+      if (file.style !== "normal" && file.style !== "italic") {
+        problems.push(`faces.${role}: style "${String(file.style)}" isn't normal or italic`);
+      }
+      if (
+        !/^U\+[0-9A-F?]{1,6}(-[0-9A-F]{1,6})?(,\s?U\+[0-9A-F?]{1,6}(-[0-9A-F]{1,6})?)*$/i.test(
+          file.unicodeRange,
+        )
+      ) {
+        problems.push(`faces.${role}: unicodeRange "${file.unicodeRange}" isn't a unicode-range`);
       }
     }
   }
@@ -343,8 +375,10 @@ function checkLayer(layer: ThemeLayer, problems: string[]): void {
   }
   if (layer.css !== undefined) {
     if (layer.css.length > 64 * 1024) problems.push("css: at most 64 KiB");
-    if (/@import|url\s*\(|<\/style/i.test(layer.css)) {
-      problems.push("css: no @import and no url(); a theme's only files are its faces");
+    if (loadsResource(layer.css) || /<\/style/i.test(layer.css)) {
+      problems.push(
+        "css: no @import, no escapes and nothing that loads a file (url(), image-set() …); a theme's only files are its faces",
+      );
     }
   }
 }

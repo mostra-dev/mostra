@@ -215,6 +215,24 @@ const SEEDS: readonly Seed[] = [
     to: '  if (stack.length === 1 && stack[0] === "nothing") {',
     check: integration("kit-parts.test.ts", "uses nothing of the kit"),
   },
+  {
+    requirement: "KT-04",
+    name: "review 1: a theme's CSS may load through image-set() or an escape",
+    file: "../themes/src/tokens.ts",
+    from: "  return /\\\\|@import|\\b(?:url|(?:-webkit-)?image-set|image|cross-fade|element|src)\\s*\\(/i.test(",
+    to: "  return /@import|\\b(?:url)\\s*\\(/i.test(",
+    check: ["test/stack.test.ts", "-t", "Opus review 1"],
+    cwd: "../themes",
+  },
+  {
+    requirement: "KT-04",
+    name: "review 1: a face's unicode-range goes into @font-face unchecked",
+    file: "../themes/src/theme.ts",
+    from: "      if (\n        !/^U\\+[0-9A-F?]{1,6}",
+    to: "      if (\n        false && !/^U\\+[0-9A-F?]{1,6}",
+    check: ["test/stack.test.ts", "-t", "Opus review 1"],
+    cwd: "../themes",
+  },
   // MT-06: signing out (#204) and the metering window (#203). Each item's check goes red on a
   // violation planted where it is enforced (`--only MT-06`, `--name "sign-out:"` for one item).
   {

@@ -270,6 +270,39 @@ export function isTokenValue(value: string): boolean {
   return (
     value.length > 0 &&
     value.length <= 400 &&
-    !/[;{}<>\\]|\/\*|url\s*\(|@|!important|expression\s*\(/i.test(value)
+    !/[;{}<>]|\/\*|@|!important|expression\s*\(/i.test(value) &&
+    !loadsResource(value)
   );
 }
+
+/**
+ * Whether CSS text could make a page fetch something, or hides what it does: an escape (CSS reads
+ * `\\75 rl(` as `url(`, `@\\69mport` as `@import`), `@import`, or a function that takes a URL
+ * or a string read as one (`url()`, `image-set()` and its prefixed form, `image()`,
+ * `cross-fade()`, `element()`, `src()`). A theme's only files are its faces, which Mostra writes.
+ */
+export function loadsResource(text: string): boolean {
+  return /\\|@import|\b(?:url|(?:-webkit-)?image-set|image|cross-fade|element|src)\s*\(/i.test(
+    text,
+  );
+}
+
+/** Text as it may stand inside a CSS comment: one that can't end it early. */
+export function commentText(text: string): string {
+  let out = "";
+  for (const character of text.replaceAll("*/", "* /")) {
+    out += isControl(character) ? " " : character;
+  }
+  return out;
+}
+
+/** Whether text holds a control character (U+0000 to U+001F, or U+007F): a line break, a tab… */
+export function hasControl(text: string): boolean {
+  for (const character of text) if (isControl(character)) return true;
+  return false;
+}
+
+const isControl = (character: string): boolean => {
+  const code = character.codePointAt(0) ?? 0;
+  return code < 0x20 || code === 0x7f;
+};
