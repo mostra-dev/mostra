@@ -8,13 +8,13 @@ import {
   type SourceRef,
   themeListMethod,
   themeShowMethod,
-  themeStackOf,
 } from "@mostra/protocol";
 import { handler, type MethodHandler } from "../protocol-server/index.ts";
 import {
   type ContributedTheme,
   contributedThemes,
   resolveThemeStack,
+  stackChosen,
   themeShown,
   themeSummaries,
 } from "./stack.ts";
@@ -32,7 +32,13 @@ export interface ThemeArtifact {
 export function themeMethods(options: {
   /** Reads an artifact's manifest, source and plugins, installing nothing. */
   readonly artifact: (ref: SourceRef) => Promise<ThemeArtifact>;
+  /** The home's stack for a page that names none, as publish builds it (D181 item 5). */
+  readonly homeTheme?: () => string | readonly string[] | undefined;
 }): MethodHandler[] {
+  const homeTheme = (): { homeTheme?: string | readonly string[] } => {
+    const theme = options.homeTheme?.();
+    return theme !== undefined ? { homeTheme: theme } : {};
+  };
   const contributedOf = (artifact: ThemeArtifact | undefined): ContributedTheme[] =>
     artifact?.plugins === undefined
       ? []
@@ -42,17 +48,19 @@ export function themeMethods(options: {
       const artifact = params.artifact ? await options.artifact(params.artifact) : undefined;
       const themes = themeSummaries(contributedOf(artifact));
       if (artifact === undefined) return { themes };
-      const { stack, default: isDefault } = themeStackOf(artifact.manifest);
+      const { stack, default: isDefault } = stackChosen({
+        manifest: artifact.manifest,
+        ...homeTheme(),
+      });
       return { themes, artifact: { stack, default: isDefault } };
     }),
     handler(themeShowMethod, async (params) => {
       const artifact = params.artifact ? await options.artifact(params.artifact) : undefined;
-      const manifest: Pick<ArtifactManifest, "kit"> =
-        params.theme !== undefined
-          ? { kit: { ...artifact?.manifest.kit, theme: params.theme } }
-          : (artifact?.manifest ?? {});
+      const manifest: Pick<ArtifactManifest, "kit"> = artifact?.manifest ?? {};
       const build = resolveThemeStack({
         manifest,
+        ...homeTheme(),
+        ...(params.theme !== undefined ? { override: params.theme } : {}),
         // Without an artifact, a stack naming a `./file.css` has nowhere to find it: refused as
         // missing, which is what it is.
         sourceDir: artifact?.sourceDir ?? "/nonexistent",

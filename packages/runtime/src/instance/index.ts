@@ -33,8 +33,10 @@ import {
   portTrustedControlsPolicyMethod,
   RpcError,
   relayAuthorProgressMethod,
+  themeStackEntry,
   themeStackProblem,
 } from "@mostra/protocol";
+import { ARTIFACT_THEMES } from "@mostra/themes";
 import { createActions } from "../actions/index.ts";
 import { createAddressing, resolveBind } from "../addressing/index.ts";
 import {
@@ -902,6 +904,7 @@ async function assemble(home: OwnedHome, options: StartInstanceOptions): Promise
     sandbox: sandboxOptions,
     bindAddress: addressing.bindAddress,
     faults,
+    homeTheme: () => readHomeSettings(home.path).look?.theme,
     notify: (session, method, params) =>
       server.notify(session, method, params as unknown as JsonRpcParams),
   });
@@ -913,12 +916,26 @@ async function assemble(home: OwnedHome, options: StartInstanceOptions): Promise
     // D105).
     configureHome: (config, client) => {
       // A home's default stack is written as a manifest's is: one that can't be built is refused
-      // now, not at the next publish.
+      // now, not at the next publish. It is for every page that names no theme, so it names only
+      // what every page has: the built-in themes and "host". A `./file.css` would be looked for in
+      // each artifact, and a plugin's theme exists only where that plugin is installed (Opus
+      // review of WP-18, finding 13).
       const lookTheme = config.look?.theme;
+      const lookStack =
+        lookTheme === undefined ? [] : typeof lookTheme === "string" ? [lookTheme] : lookTheme;
+      const notEveryPage = lookStack.find((text) => {
+        const entry = themeStackEntry(text);
+        return (
+          entry?.kind === "file" ||
+          (entry?.kind === "theme" && !Object.hasOwn(ARTIFACT_THEMES, entry.id))
+        );
+      });
       const lookProblem =
         lookTheme === undefined
           ? undefined
-          : themeStackProblem(typeof lookTheme === "string" ? [lookTheme] : lookTheme);
+          : notEveryPage !== undefined
+            ? `it names ${notEveryPage}, which not every page has; a home's stack names the built-in themes (${Object.keys(ARTIFACT_THEMES).join(", ")}) and "host"`
+            : themeStackProblem(lookStack);
       if (lookProblem !== undefined) {
         throw new RpcError(
           createDiagnostic("MOSTRA_HOST_INVALID_PARAMS", {
@@ -1008,6 +1025,7 @@ async function assemble(home: OwnedHome, options: StartInstanceOptions): Promise
         cacheDir: join(home.path, "cache", "mcp-app"),
       }),
       ...themeMethods({
+        homeTheme: () => readHomeSettings(home.path).look?.theme,
         artifact: (ref) =>
           getPublisher().withArtifact(ref, async ({ target, source }) => {
             const text = await readFile(join(source.root, source.entry), "utf8");

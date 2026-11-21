@@ -91,6 +91,41 @@ export function availableThemes(
   return themes;
 }
 
+/** What a stack is resolved from. */
+export interface StackInput {
+  readonly manifest: Pick<ArtifactManifest, "kit">;
+  /** The artifact's snapshot, where its own layers are. */
+  readonly sourceDir: string;
+  readonly contributed?: readonly ContributedTheme[];
+  /** The home's stack for a page that names none (`HomeConfig.look.theme`, D181 item 5). */
+  readonly homeTheme?: string | readonly string[];
+  /** Another stack for one run (`verify --theme`, `theme show <theme>`, D181 item 6). */
+  readonly override?: string | readonly string[];
+}
+
+/**
+ * The stack a page is built in, and whether it is a default: the run's own stack when one is
+ * asked for, else the manifest's, else the home's, else Studio. Publish, verify, `mostra dev` and
+ * `theme/show` all choose it here, so each shows what the others build (Opus review of WP-18,
+ * finding 6).
+ */
+export function stackChosen(input: Pick<StackInput, "manifest" | "homeTheme" | "override">): {
+  readonly stack: readonly string[];
+  readonly default: boolean;
+} {
+  const asStack = (theme: string | readonly string[]): readonly string[] =>
+    typeof theme === "string" ? [theme] : theme;
+  if (input.override !== undefined) return { stack: asStack(input.override), default: false };
+  const named = themeStackOf(input.manifest);
+  if (named.default && input.homeTheme !== undefined) {
+    return { stack: asStack(input.homeTheme), default: true };
+  }
+  return named;
+}
+
+/** The faces a theme has, by role. */
+const FACE_ROLES = ["sans", "display", "mono"] as const;
+
 /**
  * Resolves a manifest's theme stack (D181 items 2 and 5) against the built-in themes, the themes
  * the artifact's plugins contribute and its own files. Throws `MOSTRA_MANIFEST_INVALID` for a
@@ -98,13 +133,8 @@ export function availableThemes(
  * `MOSTRA_KIT_THEME_CONFLICT`; a stack whose themes break a text pair builds, with
  * `MOSTRA_KIT_THEME_CONTRAST` among its warnings.
  */
-export function resolveThemeStack(input: {
-  readonly manifest: Pick<ArtifactManifest, "kit">;
-  /** The artifact's snapshot, where its own layers are. */
-  readonly sourceDir: string;
-  readonly contributed?: readonly ContributedTheme[];
-}): ThemeBuild {
-  const { stack, default: isDefault } = themeStackOf(input.manifest);
+export function resolveThemeStack(input: StackInput): ThemeBuild {
+  const { stack, default: isDefault } = stackChosen(input);
   const problem = themeStackProblem(stack);
   if (problem !== undefined) {
     throw fail("MOSTRA_MANIFEST_INVALID", `The manifest's kit.theme can't be built: ${problem}.`);
@@ -178,12 +208,24 @@ export function resolveThemeStack(input: {
       rest.map((layer) => layer.theme),
     );
   }
-  const packageOf = new Map(layers.map((layer) => [layer.theme.id, layer.package]));
-  const facesFrom = (file: string): string => {
-    // A built-in theme's faces are @mostra/themes' files; a plugin's are its own package's.
-    const owner = [...packageOf.values()].reverse().find((pkg) => pkg !== undefined);
-    return `${owner ?? "@mostra/themes"}/${file}`;
-  };
+  // Each face's files come from the package of the layer that last set that face: a built-in
+  // theme's from @mostra/themes, a plugin's from its own (Opus review of WP-18, finding 5).
+  const faceOwner = new Map<string, string>();
+  for (const layer of layers) {
+    for (const role of FACE_ROLES) {
+      if (layer.theme.faces?.[role] !== undefined) {
+        faceOwner.set(role, layer.package ?? "@mostra/themes");
+      }
+    }
+  }
+  const fileOwner = new Map<string, string>();
+  for (const role of FACE_ROLES) {
+    for (const file of theme.faces[role].files) {
+      fileOwner.set(file.file, faceOwner.get(role) ?? "@mostra/themes");
+    }
+  }
+  const facesFrom = (file: string): string =>
+    [fileOwner.get(file) ?? "@mostra/themes", file].join("/");
   return {
     stack,
     default: isDefault,
@@ -327,12 +369,10 @@ export function kitVersionOf(nodeModules: string): string | null {
 }
 
 /** What a build takes of the kit and the theme stack, and the stack as resolved. */
-export function kitBuildFor(input: {
-  readonly manifest: Pick<ArtifactManifest, "kit">;
-  readonly sourceDir: string;
-  readonly nodeModules: string;
-  readonly contributed?: readonly ContributedTheme[];
-}): { readonly kit: KitBuild; readonly theme: ThemeBuild } {
+export function kitBuildFor(input: StackInput & { readonly nodeModules: string }): {
+  readonly kit: KitBuild;
+  readonly theme: ThemeBuild;
+} {
   const theme = resolveThemeStack(input);
   const registry = kitRegistry(input.nodeModules, input.manifest.kit?.base ?? "base");
   return {

@@ -545,12 +545,11 @@ export function createPublisher(options: PublisherOptions): Publisher {
     // `verify --theme` builds in another stack for that run only (D181 item 6): the theme's
     // digest below covers the stack built, so its verdict is never a publish's.
     // A page that names no theme wears the home's default (a host's, D181 item 5), else Studio.
-    const homeTheme = manifest.kit?.theme === undefined ? options.homeTheme?.() : undefined;
-    const stackOverride = themeOverride ?? homeTheme;
-    const kitManifest =
-      stackOverride === undefined ? manifest : { kit: { ...manifest.kit, theme: stackOverride } };
+    const homeTheme = options.homeTheme?.();
     const { kit, theme } = kitBuildFor({
-      manifest: kitManifest,
+      manifest,
+      ...(homeTheme !== undefined ? { homeTheme } : {}),
+      ...(themeOverride !== undefined ? { override: themeOverride } : {}),
       sourceDir: join(staging, "source"),
       nodeModules: deps.nodeModules,
       // Themes the artifact's plugins contribute (D181 item 4), from the layout the build reads.
@@ -591,7 +590,7 @@ export function createPublisher(options: PublisherOptions): Publisher {
         theme: {
           stack: theme.stack,
           // The page named none: it wears the home's default, or Studio.
-          default: themeOverride === undefined && manifest.kit?.theme === undefined,
+          default: theme.default,
           ...(themeOverride !== undefined ? { requested: true } : {}),
         },
       },
