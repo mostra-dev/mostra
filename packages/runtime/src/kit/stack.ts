@@ -343,8 +343,9 @@ export function kitVersionOf(nodeModules: string): string | null {
   if (typeof version !== "string") return null;
   // The release, and a digest of what a build reads of it (its registry and CSS), so a kit whose
   // files differ under the same release (a development build, a patched install) is another
-  // environment, never a reused verdict (VR-01).
-  const hash = createHash("sha256");
+  // environment, never a reused verdict (VR-01). Every publish asks, so the digest is kept for
+  // as long as no file's size or change time moved: a walk of stats, not a read of every file.
+  const files: { readonly path: string; readonly file: string; readonly stamp: string }[] = [];
   const walk = (dir: string, prefix: string): void => {
     let entries: Dirent[];
     try {
@@ -354,19 +355,30 @@ export function kitVersionOf(nodeModules: string): string | null {
     }
     for (const entry of entries.sort((a, b) => (a.name < b.name ? -1 : a.name > b.name ? 1 : 0))) {
       const path = `${prefix}${entry.name}`;
-      if (entry.isDirectory()) walk(join(dir, entry.name), `${path}/`);
+      const file = join(dir, entry.name);
+      if (entry.isDirectory()) walk(file, `${path}/`);
       else if (entry.isFile()) {
-        hash
-          .update(`${path}\0`)
-          .update(readFileSync(join(dir, entry.name)))
-          .update("\0");
+        const stat = statSync(file);
+        files.push({ path, file, stamp: [stat.size, stat.mtimeMs, stat.ctimeMs].join(":") });
       }
     }
   };
   walk(join(root, "registry"), "registry/");
   walk(join(root, "css"), "css/");
-  return `${version}+${hash.digest("hex").slice(0, 16)}`;
+  const key = [version, ...files.map((entry) => [entry.path, entry.stamp].join("\0"))].join("\n");
+  const known = KIT_VERSIONS.get(root);
+  if (known?.key === key) return known.version;
+  const hash = createHash("sha256");
+  for (const entry of files) {
+    hash.update(entry.path).update("\0").update(readFileSync(entry.file)).update("\0");
+  }
+  const kit = [version, hash.digest("hex").slice(0, 16)].join("+");
+  KIT_VERSIONS.set(root, { key, version: kit });
+  return kit;
 }
+
+/** Each layout's kit version, by its kit's directory, with the stats it was read under. */
+const KIT_VERSIONS = new Map<string, { readonly key: string; readonly version: string }>();
 
 /** What a build takes of the kit and the theme stack, and the stack as resolved. */
 export function kitBuildFor(input: StackInput & { readonly nodeModules: string }): {
