@@ -16,8 +16,9 @@ import {
 } from "node:fs";
 import { createRequire } from "node:module";
 import { join } from "node:path";
+import { cssColor } from "@mostra/themes";
 import { afterAll, afterEach, beforeAll, describe, expect, it } from "vitest";
-import { implemented, pluginFixtures } from "../plugin-fixtures.ts";
+import { HARBOR_FACE, HARBOR_PRIMARY, implemented, pluginFixtures } from "../plugin-fixtures.ts";
 import { type FakeRegistry, FIXTURE_PACKAGES, startRegistry } from "../registry.ts";
 import {
   connectTo,
@@ -977,5 +978,93 @@ describe("the plugin gate on every change (WP-16 review)", () => {
     );
     expect(commands.commands).toEqual([]);
     expect(readdirSync(locks)).toEqual([]);
+  });
+});
+
+describe("a theme a plugin carries (D181 item 4)", () => {
+  /** Every file under `dir` whose name ends in `suffix`. */
+  const files = (dir: string, suffix: string): string[] =>
+    existsSync(dir)
+      ? readdirSync(dir, { withFileTypes: true }).flatMap((entry) =>
+          entry.isDirectory()
+            ? files(join(dir, entry.name), suffix)
+            : entry.name.endsWith(suffix)
+              ? [join(dir, entry.name)]
+              : [],
+        )
+      : [];
+  const themed = (): Record<string, string> => ({
+    "index.tsx": `import { defineArtifact } from "@mostra/react";
+
+export const artifact = defineArtifact({ title: "Harbor", kit: { theme: ["studio", "harbor"] } });
+
+export default function Page() {
+  return <h1>Harbor</h1>;
+}
+`,
+  });
+
+  it("installs with its plugin, is listed, and builds into the page with its own face", async () => {
+    const target = await start();
+    const dir = artifact(themed());
+    const added = ok<AddResult>(
+      await target.client.call("plugin/add", {
+        artifact: { path: dir },
+        packages: ["mostra-fixture-theme@1.0.0"],
+      }),
+    );
+    expect(added.plugins).toMatchObject([
+      { package: "mostra-fixture-theme", status: "ok", scope: "artifact", diagnostics: [] },
+    ]);
+    const listed = ok<{
+      themes: { id: string; source: string; package?: string; complete: boolean }[];
+      artifact?: { stack: string[]; default: boolean };
+    }>(await target.client.call("theme/list", { artifact: { path: dir } }));
+    expect(listed.themes).toContainEqual(
+      expect.objectContaining({
+        id: "harbor",
+        source: "plugin",
+        package: "mostra-fixture-theme",
+        complete: false,
+      }),
+    );
+    expect(listed.artifact).toEqual({ stack: ["studio", "harbor"], default: false });
+
+    const receipt = ok<{ versionId: string }>(
+      await target.client.call("artifact/publish", { source: { path: dir } }),
+    );
+    const client = join(target.home.home, "versions", receipt.versionId, "client");
+    const css = files(client, ".css")
+      .map((file) => readFileSync(file, "utf8"))
+      .join("\n");
+    // The layer's colour over Studio's, and its face beside Studio's own.
+    // As numbers: the build's minifier writes `oklch(42% .09 200)` for `oklch(0.42 0.09 200)`.
+    const numbers = (color: string): number[] =>
+      [...color.matchAll(/(-?[\d.]+)(%?)/g)].map((match) =>
+        match[2] === "%" ? Number(match[1]) / 100 : Number(match[1]),
+      );
+    const primaries = [...css.matchAll(/--primary:\s*(oklch\([^)]*\))/g)].map((match) =>
+      numbers(match[1] as string),
+    );
+    expect(primaries).toContainEqual(numbers(cssColor(HARBOR_PRIMARY)));
+    expect(css).toContain("Harbor Display");
+    expect(css).toContain("Figtree");
+    // The face's file came from the plugin's own package, byte for byte.
+    const faces = files(client, ".woff2").map((file) => readFileSync(file, "utf8"));
+    expect(faces).toContain(HARBOR_FACE);
+    // And Studio's own faces, from @mostra/themes, beside it.
+    expect(files(client, ".woff2").some((file) => /figtree-latin-wght/.test(file))).toBe(true);
+    expect(css).not.toContain("@mostra:face/");
+    // The page wears the stack's last theme.
+    expect(readFileSync(join(client, "index.html"), "utf8")).toContain('data-theme="harbor"');
+  });
+
+  it("names a theme no installed plugin carries, and builds nothing", async () => {
+    const target = await start();
+    const refused = await target.client.call("artifact/publish", {
+      source: { path: artifact(themed()) },
+    });
+    expect(code(refused)).toBe("MOSTRA_KIT_THEME_UNKNOWN");
+    expect(refused.error?.data.message).toContain("harbor");
   });
 });

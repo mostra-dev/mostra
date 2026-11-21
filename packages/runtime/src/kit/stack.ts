@@ -36,7 +36,7 @@ import {
   type ThemeLayer,
   themeValues,
 } from "@mostra/themes";
-import type { KitBuild } from "../builder/index.ts";
+import { FACE_PREFIX, type KitBuild } from "../builder/index.ts";
 
 /** A theme a plugin installed for the artifact contributes (D181 item 4). */
 export interface ContributedTheme {
@@ -225,7 +225,7 @@ export function resolveThemeStack(input: StackInput): ThemeBuild {
     }
   }
   const facesFrom = (file: string): string =>
-    [fileOwner.get(file) ?? "@mostra/themes", file].join("/");
+    `${FACE_PREFIX}${fileOwner.get(file) ?? "@mostra/themes"}/${file}`;
   return {
     stack,
     default: isDefault,

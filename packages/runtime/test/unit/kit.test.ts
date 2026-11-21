@@ -120,7 +120,9 @@ describe("themes a plugin contributes (D181 item 4)", () => {
     expect(build.css).toContain("--card-radius: 1.5rem;");
     expect(build.css).toContain("--primary: oklch(0.42 0.15 150);");
     // A layer that sets no face leaves Studio's, served from @mostra/themes (Opus review 5).
-    expect(build.css).toContain('url("@mostra/themes/fonts/figtree-latin-wght-normal.woff2")');
+    expect(build.css).toContain(
+      'url("@mostra:face/@mostra/themes/fonts/figtree-latin-wght-normal.woff2")',
+    );
     expect(build.css).not.toContain("@acme/mostra-theme/fonts/");
     // A layer's own face is served from its own package, the rest still from @mostra/themes.
     const withFace: ThemeLayer = {
@@ -147,8 +149,12 @@ describe("themes a plugin contributes (D181 item 4)", () => {
       sourceDir: tempDir("kit-plugin-face"),
       contributed: contributedThemes(typed.nodeModules, typed.names),
     });
-    expect(typedBuild.css).toContain('url("@acme/mostra-theme/fonts/acme-display.woff2")');
-    expect(typedBuild.css).toContain('url("@mostra/themes/fonts/figtree-latin-wght-normal.woff2")');
+    expect(typedBuild.css).toContain(
+      'url("@mostra:face/@acme/mostra-theme/fonts/acme-display.woff2")',
+    );
+    expect(typedBuild.css).toContain(
+      'url("@mostra:face/@mostra/themes/fonts/figtree-latin-wght-normal.woff2")',
+    );
     expect(typedBuild.css).not.toContain("@acme/mostra-theme/fonts/figtree");
     // A layer can't start a stack: it isn't a complete theme.
     expect(

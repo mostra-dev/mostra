@@ -189,7 +189,12 @@ export function baseConfig(
       // imports with its aliases and never a plugin (Opus review of WP-18, finding 4). The alias
       // hands code's `@/…` on as a path in the artifact's root, which the kit's resolution below
       // takes the same way, falling back to the kit's registry.
-      alias: [{ find: /^@\//, replacement: `${sourceDir}/` }],
+      // A theme's faces (`FACE_PREFIX`) come from the build's own packages, its warm set's or its
+      // lockfile's, whichever package carried the theme.
+      alias: [
+        { find: /^@\//, replacement: `${sourceDir}/` },
+        { find: /^@mostra:face\//, replacement: `${request.stagingDir}/node_modules/` },
+      ],
       dedupe: ["react", "react-dom"],
     },
     // Settings given here are never searched for: no PostCSS config, from anywhere above the

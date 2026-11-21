@@ -253,8 +253,8 @@ const SEEDS: readonly Seed[] = [
     requirement: "KT-03",
     name: "review 4: @/ in a stylesheet resolves nowhere",
     file: "src/builder/child/spa.ts",
-    from: "      alias: [{ find: /^@\\//, replacement: `${sourceDir}/` }],",
-    to: "      alias: [],",
+    from: "        { find: /^@\\//, replacement: `${sourceDir}/` },",
+    to: "",
     check: integration("kit-parts.test.ts", "Opus review 3"),
   },
   {
@@ -288,6 +288,14 @@ const SEEDS: readonly Seed[] = [
     from: '          entry?.kind === "file" ||',
     to: "          false ||",
     check: integration("kit-parts.test.ts", "home's default"),
+  },
+  {
+    requirement: "KT-04",
+    name: "plugin theme: a face named by a bare path, which Tailwind takes as relative",
+    file: "src/kit/stack.ts",
+    from: '    `${FACE_PREFIX}${fileOwner.get(file) ?? "@mostra/themes"}/${file}`;',
+    to: '    `${fileOwner.get(file) ?? "@mostra/themes"}/${file}`;',
+    check: integration("plugins.test.ts", "a theme a plugin carries"),
   },
   {
     requirement: "KT-08",

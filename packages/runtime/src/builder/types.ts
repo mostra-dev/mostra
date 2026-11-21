@@ -53,6 +53,14 @@ export interface VersionRegistry {
   readonly fields?: FieldCoverage;
 }
 
+/**
+ * How a theme's stylesheet names a face's file: `@mostra:face/<package>/<file>`, which the build
+ * maps into its own packages. A bare `url(pkg/file)` would do for a scoped package only: Tailwind,
+ * inlining the stylesheet, takes any other as relative to it, and the face is never found. No
+ * npm scope has a colon, so the prefix names no package.
+ */
+export const FACE_PREFIX = "@mostra:face/";
+
 /** What a build takes of the kit and the artifact's theme stack (D181, ROUND-3 §1.1). */
 export interface KitBuild {
   /**
