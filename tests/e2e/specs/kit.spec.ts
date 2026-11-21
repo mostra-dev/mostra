@@ -236,6 +236,9 @@ test.describe("the kit's questionnaire (KT-05)", () => {
   test("each answer saves through its field, survives a reload and arrives labelled in results", async ({
     page,
   }, info) => {
+    // It publishes, answers every kind of question, reloads, submits and reads results: about
+    // 30 s on a loaded machine, at Playwright's default limit.
+    test.setTimeout(90_000);
     const client = await Client.connect(run.socket);
     try {
       const own = await publishOwn(client, run.home, info, { fixture: "questionnaire" });
