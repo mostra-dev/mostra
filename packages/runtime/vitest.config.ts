@@ -84,8 +84,11 @@ export const INTEGRATION_GROUPS: Record<string, { include: string[]; exclude: st
   },
   extensions: { include: [...EXTENSIONS, ...CORE_OVERFLOW], exclude: [] },
   remote: { include: [...REMOTE_HOSTING, HEARTBEAT], exclude: [] },
-  "remote-access": { include: REMOTE_ACCESS, exclude: [] },
-  verify: { include: [VERIFY_SUITES, DEV], exclude: [VERIFY_FAILURES] },
+  // `mostra dev`'s suite (66 to 106 s) runs beside remote-access's, the lightest group (350 s):
+  // macOS `verify` took 508 and 562 of its 600 s with it once every build carried its theme, and
+  // passed its deadline once (WP-18, CI run 44947318007).
+  "remote-access": { include: [...REMOTE_ACCESS, DEV], exclude: [] },
+  verify: { include: [VERIFY_SUITES], exclude: [VERIFY_FAILURES] },
   "verify-failures": { include: [VERIFY_FAILURES, ...FAULTS], exclude: [] },
   clients: { include: [], exclude: [] },
   // The Windows legs (WP-W1, WP-W2, D146): every suite, in groups one machine each (Windows arm64
