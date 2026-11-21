@@ -148,7 +148,7 @@ export default function Page() {
   );
 
   it(
-    "judges an input unbound only when its value changed and nothing saved (#158)",
+    "judges an input unbound only when its value changed and nothing saved (#158; Opus review 12)",
     async () => {
       const dir = artifact("radios", {
         "index.tsx": `import { useState } from "react";
@@ -173,17 +173,23 @@ export default function Page() {
         Search
         <input value={loose} onChange={(event) => setLoose(event.currentTarget.value)} />
       </label>
+      <div contentEditable suppressContentEditableWarning role="textbox" aria-label="Notes" />
     </main>
   );
 }
 `,
       });
       const verdict = await verify(dir);
-      // "small" was already chosen, so choosing it again changed and saved nothing; the input that
-      // isn't bound still is reported.
-      expect(find(verdict, "MOSTRA_FIELD_UNBOUND").map((d) => d.message)).toEqual([
-        expect.stringContaining('"Search"'),
-      ]);
+      // "small" was already chosen, so choosing it again changed and saved nothing; the input and
+      // the editable element that aren't bound still are reported (Opus review 12).
+      const unbound = find(verdict, "MOSTRA_FIELD_UNBOUND").map((d) => d.message);
+      expect(unbound).toHaveLength(2);
+      expect(unbound).toEqual(
+        expect.arrayContaining([
+          expect.stringContaining('"Search"'),
+          expect.stringContaining('"Notes"'),
+        ]),
+      );
     },
     VERIFY_MS,
   );

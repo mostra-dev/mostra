@@ -322,6 +322,14 @@ const SEEDS: readonly Seed[] = [
     check: ["--project", "browser", "test/browser/hooks.test.tsx", "-t", "Opus review 8"],
     cwd: "../react",
   },
+  {
+    requirement: "KT-05",
+    name: "review 12: an editable element's text isn't read as its value",
+    file: "../verify/src/smoke.ts",
+    from: '  if ((element as HTMLElement).isContentEditable) return element.textContent ?? "";',
+    to: '  if ((element as HTMLElement).isContentEditable) return "";',
+    check: integration("kit-parts.test.ts", "Opus review 12"),
+  },
   // MT-06: signing out (#204) and the metering window (#203). Each item's check goes red on a
   // violation planted where it is enforced (`--only MT-06`, `--name "sign-out:"` for one item).
   {

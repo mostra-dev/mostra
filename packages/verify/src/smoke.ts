@@ -137,6 +137,9 @@ function inputValueOf(element: Element): string | undefined {
   const input = element as HTMLInputElement;
   if (input.type === "checkbox" || input.type === "radio") return String(input.checked);
   if ("value" in input && typeof input.value === "string") return input.value;
+  // An editor written as an editable element holds its value as its text (Opus review of WP-18,
+  // finding 12).
+  if ((element as HTMLElement).isContentEditable) return element.textContent ?? "";
   const checked = element.getAttribute("aria-checked");
   return checked ?? undefined;
 }
@@ -339,7 +342,10 @@ export async function runSmoke(options: SmokeOptions): Promise<SmokeOutcome> {
     return {
       used: true,
       changed,
-      valueChanged: afterValue !== beforeValue,
+      // A control whose value verify can't read either time may have changed: it is judged as
+      // before (#158 is about values verify reads, and saw unchanged).
+      valueChanged:
+        afterValue !== beforeValue || (afterValue === undefined && beforeValue === undefined),
       writes: network.writesSince(mark),
       navigated,
       newDocument,
