@@ -97,7 +97,21 @@ export function fieldHookUsePlugin(
         return null;
       }
       if (roots.kitDir === undefined || source.startsWith("\0")) return null;
-      const resolved = await this.resolve(source, importer, { ...options, skipSelf: true });
+      // Only an import that can name the kit is followed (`@mostra/kit…`, `@/…`, or the `@/`
+      // alias's path in the artifact's root); any other is the build's own to resolve, and its
+      // refusal (a confined import, a missing package) the build's own to report.
+      const path = source.split("?")[0] ?? source;
+      const mayReachKit =
+        path.startsWith("@mostra/kit") ||
+        path.startsWith("@/") ||
+        (isAbsolute(path) && inside(path, roots.sourceDir));
+      if (!mayReachKit) return null;
+      let resolved: Awaited<ReturnType<typeof this.resolve>>;
+      try {
+        resolved = await this.resolve(source, importer, { ...options, skipSelf: true });
+      } catch {
+        return null;
+      }
       const id = resolved?.id.split("?")[0];
       if (id === undefined || id.startsWith("\0") || !isAbsolute(id)) return null;
       const target = real(id);
