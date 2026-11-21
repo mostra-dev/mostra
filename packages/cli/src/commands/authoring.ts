@@ -17,6 +17,7 @@ import {
   type DiagnosticFix,
   depsAddMethod,
   packAddMethod,
+  packKitMethod,
   pluginExportMethod,
   type SubmissionPolicy,
   type VerifyVerdict,
@@ -481,9 +482,17 @@ export const addCommand: CommandDef = defineCommand({
       const address = parsePackAddress(spec);
       return address?.kind === "file" ? resolve(context.cwd, address.path) : spec;
     });
-    // A bare name may be a kit item (`mostra add button`, D181 item 7): the instance, which knows
-    // the artifact's base and its kit, decides; a name with a version is always an npm package.
-    if (!specs.some((spec) => parsePackAddress(spec) !== undefined || BARE_ITEM.test(spec))) {
+    // A bare name is a kit item when the kit has one by that name for the artifact's base
+    // (`mostra add button`, D181 item 7), which the instance answers (`pack/kit`); any other bare
+    // name, and any name with a version, is an npm package. Only npm packages go to `deps/add`,
+    // with its result, as before the kit (Opus review of WP-18, finding 9).
+    const bare = specs.filter(
+      (spec) => parsePackAddress(spec) === undefined && BARE_ITEM.test(spec),
+    );
+    const kitItems = new Set(
+      bare.length === 0 ? [] : (await context.call(packKitMethod, { artifact })).items,
+    );
+    if (!specs.some((spec) => parsePackAddress(spec) !== undefined || kitItems.has(spec))) {
       // Only npm packages: `deps/add`, as before packs existed.
       const accept = context.flags["accept-license"];
       const result = await context.call(depsAddMethod, {

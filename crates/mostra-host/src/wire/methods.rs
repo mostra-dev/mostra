@@ -273,6 +273,16 @@ impl super::Method for PackAdd {
     type Params = super::generated::PackAddParams;
     type Result = super::generated::PackAddResult;
 }
+///`pack/kit`.
+#[derive(Clone, Copy, Debug)]
+pub struct PackKit;
+impl super::Method for PackKit {
+    const NAME: &'static str = "pack/kit";
+    const DIRECTION: super::Direction = super::Direction::ClientToInstance;
+    const MUTATING: bool = false;
+    type Params = super::generated::PackKitParams;
+    type Result = super::generated::PackKitResult;
+}
 ///`plugin/add`.
 #[derive(Clone, Copy, Debug)]
 pub struct PluginAdd;
@@ -940,6 +950,11 @@ pub const METHODS: &[super::MethodInfo] = &[
         name: "pack/add",
         direction: super::Direction::ClientToInstance,
         mutating: true,
+    },
+    super::MethodInfo {
+        name: "pack/kit",
+        direction: super::Direction::ClientToInstance,
+        mutating: false,
     },
     super::MethodInfo {
         name: "plugin/add",

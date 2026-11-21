@@ -31,6 +31,7 @@ import { livePushMethod } from "./live/push.ts";
 import { mostraInitializeMethod } from "./mostra/initialize.ts";
 import { mostraShutdownMethod } from "./mostra/shutdown.ts";
 import { packAddMethod } from "./pack/add.ts";
+import { packKitMethod } from "./pack/kit.ts";
 import { pluginAddMethod } from "./plugin/add.ts";
 import { pluginCommandsMethod } from "./plugin/commands.ts";
 import { pluginExportMethod } from "./plugin/export.ts";
@@ -164,6 +165,7 @@ export const hostMethods: readonly AnyMethod[] = [
   appPageMethod,
   themeListMethod,
   themeShowMethod,
+  packKitMethod,
   // gen:methods
 ];
 

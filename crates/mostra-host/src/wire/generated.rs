@@ -11898,6 +11898,56 @@ pub struct PackItemSummary {
     #[serde(rename = "type")]
     pub type_: ::std::string::String,
 }
+///`PackKitParams`
+#[derive(::serde::Deserialize, ::serde::Serialize, Clone, Debug, Default)]
+pub struct PackKitParams {
+    #[serde(skip_serializing_if = "::std::option::Option::is_none")]
+    pub artifact: ::std::option::Option<SourceRef>,
+}
+///`PackKitResult`
+#[derive(::serde::Deserialize, ::serde::Serialize, Clone, Debug)]
+pub struct PackKitResult {
+    pub base: PackKitResultBase,
+    pub items: ::std::vec::Vec<::std::string::String>,
+}
+///`PackKitResultBase`
+#[derive(
+    ::serde::Deserialize,
+    ::serde::Serialize,
+    Clone,
+    Debug,
+    Eq,
+    Hash,
+    Ord,
+    PartialEq,
+    PartialOrd
+)]
+pub enum PackKitResultBase {
+    #[serde(rename = "base")]
+    Base,
+    #[serde(rename = "radix")]
+    Radix,
+    /// A value a newer Mostra sends that this release doesn't know; it
+    /// serializes back unchanged.
+    #[serde(untagged)]
+    Unknown(::std::string::String),
+}
+impl ::std::convert::TryFrom<&str> for PackKitResultBase {
+    type Error = self::error::ConversionError;
+    fn try_from(
+        value: &str,
+    ) -> ::std::result::Result<Self, self::error::ConversionError> {
+        value.parse()
+    }
+}
+impl ::std::convert::TryFrom<::std::string::String> for PackKitResultBase {
+    type Error = self::error::ConversionError;
+    fn try_from(
+        value: ::std::string::String,
+    ) -> ::std::result::Result<Self, self::error::ConversionError> {
+        value.parse()
+    }
+}
 ///`PluginAddParams`
 #[derive(::serde::Deserialize, ::serde::Serialize, Clone, Debug)]
 pub struct PluginAddParams {
@@ -25870,6 +25920,36 @@ impl ::std::str::FromStr for PackFileChangeAction {
                 "overwritten" => Self::Overwritten,
                 "unchanged" => Self::Unchanged,
                 "updated" => Self::Updated,
+                other => Self::Unknown(other.to_string()),
+            },
+        )
+    }
+}
+impl PackKitResultBase {
+    /// The value as it travels on the wire.
+    #[must_use]
+    pub fn as_str(&self) -> &str {
+        match self {
+            Self::Base => "base",
+            Self::Radix => "radix",
+            Self::Unknown(value) => value.as_str(),
+        }
+    }
+}
+impl ::std::fmt::Display for PackKitResultBase {
+    fn fmt(&self, f: &mut ::std::fmt::Formatter<'_>) -> ::std::fmt::Result {
+        f.write_str(self.as_str())
+    }
+}
+impl ::std::str::FromStr for PackKitResultBase {
+    type Err = self::error::ConversionError;
+    fn from_str(
+        value: &str,
+    ) -> ::std::result::Result<Self, self::error::ConversionError> {
+        Ok(
+            match value {
+                "base" => Self::Base,
+                "radix" => Self::Radix,
                 other => Self::Unknown(other.to_string()),
             },
         )

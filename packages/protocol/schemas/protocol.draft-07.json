@@ -275,6 +275,16 @@
         "$ref": "#/definitions/PackAddResult"
       }
     },
+    "pack/kit": {
+      "direction": "client-to-instance",
+      "mutating": false,
+      "params": {
+        "$ref": "#/definitions/PackKitParams"
+      },
+      "result": {
+        "$ref": "#/definitions/PackKitResult"
+      }
+    },
     "plugin/add": {
       "direction": "client-to-instance",
       "mutating": true,
@@ -5137,6 +5147,41 @@
         "type",
         "address",
         "source"
+      ]
+    },
+    "PackKitParams": {
+      "type": "object",
+      "properties": {
+        "artifact": {
+          "allOf": [
+            {
+              "$ref": "#/definitions/SourceRef"
+            }
+          ]
+        }
+      }
+    },
+    "PackKitResult": {
+      "type": "object",
+      "properties": {
+        "base": {
+          "type": "string",
+          "enum": [
+            "base",
+            "radix"
+          ]
+        },
+        "items": {
+          "readOnly": true,
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
+        }
+      },
+      "required": [
+        "base",
+        "items"
       ]
     },
     "PluginAddParams": {

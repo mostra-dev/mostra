@@ -348,6 +348,15 @@ const SEEDS: readonly Seed[] = [
     check: ["test/generate.test.ts", "-t", "installs a token"],
     cwd: "../kit",
   },
+  {
+    requirement: "KT-03",
+    name: "review 9: mostra add sends every bare name to pack/add",
+    file: "../cli/src/commands/authoring.ts",
+    from: "    if (!specs.some((spec) => parsePackAddress(spec) !== undefined || kitItems.has(spec))) {",
+    to: "    if (!specs.some((spec) => parsePackAddress(spec) !== undefined || BARE_ITEM.test(spec))) {",
+    check: ["--project", "integration", "test/integration/contract.test.ts", "-t", "a bare name"],
+    cwd: "../cli",
+  },
   // MT-06: signing out (#204) and the metering window (#203). Each item's check goes red on a
   // violation planted where it is enforced (`--only MT-06`, `--name "sign-out:"` for one item).
   {

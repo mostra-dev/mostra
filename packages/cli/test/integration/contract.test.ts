@@ -399,6 +399,23 @@ describe("every command, with --json and no terminal", () => {
     expect((stale.result as { conflicts: unknown[] }).conflicts).toHaveLength(1);
   });
 
+  it("add: a bare name is the kit's item only where the kit has one, else an npm package (Opus review 9)", async () => {
+    // Any other bare name is an npm package, through deps/add with its own result, as before the
+    // kit (D181 item 7).
+    const kitDir = join(home.root, "add-kit");
+    mkdirSync(kitDir, { recursive: true });
+    writeFileSync(
+      join(kitDir, "index.tsx"),
+      "export default function Page() {\n  return <main><h1>Add</h1></main>;\n}\n",
+    );
+    const npm = await run(["add", "zod", "--artifact", kitDir], { code: 0, ok: true });
+    expect(npm.result).toMatchObject({ packages: [expect.objectContaining({ name: "zod" })] });
+    expect(npm.result).not.toHaveProperty("items");
+    const item = await run(["add", "button", "--artifact", kitDir], { code: 0, ok: true });
+    expect(item.result).toMatchObject({ items: [expect.objectContaining({ name: "button" })] });
+    expect(existsSync(join(kitDir, "components", "ui", "button.tsx"))).toBe(true);
+  });
+
   it("push, add, secret set|list|rm, list and status", async () => {
     await run(["push", artifactId, "prices", "--value", '{"btc":64000}'], { code: 0, ok: true });
     // The suite's instance is offline (MOSTRA_OFFLINE), so a package the store lacks is refused at

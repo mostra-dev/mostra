@@ -487,6 +487,23 @@ describe("the kit's parts by name (D181 item 7, KT-03)", () => {
       "index.tsx":
         'import { defineArtifact } from "@mostra/react";\nexport const artifact = defineArtifact({ title: "Radix", kit: { base: "radix" } });\nexport default function Page() { return <p>Hello</p>; }\n',
     });
+    // `pack/kit` names the items an artifact's base offers, so a client tells them from npm
+    // packages (Opus review 9): Base UI's `toast` is only in its base.
+    const kitOf = async (path?: string) =>
+      ok<{ base: string; items: string[] }>(
+        await target.client.call("pack/kit", path === undefined ? {} : { artifact: { path } }),
+      );
+    const baseKit = await kitOf(dir);
+    expect(baseKit.base).toBe("base");
+    expect(baseKit.items).toEqual(
+      expect.arrayContaining(["button", "dialog", "toast", "mostra-questionnaire"]),
+    );
+    expect(baseKit.items).not.toContain("zod");
+    const radixKit = await kitOf(radix);
+    expect(radixKit.base).toBe("radix");
+    expect(radixKit.items).toEqual(expect.arrayContaining(["button", "sonner", "mostra-layout"]));
+    expect(radixKit.items).not.toContain("toast");
+    expect((await kitOf()).base).toBe("base");
     ok(await target.client.call("pack/add", { artifact: { path: radix }, specs: ["button"] }));
     expect(readFileSync(join(radix, "components/ui/button.tsx"), "utf8")).toBe(
       readFileSync(join(KIT, "radix", "components/ui/button.tsx"), "utf8"),

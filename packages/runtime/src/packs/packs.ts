@@ -24,7 +24,7 @@
  * design system's `registry:base`) is listed as notes, never applied half-way.
  */
 import { randomBytes } from "node:crypto";
-import { existsSync } from "node:fs";
+import { existsSync, readFileSync } from "node:fs";
 import { lstat, mkdir, readdir, readFile, rename, rm, writeFile } from "node:fs/promises";
 import { basename, dirname, join, posix } from "node:path";
 import {
@@ -69,6 +69,11 @@ export interface PacksOptions {
 
 /** The packs of one instance. */
 export interface Packs {
+  /**
+   * The kit's items for a base, by name (its registry's `registry.json`): the bare names
+   * `mostra add` copies; any other bare name is an npm package (D181 item 7).
+   */
+  kitItems(base: "base" | "radix"): readonly string[];
   /** `pack/add`, for an artifact the publisher resolved and holds the queue of. */
   add(input: {
     readonly target: DependencyTarget;
@@ -311,6 +316,20 @@ function importedStylesheets(entryText: string, entry: string): string[] {
 export function createPacks(options: PacksOptions): Packs {
   const { dependencies, plugins, log } = options;
   return {
+    kitItems(base) {
+      const registry = options.kitRegistry?.(base);
+      if (registry === undefined) return [];
+      try {
+        const index = JSON.parse(readFileSync(join(registry, "registry.json"), "utf8")) as {
+          readonly items?: readonly { readonly name?: unknown }[];
+        };
+        return (index.items ?? []).flatMap((item) =>
+          typeof item.name === "string" && BARE_NAME.test(item.name) ? [item.name] : [],
+        );
+      } catch {
+        return [];
+      }
+    },
     async add(input) {
       const components = input.kind === "dir" ? await readComponentsJson(input.root) : undefined;
       // A bare name the kit has an item of, for the artifact's base, is that item (D181 item 7):

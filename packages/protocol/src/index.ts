@@ -524,6 +524,7 @@ export {
   type PackItemSummary,
   packAddMethod,
 } from "./methods/pack/add.ts";
+export { type PackKitParams, type PackKitResult, packKitMethod } from "./methods/pack/kit.ts";
 export {
   type PluginAddParams,
   type PluginAddResult,
