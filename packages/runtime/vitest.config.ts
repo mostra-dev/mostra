@@ -162,6 +162,8 @@ export const INTEGRATION_GROUPS: Record<string, { include: string[]; exclude: st
   "windows-verify-failures": { include: [VERIFY_FAILURES, KIT_PARTS], exclude: [] },
   "windows-extensions": { include: [...EXTENSIONS, DEV, ANONYMOUS_VOLUME], exclude: [] },
   "windows-clients": { include: [], exclude: [] },
+  // The conformance kit's TypeScript reference host, apart from the other clients (WP-18, #225).
+  "windows-conformance": { include: [], exclude: [] },
 };
 const group = process.env["MOSTRA_TEST_GROUP"];
 const integrationFiles = group

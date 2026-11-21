@@ -171,6 +171,7 @@ const WINDOWS_GROUPS = [
   "windows-remote",
   "windows-extensions",
   "windows-clients",
+  "windows-conformance",
 ] as const;
 
 /**
