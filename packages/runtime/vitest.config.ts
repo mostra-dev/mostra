@@ -91,6 +91,9 @@ export const INTEGRATION_GROUPS: Record<string, { include: string[]; exclude: st
   verify: { include: [VERIFY_SUITES], exclude: [VERIFY_FAILURES] },
   "verify-failures": { include: [VERIFY_FAILURES, ...FAULTS], exclude: [] },
   clients: { include: [], exclude: [] },
+  // The conformance kit's TypeScript reference host (packages/conformance/vitest.config.ts): about
+  // 460 s on macOS, which beside the CLI's suites ran `clients` past its deadline (WP-18).
+  conformance: { include: [], exclude: [] },
   // The Windows legs (WP-W1, WP-W2, D146): every suite, in groups one machine each (Windows arm64
   // runs them about twice as slowly as x64). They partition the files too, in their own way: a
   // test (`windows-groups.test.ts`) keeps every suite in exactly one of them. `windows-clients` is
@@ -186,7 +189,7 @@ export default defineConfig({
   resolve: { conditions: ["@mostra/source"] },
   ssr: { resolve: { conditions: ["@mostra/source"] } },
   test: {
-    // The `clients` integration group runs none of the runtime's suites (a root option: vitest
+    // The `clients` and `conformance` integration groups run none of the runtime's suites (a root option: vitest
     // reads it only here).
     passWithNoTests: integrationFiles.include.length === 0,
     projects: [

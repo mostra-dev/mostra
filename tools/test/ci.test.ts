@@ -147,6 +147,7 @@ describe("what runs when (D152)", () => {
       "integration (macos, remote)",
       "integration (macos, remote-access)",
       "integration (macos, extensions)",
+      "integration (macos, conformance)",
       "rust (macos)",
       "conformance (macos)",
     ]);

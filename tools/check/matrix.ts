@@ -160,6 +160,9 @@ const POSIX_GROUPS = [
   "verify-failures",
   "extensions",
   "clients",
+  // The conformance kit's TypeScript reference host, apart from the other clients' suites: beside
+  // them on macOS it brought `clients` to its 10-minute deadline (WP-18, as `windows-conformance`).
+  "conformance",
 ] as const;
 const WINDOWS_GROUPS = [
   "windows",
@@ -322,10 +325,13 @@ export function ciMatrix(scope: CiScope, plan: Plan, runners: Runners): CiMatrix
   const conformance = has("conformance") ? [...posix, ...windowsOs] : [];
   // macOS legs in the order they are kept: the suites through real processes, Safari's engine,
   // then the remote server's suites and the plugins', packs' and dependencies' (platform-neutral
-  // network and install code Linux and Windows still run, WP-29, WP-16, WP-17), the Rust crate and the conformance kit
-  // (POSIX like Linux, where they still run).
+  // network and install code Linux and Windows still run, WP-29, WP-16, WP-17), the conformance
+  // kit's TypeScript reference host (a host's view, the same on every platform, WP-18), the Rust
+  // crate and the conformance kit (POSIX like Linux, where they still run).
   const remoteGroup = (leg: Leg): boolean =>
-    String(leg["group"]).startsWith("remote") || leg["group"] === "extensions";
+    String(leg["group"]).startsWith("remote") ||
+    leg["group"] === "extensions" ||
+    leg["group"] === "conformance";
   const macos: { readonly list: string; readonly leg: Leg }[] = [
     ...integration.filter((leg) => !remoteGroup(leg)).map((leg) => ({ list: "integration", leg })),
     ...e2e.map((leg) => ({ list: "e2e", leg })),
