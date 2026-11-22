@@ -67,6 +67,9 @@
     },
     {
       "path": "packages/contract-cli-command"
+    },
+    {
+      "path": "packages/kit"
     }
   ]
 }

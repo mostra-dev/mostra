@@ -1,0 +1,22 @@
+{
+  "$schema": "https://ui.shadcn.com/schema/registry-item.json",
+  "name": "toast",
+  "type": "registry:ui",
+  "dependencies": [
+    "@base-ui/react",
+    "cn",
+    "lucide-react"
+  ],
+  "registryDependencies": [
+    "button"
+  ],
+  "files": [
+    {
+      "path": "components/ui/toast.tsx",
+      "type": "registry:ui"
+    }
+  ],
+  "mostra": {
+    "base": "base"
+  }
+}

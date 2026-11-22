@@ -7,6 +7,7 @@
 import { readFileSync } from "node:fs";
 import { fileURLToPath } from "node:url";
 import { PLUGIN_CONTRACTS } from "@mostra/protocol/plugin";
+import { oklch, THEME_REVISION } from "@mostra/themes";
 import type { FixturePackage } from "./registry.ts";
 
 const contractDir = (name: string): string =>
@@ -43,7 +44,62 @@ export function pluginFixtures(): FixturePackage[] {
   const exporter = contractPackage("exporter");
   const command = contractPackage("cli-command");
   const list = base(exporter, command);
-  return [...list, ...reviewFixtures(list), ownMcpApp()];
+  return [...list, ...reviewFixtures(list), ownMcpApp(), themePlugin()];
+}
+
+/** The primary colour the fixture theme gives (D181 item 4): a dark teal at AA on white. */
+export const HARBOR_PRIMARY = oklch(0.42, 0.09, 200);
+
+/**
+ * The bytes of the fixture theme's face, which a page wearing it serves from the plugin: past the
+ * build's 4 KiB inlining limit, as every real face is, so it is a file of the page's own.
+ */
+export const HARBOR_FACE = `wOF2 harbor display, a fixture\n${"harbor ".repeat(1024)}`;
+
+/**
+ * A plugin that contributes a theme layer (D181 item 4): a primary colour and a display face of
+ * its own, its file in the plugin's own package, as a marketplace's theme would arrive.
+ */
+function themePlugin(): FixturePackage {
+  const layer = {
+    revision: THEME_REVISION,
+    id: "harbor",
+    name: "Harbor",
+    description: "A fixture layer: a teal main action and a display face of its own.",
+    modes: { light: { primary: HARBOR_PRIMARY, ring: HARBOR_PRIMARY } },
+    faces: {
+      display: {
+        family: "Harbor Display",
+        fallback: "ui-serif, serif",
+        files: [
+          {
+            file: "fonts/harbor-display.woff2",
+            weight: "400 700",
+            style: "normal",
+            unicodeRange: "U+0000-00FF",
+          },
+        ],
+      },
+    },
+  };
+  return {
+    name: "mostra-fixture-theme",
+    version: "1.0.0",
+    manifest: {
+      type: "module",
+      license: "MIT",
+      mostra: {
+        name: "dev.mostra.fixtures/theme",
+        contracts: {},
+        contributes: { themes: [{ theme: "./themes/harbor.json" }] },
+        license: "MIT",
+      },
+    },
+    files: {
+      "themes/harbor.json": JSON.stringify(layer),
+      "fonts/harbor-display.woff2": HARBOR_FACE,
+    },
+  };
 }
 
 /**

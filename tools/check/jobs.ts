@@ -256,7 +256,7 @@ export const JOBS: readonly Job[] = [
     name: "conformance",
     summary:
       "The host conformance kit against the Rust reference host: with every port, standalone, and broken with its baseline",
-    // The TypeScript reference host runs in the integration job's `clients` group; this job runs
+    // The TypeScript reference host runs in the integration job's `conformance` group; this job runs
     // the Rust one, so a change to the kit, the crate, the runtime or the protocol runs it (HO-05).
     applies: (plan) =>
       touches(plan, RUST) ||

@@ -3,7 +3,8 @@
  * documentation: its frontmatter meets the Agent Skills specification (agentskills.io), every
  * relative link and anchor resolves, every `mostra …` it shows parses under the command
  * definitions, every author-facing export and every command an author uses is documented, and the
- * examples carry the baseline stylesheet unchanged. Mechanism only: the prose is Mirza's to accept
+ * examples wear a theme they name, built into them rather than copied (D181 item 2). Mechanism
+ * only: the prose is Mirza's to accept
  * (D149), never tested by its wording.
  */
 import { readdirSync, readFileSync } from "node:fs";
@@ -290,13 +291,18 @@ describe("the Agent Skill (AX-06)", () => {
       expect(COMMANDS.map(commandName)).toContain(name);
   });
 
-  it("gives every example the baseline stylesheet unchanged", () => {
-    const studio = read("assets/studio.css");
+  it("has every example name its theme, with no copy of a theme's stylesheet", () => {
     const examples = readdirSync(join(SKILL, "assets", "examples"));
     expect(examples.length).toBeGreaterThan(0);
     for (const example of examples) {
-      const css = join(SKILL, "assets", "examples", example, "styles.css");
-      expect(readFileSync(css, "utf8"), relative(SKILL, css)).toBe(studio);
+      const dir = join(SKILL, "assets", "examples", example);
+      expect(read(relative(SKILL, join(dir, "index.tsx"))), example).toMatch(/kit: \{[^}]*theme: /);
+      // A theme is built into the page from its stack: no example carries one as a stylesheet.
+      for (const file of readdirSync(dir).filter((name) => name.endsWith(".css"))) {
+        expect(read(relative(SKILL, join(dir, file))), `${example}/${file}`).not.toContain(
+          "@theme",
+        );
+      }
     }
   });
 });

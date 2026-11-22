@@ -1,0 +1,18 @@
+{
+  "$schema": "https://ui.shadcn.com/schema/registry-item.json",
+  "name": "separator",
+  "type": "registry:ui",
+  "dependencies": [
+    "@base-ui/react",
+    "cn"
+  ],
+  "files": [
+    {
+      "path": "components/ui/separator.tsx",
+      "type": "registry:ui"
+    }
+  ],
+  "mostra": {
+    "base": "base"
+  }
+}

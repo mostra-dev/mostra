@@ -10,6 +10,7 @@
  * ```
  */
 import { readFileSync, statSync } from "node:fs";
+import { readFile } from "node:fs/promises";
 import { dirname, join, relative, resolve } from "node:path";
 import type { Readable, Writable } from "node:stream";
 import { fileURLToPath } from "node:url";
@@ -17,6 +18,7 @@ import {
   ARTIFACT_PROGRESS,
   BROWSER_PROTOCOL_REVISIONS,
   type ClientInfo,
+  createDiagnostic,
   DEV_NOTIFY,
   type Diagnostic,
   EVENTS_NOTIFY,
@@ -31,7 +33,10 @@ import {
   portTrustedControlsPolicyMethod,
   RpcError,
   relayAuthorProgressMethod,
+  themeStackEntry,
+  themeStackProblem,
 } from "@mostra/protocol";
+import { ARTIFACT_THEMES } from "@mostra/themes";
 import { createActions } from "../actions/index.ts";
 import { createAddressing, resolveBind } from "../addressing/index.ts";
 import {
@@ -81,6 +86,7 @@ import {
   type Interaction,
   redactEvents,
 } from "../interaction/index.ts";
+import { kitRegistry, themeMethods } from "../kit/index.ts";
 import {
   createLink,
   createOwnerAuthor,
@@ -111,6 +117,7 @@ import {
   artifactMethods,
   canonicalRef,
   createPublisher,
+  extractManifest,
   instanceChecks,
   type Publisher,
   versionDamage,
@@ -138,6 +145,9 @@ import {
   type WorkerVersion,
   workerLimits,
 } from "../workers/index.ts";
+
+/** The most variables a host's look (`HomeConfig.look.variables`, D181 item 9) may give. */
+const HOST_LOOK_VARIABLES_MAX = 256;
 
 /** Options for {@link startInstance}. */
 export interface StartInstanceOptions {
@@ -376,6 +386,14 @@ async function assemble(home: OwnedHome, options: StartInstanceOptions): Promise
       plugins: getPlugins(),
       log,
       env: environment,
+      // The kit's items are the warm set's kit (D181 item 7): what `@/…` resolves into too.
+      kitRegistry: (base) => {
+        try {
+          return kitRegistry(locateWarmSet(environment).nodeModules, base);
+        } catch {
+          return undefined; // No warm set: no kit, and a bare name is an npm package.
+        }
+      },
       // Tests point GitHub registries at a local fake (packs.test.ts).
       ...(environment["MOSTRA_TEST_GITHUB_API"] && environment["MOSTRA_TEST_GITHUB_RAW"]
         ? {
@@ -399,6 +417,7 @@ async function assemble(home: OwnedHome, options: StartInstanceOptions): Promise
       log,
       faults,
       homePolicy: () => readHomeSettings(home.path).submission,
+      homeTheme: () => readHomeSettings(home.path).look?.theme,
       verifier: getVerifier,
       unverified: unverifiedPublish,
     });
@@ -705,6 +724,7 @@ async function assemble(home: OwnedHome, options: StartInstanceOptions): Promise
     actions,
     live,
     bus,
+    hostStyles: () => readHomeSettings(home.path).look?.variables,
     parked: (versionId) =>
       pool.status().some((w) => w.versionId === versionId && w.state === "parked"),
     revisions,
@@ -884,6 +904,7 @@ async function assemble(home: OwnedHome, options: StartInstanceOptions): Promise
     sandbox: sandboxOptions,
     bindAddress: addressing.bindAddress,
     faults,
+    homeTheme: () => readHomeSettings(home.path).look?.theme,
     notify: (session, method, params) =>
       server.notify(session, method, params as unknown as JsonRpcParams),
   });
@@ -894,6 +915,42 @@ async function assemble(home: OwnedHome, options: StartInstanceOptions): Promise
     // A host's settings persist in the home's config.json for every later client (D95, D102,
     // D105).
     configureHome: (config, client) => {
+      // A home's default stack is written as a manifest's is: one that can't be built is refused
+      // now, not at the next publish. It is for every page that names no theme, so it names only
+      // what every page has: the built-in themes and "host". A `./file.css` would be looked for in
+      // each artifact, and a plugin's theme exists only where that plugin is installed (Opus
+      // review of WP-18, finding 13).
+      const lookTheme = config.look?.theme;
+      const lookStack =
+        lookTheme === undefined ? [] : typeof lookTheme === "string" ? [lookTheme] : lookTheme;
+      const notEveryPage = lookStack.find((text) => {
+        const entry = themeStackEntry(text);
+        return (
+          entry?.kind === "file" ||
+          (entry?.kind === "theme" && !Object.hasOwn(ARTIFACT_THEMES, entry.id))
+        );
+      });
+      const lookProblem =
+        lookTheme === undefined
+          ? undefined
+          : notEveryPage !== undefined
+            ? `it names ${notEveryPage}, which not every page has; a home's stack names the built-in themes (${Object.keys(ARTIFACT_THEMES).join(", ")}) and "host"`
+            : themeStackProblem(lookStack);
+      if (lookProblem !== undefined) {
+        throw new RpcError(
+          createDiagnostic("MOSTRA_HOST_INVALID_PARAMS", {
+            message: `home.look.theme can't be built: ${lookProblem}.`,
+          }),
+        );
+      }
+      const lookVariables = Object.keys(config.look?.variables ?? {}).length;
+      if (lookVariables > HOST_LOOK_VARIABLES_MAX) {
+        throw new RpcError(
+          createDiagnostic("MOSTRA_HOST_INVALID_PARAMS", {
+            message: `home.look.variables has ${lookVariables} variables; a host's look takes at most ${HOST_LOOK_VARIABLES_MAX}.`,
+          }),
+        );
+      }
       const current = readHomeSettings(home.path);
       const expectedPorts = { ...(current.expectedPorts ?? {}) };
       if (config.ports !== undefined) {
@@ -910,6 +967,7 @@ async function assemble(home: OwnedHome, options: StartInstanceOptions): Promise
         ...(config.licenses !== undefined
           ? { licenses: { accept: [...new Set(config.licenses.accept)].sort() } }
           : {}),
+        ...(config.look !== undefined ? { look: config.look } : {}),
       };
       if (Object.keys(change).length === 0) return;
       writeHomeSettings(home.path, change);
@@ -920,6 +978,14 @@ async function assemble(home: OwnedHome, options: StartInstanceOptions): Promise
         ...(config.ports !== undefined ? { ports: config.ports } : {}),
         ...(config.submitChannels !== undefined ? { submitChannels: config.submitChannels } : {}),
         ...(config.licenses !== undefined ? { licenses: config.licenses.accept } : {}),
+        ...(config.look !== undefined
+          ? {
+              look: {
+                ...(config.look.theme !== undefined ? { theme: config.look.theme } : {}),
+                variables: Object.keys(config.look.variables ?? {}).length,
+              },
+            }
+          : {}),
       });
     },
     // A host's home never sends the standalone CLI's telemetry (D140 item 4).
@@ -957,6 +1023,32 @@ async function assemble(home: OwnedHome, options: StartInstanceOptions): Promise
         dependenciesChanged: (artifact) => dev.dependenciesChanged(artifact),
         versionOwner: (versionId) => registry.version(versionId)?.artifactId,
         cacheDir: join(home.path, "cache", "mcp-app"),
+      }),
+      ...themeMethods({
+        homeTheme: () => readHomeSettings(home.path).look?.theme,
+        artifact: (ref) =>
+          getPublisher().withArtifact(ref, async ({ target, source }) => {
+            const text = await readFile(join(source.root, source.entry), "utf8");
+            const manifest = extractManifest(source.entry, text).manifest ?? {
+              title: source.entry,
+            };
+            // The working lockfile's plugins, from a layout already installed: listing installs nothing.
+            const working = await getDependencies()
+              .working(target, { install: false })
+              .catch(() => undefined);
+            return {
+              manifest,
+              sourceDir: source.root,
+              ...(working?.nodeModules !== undefined
+                ? {
+                    plugins: {
+                      names: working.lock.plugins ?? [],
+                      nodeModules: working.nodeModules,
+                    },
+                  }
+                : {}),
+            };
+          }),
       }),
       ...packMethods({
         packs: getPacks,

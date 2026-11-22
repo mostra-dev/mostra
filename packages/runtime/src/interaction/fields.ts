@@ -11,8 +11,10 @@ import {
   type Actor,
   canonicalJson,
   createDiagnostic,
+  FIELD_OPTIONS_MAX_BYTES,
   type FieldConflict,
   type FieldOp,
+  type FieldOption,
   type FieldScope,
   type FieldState,
   isFieldId,
@@ -53,6 +55,8 @@ export interface FieldRow {
   readonly required: number | null;
   /** The number of the version whose view last wrote the field (D109); null for agents and hosts. */
   readonly version_number: number | null;
+  /** The options its value is chosen from, as JSON (`FieldOption[]`), when it names them. */
+  readonly options_json: string | null;
 }
 
 /**
@@ -111,6 +115,9 @@ export function fieldState(row: FieldRow): FieldState {
     ...(row.label !== null ? { label: row.label } : {}),
     ...(row.required !== null ? { required: row.required === 1 } : {}),
     ...(row.sensitive === 1 ? { sensitive: true } : {}),
+    ...(row.options_json !== null
+      ? { options: JSON.parse(row.options_json) as FieldOption[] }
+      : {}),
   };
 }
 
@@ -198,6 +205,12 @@ function checkOps(ops: readonly FieldOp[]): Map<string, string | undefined> {
     }
     if (Buffer.byteLength(json, "utf8") > FIELD_VALUE_MAX_BYTES) {
       throw tooLarge(`The value of ${op.id} is larger than 1 MiB of JSON.`);
+    }
+    if (
+      op.options !== undefined &&
+      Buffer.byteLength(JSON.stringify(op.options), "utf8") > FIELD_OPTIONS_MAX_BYTES
+    ) {
+      throw tooLarge(`The options of ${op.id} are larger than 64 KiB of JSON.`);
     }
     encoded.set(op.id, json);
   }
@@ -288,7 +301,13 @@ export function applyMutation(db: LedgerDb, input: MutationInput): MutationOutco
     }
     applied.push(op.id);
     const json = encoded.get(op.id);
-    const oldSize = row && row.deleted === 0 ? Buffer.byteLength(row.value_json, "utf8") : 0;
+    // A field's size in its document is its value and its options, while it holds a value (the
+    // options a page names are stored with it, Opus review of WP-18, finding 8).
+    const oldSize =
+      row && row.deleted === 0
+        ? Buffer.byteLength(row.value_json, "utf8") +
+          Buffer.byteLength(row.options_json ?? "", "utf8")
+        : 0;
     const sensitive = op.sensitive ?? (row ? row.sensitive === 1 : false);
     if (json === undefined) {
       // Deleting what isn't there changes nothing and needs no new revision.
@@ -308,17 +327,20 @@ export function applyMutation(db: LedgerDb, input: MutationInput): MutationOutco
       changes.push({ id: op.id, deleted: true });
       continue;
     }
-    size += Buffer.byteLength(json, "utf8") - oldSize;
     const label = op.label ?? row?.label ?? null;
     const required = op.required !== undefined ? (op.required ? 1 : 0) : (row?.required ?? null);
+    const options =
+      op.options !== undefined ? JSON.stringify(op.options) : (row?.options_json ?? null);
+    size += Buffer.byteLength(json, "utf8") + Buffer.byteLength(options ?? "", "utf8") - oldSize;
     writes.push(() =>
       db.run(
-        `INSERT INTO field (document_id, field_id, value_json, deleted, field_rev, updated_by_json, updated_at, sensitive, label, required, version_number)
-         VALUES (?, ?, ?, 0, ?, ?, ?, ?, ?, ?, ?)
+        `INSERT INTO field (document_id, field_id, value_json, deleted, field_rev, updated_by_json, updated_at, sensitive, label, required, version_number, options_json)
+         VALUES (?, ?, ?, 0, ?, ?, ?, ?, ?, ?, ?, ?)
          ON CONFLICT (document_id, field_id) DO UPDATE SET value_json = excluded.value_json, deleted = 0,
            field_rev = excluded.field_rev, updated_by_json = excluded.updated_by_json,
            updated_at = excluded.updated_at, sensitive = excluded.sensitive, label = excluded.label,
-           required = excluded.required, version_number = excluded.version_number`,
+           required = excluded.required, version_number = excluded.version_number,
+           options_json = excluded.options_json`,
         document.id,
         op.id,
         json,
@@ -329,6 +351,7 @@ export function applyMutation(db: LedgerDb, input: MutationInput): MutationOutco
         label,
         required,
         input.versionNumber ?? null,
+        options,
       ),
     );
     changes.push(

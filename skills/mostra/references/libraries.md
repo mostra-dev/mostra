@@ -18,6 +18,7 @@ Every artifact can import these without any install; they share one React. Anyth
 | React | `react`, `react-dom` 19 | `import { useState } from "react"` |
 | Routing for `pages/` | `react-router` 8 | `import { Link, useParams } from "react-router"` |
 | Styling | `tailwindcss` 4, `cn` | utility classes; `import { cn } from "cn"` to merge class names |
+| The kit's parts | shadcn's components on the base, in the page's theme ([design.md](design.md#the-kits-parts)) | `import { Button } from "@/components/ui/button"` |
 | UI primitives | `@base-ui/react` 1 (default), `radix-ui` 1 | `import { Dialog } from "@base-ui/react/dialog"` |
 | Forms and validation | `react-hook-form` 7, `@hookform/resolvers` 5, `zod` 4 | through `@mostra/react/form` ([answers.md](answers.md#forms-with-react-hook-form)) |
 | Icons | `lucide-react` 1 | `import { Check } from "lucide-react"` |
@@ -55,6 +56,11 @@ Several of these had a major release recently, so older habits break the build o
 | `<Dialog.Trigger render={<Button />}>` | `<Dialog.Trigger asChild>` | Base UI composes with `render`; `asChild` is Radix's |
 | `function Input({ ref, ...props })` | `forwardRef(...)` | React 19 passes `ref` as a prop |
 | `useTable({ features, columns, data })` | `useReactTable({ getCoreRowModel: getCoreRowModel(), … })` | TanStack Table 9 |
+| `import { ReactFlow } from "@xyflow/react"` | `import ReactFlow from "reactflow"` | React Flow is `@xyflow/react` since version 12 |
+| `mermaid.run()`, `await mermaid.render(id, text)` | `mermaid.init()`, `mermaid.mermaidAPI.render(…)` | Mermaid 12 deprecates them |
+| `import { cn } from "cn"` | `lib/utils.ts` with `clsx` and `tailwind-merge` | shadcn's components import the `cn` package |
+
+Verify flags each of these with its fix (`MOSTRA_LINT_API_CHANGED`), and the other base's idiom too (`MOSTRA_KIT_WRONG_BASE`). `mostra verify <dir> --fix` writes every fix verify offers into your files, lists the files it changed, and verifies again.
 
 ## UI primitives: Base UI
 
@@ -82,7 +88,7 @@ function PlanDialog() {
 }
 ```
 
-Others: `accordion`, `alert-dialog`, `checkbox`, `collapsible`, `combobox`, `menu`, `popover`, `radio-group`, `select`, `slider`, `switch`, `tabs`, `toggle`, `tooltip` and more, each at `@base-ui/react/<name>`. Radix works too (`import { Dialog } from "radix-ui"`); keep one of them per artifact.
+Others: `accordion`, `alert-dialog`, `checkbox`, `collapsible`, `combobox`, `menu`, `popover`, `radio-group`, `select`, `slider`, `switch`, `tabs`, `toggle`, `tooltip` and more, each at `@base-ui/react/<name>`. The kit's parts are built on these, so most pages import the parts instead. Radix works too (`import { Dialog } from "radix-ui"`, `kit: { base: "radix" }` for the kit's Radix parts); keep one of them per artifact.
 
 ## Tables: TanStack Table 9
 

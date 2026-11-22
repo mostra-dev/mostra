@@ -83,6 +83,12 @@ export interface BuiltPage {
   readonly entry: string;
   readonly stylesheets: readonly string[];
   readonly lang: string;
+  /**
+   * The theme the page wears and where its host's look goes (`data-theme`, `data-host-look` on
+   * `<html>`, D181 items 2 and 5): the page inline keeps them, so its theme's rules and its stack's
+   * `"host"` apply there as on the full page.
+   */
+  readonly theme?: { readonly id?: string; readonly hostLook?: "over" | "under" };
 }
 
 /** Reads the build's `index.html` (the builder's own, INTERFACES §11). */
@@ -92,8 +98,17 @@ export function readBuiltPage(html: string): BuiltPage {
   const stylesheets = [
     ...html.matchAll(/<link\b[^>]*\brel="stylesheet"[^>]*\bhref="([^"]+)"/gi),
   ].map((match) => match[1] as string);
-  const lang = /<html\b[^>]*\blang="([^"]*)"/i.exec(html)?.[1] ?? "en";
-  return { entry, stylesheets, lang };
+  const root = /<html\b[^>]*>/i.exec(html)?.[0] ?? "";
+  const lang = /\blang="([^"]*)"/i.exec(root)?.[1] ?? "en";
+  const id = /\bdata-theme="([a-z][a-z0-9-]{0,31})"/.exec(root)?.[1];
+  const look = /\bdata-host-look="(over|under)"/.exec(root)?.[1];
+  const hostLook: "over" | "under" | undefined =
+    look === "over" || look === "under" ? look : undefined;
+  const theme = {
+    ...(id !== undefined ? { id } : {}),
+    ...(hostLook !== undefined ? { hostLook } : {}),
+  };
+  return { entry, stylesheets, lang, ...(Object.keys(theme).length > 0 ? { theme } : {}) };
 }
 
 /** The URLs a stylesheet names: `url(x)`, `url("x")`, `url('x')`. */
@@ -197,9 +212,19 @@ export function isOwnSource(source: string): boolean {
 }
 
 /** The page's parts. */
+/** The theme attributes of the page's `<html>`, as the build wrote them. */
+function rootAttributes(theme: BuiltPage["theme"]): string {
+  const attributes: string[] = [];
+  if (theme?.id !== undefined) attributes.push(`data-theme="${escapeHtml(theme.id)}"`);
+  if (theme?.hostLook !== undefined) attributes.push(`data-host-look="${theme.hostLook}"`);
+  return attributes.map((attribute) => ` ${attribute}`).join("");
+}
+
 export interface PageParts {
   readonly title: string;
   readonly lang: string;
+  /** The theme attributes of the built page's `<html>`, kept inline. */
+  readonly theme?: BuiltPage["theme"];
   readonly versionId: string;
   readonly css: string;
   readonly code: string;
@@ -214,7 +239,7 @@ export function pageHtml(parts: PageParts): string {
   const tokens = JSON.stringify(HOST_TOKENS).replaceAll("<", "\\u003c");
   return [
     "<!doctype html>",
-    `<html lang="${escapeHtml(parts.lang)}">`,
+    `<html lang="${escapeHtml(parts.lang)}"${rootAttributes(parts.theme)}>`,
     "  <head>",
     '    <meta charset="utf-8" />',
     '    <meta name="viewport" content="width=device-width, initial-scale=1" />',

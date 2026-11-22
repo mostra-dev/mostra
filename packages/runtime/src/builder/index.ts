@@ -44,6 +44,8 @@ export {
   type DevReady,
   type DevRequest,
   type DevServerBuild,
+  FACE_PREFIX,
+  type KitBuild,
   LIVE_DECLARATION,
   type VersionRegistry,
 } from "./types.ts";
@@ -65,7 +67,7 @@ const BUILD_PACKAGES = [
 ] as const;
 
 /** Bumped whenever the SPA build's settings change, so older versions aren't reused. */
-const SPA_CONFIG_REVISION = 7;
+const SPA_CONFIG_REVISION = 12;
 
 /** What a render mode can deliver for a manifest (ROUND-3 §7). */
 export interface RenderCapabilities {

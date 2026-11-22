@@ -10,6 +10,9 @@
 import {
   type Actor,
   type ControlRequest,
+  FIELD_OPTIONS_MAX,
+  FIELD_OPTIONS_MAX_BYTES,
+  type FieldOption,
   type FieldScope,
   mostraControlsRequest,
   type SubmissionSummary,
@@ -112,6 +115,11 @@ export interface FieldOptions<T> {
   readonly validate?: StandardSchema<T> | ((value: T) => string | undefined);
   /** `viewer` (default): the viewer's draft. `artifact`: shared state every viewer sees (D63). */
   readonly scope?: FieldScope;
+  /**
+   * The options the value is chosen from, as the person sees them, so results name each answer
+   * by its label and say whether it took the recommended one (KT-05).
+   */
+  readonly options?: readonly FieldOption[];
 }
 
 /** What a field is doing (INTERFACES §2.3). */
@@ -186,6 +194,30 @@ function updatedByOf(
 const warned = new Set<string>();
 
 /**
+ * Why a field's options can't be stored with it, or `undefined`: more than the protocol takes
+ * (`FIELD_OPTIONS_MAX` options of at most 1024 characters, `FIELD_OPTIONS_MAX_BYTES` of JSON).
+ */
+function optionsTooMuch(key: string | undefined): string | undefined {
+  if (key === undefined) return undefined;
+  const options = JSON.parse(key) as readonly FieldOption[];
+  if (options.length > FIELD_OPTIONS_MAX) {
+    return `names ${options.length} options, more than the ${FIELD_OPTIONS_MAX} a field keeps; its answers are saved without their labels.`;
+  }
+  const long = options.find(
+    (option) =>
+      String(option.value).length > 1024 ||
+      (option.label !== undefined && option.label.length > 1024),
+  );
+  if (long !== undefined) {
+    return "has an option whose value or label is longer than 1024 characters; its answers are saved without their labels.";
+  }
+  if (new TextEncoder().encode(key).length > FIELD_OPTIONS_MAX_BYTES) {
+    return "has options larger than 64 KiB of JSON; its answers are saved without their labels.";
+  }
+  return undefined;
+}
+
+/**
  * A persisted value with a stable field ID (D52). It behaves like `useState`: the value the viewer
  * sees, a setter, and what the field is doing. Edits save to Mostra as the viewer works, survive
  * reloads, closed tabs and other devices, reach other tabs, and carry over to newer versions by
@@ -233,6 +265,21 @@ export function useField<T>(
         ? settled.error
         : CHECKING;
   const { label, required, sensitive } = options;
+  // The options as one value, so a new array with the same options changes nothing.
+  const optionsKey = options.options === undefined ? undefined : JSON.stringify(options.options);
+  // Options past what a field may carry would make every save of it refused: the field saves
+  // without them, and the page says why on its console, which verify reports.
+  const optionsProblem = useMemo(() => optionsTooMuch(optionsKey), [optionsKey]);
+  const choices = useMemo(
+    () =>
+      optionsKey === undefined || optionsProblem !== undefined
+        ? undefined
+        : (JSON.parse(optionsKey) as readonly FieldOption[]),
+    [optionsKey, optionsProblem],
+  );
+  useEffect(() => {
+    if (optionsProblem !== undefined) console.error(`Mostra: the field ${id} ${optionsProblem}`);
+  }, [id, optionsProblem]);
 
   // Registered once per mount and ID; the next effect keeps its options current.
   // biome-ignore lint/correctness/useExhaustiveDependencies: options change through updateRegistration.
@@ -245,6 +292,7 @@ export function useField<T>(
         ...(label !== undefined ? { label } : {}),
         ...(required !== undefined ? { required } : {}),
         ...(sensitive !== undefined ? { sensitive } : {}),
+        ...(choices !== undefined ? { options: choices } : {}),
       }),
     // eslint-disable-next-line react-hooks/exhaustive-deps -- the next effect keeps the options current.
     [store, id, scope, first],
@@ -257,6 +305,7 @@ export function useField<T>(
       ...(label !== undefined ? { label } : {}),
       ...(required !== undefined ? { required } : {}),
       ...(sensitive !== undefined ? { sensitive } : {}),
+      ...(choices !== undefined ? { options: choices } : {}),
       ...(error !== undefined ? { error } : {}),
     });
   });
@@ -272,10 +321,11 @@ export function useField<T>(
         ...(label !== undefined ? { label } : {}),
         ...(required !== undefined ? { required } : {}),
         ...(sensitive !== undefined ? { sensitive } : {}),
+        ...(choices !== undefined ? { options: choices } : {}),
         ...(message !== undefined ? { error: message } : {}),
       });
     });
-  }, [store, validation, id, scope, first, label, required, sensitive]);
+  }, [store, validation, id, scope, first, label, required, sensitive, choices]);
 
   const set = useCallback(
     (next: T | ((previous: T) => T)) => {
@@ -295,9 +345,10 @@ export function useField<T>(
         ...(label !== undefined ? { label } : {}),
         ...(required !== undefined ? { required } : {}),
         ...(sensitive !== undefined ? { sensitive } : {}),
+        ...(choices !== undefined ? { options: choices } : {}),
       });
     },
-    [store, key, scope, id, label, required, sensitive, first],
+    [store, key, scope, id, label, required, sensitive, choices, first],
   );
 
   const conflict = store.conflict(key);

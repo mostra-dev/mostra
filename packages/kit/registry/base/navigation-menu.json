@@ -1,0 +1,20 @@
+{
+  "$schema": "https://ui.shadcn.com/schema/registry-item.json",
+  "name": "navigation-menu",
+  "type": "registry:ui",
+  "dependencies": [
+    "@base-ui/react",
+    "class-variance-authority",
+    "cn",
+    "lucide-react"
+  ],
+  "files": [
+    {
+      "path": "components/ui/navigation-menu.tsx",
+      "type": "registry:ui"
+    }
+  ],
+  "mostra": {
+    "base": "base"
+  }
+}

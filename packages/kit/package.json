@@ -1,0 +1,123 @@
+{
+  "name": "@mostra/kit",
+  "version": "0.18.0",
+  "description": "Mostra's kit: shadcn components for the Base UI and Radix bases, shaped by the themes' tokens, and the questionnaire and form parts that save as fields.",
+  "license": "Apache-2.0",
+  "author": "The Mostra Authors",
+  "homepage": "https://github.com/mostra-dev/mostra/tree/main/packages/kit#readme",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/mostra-dev/mostra.git",
+    "directory": "packages/kit"
+  },
+  "bugs": "https://github.com/mostra-dev/mostra/issues",
+  "type": "module",
+  "sideEffects": [
+    "*.css"
+  ],
+  "exports": {
+    ".": {
+      "@mostra/source": "./src/index.ts",
+      "types": "./dist/index.d.ts",
+      "default": "./dist/index.js"
+    },
+    "./questionnaire": {
+      "@mostra/source": "./src/questionnaire.tsx",
+      "types": "./dist/questionnaire.d.ts",
+      "default": "./dist/questionnaire.js"
+    },
+    "./layout": {
+      "@mostra/source": "./src/layout.tsx",
+      "types": "./dist/layout.d.ts",
+      "default": "./dist/layout.js"
+    },
+    "./css/*": "./css/*",
+    "./registry/*": "./registry/*",
+    "./package.json": "./package.json"
+  },
+  "files": [
+    "dist",
+    "src",
+    "!src/**/*.test.ts",
+    "css",
+    "registry"
+  ],
+  "engines": {
+    "node": ">=24"
+  },
+  "publishConfig": {
+    "access": "public",
+    "provenance": true
+  },
+  "scripts": {
+    "build": "tsdown",
+    "typecheck": "tsc -b",
+    "test": "vitest run",
+    "api": "mostra-tools api",
+    "generate": "node --conditions @mostra/source scripts/generate.ts",
+    "size": "size-limit"
+  },
+  "dependencies": {
+    "@base-ui/react": "catalog:",
+    "@mostra/react": "workspace:*",
+    "@shadcn/react": "catalog:",
+    "class-variance-authority": "catalog:",
+    "cmdk": "catalog:",
+    "cn": "catalog:",
+    "embla-carousel-react": "catalog:",
+    "input-otp": "catalog:",
+    "lucide-react": "catalog:",
+    "radix-ui": "catalog:",
+    "react-day-picker": "catalog:",
+    "react-resizable-panels": "catalog:",
+    "recharts": "catalog:",
+    "shiki": "catalog:",
+    "sonner": "catalog:",
+    "tw-animate-css": "catalog:",
+    "vaul": "catalog:"
+  },
+  "peerDependencies": {
+    "react": "^19"
+  },
+  "devDependencies": {
+    "@mostra/tools": "workspace:*",
+    "@size-limit/preset-small-lib": "catalog:",
+    "@types/node": "catalog:",
+    "@types/react": "catalog:",
+    "@types/react-dom": "catalog:",
+    "react": "catalog:",
+    "react-dom": "catalog:",
+    "size-limit": "catalog:",
+    "tsdown": "catalog:",
+    "typescript": "catalog:",
+    "vitest": "catalog:"
+  },
+  "size-limit": [
+    {
+      "name": "@mostra/kit/questionnaire (React, the client runtime and the icons excluded)",
+      "path": "dist/questionnaire.js",
+      "import": "*",
+      "ignore": [
+        "react",
+        "react-dom",
+        "@mostra/react",
+        "lucide-react",
+        "cn"
+      ],
+      "limit": "5 kB"
+    },
+    {
+      "name": "@mostra/kit/layout (React excluded)",
+      "path": "dist/layout.js",
+      "import": "*",
+      "ignore": [
+        "react",
+        "react-dom",
+        "@mostra/react",
+        "lucide-react",
+        "cn"
+      ],
+      "limit": "1.5 kB"
+    }
+  ]
+}

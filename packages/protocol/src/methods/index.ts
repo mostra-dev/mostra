@@ -31,6 +31,7 @@ import { livePushMethod } from "./live/push.ts";
 import { mostraInitializeMethod } from "./mostra/initialize.ts";
 import { mostraShutdownMethod } from "./mostra/shutdown.ts";
 import { packAddMethod } from "./pack/add.ts";
+import { packKitMethod } from "./pack/kit.ts";
 import { pluginAddMethod } from "./plugin/add.ts";
 import { pluginCommandsMethod } from "./plugin/commands.ts";
 import { pluginExportMethod } from "./plugin/export.ts";
@@ -74,6 +75,8 @@ import { shareStartMethod } from "./share/start.ts";
 import { shareStopMethod } from "./share/stop.ts";
 import { stateGetMethod } from "./state/get.ts";
 import { statePatchMethod } from "./state/patch.ts";
+import { themeListMethod } from "./theme/list.ts";
+import { themeShowMethod } from "./theme/show.ts";
 import { viewDefaultMethod } from "./view/default.ts";
 import { viewLaunchMethod } from "./view/launch.ts";
 import { viewRevokeMethod } from "./view/revoke.ts";
@@ -160,6 +163,9 @@ export const hostMethods: readonly AnyMethod[] = [
   appOpenMethod,
   appRequestMethod,
   appPageMethod,
+  themeListMethod,
+  themeShowMethod,
+  packKitMethod,
   // gen:methods
 ];
 

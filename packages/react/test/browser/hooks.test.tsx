@@ -144,6 +144,34 @@ describe("useField (D52)", () => {
     expect(ops.at(-1)).toMatchObject({ id: "count", value: 2, label: "Count", required: true });
   });
 
+  it("saves a field whose options are past what it may carry without them, and says so on the console (Opus review 8)", async () => {
+    const errors = vi.spyOn(console, "error").mockImplementation(() => undefined);
+    try {
+      const many = Array.from({ length: 201 }, (_, index) => ({ value: `v${index}` }));
+      function Picker() {
+        const [choice, setChoice] = useField("pick", "", { label: "Pick", options: many });
+        return (
+          <div>
+            <span data-testid="ready" />
+            <span data-testid="choice">{choice}</span>
+            <button type="button" data-testid="pick" onClick={() => setChoice("v3")} />
+          </div>
+        );
+      }
+      const page = await render(<Picker />);
+      page.click("pick");
+      await vi.waitFor(() => expect(page.gateway.docs.viewer.fields.get("pick")?.value).toBe("v3"));
+      const ops = page.gateway.received.flatMap((request) => request.ops);
+      expect(ops.at(-1)).toMatchObject({ id: "pick", value: "v3", label: "Pick" });
+      expect(ops.at(-1)).not.toHaveProperty("options");
+      expect(errors).toHaveBeenCalledWith(
+        expect.stringContaining("the field pick names 201 options"),
+      );
+    } finally {
+      errors.mockRestore();
+    }
+  });
+
   it("starts from the value Mostra holds, not its initial value", async () => {
     const gateway = new FakeGateway();
     gateway.write("viewer", { count: 7 });

@@ -24,7 +24,7 @@
  * design system's `registry:base`) is listed as notes, never applied half-way.
  */
 import { randomBytes } from "node:crypto";
-import { existsSync } from "node:fs";
+import { existsSync, readFileSync } from "node:fs";
 import { lstat, mkdir, readdir, readFile, rename, rm, writeFile } from "node:fs/promises";
 import { basename, dirname, join, posix } from "node:path";
 import {
@@ -47,7 +47,13 @@ import type { RequestKey } from "../ledger/index.ts";
 import type { Environment, Log } from "../log.ts";
 import { shellWord } from "../platform/index.ts";
 import type { ItemLicense, Plugins } from "../plugins/index.ts";
-import { type ReadItem, readComponentsJson, readItems, withoutTrailingSlashes } from "./read.ts";
+import {
+  BARE_NAME,
+  type ReadItem,
+  readComponentsJson,
+  readItems,
+  withoutTrailingSlashes,
+} from "./read.ts";
 
 /** Options for {@link createPacks}. */
 export interface PacksOptions {
@@ -57,10 +63,17 @@ export interface PacksOptions {
   readonly env: Environment;
   /** GitHub's API and raw-file origins, for tests' local fakes (`MOSTRA_TEST_GITHUB_*`). */
   readonly github?: { readonly api: string; readonly raw: string };
+  /** The kit's registry for a base (its items' directory in the warm set), when it has one. */
+  readonly kitRegistry?: (base: "base" | "radix") => string | undefined;
 }
 
 /** The packs of one instance. */
 export interface Packs {
+  /**
+   * The kit's items for a base, by name (its registry's `registry.json`): the bare names
+   * `mostra add` copies; any other bare name is an npm package (D181 item 7).
+   */
+  kitItems(base: "base" | "radix"): readonly string[];
   /** `pack/add`, for an artifact the publisher resolved and holds the queue of. */
   add(input: {
     readonly target: DependencyTarget;
@@ -69,6 +82,8 @@ export interface Packs {
     readonly kind: "file" | "dir";
     /** The entry, relative to `root`. */
     readonly entry: string;
+    /** The artifact's shadcn base (`kit.base`), whose kit items bare names name. */
+    readonly base: "base" | "radix";
     readonly specs: readonly string[];
     readonly overwrite: boolean;
     readonly accept: readonly string[];
@@ -301,11 +316,34 @@ function importedStylesheets(entryText: string, entry: string): string[] {
 export function createPacks(options: PacksOptions): Packs {
   const { dependencies, plugins, log } = options;
   return {
+    kitItems(base) {
+      const registry = options.kitRegistry?.(base);
+      if (registry === undefined) return [];
+      try {
+        const index = JSON.parse(readFileSync(join(registry, "registry.json"), "utf8")) as {
+          readonly items?: readonly { readonly name?: unknown }[];
+        };
+        return (index.items ?? []).flatMap((item) =>
+          typeof item.name === "string" && BARE_NAME.test(item.name) ? [item.name] : [],
+        );
+      } catch {
+        return [];
+      }
+    },
     async add(input) {
       const components = input.kind === "dir" ? await readComponentsJson(input.root) : undefined;
+      // A bare name the kit has an item of, for the artifact's base, is that item (D181 item 7):
+      // `mostra add button`. Any other bare name, or one with a version, is an npm package.
+      const registry = options.kitRegistry?.(input.base);
+      const kitItem = (name: string): string | undefined => {
+        if (registry === undefined || !BARE_NAME.test(name)) return undefined;
+        const file = join(registry, `${name}.json`);
+        return existsSync(file) ? file : undefined;
+      };
       // `@scope/name` is an item only where the artifact's components.json registers `@scope`, as
       // shadcn reads it; anywhere else it is the scoped npm package it looks like.
       const isItem = (spec: string): boolean => {
+        if (kitItem(spec) !== undefined) return true;
         const address = parsePackAddress(spec);
         if (address === undefined) return false;
         if (address.kind !== "namespace") return true;
@@ -331,6 +369,8 @@ export function createPacks(options: PacksOptions): Packs {
                 env,
                 offline: isOffline(options.env),
                 pluginItem: (pkg, name) => plugins.packItem(input.target, pkg, name),
+                kitItem,
+                ...(registry !== undefined ? { kitRegistry: registry } : {}),
                 ...(options.github !== undefined ? { github: options.github } : {}),
               },
               input.cwd,

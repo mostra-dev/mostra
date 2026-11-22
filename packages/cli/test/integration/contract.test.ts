@@ -65,10 +65,12 @@ async function run(
   args: string[],
   expected: { code: number; ok: boolean; error?: string },
   input?: string,
+  timeoutMs?: number,
 ): Promise<{ ran: Ran; result: unknown }> {
   const ran = await cli([...args, "--json"], {
     env: home.env,
     ...(input !== undefined ? { input } : {}),
+    ...(timeoutMs !== undefined ? { timeoutMs } : {}),
   });
   const value = envelope(ran);
   expect({ code: ran.code, ok: value.ok, error: value.error?.code }, ran.stderr).toEqual({
@@ -395,6 +397,23 @@ describe("every command, with --json and no terminal", () => {
       '[{"id":"priorities","value":["Mine"]}]',
     );
     expect((stale.result as { conflicts: unknown[] }).conflicts).toHaveLength(1);
+  });
+
+  it("add: a bare name is the kit's item only where the kit has one, else an npm package (Opus review 9)", async () => {
+    // Any other bare name is an npm package, through deps/add with its own result, as before the
+    // kit (D181 item 7).
+    const kitDir = join(home.root, "add-kit");
+    mkdirSync(kitDir, { recursive: true });
+    writeFileSync(
+      join(kitDir, "index.tsx"),
+      "export default function Page() {\n  return <main><h1>Add</h1></main>;\n}\n",
+    );
+    const npm = await run(["add", "zod", "--artifact", kitDir], { code: 0, ok: true });
+    expect(npm.result).toMatchObject({ packages: [expect.objectContaining({ name: "zod" })] });
+    expect(npm.result).not.toHaveProperty("items");
+    const item = await run(["add", "button", "--artifact", kitDir], { code: 0, ok: true });
+    expect(item.result).toMatchObject({ items: [expect.objectContaining({ name: "button" })] });
+    expect(existsSync(join(kitDir, "components", "ui", "button.tsx"))).toBe(true);
   });
 
   it("push, add, secret set|list|rm, list and status", async () => {
@@ -958,6 +977,98 @@ describe("every command, with --json and no terminal", () => {
     expect(lines.slice(0, -1).every((line) => "event" in line)).toBe(true);
     covered.add("dev");
   }, 120_000);
+
+  it("theme list and theme show name the themes on offer and what a page's stack sets (D181 item 6)", async () => {
+    const listed = await run(["theme", "list"], { code: 0, ok: true });
+    const themes = (listed.result as { themes: { id: string; builtIn?: boolean }[] }).themes;
+    expect(themes.map((theme) => theme.id)).toEqual(expect.arrayContaining(["studio", "arcata"]));
+    const shown = await run(["theme", "show", "arcata"], { code: 0, ok: true });
+    expect(shown.result).toMatchObject({ stack: ["arcata"], id: "arcata" });
+    // A page's own stack, with its CSS; an unknown theme is refused with its code.
+    const page = join(home.root, "themed");
+    mkdirSync(page, { recursive: true });
+    writeFileSync(
+      join(page, "index.tsx"),
+      `import { defineArtifact } from "@mostra/react";\n\nexport const artifact = defineArtifact({ title: "Themed", kit: { theme: ["studio", "host"] } });\n\nexport default function Page() {\n  return <h1>Themed</h1>;\n}\n`,
+    );
+    const ofPage = await run(["theme", "show", "--artifact", page, "--css"], {
+      code: 0,
+      ok: true,
+    });
+    expect(ofPage.result).toMatchObject({ stack: ["studio", "host"], default: false });
+    expect((ofPage.result as { css?: string }).css).toContain("--background");
+    await run(["theme", "show", "nope"], { code: 1, ok: false, error: "MOSTRA_KIT_THEME_UNKNOWN" });
+  });
+
+  it("verify --fix writes the new form of every changed API and the base's own idiom, then passes (KT-08)", async () => {
+    const dir = join(home.root, "churned");
+    mkdirSync(dir, { recursive: true });
+    // The smoke test is off: this checks the lint, the type check and the fixes, and each of the
+    // four verifies would otherwise spend its smoke budget clicking the dialog (clients ran past
+    // its deadline on macOS with it, WP-18's ci:full run 44914565149).
+    const page = `import * as z from "zod";
+import { defineArtifact, useField } from "@mostra/react";
+import { Button } from "@/components/ui/button";
+import { Dialog, DialogContent, DialogTitle, DialogTrigger } from "@/components/ui/dialog";
+
+export const artifact = defineArtifact({ title: "Churned", verify: { smoke: false } });
+
+const Email = z.string().email();
+
+export default function Page() {
+  const [email, setEmail] = useField("email", "", { label: "Email" });
+  return (
+    <main className="flex-shrink-0 p-6">
+      <h1 className="bg-gradient-to-r from-primary to-accent">Churned</h1>
+      <label>
+        Email <input value={email} onChange={(event) => setEmail(event.currentTarget.value)} />
+      </label>
+      <p>{Email.safeParse(email).success ? "Valid" : "Not yet"}</p>
+      <Dialog>
+        <DialogTrigger asChild>
+          <Button variant="outline">Open the plan</Button>
+        </DialogTrigger>
+        <DialogContent>
+          <DialogTitle>The plan</DialogTitle>
+        </DialogContent>
+      </Dialog>
+    </main>
+  );
+}
+`;
+    writeFileSync(join(dir, "index.tsx"), page);
+    // Without --fix: the other base's idiom fails the type check, as itself, with its fix.
+    const plain = await run(["verify", dir], { code: 1, ok: true }, undefined, 220_000);
+    const before = VerifyVerdict.parse(plain.result);
+    const codes = before.diagnostics.map((diagnostic) => diagnostic.code);
+    expect(codes).toContain("MOSTRA_KIT_WRONG_BASE");
+    expect(codes.filter((code) => code === "MOSTRA_LINT_API_CHANGED")).toHaveLength(3);
+    expect(codes).not.toContain("MOSTRA_TYPE_ERROR");
+    expect(readFileSync(join(dir, "index.tsx"), "utf8")).toBe(page);
+
+    // Two verifies, one after the fix: each as long as verify takes on a loaded runner.
+    const fixed = await run(["verify", dir, "--fix"], { code: 0, ok: true }, undefined, 220_000);
+    const after = fixed.result as VerifyVerdict & { fixed: { file: string; fixes: number }[] };
+    expect(VerifyVerdict.parse(after).status).toBe("pass");
+    expect(after.fixed).toEqual([{ file: "index.tsx", fixes: 4 }]);
+    expect(
+      after.diagnostics.filter(
+        (d) => d.code.startsWith("MOSTRA_LINT") || d.code.startsWith("MOSTRA_KIT"),
+      ),
+    ).toEqual([]);
+    const text = readFileSync(join(dir, "index.tsx"), "utf8");
+    expect(text).toContain("const Email = z.email();");
+    expect(text).toContain('className="shrink-0 p-6"');
+    expect(text).toContain("bg-linear-to-r from-primary");
+    expect(text).toContain(
+      '<DialogTrigger render={<Button variant="outline" />}>Open the plan</DialogTrigger>',
+    );
+    expect(fixed.ran.stderr).toContain("fixed index.tsx");
+    // Nothing left to fix: --fix says so and changes nothing.
+    const again = await run(["verify", dir, "--fix"], { code: 0, ok: true }, undefined, 220_000);
+    expect((again.result as { fixed: unknown[] }).fixed).toEqual([]);
+    expect(readFileSync(join(dir, "index.tsx"), "utf8")).toBe(text);
+  }, 720_000);
 
   it("a usage error, an unknown command and a timeout end with their codes", async () => {
     await run(["verify"], { code: 2, ok: false, error: "MOSTRA_CLI_USAGE" });

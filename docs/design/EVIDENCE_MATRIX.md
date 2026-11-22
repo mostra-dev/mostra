@@ -91,12 +91,12 @@ v1 requirements: 154. v1.1 requirements: 15. Owned exactly once: 169. Neither v1
 | HO-11 | WP-20 | M, C | Conformance: a host's reviews port receives each thread and choice, and its capture port supplies the crop a comment stores; without them, no mirror and the verify runner's browser | unverified |
 | KT-01 | WP-19 | M, B | Render test per D26 library wrapper in three engines; license and version re-verified in VERIFIED_FACTS | unverified |
 | KT-02 | WP-01 | M | License audit fails on a seeded non-OSI engine in the core bundle; passes on the real tree | verified ([WP-01](../progress/PROGRESS-WP-01.md)) |
-| KT-03 | WP-18 | B, E | Both base packs type-check and render every component; default base set from EVAL-01 evidence | unverified |
-| KT-04 | WP-18 | B, R | Token change restyles every kit visual (screenshot diff); dark mode; host brand theme; MCP Apps variable mapping test; Mirza reviews | unverified |
-| KT-05 | WP-18 | B, R | Questionnaire features each persist through fields and appear labelled in results; Mirza reviews | unverified |
+| KT-03 | WP-18 | B, E | Both base packs type-check and render every component; default base set from EVAL-01 evidence | verified ([WP-18](../progress/PROGRESS-WP-18.md)) |
+| KT-04 | WP-18 | B, R | Token change restyles every kit visual (screenshot diff); dark mode; host brand theme; MCP Apps variable mapping test; Mirza reviews | verified ([WP-18](../progress/PROGRESS-WP-18.md)) |
+| KT-05 | WP-18 | B, R | Questionnaire features each persist through fields and appear labelled in results; Mirza reviews | verified ([WP-18](../progress/PROGRESS-WP-18.md)) |
 | KT-06 | WP-21 | M, B, R | Timeline frames render deterministically (pixel-identical screenshots at given frames); play, scrub, loop; Mirza reviews | unverified |
 | KT-07 | WP-21 | B, R | Deck fixture: layouts, clicks, presenter view sync, print to PDF one slide per page; Mirza reviews | unverified |
-| KT-08 | WP-18 | M | Each guidance rule has a lint fixture with a working autofix; wrong-base TS2322 shape becomes MOSTRA_KIT_WRONG_BASE | unverified |
+| KT-08 | WP-18 | M | Each guidance rule has a lint fixture with a working autofix; wrong-base TS2322 shape becomes MOSTRA_KIT_WRONG_BASE | verified ([WP-18](../progress/PROGRESS-WP-18.md)) |
 | KT-09 | WP-26 | R | Mirza's review of the gallery for beautiful by default | unverified |
 | KT-11 | WP-19 | B, R | Each component renders from fixtures in both themes and accepts `className` | unverified |
 | TM-08 | WP-24 | I, B | Vite and Next.js demos proxied with HTTP and WebSocket passthrough and HMR; framing headers stripped for that demo only; device frames and screenshots | unverified |
@@ -157,7 +157,7 @@ v1 requirements: 154. v1.1 requirements: 15. Owned exactly once: 169. Neither v1
 | LL-05 | WP-05 | I | Local URL works after a week of simulated time; revocation and rotation work; doctor warns about long-lived artifacts without an always-on daemon | verified ([WP-05](../progress/PROGRESS-WP-05.md)) |
 | LL-06 | WP-26 | C, E, R | Long-lived templates (dashboard, tasks), conformance scenario and gallery entries exist and pass; evaluation scenarios include J11 and J12 | unverified |
 | HY-07 | WP-13 | B | Worker-mode cross-site fixture passes in three engines and real Safari, including reload; conflicting service-worker registration gives a diagnostic | verified ([WP-13](../progress/PROGRESS-WP-13.md)) |
-| KT-10 | WP-18 | B, R | Restyle tests: className and copied components override kit visuals; an artifact with no kit usage verifies cleanly | unverified |
+| KT-10 | WP-18 | B, R | Restyle tests: className and copied components override kit visuals; an artifact with no kit usage verifies cleanly | verified ([WP-18](../progress/PROGRESS-WP-18.md)) |
 | AX-09 | WP-10 | I | Every D60 command plus run and state implemented with contract tests (`run` arrives with WP-29's bundle, D125; `term` with WP-22 in v1.1, D122) | verified ([WP-10](../progress/PROGRESS-WP-10.md)) |
 | AX-10 | WP-14 | I, X | Generated harness plugins for five harnesses are real copies and load in each harness's documented layout; external: at least Claude Code and Codex | verified ([WP-14](../progress/PROGRESS-WP-14.md)) |
 | EN-07 | WP-01 | M | CI measured under 10 minutes for a typical pull request; seeded violations caught by each gate; lefthook hooks run | verified ([WP-01](../progress/PROGRESS-WP-01.md)) |

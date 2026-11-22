@@ -258,6 +258,7 @@ export const RUNTIME_MODULES: readonly string[] = [
   "dev",
   "plugins",
   "packs",
+  "kit",
   "share",
   "link",
   "server",

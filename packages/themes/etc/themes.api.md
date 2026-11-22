@@ -23,6 +23,12 @@ export function appearanceCookie(appearance: Appearance, secure: boolean): strin
 export const APPEARANCES: readonly Appearance[];
 
 // @public
+export const arcata: Theme;
+
+// @public
+export const ARTIFACT_THEMES: Readonly<Record<string, Theme>>;
+
+// @public
 export function button(label: HtmlValue, options?: {
     readonly name?: string;
     readonly value?: string;
@@ -49,6 +55,9 @@ export interface Color {
 }
 
 // @public
+export function composeThemes(first: Theme, ...layers: readonly ThemeLayer[]): Theme;
+
+// @public
 export function contrast(first: Color | string, second: Color | string): number;
 
 // @public
@@ -59,6 +68,9 @@ export function cssColor(color: Color): string;
 
 // @public
 export function defineTheme(theme: Theme): Theme;
+
+// @public
+export function defineThemeLayer(layer: ThemeLayer): ThemeLayer;
 
 // @public
 export function escapeHtml(text: string): string;
@@ -115,6 +127,9 @@ export interface FooterLink {
 }
 
 // @public
+export const frame: Theme;
+
+// @public
 export const HOST_TOKENS: Readonly<Record<string, readonly string[]>>;
 
 // @public
@@ -139,7 +154,27 @@ export interface Identity {
 }
 
 // @public
+export function isCompleteTheme(layer: ThemeLayer): layer is Theme;
+
+// @public
 export function isSafeHtml(value: unknown): value is SafeHtml;
+
+// @public
+export function isTokenName(name: string): name is TokenName;
+
+// @public
+export function isTokenValue(value: string): boolean;
+
+// @public
+export function kitStylesheet(theme: Theme, options?: KitStylesheetOptions): string;
+
+// @public
+export interface KitStylesheetOptions {
+    readonly faceUrl?: (file: string) => string;
+}
+
+// @public
+export function layerThemes(first: Theme, layers: readonly ThemeLayer[]): Theme;
 
 // @public
 export function linkButton(href: string, label: HtmlValue, options?: {
@@ -272,6 +307,7 @@ export interface Palette {
     readonly destructive: Color;
     readonly destructiveForeground: Color;
     readonly foreground: Color;
+    readonly highlight?: Color;
     readonly input: Color;
     readonly muted: Color;
     readonly mutedForeground: Color;
@@ -285,6 +321,9 @@ export interface Palette {
     readonly success: Color;
     readonly warning: Color;
 }
+
+// @public
+export const PALETTE_ROLE_NAMES: readonly (keyof Palette)[];
 
 // @public
 export function readAppearance(cookieHeader: string | undefined, fallback?: Appearance): Appearance;
@@ -324,7 +363,7 @@ export interface StylesheetOptions {
     readonly faces?: boolean;
 }
 
-// @public
+// @public @deprecated
 export function tailwindStylesheet(theme: Theme): string;
 
 // @public
@@ -332,6 +371,7 @@ export function text(value: HtmlValue): SafeHtml;
 
 // @public
 export interface Theme {
+    readonly css?: string;
     readonly description: string;
     readonly faces: {
         readonly sans: Face;
@@ -355,10 +395,17 @@ export interface Theme {
         readonly light: Stage;
         readonly dark: Stage;
     };
+    readonly tokens?: TokenValues;
 }
 
 // @public
-export const THEME_REVISION = "2026-11-13";
+export const THEME_REVISION = "2026-11-20";
+
+// @public
+export const THEME_REVISIONS: readonly string[];
+
+// @public
+export const THEME_SCHEMA_ID = "https://mostradev.com/schemas/theme-layer.schema.json";
 
 // @public
 export class ThemeError extends Error {
@@ -367,10 +414,66 @@ export class ThemeError extends Error {
 }
 
 // @public
+export interface ThemeLayer {
+    readonly css?: string;
+    readonly description: string;
+    readonly faces?: Partial<Theme["faces"]>;
+    readonly id: string;
+    readonly modes?: {
+        readonly light?: Partial<Palette>;
+        readonly dark?: Partial<Palette>;
+    };
+    readonly motion?: Partial<Theme["motion"]>;
+    readonly name: string;
+    readonly radius?: string;
+    readonly revision: string;
+    readonly tokens?: TokenValues;
+}
+
+// @public
+export function themeLayerSchema(): Record<string, unknown>;
+
+// @public
 export const THEMES: Readonly<Record<string, Theme>>;
 
 // @public
 export function themeStylesheet(theme: Theme, options?: StylesheetOptions): string;
+
+// @public
+export interface ThemeValues {
+    readonly base: Readonly<Record<string, string>>;
+    readonly dark: Readonly<Record<string, string>>;
+    readonly light: Readonly<Record<string, string>>;
+}
+
+// @public
+export function themeValues(theme: Theme): ThemeValues;
+
+// @public
+export const TOKEN_NAMES: readonly ["body-size", "title-size", "title-weight", "title-tracking", "title-leading", "heading-font", "heading-size", "heading-weight", "heading-tracking", "card-title-font", "card-title-size", "card-title-weight", "figure-font", "figure-weight", "dialog-title-size", "question-number-color", "card-radius", "control-radius", "button-radius", "choice-radius", "popover-radius", "dialog-radius", "badge-radius", "tabs-radius", "tabs-indicator-radius", "thumb-radius", "section-radius", "figure-radius", "control-h", "control-h-sm", "card-gap", "card-pad-x", "card-pad-top", "card-pad-bottom", "dialog-pad", "menu-pad", "menu-item-radius", "tabs-track-pad", "figure-pad", "figures-gap", "section-pad", "section-index-size", "page-width", "page-pad", "stack-gap", "rule", "card-shadow", "choice-shadow", "choice-selected-shadow", "scale-selected-shadow", "popover-shadow", "button-shadow", "control-shadow", "section-shadow", "section-rule", "figures-shadow", "figures-divider", "tabs-track-shadow", "tabs-indicator-shadow", "field", "button-outline-border", "button-outline-bg", "choice-bg", "choice-hover-bg", "choice-selected-bg", "choice-selected-hover-bg", "choice-selected-fg", "scale-selected-bg", "scale-selected-fg", "choice-selected-muted", "menu-highlight", "menu-highlight-fg", "tabs-track-bg", "tabs-indicator-bg", "tabs-indicator-fill", "tabs-indicator-line", "tabs-active-fg", "section-bg", "section-index-color", "section-index-bg", "figure-bg", "figures-bg", "ease-out", "ease-answer", "answer-ms"];
+
+// @public
+export type TokenGroup = "type" | "shape" | "space" | "depth" | "surface" | "motion";
+
+// @public
+export type TokenName = (typeof TOKEN_NAMES)[number];
+
+// @public
+export const TOKENS: Readonly<Record<TokenName, TokenSpec>>;
+
+// @public
+export interface TokenSpec {
+    readonly default: string;
+    readonly description: string;
+    readonly group: TokenGroup;
+}
+
+// @public
+export interface TokenValues {
+    readonly base?: Readonly<Partial<Record<TokenName, string>>>;
+    readonly dark?: Readonly<Partial<Record<TokenName, string>>>;
+    readonly light?: Readonly<Partial<Record<TokenName, string>>>;
+}
 
 // @public
 export function variableOf(role: string): string;

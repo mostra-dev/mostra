@@ -325,6 +325,32 @@ describe("submitting (IN-02, D110, D40)", () => {
     expect(store.submitState()).toBe("submitted");
   });
 
+  it("sends a field's options with its value, and with the default it writes before a submit (KT-05)", async () => {
+    const gateway = new FakeGateway();
+    const store = open(gateway);
+    await store.whenReady();
+    const options = [
+      { value: "left", label: "Left rail", recommended: true },
+      { value: "top", label: "Top bar" },
+    ];
+    store.register({ id: "layout", scope: "viewer", initial: "", label: "Layout", options });
+    store.set("viewer", "layout", "top");
+    await store.flush();
+    expect(gateway.received.at(-1)?.ops).toEqual([
+      { id: "layout", value: "top", label: "Layout", options },
+    ]);
+    store.register({
+      id: "density",
+      scope: "viewer",
+      initial: 3,
+      options: [{ value: 3, label: "3" }],
+    });
+    await store.prepareSubmit();
+    expect(gateway.received.at(-1)?.ops).toEqual([
+      { id: "density", value: 3, options: [{ value: 3, label: "3" }] },
+    ]);
+  });
+
   it("refuses the artifact channel where the host takes the shell's Submit only", async () => {
     const gateway = new FakeGateway();
     const store = open(gateway, { view: { ...VIEW, submitChannels: ["shell"] } });

@@ -1,0 +1,22 @@
+{
+  "$schema": "https://ui.shadcn.com/schema/registry-item.json",
+  "name": "calendar",
+  "type": "registry:ui",
+  "dependencies": [
+    "cn",
+    "lucide-react",
+    "react-day-picker"
+  ],
+  "registryDependencies": [
+    "button"
+  ],
+  "files": [
+    {
+      "path": "components/ui/calendar.tsx",
+      "type": "registry:ui"
+    }
+  ],
+  "mostra": {
+    "base": "radix"
+  }
+}

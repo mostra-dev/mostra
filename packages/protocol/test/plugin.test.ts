@@ -148,6 +148,35 @@ describe("license expressions", () => {
 });
 
 describe("the plugin manifest", () => {
+  it("takes the themes a plugin carries, and warns about entries that aren't one (D181 item 4)", () => {
+    const check = checkPluginManifest({
+      name: "dev.acme/brand",
+      contracts: {},
+      contributes: {
+        themes: [{ theme: "./themes/brand.json" }, { theme: "../outside.json" }, "brand"],
+      },
+      license: "MIT",
+    });
+    expect(check.manifest?.contributes.themes).toEqual([{ theme: "./themes/brand.json" }]);
+    expect(check.issues.filter((issue) => issue.severity === "error")).toEqual([]);
+    expect(
+      check.issues
+        .filter((issue) => issue.severity === "warning")
+        .map((issue) => issue.path.join(".")),
+    ).toEqual(["mostra.contributes.themes.1", "mostra.contributes.themes.2"]);
+    // A list that isn't one is ignored with a warning; nothing else carried means nothing to load.
+    const odd = checkPluginManifest({
+      name: "dev.acme/brand",
+      contracts: {},
+      contributes: { themes: "./themes/brand.json" },
+      license: "MIT",
+    });
+    expect(odd.manifest).toBeUndefined();
+    expect(odd.issues.map((issue) => `${issue.severity} ${issue.path.join(".")}`)).toEqual(
+      expect.arrayContaining(["warning mostra.contributes.themes", "error mostra.contributes"]),
+    );
+  });
+
   it("reports every invalid field in one run, a schema error beside a rule's (EX-02)", () => {
     const check = checkPluginManifest({
       name: "Not A Name",

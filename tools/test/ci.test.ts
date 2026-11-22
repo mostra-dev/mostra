@@ -122,7 +122,8 @@ describe("what runs when (D152)", () => {
     const matrix = ciMatrix(pr, everything, github);
     expect(matrix.windows.map((leg) => leg["os"])).not.toContain("windows-arm64");
     expect(matrix.e2e.map((leg) => leg["os"])).not.toContain("windows-arm64");
-    expect(matrix.windows.length).toBe(11);
+    // unit, hygiene and ten integration groups (WP-18 gave the conformance kit its own, #225).
+    expect(matrix.windows.length).toBe(12);
     expect(matrix.e2e.filter((leg) => leg["os"] === "macos").map((leg) => leg["browser"])).toEqual([
       "webkit",
     ]);
@@ -146,6 +147,7 @@ describe("what runs when (D152)", () => {
       "integration (macos, remote)",
       "integration (macos, remote-access)",
       "integration (macos, extensions)",
+      "integration (macos, conformance)",
       "rust (macos)",
       "conformance (macos)",
     ]);
@@ -204,13 +206,14 @@ describe("what runs when (D152)", () => {
     ]) {
       const matrix = ciMatrix(scope, everything, github);
       expect(matrix.legs).toBe("all");
-      expect(matrix.windows.filter((leg) => leg["os"] === "windows-arm64").length).toBe(11);
-      // Windows' slowest engines run in two parts each, together every test once.
+      expect(matrix.windows.filter((leg) => leg["os"] === "windows-arm64").length).toBe(12);
+      // Windows' slowest engines run in parts, together every test once: Firefox on x64 in two,
+      // emulated Chromium on arm64 in three (WP-18).
       const parts = (os: string, browser: string): (string | undefined)[] =>
         matrix.e2e
           .filter((leg) => leg["os"] === os && leg["browser"] === browser)
           .map((leg) => leg["shard"]);
-      expect(parts("windows-arm64", "chromium")).toEqual(["1/2", "2/2"]);
+      expect(parts("windows-arm64", "chromium")).toEqual(["1/3", "2/3", "3/3"]);
       expect(parts("windows-x64", "firefox")).toEqual(["1/2", "2/2"]);
       expect(parts("windows-x64", "chromium")).toEqual([undefined]);
       expect(parts("linux", "firefox")).toEqual([undefined]);

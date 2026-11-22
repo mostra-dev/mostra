@@ -1,0 +1,18 @@
+{
+  "$schema": "https://ui.shadcn.com/schema/registry-item.json",
+  "name": "sonner",
+  "type": "registry:ui",
+  "dependencies": [
+    "lucide-react",
+    "sonner"
+  ],
+  "files": [
+    {
+      "path": "components/ui/sonner.tsx",
+      "type": "registry:ui"
+    }
+  ],
+  "mostra": {
+    "base": "base"
+  }
+}

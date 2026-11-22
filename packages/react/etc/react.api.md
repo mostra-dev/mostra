@@ -7,6 +7,7 @@
 import { ArtifactManifest } from '@mostra/protocol';
 import { Bridge } from '@mostra/protocol';
 import { ComponentType } from 'react';
+import { FieldOption } from '@mostra/protocol';
 import { FieldScope } from '@mostra/protocol';
 import { Peer } from '@mostra/protocol';
 import { PresenceCursor } from '@mostra/protocol';
@@ -110,6 +111,7 @@ export interface FieldMeta<T> {
 // @public
 export interface FieldOptions<T> {
     readonly label?: string;
+    readonly options?: readonly FieldOption[];
     readonly required?: boolean;
     readonly scope?: FieldScope;
     readonly sensitive?: boolean;

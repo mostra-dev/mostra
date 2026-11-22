@@ -160,6 +160,9 @@ const POSIX_GROUPS = [
   "verify-failures",
   "extensions",
   "clients",
+  // The conformance kit's TypeScript reference host, apart from the other clients' suites: beside
+  // them on macOS it brought `clients` to its 10-minute deadline (WP-18, as `windows-conformance`).
+  "conformance",
 ] as const;
 const WINDOWS_GROUPS = [
   "windows",
@@ -171,6 +174,7 @@ const WINDOWS_GROUPS = [
   "windows-remote",
   "windows-extensions",
   "windows-clients",
+  "windows-conformance",
 ] as const;
 
 /**
@@ -305,11 +309,12 @@ export function ciMatrix(scope: CiScope, plan: Plan, runners: Runners): CiMatrix
           ),
         ),
         // Windows runs one test at a time, so its slowest engines are split across machines:
-        // Firefox on x64 (7 min alone) and emulated Chromium on arm64 (10 min).
+        // Firefox on x64 (7 min alone) and emulated Chromium on arm64, in three parts since its
+        // second of two took 23 to 25 of the job's 25 minutes with WP-18's kit suite.
         { os: "windows-x64", runner: runners.windows.x64, browser: "chromium" },
         ...shards({ os: "windows-x64", runner: runners.windows.x64, browser: "firefox" }, 2),
         ...(all
-          ? shards({ os: "windows-arm64", runner: runners.windows.arm64, browser: "chromium" }, 2)
+          ? shards({ os: "windows-arm64", runner: runners.windows.arm64, browser: "chromium" }, 3)
           : []),
       ]
     : [];
@@ -321,10 +326,13 @@ export function ciMatrix(scope: CiScope, plan: Plan, runners: Runners): CiMatrix
   const conformance = has("conformance") ? [...posix, ...windowsOs] : [];
   // macOS legs in the order they are kept: the suites through real processes, Safari's engine,
   // then the remote server's suites and the plugins', packs' and dependencies' (platform-neutral
-  // network and install code Linux and Windows still run, WP-29, WP-16, WP-17), the Rust crate and the conformance kit
-  // (POSIX like Linux, where they still run).
+  // network and install code Linux and Windows still run, WP-29, WP-16, WP-17), the conformance
+  // kit's TypeScript reference host (a host's view, the same on every platform, WP-18), the Rust
+  // crate and the conformance kit (POSIX like Linux, where they still run).
   const remoteGroup = (leg: Leg): boolean =>
-    String(leg["group"]).startsWith("remote") || leg["group"] === "extensions";
+    String(leg["group"]).startsWith("remote") ||
+    leg["group"] === "extensions" ||
+    leg["group"] === "conformance";
   const macos: { readonly list: string; readonly leg: Leg }[] = [
     ...integration.filter((leg) => !remoteGroup(leg)).map((leg) => ({ list: "integration", leg })),
     ...e2e.map((leg) => ({ list: "e2e", leg })),

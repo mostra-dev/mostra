@@ -175,7 +175,8 @@
           "items": {
             "$ref": "#/definitions/PluginPackEntry"
           }
-        }
+        },
+        "themes": {}
       },
       "additionalProperties": {}
     },
@@ -322,6 +323,19 @@
       },
       "required": [
         "item"
+      ],
+      "additionalProperties": {}
+    },
+    "PluginThemeEntry": {
+      "type": "object",
+      "properties": {
+        "theme": {
+          "type": "string",
+          "pattern": "^\\.\\/(?!.*(?:^|\\/)\\.\\.?(?:\\/|$))[^\\\\:*?\"<>|\\0]+$"
+        }
+      },
+      "required": [
+        "theme"
       ],
       "additionalProperties": {}
     },

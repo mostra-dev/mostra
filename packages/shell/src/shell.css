@@ -1,6 +1,6 @@
 /*
  * The shell's chrome in Studio (D171): the theme's tokens and faces come from
- * `@mostra/themes/css/studio.css`, imported before this file. The chrome stays quiet so the page
+ * `@mostra/themes/css/frame.css`, imported before this file. The chrome stays quiet so the page
  * is the work on show (D68): a white bar on the pietra ground, Jost for the page's title, Figtree
  * for everything else, blu only for the real Submit and the focus ring. WP-20's final pass starts
  * from here.

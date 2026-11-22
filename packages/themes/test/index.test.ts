@@ -1,11 +1,13 @@
 import { createHash } from "node:crypto";
 import { readFileSync } from "node:fs";
 import {
+  ARTIFACT_THEMES,
   appearanceCookie,
   contrast,
   createPages,
   defineTheme,
   facesStylesheet,
+  frame,
   html,
   localPath,
   mostra,
@@ -17,9 +19,11 @@ import {
   safeHref,
   studio,
   THEME_REVISION,
+  THEMES,
   type Theme,
   ThemeError,
   tailwindStylesheet,
+  themeLayerSchema,
   themeStylesheet,
 } from "@mostra/themes";
 import { describe, expect, it } from "vitest";
@@ -41,7 +45,7 @@ describe("colours", () => {
 });
 
 describe("Mostra's themes", () => {
-  for (const theme of [studio, mostra]) {
+  for (const theme of Object.values(THEMES)) {
     it(`${theme.id} holds WCAG 2.2 AA in both modes`, () => {
       // defineTheme ran when the module loaded; run it again on a copy to see it pass.
       expect(() => defineTheme({ ...theme })).not.toThrow();
@@ -52,6 +56,17 @@ describe("Mostra's themes", () => {
       }
     });
   }
+
+  it("keeps the frame's look whatever a page's theme is (D181 item 8)", () => {
+    // UX-01's values: a pietra ground with white cards, raised dark cards, a 10 px radius.
+    expect(frame.modes.light.background.hex).toBe("#f6f6f3");
+    expect(frame.modes.light.card.hex).toBe("#ffffff");
+    expect(frame.modes.dark.background.hex).toBe("#101114");
+    expect(frame.modes.dark.card.hex).toBe("#16171b");
+    expect(frame.radius).toBe("10px");
+    expect(frame.tokens).toBeUndefined();
+    expect(Object.keys(ARTIFACT_THEMES)).not.toContain("frame");
+  });
 
   it("keeps the brand's blu as the main action and giallo as the answer (D141)", () => {
     expect(studio.modes.light.primary.hex).toBe("#2340c8");
@@ -119,16 +134,35 @@ describe("stylesheets", () => {
     expect(css).toContain('src: url("./fonts/figtree-latin-wght-normal.woff2")');
   });
 
-  it("give the Agent Skill its Studio stylesheet", () => {
-    const skill = readFileSync(
-      new URL("../../../skills/mostra/assets/studio.css", import.meta.url),
-      "utf8",
+  it("ship the schema of a theme layer, current, which every theme Mostra ships meets", async () => {
+    const file = readFileSync(new URL("../theme.schema.json", import.meta.url), "utf8");
+    expect(file, "run `pnpm --filter @mostra/themes generate`").toBe(
+      `${JSON.stringify(themeLayerSchema(), null, 2)}\n`,
     );
-    expect(skill, "run `pnpm --filter @mostra/themes generate`").toBe(tailwindStylesheet(studio));
-  });
+    const { default: Ajv } = await import("ajv");
+    const validate = new Ajv({ strict: true, allErrors: true }).compile(JSON.parse(file));
+    // The themes a page wears are what a plugin's theme files are; the frame and the brand, with its
+    // stage, dress Mostra's own pages.
+    for (const theme of Object.values(ARTIFACT_THEMES)) {
+      expect(validate(JSON.parse(JSON.stringify(theme))), JSON.stringify(validate.errors)).toBe(
+        true,
+      );
+    }
+    // A theme file with a key the format doesn't have, or a token it doesn't know, fails it.
+    expect(validate({ ...JSON.parse(JSON.stringify(studio)), colour: "red" })).toBe(false);
+    expect(
+      validate({
+        revision: THEME_REVISION,
+        id: "x",
+        name: "X",
+        description: "",
+        tokens: { base: { nope: "1" } },
+      }),
+    ).toBe(false);
+  }, 30_000); // Ajv compiles the schema: seconds on a loaded machine, beyond Vitest's 5 s default.
 
   it("ship as files that equal what the themes generate", () => {
-    for (const theme of [studio, mostra]) {
+    for (const theme of Object.values(THEMES)) {
       const file = readFileSync(new URL(`../css/${theme.id}.css`, import.meta.url), "utf8");
       expect(file, `run \`pnpm --filter @mostra/themes generate\``).toBe(
         themeStylesheet(theme, { assetBase: "../" }),

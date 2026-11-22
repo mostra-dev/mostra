@@ -8,6 +8,7 @@ import type {
   ArtifactManifest,
   DeliveryStatus,
   EventOrigin,
+  FieldOption,
   Results,
 } from "@mostra/protocol";
 import { createDiagnostic, RpcError } from "@mostra/protocol";
@@ -143,6 +144,7 @@ export function buildResults(db: LedgerDb, row: SubmissionRow): Results {
     ...(field.required !== undefined ? { required: field.required } : {}),
     ...(field.sensitive ? { sensitive: true } : {}),
     scope,
+    ...(field.options !== undefined ? { options: field.options } : {}),
   });
   return {
     artifact: {
@@ -266,12 +268,43 @@ function fieldName(id: string, label: string | undefined): string {
   return label !== undefined ? `${quoted(label)} (${code(id)})` : code(id);
 }
 
+/**
+ * A value chosen from a field's options (KT-05): each value by the label the person saw, its
+ * value beside it, and whether the answer took the option the page recommended.
+ */
+function optionValue(value: unknown, options: readonly FieldOption[]): string {
+  const byValue = new Map(options.map((option) => [option.value, option]));
+  const named = (one: unknown): string => {
+    const option =
+      typeof one === "string" || typeof one === "number" ? byValue.get(one) : undefined;
+    return option?.label !== undefined
+      ? `${quoted(option.label)} (${code(JSON.stringify(one))})`
+      : markdownValue(one);
+  };
+  const recommended = options.filter((option) => option.recommended);
+  const label = (option: FieldOption): string =>
+    option.label !== undefined ? quoted(option.label) : code(JSON.stringify(option.value));
+  const chosen = Array.isArray(value) ? value : [value];
+  const empty = value === null || value === "" || (Array.isArray(value) && value.length === 0);
+  const answer = empty ? "no answer" : chosen.map(named).join(", ");
+  if (recommended.length === 0) return answer;
+  const took = recommended.filter((option) => chosen.includes(option.value));
+  const names = recommended.map(label).join(", ");
+  if (empty) return `${answer} (recommended: ${names})`;
+  if (took.length === recommended.length) return `${answer}, the recommended option`;
+  return `${answer}, not the recommended ${names}`;
+}
+
 function fieldLines(fields: Readonly<Record<string, SnapshotField>>): string[] {
   const ids = Object.keys(fields).sort();
   if (ids.length === 0) return ["- (none)"];
   return ids.map((id) => {
     const field = fields[id] as SnapshotField;
-    return `- ${fieldName(id, field.label)}: ${markdownValue(field.value)}`;
+    const value =
+      field.options !== undefined && field.options.length > 0
+        ? optionValue(field.value, field.options)
+        : markdownValue(field.value);
+    return `- ${fieldName(id, field.label)}: ${value}`;
   });
 }
 

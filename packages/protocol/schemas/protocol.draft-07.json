@@ -275,6 +275,16 @@
         "$ref": "#/definitions/PackAddResult"
       }
     },
+    "pack/kit": {
+      "direction": "client-to-instance",
+      "mutating": false,
+      "params": {
+        "$ref": "#/definitions/PackKitParams"
+      },
+      "result": {
+        "$ref": "#/definitions/PackKitResult"
+      }
+    },
     "plugin/add": {
       "direction": "client-to-instance",
       "mutating": true,
@@ -699,6 +709,26 @@
       },
       "result": {
         "$ref": "#/definitions/MutationResult"
+      }
+    },
+    "theme/list": {
+      "direction": "client-to-instance",
+      "mutating": false,
+      "params": {
+        "$ref": "#/definitions/ThemeListParams"
+      },
+      "result": {
+        "$ref": "#/definitions/ThemeListResult"
+      }
+    },
+    "theme/show": {
+      "direction": "client-to-instance",
+      "mutating": false,
+      "params": {
+        "$ref": "#/definitions/ThemeShowParams"
+      },
+      "result": {
+        "$ref": "#/definitions/ThemeShowResult"
       }
     },
     "view/default": {
@@ -1458,7 +1488,18 @@
               ]
             },
             "theme": {
-              "type": "string"
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "readOnly": true,
+                  "type": "array",
+                  "items": {
+                    "type": "string"
+                  }
+                }
+              ]
             }
           }
         },
@@ -1830,6 +1871,25 @@
           "type": "string",
           "minLength": 1,
           "maxLength": 200
+        },
+        "theme": {
+          "anyOf": [
+            {
+              "type": "string",
+              "minLength": 1,
+              "maxLength": 200
+            },
+            {
+              "readOnly": true,
+              "maxItems": 8,
+              "type": "array",
+              "items": {
+                "type": "string",
+                "minLength": 1,
+                "maxLength": 200
+              }
+            }
+          ]
         }
       },
       "required": [
@@ -3321,12 +3381,47 @@
         },
         "sensitive": {
           "type": "boolean"
+        },
+        "options": {
+          "readOnly": true,
+          "maxItems": 200,
+          "type": "array",
+          "items": {
+            "$ref": "#/definitions/FieldOption"
+          }
         }
       },
       "required": [
         "id"
       ],
       "description": "One change to one field: a value or a delete, with optional label, required and sensitive."
+    },
+    "FieldOption": {
+      "type": "object",
+      "properties": {
+        "value": {
+          "anyOf": [
+            {
+              "type": "string",
+              "maxLength": 1024
+            },
+            {
+              "type": "number"
+            }
+          ]
+        },
+        "label": {
+          "type": "string",
+          "maxLength": 1024
+        },
+        "recommended": {
+          "type": "boolean"
+        }
+      },
+      "required": [
+        "value"
+      ],
+      "description": "One option a field's value is chosen from: its value, its label, and whether it was recommended."
     },
     "FieldState": {
       "type": "object",
@@ -3355,6 +3450,13 @@
         },
         "sensitive": {
           "type": "boolean"
+        },
+        "options": {
+          "readOnly": true,
+          "type": "array",
+          "items": {
+            "$ref": "#/definitions/FieldOption"
+          }
         }
       },
       "required": [
@@ -3641,6 +3743,25 @@
           "required": [
             "viewer",
             "signIn"
+          ]
+        },
+        "hostStyles": {
+          "type": "object",
+          "properties": {
+            "variables": {
+              "type": "object",
+              "propertyNames": {
+                "type": "string",
+                "pattern": "^--[A-Za-z0-9-]{1,64}$"
+              },
+              "additionalProperties": {
+                "type": "string",
+                "maxLength": 1024
+              }
+            }
+          },
+          "required": [
+            "variables"
           ]
         }
       },
@@ -3966,14 +4087,59 @@
               "$ref": "#/definitions/LicensePolicy"
             }
           ]
+        },
+        "look": {
+          "allOf": [
+            {
+              "$ref": "#/definitions/HostLook"
+            }
+          ]
         }
       },
-      "description": "Home settings from a spawning host; path is a check against the instance's home (D84), dependencies the dependency policy (D43), submission the home's policy (D102), ports those the host always provides (D105), licenses those it accepts for every install (D31)."
+      "description": "Home settings from a spawning host; path is a check against the instance's home (D84), dependencies the dependency policy (D43), submission the home's policy (D102), ports those the host always provides (D105), licenses those it accepts for every install (D31), look its look for the home's pages (D181)."
     },
     "HomeId": {
       "type": "string",
       "pattern": "^hom_[0-7][0-9A-HJKMNP-TV-Z]{25}$",
       "description": "Hosted home ID: \"hom_\" followed by a 26-character ULID."
+    },
+    "HostLook": {
+      "type": "object",
+      "properties": {
+        "theme": {
+          "anyOf": [
+            {
+              "type": "string",
+              "minLength": 1,
+              "maxLength": 200
+            },
+            {
+              "readOnly": true,
+              "minItems": 1,
+              "maxItems": 8,
+              "type": "array",
+              "items": {
+                "type": "string",
+                "minLength": 1,
+                "maxLength": 200
+              }
+            }
+          ]
+        },
+        "variables": {
+          "type": "object",
+          "propertyNames": {
+            "type": "string",
+            "pattern": "^--[A-Za-z0-9-]{1,64}$"
+          },
+          "additionalProperties": {
+            "type": "string",
+            "maxLength": 1024,
+            "pattern": "^[^;{}<>]*$"
+          }
+        }
+      },
+      "description": "A host's look for a home's pages (D181 item 5): the theme stack pages naming none wear, and MCP Apps style variables that pages naming \"host\" take."
     },
     "HostedPushParams": {
       "type": "object",
@@ -4981,6 +5147,41 @@
         "type",
         "address",
         "source"
+      ]
+    },
+    "PackKitParams": {
+      "type": "object",
+      "properties": {
+        "artifact": {
+          "allOf": [
+            {
+              "$ref": "#/definitions/SourceRef"
+            }
+          ]
+        }
+      }
+    },
+    "PackKitResult": {
+      "type": "object",
+      "properties": {
+        "base": {
+          "type": "string",
+          "enum": [
+            "base",
+            "radix"
+          ]
+        },
+        "items": {
+          "readOnly": true,
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
+        }
+      },
+      "required": [
+        "base",
+        "items"
       ]
     },
     "PluginAddParams": {
@@ -7411,6 +7612,13 @@
                   "viewer",
                   "artifact"
                 ]
+              },
+              "options": {
+                "readOnly": true,
+                "type": "array",
+                "items": {
+                  "$ref": "#/definitions/FieldOption"
+                }
               }
             },
             "required": [
@@ -9052,6 +9260,232 @@
       ],
       "description": "What viewers see of each other: private, counts or names (D168)."
     },
+    "ThemeListParams": {
+      "type": "object",
+      "properties": {
+        "artifact": {
+          "allOf": [
+            {
+              "$ref": "#/definitions/SourceRef"
+            }
+          ]
+        }
+      }
+    },
+    "ThemeListResult": {
+      "type": "object",
+      "properties": {
+        "themes": {
+          "readOnly": true,
+          "type": "array",
+          "items": {
+            "$ref": "#/definitions/ThemeSummary"
+          }
+        },
+        "artifact": {
+          "type": "object",
+          "properties": {
+            "stack": {
+              "readOnly": true,
+              "type": "array",
+              "items": {
+                "type": "string"
+              }
+            },
+            "default": {
+              "type": "boolean"
+            }
+          },
+          "required": [
+            "stack",
+            "default"
+          ]
+        }
+      },
+      "required": [
+        "themes"
+      ]
+    },
+    "ThemeShowParams": {
+      "type": "object",
+      "properties": {
+        "theme": {
+          "anyOf": [
+            {
+              "type": "string",
+              "minLength": 1,
+              "maxLength": 200
+            },
+            {
+              "readOnly": true,
+              "minItems": 1,
+              "maxItems": 8,
+              "type": "array",
+              "items": {
+                "type": "string",
+                "minLength": 1,
+                "maxLength": 200
+              }
+            }
+          ]
+        },
+        "artifact": {
+          "allOf": [
+            {
+              "$ref": "#/definitions/SourceRef"
+            }
+          ]
+        },
+        "css": {
+          "type": "boolean"
+        }
+      }
+    },
+    "ThemeShowResult": {
+      "type": "object",
+      "properties": {
+        "stack": {
+          "readOnly": true,
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
+        },
+        "default": {
+          "type": "boolean"
+        },
+        "id": {
+          "type": "string"
+        },
+        "name": {
+          "type": "string"
+        },
+        "faces": {
+          "type": "object",
+          "properties": {
+            "sans": {
+              "type": "string"
+            },
+            "display": {
+              "type": "string"
+            },
+            "mono": {
+              "type": "string"
+            }
+          },
+          "required": [
+            "sans",
+            "display",
+            "mono"
+          ]
+        },
+        "values": {
+          "type": "object",
+          "properties": {
+            "base": {
+              "type": "object",
+              "propertyNames": {
+                "type": "string"
+              },
+              "additionalProperties": {
+                "type": "string"
+              }
+            },
+            "light": {
+              "type": "object",
+              "propertyNames": {
+                "type": "string"
+              },
+              "additionalProperties": {
+                "type": "string"
+              }
+            },
+            "dark": {
+              "type": "object",
+              "propertyNames": {
+                "type": "string"
+              },
+              "additionalProperties": {
+                "type": "string"
+              }
+            }
+          },
+          "required": [
+            "base",
+            "light",
+            "dark"
+          ]
+        },
+        "files": {
+          "readOnly": true,
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
+        },
+        "host": {
+          "type": "string",
+          "enum": [
+            "over",
+            "under"
+          ]
+        },
+        "css": {
+          "type": "string"
+        },
+        "warnings": {
+          "readOnly": true,
+          "type": "array",
+          "items": {
+            "$ref": "#/definitions/Diagnostic"
+          }
+        }
+      },
+      "required": [
+        "stack",
+        "default",
+        "files",
+        "warnings"
+      ]
+    },
+    "ThemeSummary": {
+      "type": "object",
+      "properties": {
+        "id": {
+          "type": "string"
+        },
+        "name": {
+          "type": "string"
+        },
+        "description": {
+          "type": "string"
+        },
+        "source": {
+          "type": "string",
+          "enum": [
+            "built-in",
+            "plugin"
+          ]
+        },
+        "package": {
+          "type": "string"
+        },
+        "complete": {
+          "type": "boolean"
+        },
+        "default": {
+          "type": "boolean"
+        }
+      },
+      "required": [
+        "id",
+        "name",
+        "description",
+        "source",
+        "complete",
+        "default"
+      ]
+    },
     "ThreadId": {
       "type": "string",
       "pattern": "^thr_[0-7][0-9A-HJKMNP-TV-Z]{25}$",
@@ -9268,6 +9702,28 @@
             "type": "number",
             "minimum": 0
           }
+        },
+        "theme": {
+          "type": "object",
+          "properties": {
+            "stack": {
+              "readOnly": true,
+              "type": "array",
+              "items": {
+                "type": "string"
+              }
+            },
+            "default": {
+              "type": "boolean"
+            },
+            "requested": {
+              "type": "boolean"
+            }
+          },
+          "required": [
+            "stack",
+            "default"
+          ]
         }
       },
       "required": [

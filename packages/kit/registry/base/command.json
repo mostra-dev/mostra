@@ -1,0 +1,23 @@
+{
+  "$schema": "https://ui.shadcn.com/schema/registry-item.json",
+  "name": "command",
+  "type": "registry:ui",
+  "dependencies": [
+    "cmdk",
+    "cn",
+    "lucide-react"
+  ],
+  "registryDependencies": [
+    "dialog",
+    "input-group"
+  ],
+  "files": [
+    {
+      "path": "components/ui/command.tsx",
+      "type": "registry:ui"
+    }
+  ],
+  "mostra": {
+    "base": "base"
+  }
+}

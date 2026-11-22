@@ -4,14 +4,17 @@ Audience: everything visual: the shell, the server's pages, the kit, operators. 
 
 ## Purpose
 
-The one source of how Mostra looks (UX-01). A theme is data (`Theme`): every colour in light and
-dark by shadcn's role names, the faces, the radius and the motion. From a theme this package makes
-its stylesheet (`themeStylesheet`, and the files `css/studio.css` and `css/mostra.css`), the pages a server
-draws itself with no script (`createPages`), and mail (`renderMail`). The faces (SIL OFL 1.1) and
-Mostra's marks ship as files beside them.
+The one source of how Mostra looks (UX-01, D181). A theme is data (`Theme`): every colour in light
+and dark by shadcn's role names, the faces, the radius, the motion and any of the kit's tokens
+(`TOKENS`); a `ThemeLayer` is a partial one a stack lays over a complete theme (`composeThemes`).
+From a theme this package makes its stylesheet (`themeStylesheet`, and the files in `css/`), the
+kit's stylesheet an artifact's build compiles (`kitStylesheet`), the pages a server draws itself
+with no script (`createPages`), and mail (`renderMail`); `theme.schema.json` describes a layer
+for plugin authors. The faces (SIL OFL 1.1) and Mostra's marks ship as files beside them.
 
-Two themes ship: `mostra`, the brand, for Mostra's own pages, and `studio`, the brand without its
-marks, for agents' pages by default and for pages someone else sent (D141, amended by D171).
+Four themes ship: `studio` and `arcata`, the two an artifact can wear (`ARTIFACT_THEMES`, D181
+item 1), `studio` its default; `frame`, UX-01's look, for the shell and the server's pages around
+whatever a page wears (D181 item 8); and `mostra`, the brand, for Mostra's own pages.
 
 ## Invariants it owns
 
@@ -29,8 +32,11 @@ marks, for agents' pages by default and for pages someone else sent (D141, amend
 
 ## Public interface
 
-`src/index.ts`; the API report is `etc/themes.api.md`. Files: `css/studio.css`, `css/mostra.css`, `css/faces.css` (the faces alone, which the Skill's Studio stylesheet imports; the package is in the warm set)
-(generated: `pnpm --filter @mostra/themes generate`), `fonts/`, `marks/`.
+`src/index.ts`; the API report is `etc/themes.api.md`. Files: `css/<theme>.css` for each theme and
+`css/faces.css` (the faces alone), `theme.schema.json` (generated: `pnpm --filter @mostra/themes
+generate`), `fonts/`, `marks/`. The package is in the warm set, so an artifact's build reads its
+faces with no install. `tailwindStylesheet` is deprecated: themes are built into a page from its
+stack (D181 item 2), never copied.
 
 ## Tests to run
 

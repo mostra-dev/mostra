@@ -46,6 +46,11 @@
       ],
       "ignore": ["fixtures/**"]
     },
+    "packages/kit": {
+      "entry": ["src/*.ts", "src/*.tsx", "scripts/*.ts"],
+      "project": ["src/**/*.{ts,tsx}", "scripts/**/*.ts", "test/**/*.ts", "parts/**/*.tsx"],
+      "ignore": ["registry/**", "upstream/**", "parts/**"]
+    },
     "packages/runtime": {
       "entry": ["src/index.ts", "src/bin.ts", "src/builder/child/main.ts", "scripts/*.ts"],
       "project": ["src/**/*.ts", "scripts/**/*.ts", "test/**/*.ts"],

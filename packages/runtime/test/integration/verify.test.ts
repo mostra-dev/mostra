@@ -155,11 +155,14 @@ describe("WP-03's fixtures pass with no error or warning (AU-01, AU-02; the nega
   );
 
   // The Agent Skill's examples are what agents copy (WP-14): each passes verify with no error or
-  // warning, and shows its data rather than a page still loading it.
+  // warning, and shows its data rather than a page still loading it. The specimen, every kit part,
+  // is `kit-parts.test.ts`'s, in both bases and both themes.
   const SKILL_EXAMPLES = fileURLToPath(
     new URL("../../../../skills/mostra/assets/examples/", import.meta.url),
   );
-  for (const name of readdirSync(SKILL_EXAMPLES).sort()) {
+  for (const name of readdirSync(SKILL_EXAMPLES)
+    .filter((name) => name !== "specimen")
+    .sort()) {
     it(
       `passes the Skill's example "${name}" with no error or warning`,
       async () => {

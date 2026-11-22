@@ -12,10 +12,11 @@ Two kinds of extension reach an artifact. A **pack** is source you copy in: a sh
 
 ## Copy an item in: `mostra add`
 
-`mostra add` takes shadcn's addresses as well as npm packages, and installs any shadcn registry item as shadcn would:
+`mostra add` takes the kit's part names and shadcn's addresses as well as npm packages, and installs any shadcn registry item as shadcn would. A bare name the kit has (`button`, `mostra-questionnaire`) is the kit's part for the artifact's base; any other bare name, or one with a version (`button@1`), is an npm package:
 
 | Address | Example |
 |---|---|
+| A part of the kit, by name | `mostra add button dialog --artifact <dir>` |
 | An item's URL | `mostra add https://ui.shadcn.com/r/styles/new-york-v4/login-01.json --artifact <dir>` |
 | A GitHub repository's registry | `mostra add acme/ui/date-field#v1.2.0 --artifact <dir>` |
 | A namespace `components.json` registers | `mostra add @acme/date-field --artifact <dir>` |
@@ -45,7 +46,8 @@ An install that brings a source-available or proprietary license, or one Mostra 
 - An exporter: `mostra export <dir> --as <id> --out <path>`, with `--option name=value` for each option its schema takes (a value is read as JSON when it parses).
 - A CLI command: run `mostra` followed by its words, from the artifact's directory (or anywhere, for the home's plugins). `mostra plugin list` names each one.
 - An engine, an anchor provider or a connector: import the plugin's package in the page or in `live.ts`, as its README shows.
+- A theme: name its ID in the artifact's stack (`kit: { theme: "acme-dark" }`, or after a built-in one); `mostra theme list --artifact <dir>` lists it beside Mostra's.
 
 ## Write a plugin
 
-A plugin is an npm package whose `package.json` has a `"mostra"` manifest and whose entries export what one of the contract packages' `define*` functions returns: `@mostra/contract-exporter`, `-cli-command`, `-connector`, `-embed-engine`, `-anchor-provider` or `-verify-check`. Each package's README has a complete example. `mostra plugin validate <dir>` reports every problem with its place in `package.json`. *Done when* it says `valid`.
+A plugin is an npm package whose `package.json` has a `"mostra"` manifest and whose entries export what one of the contract packages' `define*` functions returns: `@mostra/contract-exporter`, `-cli-command`, `-connector`, `-embed-engine`, `-anchor-provider` or `-verify-check`. Each package's README has a complete example. A theme is a JSON file the manifest lists under `contributes.themes` (`[{ "theme": "./themes/acme.json" }]`), in the form `@mostra/themes/theme.schema.json` describes: every color in light and dark by role, the faces with their files in the package, and any of the kit's tokens. `mostra plugin validate <dir>` reports every problem with its place in `package.json`. *Done when* it says `valid`.

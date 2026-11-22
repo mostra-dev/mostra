@@ -3,6 +3,7 @@
 ## Contents
 
 - Fields
+- Questionnaires
 - Forms with react-hook-form
 - The trusted Submit and `useSubmit`
 - Submission policies
@@ -49,6 +50,49 @@ function WorkEmail() {
 - **`meta.save`** is `saving`, `saved`, `offline` (it couldn't save; it keeps the value and retries), `conflict` or `readonly` (the artifact was submitted and is closed). Mostra's frame shows "Saving" and "Saved" itself; show `meta.save` only where it helps.
 - **Conflicts.** When the same field changed elsewhere since this page last saw it, `meta.conflict` holds `theirs` with `keepMine()` and `takeTheirs()`. Show both values and the two buttons; nothing is overwritten until the person picks.
 - **New versions.** When you publish again, open pages offer the new version, and answers carry over by field ID. An answer whose ID the new version no longer uses is kept, shown as "Not carried over", and delivered in results' `orphaned` section. Keep IDs stable across versions.
+- **Options.** For a value chosen from a list, pass the list as the person sees it: `useField("layout", "", { label: "Layout", options: [{ value: "top", label: "Top bar" }, { value: "left", label: "Left rail", recommended: true }] })`. Results then name the answer by its label and say whether the person took the recommended one.
+
+## Questionnaires
+
+Questions with choices, scales, rankings and text: `@mostra/kit/questionnaire` builds each answer on a field for you, in the page's theme, the same in either base.
+
+```tsx
+import { Choice, Other, Question, Questionnaire, Rank, Scale, Section, TextAnswer } from "@mostra/kit/questionnaire";
+
+function SidebarQuestions() {
+  return (
+    <Questionnaire id="sidebar" title="Sidebar redesign" description="Five questions, about three minutes.">
+      <Section title="Layout">
+        <Question id="layout" title="Which layout fits best?" required comments>
+          <Choice value="left" recommended="Matches the current navigation">Left rail</Choice>
+          <Choice value="top" description="More room for wide tables">Top bar</Choice>
+          <Other />
+        </Question>
+        <Question id="density" title="How dense should it be?">
+          <Scale min={1} max={5} labels={["Airy", "Dense"]} />
+        </Question>
+      </Section>
+      <Question id="extras" title="What should it hold?" multiple>
+        <Choice value="search">Search</Choice>
+        <Choice value="pins">Pinned pages</Choice>
+      </Question>
+      <Question id="order" title="Put these in order">
+        <Rank items={["Search", "Recents", "Pins"]} />
+      </Question>
+      <Question id="notes" title="Anything else?">
+        <TextAnswer multiline />
+      </Question>
+    </Questionnaire>
+  );
+}
+```
+
+- **Each answer is the field `<questionnaire>.<question>`**: `sidebar.layout`, `sidebar.density`. A question with `comments` adds `sidebar.layout.comment`, and `<Other />` adds `sidebar.layout.other` for the person's own words. Keep both IDs stable, as with any field.
+- **What a question holds:** one of its choices' values, or an array of them with `multiple`; a scale's number; a ranking's values in order; a text answer's text.
+- **`required`** blocks the trusted Submit until the question is answered. An optional single choice offers "Clear my answer". `recommended` marks a choice, and a string says why; results say whether the person took it.
+- **Results** name every answer by the words the person saw, beside the options and the recommended one.
+- **Steps.** `mode="steps"` shows one top-level child at a time, with Previous and Next. Every step stays mounted, so a required question on a later step still blocks Submit. Progress ("3 of 5 answered") shows unless `progress={false}`.
+- **Your own design.** Every part takes `className`. `mostra add mostra-questionnaire` copies the source into `components/mostra/questionnaire.tsx`, and the page then uses your copy.
 
 ## Forms with react-hook-form
 

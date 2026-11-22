@@ -7,7 +7,13 @@ import { runInNewContext } from "node:vm";
 import type { FileTree } from "@mostra/contract-exporter";
 import exporter, { EXPORTER_ID } from "@mostra/plugin-mcp-app";
 import { describe, expect, it } from "vitest";
-import { MODULE_BOOTSTRAP, moduleElements, styleText } from "../src/page.ts";
+import {
+  MODULE_BOOTSTRAP,
+  moduleElements,
+  pageHtml,
+  readBuiltPage,
+  styleText,
+} from "../src/page.ts";
 
 const PNG = new Uint8Array([137, 80, 78, 71, 13, 10, 26, 10, 0, 0, 0, 13]);
 
@@ -285,5 +291,29 @@ describe("the MCP App exporter (D175 item 2, MC-02)", () => {
         { signal: new AbortController().signal, log() {}, mostraVersion: "0.16.0" },
       ),
     ).rejects.toThrow(/isn't a file of the build/);
+  });
+});
+
+describe("the page's theme inline (D181 items 2 and 5)", () => {
+  it("keeps the build's theme and where a host's look goes on the page's <html>", () => {
+    const built = readBuiltPage(
+      '<!doctype html><html lang="de" data-theme="arcata" data-host-look="under"><head><script type="module" src="/assets/index.js"></script></head></html>',
+    );
+    expect(built).toMatchObject({ lang: "de", theme: { id: "arcata", hostLook: "under" } });
+    const page = pageHtml({
+      title: "T",
+      lang: built.lang,
+      ...(built.theme !== undefined ? { theme: built.theme } : {}),
+      versionId: "ver_X",
+      css: "",
+      code: "",
+    });
+    expect(page).toContain('<html lang="de" data-theme="arcata" data-host-look="under">');
+    // A page built without a theme carries none, and an attribute that isn't one is left out.
+    expect(
+      readBuiltPage(
+        '<html lang="en" data-host-look="all"><script type="module" src="/a.js"></script></html>',
+      ).theme,
+    ).toBeUndefined();
   });
 });

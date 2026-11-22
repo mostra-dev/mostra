@@ -282,6 +282,30 @@ describe("fields: compare-and-set, rebase, conflicts and replay (IN-01, LL-01)",
     ).toHaveLength(16);
   });
 
+  it("counts a field's options in its document's 16 MiB, and refuses more than 64 KiB of them (Opus review 8)", () => {
+    const { ledger } = freshLedger();
+    const { artifactId } = addArtifact(ledger, { id: ArtifactId.create() });
+    const label = "o".repeat(1000);
+    const options = (count: number) =>
+      Array.from({ length: count }, (_, index) => ({ value: `v${index}`, label }));
+    // 70 options of 1000 characters are past 64 KiB of JSON.
+    expect(codeOf(() => mutate(ledger, artifactId, [set("a", 1, { options: options(70) })]))).toBe(
+      "MOSTRA_FIELD_TOO_LARGE",
+    );
+    // Sixteen values that fit 16 MiB alone don't once each carries 60 KiB of options.
+    const value = "x".repeat(1024 * 1024 - 30_000);
+    for (let index = 0; index < 15; index++) {
+      mutate(ledger, artifactId, [set(`f${index}`, value, { options: options(60) })]);
+    }
+    expect(
+      codeOf(() => mutate(ledger, artifactId, [set("f15", value, { options: options(60) })])),
+    ).toBe("MOSTRA_FIELD_TOO_LARGE");
+    // A field's options are counted once: writing it again with the same options fits.
+    expect(
+      mutate(ledger, artifactId, [set("f0", value, { options: options(60) })]).applied,
+    ).toEqual(["f0"]);
+  });
+
   it("refuses invalid field IDs and ops", () => {
     const { ledger } = freshLedger();
     const { artifactId } = addArtifact(ledger, { id: ArtifactId.create() });
@@ -970,6 +994,61 @@ describe("results (IN-11)", () => {
       signals: [{ name: "ping", payload: { n: 1 } }],
     });
     expect(results.fields).toContainEqual({ id: "pin", sensitive: true, scope: "viewer" });
+  });
+
+  it("names answers by the options they were chosen from, and the recommended one (KT-05)", () => {
+    const { ledger, latest, draft, doSubmit } = submitting(undefined);
+    const options = [
+      { value: "left", label: "Left rail", recommended: true },
+      { value: "top", label: "Top bar" },
+    ];
+    draft([
+      set("intake.layout", "top", { label: "Which layout fits best?", options }),
+      set("intake.took", "left", { label: "Took it", options }),
+      set("intake.blank", "", { label: "Not answered", options }),
+      set("intake.extras", ["search", "pins"], {
+        label: "Which sections?",
+        options: [
+          { value: "search", label: "Search" },
+          { value: "recents", label: "Recents", recommended: true },
+          { value: "pins", label: "Pinned pages" },
+        ],
+      }),
+      set("intake.density", 4, {
+        label: "How dense?",
+        options: [1, 2, 3, 4, 5].map((value) => ({ value, label: String(value) })),
+      }),
+    ]);
+    const { submission } = doSubmit(latest.viewId, 1);
+    const row = ledger.read(
+      (db) =>
+        db.get<SubmissionRow>(
+          "SELECT * FROM submission WHERE id = ?",
+          submission.id,
+        ) as SubmissionRow,
+    );
+    const results = ledger.read((db) => buildResults(db, row));
+    expect(Results.safeParse(results).success).toBe(true);
+    expect(results.fields).toContainEqual({
+      id: "intake.layout",
+      label: "Which layout fits best?",
+      scope: "viewer",
+      options,
+    });
+    const markdown = resultsMarkdown(results, JSON.parse(row.snapshot_json) as Snapshot);
+    expect(markdown).toContain(
+      '- "Which layout fits best?" (`intake.layout`): "Top bar" (`"top"`), not the recommended "Left rail"',
+    );
+    expect(markdown).toContain(
+      '- "Took it" (`intake.took`): "Left rail" (`"left"`), the recommended option',
+    );
+    expect(markdown).toContain(
+      '- "Not answered" (`intake.blank`): no answer (recommended: "Left rail")',
+    );
+    expect(markdown).toContain(
+      '- "Which sections?" (`intake.extras`): "Search" (`"search"`), "Pinned pages" (`"pins"`), not the recommended "Recents"',
+    );
+    expect(markdown).toContain('- "How dense?" (`intake.density`): "4" (`4`)');
   });
 
   it("nests dotted IDs without merging into a value, and treats __proto__ as a plain key", () => {

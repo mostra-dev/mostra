@@ -23,7 +23,7 @@ import { type Browser, type BrowserContext, expect, type Page, test } from "@pla
 import axe from "axe-core";
 import { gotoShell, openInShell, publishOwn, republish, settled } from "../support/client.ts";
 import { BIN, Client, removeTree, startDaemon } from "../support/mostra.ts";
-import { shortLivedPort } from "../support/ports.ts";
+import { reserveShortLivedPort } from "../support/ports.ts";
 
 const OPERATOR = join(
   dirname(fileURLToPath(import.meta.url)),
@@ -115,8 +115,13 @@ test.describe("every surface a person meets (UX-01, D171)", () => {
 
   test.beforeAll(async ({ browser }) => {
     test.setTimeout(120_000);
-    port = await shortLivedPort();
-    control = await shortLivedPort();
+    // Both held until the server, which binds both, starts: the daemon, started first, binds
+    // short-lived listeners in the same range, and a port only probed was taken once before the
+    // server bound it (EADDRINUSE, main's nightly run 44898874910).
+    const reservedPort = await reserveShortLivedPort();
+    const reservedControl = await reserveShortLivedPort();
+    port = reservedPort.port;
+    control = reservedControl.port;
     api = `http://api.localhost:${port}`;
     daemon = await startDaemon({ env: { MOSTRA_TEST_SERVER_ADDRESS: `127.0.0.1:${port}` } });
     const data = join(daemon.root, "server");
@@ -152,6 +157,7 @@ test.describe("every surface a person meets (UX-01, D171)", () => {
         operatorClients: [{ clientId: ownClient, name: "Example Cloud account" }],
       }),
     );
+    await Promise.all([reservedPort.release(), reservedControl.release()]);
     server = spawn(
       process.execPath,
       [BIN, "server", "--data", data, "--config", config, "--listen", `127.0.0.1:${port}`],

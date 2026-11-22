@@ -21,6 +21,9 @@ function setup() {
   // Each making waits until the test lets it end, so a review or removal can come meanwhile.
   let finish: (() => void) | undefined;
   let hold = false;
+  // Resolved when a making has begun: a test acts meanwhile only once it has, at any load.
+  let begun: (() => void) | undefined;
+  let making = new Promise<void>((resolve) => (begun = resolve));
   const pages = createAppPages({
     dir,
     log: silentLog,
@@ -28,7 +31,9 @@ function setup() {
     underReview: () => state.quarantined,
     make: async (artifactId, versionId): Promise<AppPageResult> => {
       state.made += 1;
-      if (hold) await new Promise<void>((resolve) => (finish = resolve));
+      const holding = hold ? new Promise<void>((resolve) => (finish = resolve)) : undefined;
+      begun?.();
+      if (holding !== undefined) await holding;
       return {
         artifactId,
         uri: `ui://mostra/view/${versionId}`,
@@ -39,12 +44,15 @@ function setup() {
   });
   const holding = () => {
     hold = true;
+    making = new Promise<void>((resolve) => (begun = resolve));
   };
+  /** Waits until the held making has begun (never a fixed sleep, which a loaded machine outruns). */
+  const begunMaking = (): Promise<void> => making;
   const release = () => {
     hold = false;
     finish?.();
   };
-  return { dir, pages, state, holding, release };
+  return { dir, pages, state, holding, release, begunMaking };
 }
 
 async function code(promise: Promise<unknown>): Promise<string | undefined> {
@@ -84,10 +92,10 @@ describe("a hosted home's MCP Apps (D175 item 8)", () => {
   });
 
   it("shows and keeps nothing of a page made while its version was quarantined (R01-8)", async () => {
-    const { dir, pages, state, holding, release } = setup();
+    const { dir, pages, state, holding, release, begunMaking } = setup();
     holding();
     const asked = code(pages.page(VERSION));
-    await new Promise((resolve) => setTimeout(resolve, 10));
+    await begunMaking();
     state.quarantined = true;
     release();
     expect(await asked).toBe("MOSTRA_REMOTE_UNDER_REVIEW");
@@ -95,10 +103,10 @@ describe("a hosted home's MCP Apps (D175 item 8)", () => {
   });
 
   it("keeps nothing of a page made while its version was removed, and makes it afresh if it's shared again (R01-8)", async () => {
-    const { dir, pages, state, holding, release } = setup();
+    const { dir, pages, state, holding, release, begunMaking } = setup();
     holding();
     const asked = code(pages.page(VERSION));
-    await new Promise((resolve) => setTimeout(resolve, 10));
+    await begunMaking();
     await pages.forget(VERSION);
     release();
     expect(await asked).toBe("MOSTRA_ARTIFACT_VERSION_NOT_FOUND");

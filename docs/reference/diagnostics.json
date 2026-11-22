@@ -946,6 +946,60 @@
       "fix": "Get a new link from whoever shared this one. An agent mints it with `view/url`, or rotates the old one with `view/rotate`, and shares the new URL."
     },
     {
+      "code": "MOSTRA_KIT_CSS_UNPROCESSED",
+      "severity": "warning",
+      "phase": "lint",
+      "title": "Tailwind CSS that isn't processed",
+      "hint": "Name the file in `kit.theme`, or start it with `@import \"tailwindcss\";`.",
+      "explanation": "A CSS file of the artifact uses Tailwind's directives (`@theme`, `@apply`, `@utility`, `@variant`) but isn't processed by Tailwind: it neither imports Tailwind nor is a layer of the theme stack, so the directives reach the page unchanged and do nothing, and verify sees no error.",
+      "fix": "List the file in the theme stack, after a theme (`kit: { theme: [\"studio\", \"./brand.css\"] }`), so it joins the build's one Tailwind run; or begin it with `@import \"tailwindcss\";`."
+    },
+    {
+      "code": "MOSTRA_KIT_THEME_CONFLICT",
+      "severity": "error",
+      "phase": "manifest",
+      "title": "Two themes share an id",
+      "hint": "Uninstall one of the two plugins, or ask its author to rename the theme.",
+      "explanation": "Two themes the artifact can use have the same id: two installed plugins contribute it, or a plugin contributes one with a built-in theme's id. Mostra overrides neither (D172), so the stack can't say which it means.",
+      "fix": "Remove one of the plugins the message names with `mostra plugin remove <package> --artifact <dir>`."
+    },
+    {
+      "code": "MOSTRA_KIT_THEME_CONTRAST",
+      "severity": "warning",
+      "phase": "lint",
+      "title": "Theme stack below contrast",
+      "hint": "Observed only: check the colours this names, if the theme stack changed them on purpose.",
+      "explanation": "The theme the stack makes has a text pair below WCAG 2.2 AA (text 4.5:1, a control's edge and the focus ring 3:1), as `defineTheme` checks every theme. Mostra builds it anyway: a page's look is its author's (D68).",
+      "fix": "Change the colour the message names in the layer that sets it, so it meets the ratio on the ground it sits on."
+    },
+    {
+      "code": "MOSTRA_KIT_THEME_FILE_MISSING",
+      "severity": "error",
+      "phase": "manifest",
+      "title": "Theme file missing",
+      "hint": "Create the CSS file the stack names, or take it out of `kit.theme`.",
+      "explanation": "An entry of the manifest's theme stack names a CSS file of the artifact (`./brand.css`) that isn't in its source, so the stack can't be built.",
+      "fix": "Add the file at the path the message names, relative to the artifact's root, or remove the entry: `kit: { theme: [\"studio\"] }`."
+    },
+    {
+      "code": "MOSTRA_KIT_THEME_UNKNOWN",
+      "severity": "error",
+      "phase": "manifest",
+      "title": "Theme not found",
+      "hint": "Name a theme `mostra theme list` shows, or install the plugin that contributes it.",
+      "explanation": "An entry of the manifest's theme stack (`kit.theme`) names a theme that isn't built in and that no plugin installed for the artifact contributes, so the page can't be built in it. The message lists the themes on offer.",
+      "fix": "Correct the name (`kit: { theme: \"studio\" }`), or install the plugin first with `mostra plugin add <package> --artifact <dir>`."
+    },
+    {
+      "code": "MOSTRA_KIT_WRONG_BASE",
+      "severity": "error",
+      "phase": "compile",
+      "title": "Idiom of the other base",
+      "hint": "Write the idiom of the artifact's base, as the fix shows.",
+      "explanation": "The artifact uses the kit with one shadcn base (`kit.base`, Base UI by default) and composes a part in the other base's way: Radix's `asChild` on a Base UI part, or Base UI's `render` prop on a Radix part. TypeScript refuses it (TS2322), and the page would build but not compose as written.",
+      "fix": "On Base UI, pass the child as `render`: `<DialogTrigger render={<Button />}>Open</DialogTrigger>`. On Radix, wrap it with `asChild`: `<DialogTrigger asChild><Button>Open</Button></DialogTrigger>`. Or set `kit: { base: \"radix\" }` if the page was written for Radix."
+    },
+    {
       "code": "MOSTRA_LICENSE_ACCEPT_INVALID",
       "severity": "error",
       "phase": "host",
@@ -980,6 +1034,15 @@
       "hint": "Declare the license in the plugin manifest's bundledLicenses, with a summary and a URL.",
       "explanation": "A package the plugin brings has a license that needs an acknowledgment, and the manifest's `bundledLicenses` doesn't declare it, so the person installing sees only the package's own license field. Mostra still finds and discloses it from the installed packages.",
       "fix": "Add `{ \"package\": \"<name>\", \"license\": \"<expression>\", \"summary\": \"…\", \"url\": \"…\" }` to `bundledLicenses`."
+    },
+    {
+      "code": "MOSTRA_LINT_API_CHANGED",
+      "severity": "warning",
+      "phase": "lint",
+      "title": "An API changed in a recent major release",
+      "hint": "Write the new form the fix shows, or run `mostra verify <artifact> --fix` to apply every such fix.",
+      "explanation": "A library the page uses changed this API in a recent major release, and the page uses the old form: an import that moved (`framer-motion`, `react-router-dom`, `reactflow`, TanStack Table 8's `useReactTable`), a call that is deprecated (Zod 3's `z.string().email()`, Mermaid's `init`), or a Tailwind CSS 3 class or directive that Tailwind CSS 4 writes another way, which does nothing now. Models trained before the release write the old form; it may still build, but it breaks or silently does nothing in the version Mostra ships.",
+      "fix": "Each finding carries a machine-applicable fix with the new form: apply it, or run `mostra verify <artifact> --fix`, which applies every fix verify found and verifies again."
     },
     {
       "code": "MOSTRA_LIVE_SOURCE_FAILED",

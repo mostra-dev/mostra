@@ -6,12 +6,22 @@
  * refused with the reason.
  */
 import { type Color, contrast, isHex, oklchToHex } from "./color.ts";
+import {
+  hasControl,
+  isTokenName,
+  isTokenValue,
+  loadsResource,
+  type TokenValues,
+} from "./tokens.ts";
 
 /**
  * The revision of the theme format. Fields are only ever added within a revision (invariant 10); a
  * theme names the revision it was written for, and a renderer refuses one newer than it knows.
  */
-export const THEME_REVISION = "2026-11-13";
+export const THEME_REVISION = "2026-11-20";
+
+/** The revisions this renderer reads: each older one is a subset of the newest (invariant 10). */
+export const THEME_REVISIONS: readonly string[] = ["2026-11-13", "2026-11-20"];
 
 /** Light or dark: the two sets of colours every theme has. */
 export type Mode = "light" | "dark";
@@ -77,6 +87,11 @@ export interface Palette {
   readonly answer: Color;
   /** Six series colours in a fixed order. */
   readonly chart: readonly [Color, Color, Color, Color, Color, Color];
+  /**
+   * The theme's accent for one thing at a time, such as the recommended choice: text and a dot,
+   * 4.5:1 on cards (revision 2026-11-20). A theme without one uses `primary`.
+   */
+  readonly highlight?: Color;
 }
 
 /** One font file of a face: a path inside this package, its weights and the characters it covers. */
@@ -141,6 +156,45 @@ export interface Theme {
   };
   /** The brand's stage, for a theme that has one. */
   readonly stage?: { readonly light: Stage; readonly dark: Stage };
+  /**
+   * The kit's other tokens (D181 item 3): shape, space, depth, surfaces and motion, by name
+   * (`TOKENS`), for both modes and for each (revision 2026-11-20). A token no layer sets takes
+   * the format's default.
+   */
+  readonly tokens?: TokenValues;
+  /**
+   * Rules beyond tokens, for what a token can't say: the kit's parts by `data-slot`, under
+   * `:root[data-theme]` (revision 2026-11-20). No `@import` and no `url()`: a theme's only files
+   * are its faces.
+   */
+  readonly css?: string;
+}
+
+/**
+ * A theme layer (D181 items 2 and 3): what a theme stacked over another changes, and nothing
+ * else. A complete theme is a layer too, and a stack's first entry must be one.
+ */
+export interface ThemeLayer {
+  /** The theme format's revision it was written for (`THEME_REVISION`). */
+  readonly revision: string;
+  /** Lower case, `a-z`, digits and hyphens, at most 32 characters. */
+  readonly id: string;
+  /** Its name, as a person reads it. */
+  readonly name: string;
+  /** One sentence: what it is for. */
+  readonly description: string;
+  /** The colours it changes, in either mode. */
+  readonly modes?: { readonly light?: Partial<Palette>; readonly dark?: Partial<Palette> };
+  /** The faces it changes. */
+  readonly faces?: Partial<Theme["faces"]>;
+  /** The base radius, if it changes it. */
+  readonly radius?: string;
+  /** The motion it changes. */
+  readonly motion?: Partial<Theme["motion"]>;
+  /** The tokens it sets (`Theme.tokens`). */
+  readonly tokens?: TokenValues;
+  /** Its own rules, after the layers before it (`Theme.css`). */
+  readonly css?: string;
 }
 
 /** Why a theme was refused: every problem found, each naming its place. */
@@ -178,6 +232,7 @@ const PAIRS: readonly (readonly [keyof Palette, keyof Palette, number])[] = [
   ["destructiveForeground", "destructive", TEXT],
   ["success", "card", TEXT],
   ["warning", "card", TEXT],
+  ["highlight", "card", TEXT],
   ["input", "card", UI],
   ["ring", "background", UI],
   ["ring", "card", UI],
@@ -208,17 +263,11 @@ function checkColor(where: string, color: Color, problems: string[]): void {
 }
 
 function checkPalette(mode: string, palette: Palette, problems: string[]): void {
-  for (const [role, value] of Object.entries(palette)) {
-    if (role === "chart") {
-      const chart = value as readonly Color[];
-      if (chart.length !== 6) problems.push(`${mode}.chart: six colours, not ${chart.length}`);
-      chart.forEach((color, index) => {
-        checkColor(`${mode}.chart[${index}]`, color, problems);
-      });
-    } else checkColor(`${mode}.${role}`, value as Color, problems);
-  }
+  checkPaletteColors(mode, palette, problems);
   for (const [text, ground, minimum] of PAIRS) {
-    const ratio = contrast(palette[text] as Color, palette[ground] as Color);
+    const foreground = palette[text] as Color | undefined;
+    if (foreground === undefined) continue; // an optional role the theme doesn't have
+    const ratio = contrast(foreground, palette[ground] as Color);
     if (ratio < minimum) {
       problems.push(
         `${mode}: ${text} on ${ground} is ${ratio.toFixed(2)}:1, below WCAG 2.2 AA's ${minimum}:1`,
@@ -227,29 +276,124 @@ function checkPalette(mode: string, palette: Palette, problems: string[]): void 
   }
 }
 
-/**
- * Checks a theme and returns it frozen, or throws `ThemeError` listing every problem: an id that
- * isn't one, a revision this renderer doesn't know, a colour out of gamut or disagreeing with its
- * hex, a text pair below WCAG 2.2 AA, a face with no file.
- */
-export function defineTheme(theme: Theme): Theme {
-  const problems: string[] = [];
-  if (!/^[a-z][a-z0-9-]{0,31}$/.test(theme.id)) problems.push(`id "${theme.id}" isn't a theme id`);
-  if (theme.revision > THEME_REVISION) {
-    problems.push(`revision ${theme.revision} is newer than this renderer's ${THEME_REVISION}`);
+/** The roles a palette may have, sorted: every one a theme sets, `highlight` optional. */
+export const PALETTE_ROLE_NAMES: readonly (keyof Palette)[] = [
+  ...new Set<keyof Palette>([
+    ...PAIRS.map(([text]) => text),
+    ...PAIRS.map(([, ground]) => ground),
+    "border",
+    "answer",
+    "chart",
+  ]),
+].sort();
+
+const PALETTE_ROLES = new Set<string>(PALETTE_ROLE_NAMES);
+
+/** Every colour a (possibly partial) palette has: in gamut, and agreeing with its hex. */
+function checkPaletteColors(mode: string, palette: Partial<Palette>, problems: string[]): void {
+  for (const [role, value] of Object.entries(palette)) {
+    if (value === undefined) continue;
+    if (role === "chart") {
+      const chart = value as readonly Color[];
+      if (chart.length !== 6) problems.push(`${mode}.chart: six colours, not ${chart.length}`);
+      chart.forEach((color, index) => {
+        checkColor(`${mode}.chart[${index}]`, color, problems);
+      });
+    } else if (!PALETTE_ROLES.has(role)) problems.push(`${mode}.${role}: no such role`);
+    else checkColor(`${mode}.${role}`, value as Color, problems);
   }
-  if (theme.name.trim() === "" || theme.name.length > 64) problems.push("name: 1 to 64 characters");
-  checkPalette("light", theme.modes.light, problems);
-  checkPalette("dark", theme.modes.dark, problems);
-  for (const [role, face] of Object.entries(theme.faces)) {
+}
+
+/** The parts every layer is checked for, complete or not. */
+function checkLayer(layer: ThemeLayer, problems: string[]): void {
+  if (!/^[a-z][a-z0-9-]{0,31}$/.test(layer.id)) problems.push(`id "${layer.id}" isn't a theme id`);
+  if (!THEME_REVISIONS.includes(layer.revision)) {
+    problems.push(
+      layer.revision > THEME_REVISION
+        ? `revision ${layer.revision} is newer than this renderer's ${THEME_REVISION}`
+        : `revision ${layer.revision} isn't one this renderer knows`,
+    );
+  }
+  if (layer.name.trim() === "" || layer.name.length > 64) problems.push("name: 1 to 64 characters");
+  // The name and description are words a person reads; Mostra writes the name into a stylesheet's
+  // first comment (as `commentText` makes it), so neither may hold what ends one or a line.
+  for (const [key, text] of [
+    ["name", layer.name],
+    ["description", layer.description],
+  ] as const) {
+    if (text.includes("*/") || hasControl(text)) {
+      problems.push(`${key}: no "*/" and no control characters`);
+    }
+  }
+  if (layer.description.length > 280) problems.push("description: at most 280 characters");
+  for (const [role, face] of Object.entries(layer.faces ?? {})) {
+    if (face === undefined) continue;
     if (!/^[\p{L}\p{N} -]{1,64}$/u.test(face.family)) problems.push(`faces.${role}: family name`);
+    if (!/^[a-z0-9 ,\-"'.]{1,200}$/i.test(face.fallback)) problems.push(`faces.${role}: fallback`);
     for (const file of face.files) {
       if (!/^fonts\/[a-z0-9-]+\.woff2$/.test(file.file)) {
         problems.push(`faces.${role}: "${file.file}" isn't a woff2 file under fonts/`);
       }
+      // Each goes into an `@font-face` as it is, so each must be exactly what CSS takes there.
+      if (!/^[1-9]\d{0,2}( [1-9]\d{0,2})?$/.test(file.weight)) {
+        problems.push(
+          `faces.${role}: weight "${file.weight}" isn't a weight or a range (400, 300 900)`,
+        );
+      }
+      if (file.style !== "normal" && file.style !== "italic") {
+        problems.push(`faces.${role}: style "${String(file.style)}" isn't normal or italic`);
+      }
+      if (
+        !/^U\+[0-9A-F?]{1,6}(-[0-9A-F]{1,6})?(,\s?U\+[0-9A-F?]{1,6}(-[0-9A-F]{1,6})?)*$/i.test(
+          file.unicodeRange,
+        )
+      ) {
+        problems.push(`faces.${role}: unicodeRange "${file.unicodeRange}" isn't a unicode-range`);
+      }
     }
   }
-  if (!/^\d+(\.\d+)?(px|rem)$/.test(theme.radius)) problems.push(`radius "${theme.radius}"`);
+  if (layer.radius !== undefined && !/^\d+(\.\d+)?(px|rem)$/.test(layer.radius)) {
+    problems.push(`radius "${layer.radius}"`);
+  }
+  const motion = layer.motion ?? {};
+  if (motion.pressScale !== undefined && !(motion.pressScale > 0.8 && motion.pressScale <= 1)) {
+    problems.push(`motion.pressScale ${motion.pressScale}: between 0.8 and 1`);
+  }
+  for (const key of ["pressMs", "stateMs"] as const) {
+    const value = motion[key];
+    if (value !== undefined && !(Number.isInteger(value) && value >= 0 && value <= 2000)) {
+      problems.push(`motion.${key} ${value}: whole milliseconds, 0 to 2000`);
+    }
+  }
+  for (const scope of ["base", "light", "dark"] as const) {
+    for (const [name, value] of Object.entries(layer.tokens?.[scope] ?? {})) {
+      if (!isTokenName(name)) problems.push(`tokens.${scope}.${name}: no such token`);
+      else if (typeof value !== "string" || !isTokenValue(value)) {
+        problems.push(`tokens.${scope}.${name}: "${String(value)}" isn't a value a token can hold`);
+      }
+    }
+  }
+  if (layer.css !== undefined) {
+    if (layer.css.length > 64 * 1024) problems.push("css: at most 64 KiB");
+    if (loadsResource(layer.css) || /<\/style/i.test(layer.css)) {
+      problems.push(
+        "css: no @import, no escapes and nothing that loads a file (url(), image-set() …); a theme's only files are its faces",
+      );
+    }
+  }
+}
+
+/**
+ * Checks a theme and returns it frozen, or throws `ThemeError` listing every problem: an id that
+ * isn't one, a revision this renderer doesn't know, a colour out of gamut or disagreeing with its
+ * hex, a text pair below WCAG 2.2 AA, a face with no file, a token that isn't one or a value a
+ * token can't hold, CSS that loads something.
+ */
+export function defineTheme(theme: Theme): Theme {
+  const problems: string[] = [];
+  checkLayer(theme, problems);
+  checkPalette("light", theme.modes.light, problems);
+  checkPalette("dark", theme.modes.dark, problems);
   if (theme.stage) {
     for (const mode of ["light", "dark"] as const) {
       const stage = theme.stage[mode];
@@ -266,4 +410,79 @@ export function defineTheme(theme: Theme): Theme {
   }
   if (problems.length > 0) throw new ThemeError(theme.id, problems);
   return Object.freeze(theme);
+}
+
+/**
+ * Checks a layer a stack puts over a complete theme, without its contrast (a pair it changes is
+ * judged in the theme it makes, `composeThemes`), and returns it frozen, or throws `ThemeError`.
+ */
+export function defineThemeLayer(layer: ThemeLayer): ThemeLayer {
+  const problems: string[] = [];
+  checkLayer(layer, problems);
+  for (const mode of ["light", "dark"] as const) {
+    const palette = layer.modes?.[mode];
+    if (palette) checkPaletteColors(mode, palette, problems);
+  }
+  if (problems.length > 0) throw new ThemeError(layer.id, problems);
+  return Object.freeze(layer);
+}
+
+/** Whether a layer is a complete theme, which a stack may start with. */
+export function isCompleteTheme(layer: ThemeLayer): layer is Theme {
+  const complete = (palette: Partial<Palette> | undefined): boolean =>
+    palette !== undefined &&
+    [...PALETTE_ROLES].every((role) => role === "highlight" || role in palette);
+  return (
+    complete(layer.modes?.light) &&
+    complete(layer.modes?.dark) &&
+    layer.faces?.sans !== undefined &&
+    layer.faces.display !== undefined &&
+    layer.faces.mono !== undefined &&
+    layer.radius !== undefined &&
+    layer.motion?.pressScale !== undefined &&
+    layer.motion.pressMs !== undefined &&
+    layer.motion.stateMs !== undefined
+  );
+}
+
+/**
+ * The theme a stack makes (D181 item 2), unchecked: its first entry, a complete theme, with each
+ * later layer over it, later winning, and the CSS of every layer in order. `composeThemes` is
+ * this, checked; a caller that must build a stack below contrast (a page's look is its author's,
+ * D68) uses this and reports the check's problems itself.
+ */
+export function layerThemes(first: Theme, layers: readonly ThemeLayer[]): Theme {
+  let theme: Theme = first;
+  for (const layer of layers) {
+    const css = [theme.css, layer.css].filter((part) => part !== undefined && part !== "");
+    theme = {
+      ...theme,
+      revision: theme.revision > layer.revision ? theme.revision : layer.revision,
+      id: layer.id,
+      name: layer.name,
+      description: layer.description,
+      modes: {
+        light: { ...theme.modes.light, ...layer.modes?.light },
+        dark: { ...theme.modes.dark, ...layer.modes?.dark },
+      },
+      faces: { ...theme.faces, ...layer.faces },
+      radius: layer.radius ?? theme.radius,
+      motion: { ...theme.motion, ...layer.motion },
+      tokens: {
+        base: { ...theme.tokens?.base, ...layer.tokens?.base },
+        light: { ...theme.tokens?.light, ...layer.tokens?.light },
+        dark: { ...theme.tokens?.dark, ...layer.tokens?.dark },
+      },
+      ...(css.length > 0 ? { css: css.join("\n") } : {}),
+    };
+  }
+  return theme;
+}
+
+/**
+ * The theme a stack makes, checked as any theme is (`layerThemes`, then `defineTheme`), so a
+ * layer that breaks a text pair is named in the `ThemeError`.
+ */
+export function composeThemes(first: Theme, ...layers: readonly ThemeLayer[]): Theme {
+  return layers.length === 0 ? first : defineTheme(layerThemes(first, layers));
 }

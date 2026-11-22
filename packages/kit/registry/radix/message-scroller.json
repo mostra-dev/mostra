@@ -1,0 +1,22 @@
+{
+  "$schema": "https://ui.shadcn.com/schema/registry-item.json",
+  "name": "message-scroller",
+  "type": "registry:ui",
+  "dependencies": [
+    "@shadcn/react",
+    "cn",
+    "lucide-react"
+  ],
+  "registryDependencies": [
+    "button"
+  ],
+  "files": [
+    {
+      "path": "components/ui/message-scroller.tsx",
+      "type": "registry:ui"
+    }
+  ],
+  "mostra": {
+    "base": "radix"
+  }
+}

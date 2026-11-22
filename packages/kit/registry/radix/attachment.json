@@ -1,0 +1,22 @@
+{
+  "$schema": "https://ui.shadcn.com/schema/registry-item.json",
+  "name": "attachment",
+  "type": "registry:ui",
+  "dependencies": [
+    "class-variance-authority",
+    "cn",
+    "radix-ui"
+  ],
+  "registryDependencies": [
+    "button"
+  ],
+  "files": [
+    {
+      "path": "components/ui/attachment.tsx",
+      "type": "registry:ui"
+    }
+  ],
+  "mostra": {
+    "base": "radix"
+  }
+}

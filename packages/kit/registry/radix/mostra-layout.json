@@ -1,0 +1,20 @@
+{
+  "$schema": "https://ui.shadcn.com/schema/registry-item.json",
+  "name": "mostra-layout",
+  "type": "registry:component",
+  "title": "Page layout",
+  "description": "The page's frame in its theme: the page with its title, its sections and a row of figures.",
+  "dependencies": [
+    "cn"
+  ],
+  "files": [
+    {
+      "path": "components/mostra/layout.tsx",
+      "type": "registry:component",
+      "target": "components/mostra/layout.tsx"
+    }
+  ],
+  "mostra": {
+    "base": "radix"
+  }
+}

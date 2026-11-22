@@ -226,6 +226,22 @@ export interface VerifyVerdict {
   };
   /** How long each stage took, in milliseconds, and `total`. */
   readonly timingsMs: Readonly<Record<string, number>>;
+  /**
+   * The theme stack the page was built in (D181 items 2 and 6, WP-18): as the manifest writes it,
+   * or as `artifact/verify`'s `theme` gave it; `default` when the page names none and wears Studio.
+   * Absent when the source couldn't be read.
+   */
+  readonly theme?: VerdictTheme;
+}
+
+/** The theme stack a verdict's page was built in. */
+export interface VerdictTheme {
+  /** The stack's entries, in order. */
+  readonly stack: readonly string[];
+  /** The page names no theme and wears the default. */
+  readonly default: boolean;
+  /** The stack was the request's (`artifact/verify`'s `theme`), not the manifest's. */
+  readonly requested?: boolean;
 }
 
 const tokenEstimate: z.ZodType<TokenEstimate> = z.object({
@@ -276,6 +292,13 @@ export const VerifyVerdict: z.ZodType<VerifyVerdict> = z
       contracts: z.array(z.string()).readonly().exactOptional(),
     }),
     timingsMs: z.record(z.string(), z.number().min(0)),
+    theme: z
+      .object({
+        stack: z.array(z.string()).readonly(),
+        default: z.boolean(),
+        requested: z.boolean().exactOptional(),
+      })
+      .exactOptional(),
   })
   .register(wireRegistry, {
     id: "VerifyVerdict",

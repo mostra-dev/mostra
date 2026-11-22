@@ -273,6 +273,16 @@ impl super::Method for PackAdd {
     type Params = super::generated::PackAddParams;
     type Result = super::generated::PackAddResult;
 }
+///`pack/kit`.
+#[derive(Clone, Copy, Debug)]
+pub struct PackKit;
+impl super::Method for PackKit {
+    const NAME: &'static str = "pack/kit";
+    const DIRECTION: super::Direction = super::Direction::ClientToInstance;
+    const MUTATING: bool = false;
+    type Params = super::generated::PackKitParams;
+    type Result = super::generated::PackKitResult;
+}
 ///`plugin/add`.
 #[derive(Clone, Copy, Debug)]
 pub struct PluginAdd;
@@ -703,6 +713,26 @@ impl super::Method for StatePatch {
     type Params = super::generated::StatePatchParams;
     type Result = super::generated::MutationResult;
 }
+///`theme/list`.
+#[derive(Clone, Copy, Debug)]
+pub struct ThemeList;
+impl super::Method for ThemeList {
+    const NAME: &'static str = "theme/list";
+    const DIRECTION: super::Direction = super::Direction::ClientToInstance;
+    const MUTATING: bool = false;
+    type Params = super::generated::ThemeListParams;
+    type Result = super::generated::ThemeListResult;
+}
+///`theme/show`.
+#[derive(Clone, Copy, Debug)]
+pub struct ThemeShow;
+impl super::Method for ThemeShow {
+    const NAME: &'static str = "theme/show";
+    const DIRECTION: super::Direction = super::Direction::ClientToInstance;
+    const MUTATING: bool = false;
+    type Params = super::generated::ThemeShowParams;
+    type Result = super::generated::ThemeShowResult;
+}
 ///`view/default`.
 #[derive(Clone, Copy, Debug)]
 pub struct ViewDefault;
@@ -922,6 +952,11 @@ pub const METHODS: &[super::MethodInfo] = &[
         mutating: true,
     },
     super::MethodInfo {
+        name: "pack/kit",
+        direction: super::Direction::ClientToInstance,
+        mutating: false,
+    },
+    super::MethodInfo {
         name: "plugin/add",
         direction: super::Direction::ClientToInstance,
         mutating: true,
@@ -1135,6 +1170,16 @@ pub const METHODS: &[super::MethodInfo] = &[
         name: "state/patch",
         direction: super::Direction::ClientToInstance,
         mutating: true,
+    },
+    super::MethodInfo {
+        name: "theme/list",
+        direction: super::Direction::ClientToInstance,
+        mutating: false,
+    },
+    super::MethodInfo {
+        name: "theme/show",
+        direction: super::Direction::ClientToInstance,
+        mutating: false,
     },
     super::MethodInfo {
         name: "view/default",
