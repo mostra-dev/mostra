@@ -42,15 +42,38 @@ Mostra's security model is narrow on purpose (DECISIONS D05, D06). In scope:
 - trusted controls rendering in, or being clickable from, an origin agent code controls;
 - supply-chain problems in what Mostra publishes.
 
-The scope for the hosted service is added here before that service opens.
+For Mostra Cloud, the hosted service at mostradev.com and mostrausercontent.com, which runs the
+remote server, the relay and the remote MCP server from this repository behind its own operating
+layer, also in scope:
+
+- one account, organization or hosted home reaching another's artifacts, submissions, files,
+  secrets or settings;
+- a hosted link that can be guessed, leaks through the service, or keeps working after it was
+  revoked or expired;
+- a hosted artifact escaping its origin on the user-content domain: reading another artifact's
+  state, cookies or storage, or drawing, covering or driving the trusted controls the service
+  renders around it (sign-in, Submit, Report, the interstitial);
+- the relay: a hosted artifact or its viewer running actions or live producers on the owner's
+  instance beyond what the owner allowed;
+- the remote MCP server and its OAuth flow: stolen or widened tokens, scope escalation, consent
+  bypass, open redirects;
+- sign-in, sessions and the account pages;
+- getting around quotas, plan limits or billing in a way that uses or charges another account.
 
 Out of scope:
 
 - what agent-authored artifacts do. Mostra deliberately runs artifact code with full capability and
   adds no content or capability guardrails; an artifact that sends email or reads files is doing
-  what its author wrote;
+  what its author wrote. A hosted artifact that phishes, spreads malware or otherwise abuses its
+  viewers is an abuse report, not a vulnerability: use the Report control on the page or
+  abuse@mostrausercontent.com;
 - volumetric denial of service;
 - social engineering of the maintainer or of other users.
+
+On Mostra Cloud, the safe harbor above also asks you to test only with accounts and artifacts
+of your own, publish nothing the service's acceptable-use policy forbids even as a test, and keep
+automated testing to a rate that doesn't slow the service for others. The service's contact
+details are also in https://mostradev.com/.well-known/security.txt.
 
 ## Supported versions
 
