@@ -1,5 +1,14 @@
 # @mostra/plugin-mcp-app
 
+## 0.19.0
+
+### Patch Changes
+
+- [#215](https://github.com/mostra-dev/mostra/pull/215) [`837f993`](https://github.com/mostra-dev/mostra/commit/837f99365ce1c2de2c05095841a68d4942116982) Thanks [@dev-mirzabicer](https://github.com/dev-mirzabicer)! - A field may name its options (`useField(id, initial, { options: [{ value, label, recommended }] })`), and results name each answer by the label the viewer saw and say whether they took the recommended one (WP-18). The shell tells a page the person's light or dark, and a host's look (`HomeConfig.look`) reaches only a page whose stack names `"host"`, in the shell and inline in an MCP Apps host alike; the MCP App exporter keeps the page's theme. A field's options count toward its draft's 16 MiB and take at most 64 KiB (`FIELD_OPTIONS_MAX_BYTES`); a page with more saves the answer without them and says so on its console.
+- Updated dependencies [[`837f993`](https://github.com/mostra-dev/mostra/commit/837f99365ce1c2de2c05095841a68d4942116982), [`837f993`](https://github.com/mostra-dev/mostra/commit/837f99365ce1c2de2c05095841a68d4942116982), [`837f993`](https://github.com/mostra-dev/mostra/commit/837f99365ce1c2de2c05095841a68d4942116982)]:
+  - @mostra/protocol@0.19.0
+  - @mostra/themes@0.19.0
+
 ## 0.18.0
 
 ### Patch Changes
