@@ -309,11 +309,12 @@ export function ciMatrix(scope: CiScope, plan: Plan, runners: Runners): CiMatrix
           ),
         ),
         // Windows runs one test at a time, so its slowest engines are split across machines:
-        // Firefox on x64 (7 min alone) and emulated Chromium on arm64 (10 min).
+        // Firefox on x64 (7 min alone) and emulated Chromium on arm64, in three parts since its
+        // second of two took 23 to 25 of the job's 25 minutes with WP-18's kit suite.
         { os: "windows-x64", runner: runners.windows.x64, browser: "chromium" },
         ...shards({ os: "windows-x64", runner: runners.windows.x64, browser: "firefox" }, 2),
         ...(all
-          ? shards({ os: "windows-arm64", runner: runners.windows.arm64, browser: "chromium" }, 2)
+          ? shards({ os: "windows-arm64", runner: runners.windows.arm64, browser: "chromium" }, 3)
           : []),
       ]
     : [];
