@@ -1,5 +1,12 @@
 # @mostra/server
 
+## 0.19.0
+
+### Patch Changes
+
+- Updated dependencies [[`837f993`](https://github.com/mostra-dev/mostra/commit/837f99365ce1c2de2c05095841a68d4942116982), [`837f993`](https://github.com/mostra-dev/mostra/commit/837f99365ce1c2de2c05095841a68d4942116982)]:
+  - @mostra/protocol@0.19.0
+
 ## 0.18.0
 
 ### Patch Changes
