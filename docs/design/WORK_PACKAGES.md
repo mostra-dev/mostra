@@ -538,8 +538,8 @@ Each entry lists the requirements the package owns, then what it builds, what it
 - **Owns:** AU-06, AX-07, EN-03, KT-09, RS-02, LL-06.
 - **Builds:**
   - `mostra new` templates for every family, one-off and long-lived (questionnaire, proposal, prototype or review, dashboard, deck, demo, inbox, tasks, custom), each with AGENTS.md, including a team (roster) form and a hosted-sharing example;
-  - the gallery (prompt, source and result side by side, including the launch demos);
-  - the docs site built with Mostra (generated references, per-page Markdown, `llms.txt`), deployed to GitHub Pages, covering remote servers, the relay, teams and the telemetry event list;
+  - the gallery (prompt, source and result side by side, including the launch demos), on the docs site, with a selection on the project site; each entry can be copied by an agent to use as is or build on;
+  - the docs site, built with a standard static docs generator (generated references, per-page Markdown, `llms.txt`) and served at `docs.mostradev.com` by its own Cloudflare Worker from the release workflow, covering remote servers, the relay, teams and the telemetry event list;
   - an SPA first-class review across the codebase.
 - **Depends on:** WP-24, WP-25.
 - **Evidence:** every template and example passes `verify` in CI with committed baselines; the docs site builds and deploys; Mirza's review of the gallery for "beautiful by default"; long-lived scenarios present in templates, conformance and gallery.
