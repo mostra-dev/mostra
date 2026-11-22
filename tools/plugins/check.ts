@@ -4,16 +4,25 @@
  * harness's documented layout and passes what the directories check first.
  */
 import { existsSync, readFileSync } from "node:fs";
-import { join } from "node:path";
+import { join, posix } from "node:path";
 import { Ajv2020 } from "ajv/dist/2020.js";
 import { parse as parseYaml } from "yaml";
 import { walkTree } from "../lib/files.ts";
+import {
+  CLAUDE_DIRECTORY,
+  EXAMPLES,
+  exampleNames,
+  forClaudeDirectory,
+  splitExampleMarkdown,
+} from "./claude-directory.ts";
 import type { PluginDefinition } from "./definition.ts";
 import {
   CLAUDE_MARKETPLACE,
   CLAUDE_MCP,
   CLAUDE_PLUGIN,
   CODEX_MARKETPLACE,
+  DIRECTORY_MCP,
+  DIRECTORY_PLUGIN,
   GEMINI_EXTENSION,
 } from "./manifests.ts";
 
@@ -429,6 +438,13 @@ export function checkPlugin(
     problems.push(
       "the CLI has `mostra mcp` but the plugin doesn't start it: WP-15 turns on features.localMcp in tools/plugins/definition.ts",
     );
+
+  // Claude's directory's folder (MT-07), held to the directory's own rules beside these.
+  const folder = join(dir, CLAUDE_DIRECTORY);
+  if (definition.features.claudeDirectory.enabled)
+    problems.push(...checkClaudeDirectory(folder, definition, input));
+  else if (existsSync(folder))
+    problems.push(`${CLAUDE_DIRECTORY}/ is there while features.claudeDirectory is off`);
   return problems;
 }
 
@@ -438,4 +454,410 @@ function pngSize(png: Buffer): { width: number; height: number } | undefined {
   if (png.length < 24 || !png.subarray(0, 8).equals(signature)) return undefined;
   if (png.subarray(12, 16).toString("latin1") !== "IHDR") return undefined;
   return { width: png.readUInt32BE(16), height: png.readUInt32BE(20) };
+}
+
+// ---------------------------------------------------------------------------------------------
+// Claude's plugin directory's folder (MT-07)
+
+/** Where each directory rule was read. */
+const PORTAL_REPORT =
+  "claude.ai/directory/manage, the directory's report on the 0.18.0 submission (VERIFIED_FACTS, MT-07)";
+const CHECKLIST = "claude.com/docs/plugins/pre-submission-checklist";
+const MANIFEST_REFERENCE = "code.claude.com/docs/en/plugins/manifest-reference";
+
+/** A folder the directory's rules judge: every entry, and every file's bytes, read once. */
+interface DirectoryFolder {
+  readonly entries: readonly { readonly path: string; readonly kind: string }[];
+  readonly files: ReadonlyMap<string, Buffer>;
+  readonly definition: PluginDefinition;
+  readonly input: CheckInput;
+}
+
+/** One of the directory's rules: what it holds, where it was read and when, and its check. */
+interface DirectoryRule {
+  readonly rule: string;
+  readonly source: string;
+  readonly read: string;
+  readonly check: (folder: DirectoryFolder) => string[];
+}
+
+/** Text, by extension (or none, as `LICENSE` and `NOTICE`): Markdown, plain text, JSON, YAML. */
+const DIRECTORY_TEXT = /(^|\/)[^/.]+$|\.(md|txt|json|ya?ml)$/i;
+/** Images, by extension, each with the bytes its format starts with. */
+const DIRECTORY_IMAGES: readonly (readonly [RegExp, (bytes: Buffer) => boolean])[] = [
+  [
+    /\.png$/i,
+    (b) => b.subarray(0, 8).equals(Buffer.from([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a])),
+  ],
+  [/\.jpe?g$/i, (b) => b[0] === 0xff && b[1] === 0xd8 && b[2] === 0xff],
+  [/\.gif$/i, (b) => /^GIF8[79]a/.test(b.subarray(0, 6).toString("latin1"))],
+  [
+    /\.webp$/i,
+    (b) =>
+      b.subarray(0, 4).toString("latin1") === "RIFF" &&
+      b.subarray(8, 12).toString("latin1") === "WEBP",
+  ],
+  [/\.ico$/i, (b) => b.subarray(0, 4).equals(Buffer.from([0, 0, 1, 0]))],
+];
+/** Package managers' manifests, lockfiles and source settings. */
+const PACKAGE_MANAGER_FILES = new Set([
+  "package.json",
+  "package-lock.json",
+  "npm-shrinkwrap.json",
+  "yarn.lock",
+  "pnpm-lock.yaml",
+  "pnpm-workspace.yaml",
+  "bun.lock",
+  "bun.lockb",
+  "deno.lock",
+  "requirements.txt",
+  "pyproject.toml",
+  "uv.lock",
+  "poetry.lock",
+  "Pipfile",
+  "Pipfile.lock",
+  "Gemfile",
+  "Gemfile.lock",
+  "Cargo.toml",
+  "Cargo.lock",
+  "go.mod",
+  "go.sum",
+  ".pypirc",
+  ...PACKAGE_SOURCES,
+]);
+/** Directories that hold components the folder carries none of. */
+const COMPONENT_DIRECTORIES = ["bin", "hooks", "commands", "agents", "output-styles", "monitors"];
+
+/** Every relative link target of a Markdown text (inline links and images), without its anchor. */
+function markdownLinks(text: string): string[] {
+  const prose = text.replace(/^(`{3,}|~{3,})[^\n]*\n[\s\S]*?^\1[ \t]*$/gm, "");
+  return [...prose.matchAll(/!?\[[^\]]*\]\(\s*<?([^)\s>]+)>?(?:\s+"[^"]*")?\s*\)/g)]
+    .map((match) => match[1] as string)
+    .filter((target) => !/^([a-z][a-z0-9+.-]*:|#)/i.test(target))
+    .map((target) => decodeURI(target.split("#")[0] as string));
+}
+
+/** The repository's Skill, each file by its path below `skills/<name>/`. */
+function repositorySkill(root: string, name: string): Map<string, Buffer> {
+  const source = join(root, "skills", name);
+  return new Map(
+    walkTree(source)
+      .filter((entry) => entry.kind === "file")
+      .map((entry) => [entry.path, readFileSync(join(source, entry.path))] as const),
+  );
+}
+
+/** A JSON file's object, or undefined when it's absent or not a JSON object. */
+function parseJson(bytes: Buffer | undefined): Record<string, unknown> | undefined {
+  if (bytes === undefined) return undefined;
+  try {
+    const value = JSON.parse(bytes.toString("utf8")) as unknown;
+    return value !== null && typeof value === "object" && !Array.isArray(value)
+      ? (value as Record<string, unknown>)
+      : undefined;
+  } catch {
+    return undefined;
+  }
+}
+
+/** Closed shapes, compiled once. */
+const shapes = new Ajv2020({ allErrors: true, strict: false });
+const directoryPlugin = shapes.compile(DIRECTORY_PLUGIN);
+const directoryMcp = shapes.compile(DIRECTORY_MCP);
+const directoryMarketplace = shapes.compile(CLAUDE_MARKETPLACE);
+
+/** The Skill rule: the folder's copy is `forClaudeDirectory` of the repository's, exactly. */
+function skillProblems({ files, definition, input }: DirectoryFolder): string[] {
+  const { compatibility } = definition.features.claudeDirectory;
+  return definition.skills.flatMap((name) => {
+    const prefix = `skills/${name}/`;
+    const source = repositorySkill(input.root, name);
+    const expected = forClaudeDirectory(source, compatibility);
+    const actual = new Map(
+      [...files]
+        .filter(([path]) => path.startsWith(prefix))
+        .map(([path, bytes]) => [path.slice(prefix.length), bytes] as const),
+    );
+    const problems: string[] = [];
+    if ([...expected.keys()].join("\n") !== [...actual.keys()].sort().join("\n"))
+      problems.push(
+        `${prefix} doesn't hold exactly the repository's Skill with its examples as Markdown`,
+      );
+    for (const [path, bytes] of expected) {
+      const copied = actual.get(path);
+      if (copied !== undefined && !copied.equals(bytes))
+        problems.push(`${prefix}${path} differs from the repository's Skill as the folder has it`);
+    }
+    // Each Markdown example gives back its source example's files, byte for byte.
+    for (const example of exampleNames(source)) {
+      const markdown = actual.get(`${EXAMPLES}/${example}.md`);
+      if (markdown === undefined) continue;
+      const own = `${EXAMPLES}/${example}/`;
+      const want = [...source].filter(([path]) => path.startsWith(own));
+      try {
+        const back = splitExampleMarkdown(markdown.toString("utf8"));
+        if (back.size !== want.length)
+          problems.push(`${prefix}${EXAMPLES}/${example}.md doesn't hold the example's files`);
+        for (const [path, bytes] of want) {
+          const file = path.slice(own.length);
+          if (back.get(file) !== bytes.toString("utf8"))
+            problems.push(`${prefix}${EXAMPLES}/${example}.md doesn't give back ${file} exactly`);
+        }
+      } catch (error) {
+        problems.push(`${prefix}${EXAMPLES}/${example}.md: ${(error as Error).message}`);
+      }
+    }
+    const main = actual.get("SKILL.md")?.toString("utf8") ?? "";
+    const frontmatter = /^---\n([\s\S]*?)\n---\n/.exec(main);
+    const field = frontmatter
+      ? (parseYaml(frontmatter[1] as string) as { compatibility?: unknown }).compatibility
+      : undefined;
+    if (field !== compatibility)
+      problems.push(`${prefix}SKILL.md's compatibility isn't the folder's`);
+    if (typeof field === "string" && field.length > 500)
+      problems.push(`${prefix}SKILL.md's compatibility is over 500 characters`);
+    return problems;
+  });
+}
+
+const DIRECTORY_RULES: readonly DirectoryRule[] = [
+  {
+    rule: "regular files and folders only: no symbolic link, submodule or other entry",
+    source: CHECKLIST,
+    read: "2026-11-22",
+    check: ({ entries }) =>
+      entries.flatMap(({ path, kind }) =>
+        kind === "link" || kind === "other" ? [`${path} isn't a regular file or folder`] : [],
+      ),
+  },
+  {
+    rule: "every file is UTF-8 Markdown, plain text, JSON or YAML, or a PNG, JPEG, GIF, WebP or ICO image",
+    source: PORTAL_REPORT,
+    read: "2026-11-21",
+    check: ({ files }) =>
+      [...files].flatMap(([path, bytes]) => {
+        const image = DIRECTORY_IMAGES.find(([pattern]) => pattern.test(path));
+        if (image) return image[1](bytes) ? [] : [`${path} isn't the image its name says`];
+        if (!DIRECTORY_TEXT.test(path))
+          return [`${path} isn't Markdown, plain text, JSON, YAML or an image the directory takes`];
+        return isText(bytes) ? [] : [`${path} isn't UTF-8 text`];
+      }),
+  },
+  {
+    rule: "no file starts with #!",
+    source: PORTAL_REPORT,
+    read: "2026-11-21",
+    check: ({ files }) =>
+      [...files].flatMap(([path, bytes]) =>
+        bytes.subarray(0, 2).toString("latin1") === "#!" ? [`${path} starts with #!`] : [],
+      ),
+  },
+  {
+    rule: "no package manager's manifest, lockfile or source setting",
+    source: `${PORTAL_REPORT}; ${CHECKLIST}`,
+    read: "2026-11-22",
+    check: ({ entries }) =>
+      entries.flatMap(({ path }) =>
+        PACKAGE_MANAGER_FILES.has(path.split("/").at(-1) as string)
+          ? [`${path} is a package manager's file`]
+          : [],
+      ),
+  },
+  {
+    rule: "one .claude-plugin/ and one .mcp.json, at the folder's root",
+    source: PORTAL_REPORT,
+    read: "2026-11-21",
+    check: ({ entries }) =>
+      entries.flatMap(({ path }) => {
+        const name = path.split("/").at(-1) as string;
+        if (name === ".claude-plugin" && path !== ".claude-plugin")
+          return [`${path} is a second .claude-plugin folder`];
+        if (name === ".mcp.json" && path !== ".mcp.json") return [`${path} is a second .mcp.json`];
+        if (name === "mcp.json") return [`${path} declares servers outside .mcp.json`];
+        return [];
+      }),
+  },
+  {
+    rule: "no .svg but the manifest's icon",
+    source: PORTAL_REPORT,
+    read: "2026-11-21",
+    check: ({ files }) => {
+      const manifest = parseJson(files.get(".claude-plugin/plugin.json"));
+      const icon = String(manifest?.["icon"] ?? "").replace(/^\.\//, "");
+      return [...files.keys()].flatMap((path) =>
+        path.toLowerCase().endsWith(".svg") && path !== icon
+          ? [`${path} is an .svg other than the icon`]
+          : [],
+      );
+    },
+  },
+  {
+    rule: ".mcp.json declares only servers at an https:// URL, none that starts a program",
+    source: `${PORTAL_REPORT}; ${CHECKLIST}`,
+    read: "2026-11-22",
+    check: ({ files, definition }) => {
+      const mcp = files.get(".mcp.json");
+      const remote = definition.features.remoteMcp;
+      if (mcp === undefined)
+        return remote.enabled ? [".mcp.json is missing while features.remoteMcp is on"] : [];
+      if (!remote.enabled) return [".mcp.json declares a server no feature turns on"];
+      const value = parseJson(mcp);
+      if (value === undefined) return [".mcp.json isn't a JSON object"];
+      const servers = serversOf(value);
+      const problems = servers.flatMap(([server, config]) =>
+        "command" in config ? [`.mcp.json's server ${server} starts a program`] : [],
+      );
+      if (!directoryMcp(value))
+        problems.push(`.mcp.json breaks its shape: ${shapes.errorsText(directoryMcp.errors)}`);
+      if (!servers.some(([, config]) => config["url"] === remote.url))
+        problems.push(`.mcp.json doesn't name the remote server ${String(remote.url)}`);
+      return problems;
+    },
+  },
+  {
+    rule: "the manifest holds only the listing's documented fields, and no component",
+    source: `${MANIFEST_REFERENCE}; ${PORTAL_REPORT}`,
+    read: "2026-11-22",
+    check: ({ files, definition, input }) => {
+      const manifest = parseJson(files.get(".claude-plugin/plugin.json"));
+      if (manifest === undefined) return [".claude-plugin/plugin.json is missing or isn't JSON"];
+      const problems: string[] = [];
+      if (!directoryPlugin(manifest))
+        problems.push(
+          `.claude-plugin/plugin.json breaks its shape: ${shapes.errorsText(directoryPlugin.errors)}`,
+        );
+      if (manifest["name"] !== definition.name)
+        problems.push(`.claude-plugin/plugin.json names ${String(manifest["name"])}`);
+      if (manifest["version"] !== input.version)
+        problems.push(
+          `.claude-plugin/plugin.json is at ${String(manifest["version"])}, not ${input.version}`,
+        );
+      const icon = manifest["icon"];
+      if (typeof icon === "string" && !files.has(icon.replace(/^\.\//, "")))
+        problems.push(`.claude-plugin/plugin.json's icon ${icon} isn't in the folder`);
+      if (definition.icon !== undefined && icon === undefined)
+        problems.push(
+          ".claude-plugin/plugin.json names no icon, which the listing takes from its first submission",
+        );
+      const market = parseJson(files.get(".claude-plugin/marketplace.json"));
+      if (market === undefined)
+        problems.push(".claude-plugin/marketplace.json is missing or isn't JSON");
+      else if (!directoryMarketplace(market))
+        problems.push(
+          `.claude-plugin/marketplace.json breaks its shape: ${shapes.errorsText(directoryMarketplace.errors)}`,
+        );
+      return problems;
+    },
+  },
+  {
+    rule: "nothing starts a program, sets where packages come from or reads an environment variable",
+    source: `${PORTAL_REPORT}; ${CHECKLIST}; ${MANIFEST_REFERENCE}`,
+    read: "2026-11-22",
+    check: ({ entries, files }) => [
+      ...entries.flatMap(({ path, kind }) =>
+        kind === "directory" && COMPONENT_DIRECTORIES.includes(path)
+          ? [`${path}/ is a folder of components the folder carries none of`]
+          : [],
+      ),
+      ...[...files].flatMap(([path, bytes]) => {
+        if (!path.endsWith(".json")) return [];
+        const problems: string[] = [];
+        const value = parseJson(bytes);
+        if (value !== undefined && hasKey(value, "hooks")) problems.push(`${path} declares hooks`);
+        if (bytes.toString("utf8").includes("${")) problems.push(`${path} reads a variable`);
+        return problems;
+      }),
+    ],
+  },
+  {
+    rule: "every relative link in a Markdown file resolves to a file or folder inside the folder",
+    source: `${CHECKLIST} (people who install a plugin get only its folder)`,
+    read: "2026-11-22",
+    check: ({ entries, files }) => {
+      const present = new Set(entries.map((entry) => entry.path));
+      return [...files].flatMap(([path, bytes]) => {
+        if (!path.endsWith(".md")) return [];
+        const base = posix.dirname(path);
+        return markdownLinks(bytes.toString("utf8")).flatMap((target) => {
+          if (posix.isAbsolute(target)) return [`${path} links to ${target}, outside the folder`];
+          const resolved = posix.normalize(posix.join(base, target)).replace(/\/$/, "");
+          if (resolved === ".." || resolved.startsWith("../"))
+            return [`${path} links to ${target}, outside the folder`];
+          return present.has(resolved)
+            ? []
+            : [`${path} links to ${target}, which the folder lacks`];
+        });
+      });
+    },
+  },
+  {
+    rule: "the Skill is the repository's, but for its examples as Markdown, their links and its compatibility field",
+    source: "MT-07's specification",
+    read: "2026-11-22",
+    check: skillProblems,
+  },
+  {
+    rule: "a README of at least 40 words outside code blocks that discloses the remote server, its sign-in and its privacy policy, and a LICENSE",
+    source: CHECKLIST,
+    read: "2026-11-22",
+    check: ({ files, definition }) => {
+      const problems: string[] = [];
+      const readme = files.get("README.md")?.toString("utf8");
+      if (readme === undefined) problems.push("README.md is missing");
+      else {
+        const prose = readme.replace(/```[\s\S]*?```/g, "");
+        if (prose.split(/\s+/).filter(Boolean).length < 40)
+          problems.push("README.md has under 40 words outside code blocks");
+        const { remoteMcp } = definition.features;
+        if (remoteMcp.enabled) {
+          for (const destination of [remoteMcp.url, remoteMcp.privacyPolicyUrl])
+            if (destination !== undefined && !readme.includes(destination))
+              problems.push(`README.md doesn't disclose ${destination}`);
+          if (!/sign in/i.test(readme))
+            problems.push("README.md doesn't say how the server signs in");
+        }
+      }
+      if (!files.has("LICENSE")) problems.push("LICENSE is missing");
+      return problems;
+    },
+  },
+];
+
+/** The directory's rules as the check holds them: each with its source and the day it was read. */
+export function claudeDirectoryRules(): readonly {
+  readonly rule: string;
+  readonly source: string;
+  readonly read: string;
+}[] {
+  return DIRECTORY_RULES.map(({ rule, source, read }) => ({ rule, source, read }));
+}
+
+/**
+ * Holds the folder `claude-directory/` to the rules Claude's plugin directory applies to a plugin
+ * from an organization that isn't verified (MT-07). Each problem names the path it found and the
+ * rule it breaks, with that rule's source and the day it was read; an empty list is a folder with
+ * nothing the directory blocks, as far as a repository can tell offline. The portal's own
+ * validation goes further (docs/agents/check-harness-plugins.md).
+ */
+export function checkClaudeDirectory(
+  dir: string,
+  definition: PluginDefinition,
+  input: CheckInput,
+): string[] {
+  if (!existsSync(dir))
+    return [`${CLAUDE_DIRECTORY}/ is missing while features.claudeDirectory is on`];
+  const entries = walkTree(dir);
+  const files = new Map(
+    entries
+      .filter((entry) => entry.kind === "file")
+      .map((entry) => [entry.path, readFileSync(join(dir, entry.path))] as const),
+  );
+  const folder: DirectoryFolder = { entries, files, definition, input };
+  const problems: string[] = [];
+  for (const rule of DIRECTORY_RULES)
+    for (const problem of rule.check(folder))
+      problems.push(
+        `${CLAUDE_DIRECTORY}/${problem} (the directory's rule: ${rule.rule}; ${rule.source}, read ${rule.read})`,
+      );
+  return problems;
 }
