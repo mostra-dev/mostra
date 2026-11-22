@@ -544,9 +544,11 @@ jobs:
       matrix:
         leg: ${{ fromJSON(needs.plan.outputs.e2e) }}
     runs-on: ${{ matrix.leg.runner }}
-    # The tests take about 10 minutes at most; the rest is room for a slow mirror's first run on an
-    # image (#58), before its downloads are cached.
-    timeout-minutes: &e2e-timeout 25
+    # On Linux and Windows the tests take up to about 20 minutes (Windows arm64's emulated Chromium
+    # in three parts); the rest is room for a slow mirror's first run on an image (#58), before its
+    # downloads are cached. macOS's runners vary most: its WebKit took 8.6 to 23 minutes on the
+    # same suite in one day (WP-18's runs), so its legs get 35.
+    timeout-minutes: &e2e-timeout ${{ matrix.leg.os == 'macos' && 35 || 25 }}
     env: &e2e-env
       MOSTRA_E2E_BROWSER: ${{ matrix.leg.browser }}
       MOSTRA_E2E_SHARD: ${{ matrix.leg.shard || '' }}
