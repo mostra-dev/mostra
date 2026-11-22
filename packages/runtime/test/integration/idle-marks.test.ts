@@ -138,6 +138,10 @@ export default function Page() {
   }, 30_000);
 
   it("writes a moved head and a moved relay mark at the next tick, then is quiet again", async () => {
+    // The marks before anything happens: read after the submission, the tick may already have
+    // written its move under load, and the move would go unseen (WP-18's merge queue,
+    // run 45054944675, macOS: "expected 7 to be greater than 7").
+    const before = marks();
     // A submission appends events to the hosted home: its head moves.
     const browser = new Browser();
     const opened = await openLink(browser, url);
@@ -164,7 +168,6 @@ export default function Page() {
       },
     );
     expect(submitted.status, submitted.body).toBe(200);
-    const before = marks();
     await eventually(async () => marks().high_cursor === head(), 5_000);
     expect(marks().high_cursor).toBeGreaterThan(before.high_cursor);
     expect(marks().incarnation).toBe(before.incarnation);
