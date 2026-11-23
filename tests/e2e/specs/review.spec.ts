@@ -373,6 +373,10 @@ test.describe("the artifact can't hide or forge the review overlay (RV-04)", () 
       const stage = await page.locator(".mostra-frame").boundingBox();
       if (!stage) throw new Error("the frame has no box");
       for (let sample = 0; sample < 10; sample += 1) {
+        // Where the pin stands, not where its drop-in animation passes through.
+        await pin.evaluate((element) =>
+          Promise.all(element.getAnimations().map((animation) => animation.finished)),
+        );
         const box = await pin.boundingBox();
         expect(box, "the pin is drawn").not.toBeNull();
         if (!box) break;

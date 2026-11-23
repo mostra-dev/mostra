@@ -146,11 +146,53 @@ export function labelOf(element: Element): string | undefined {
     (element as HTMLImageElement).alt ??
     element.getAttribute("title");
   const text = named && named.trim() !== "" ? named.trim() : textOf(element);
-  if (text === "") return element.localName;
+  const role = element.getAttribute("role") ?? ROLE_WORDS[element.localName];
+  if (text === "") return role ?? element.localName;
   const short = text.length > 60 ? `${text.slice(0, 59)}…` : text;
-  const role = element.getAttribute("role") ?? element.localName;
-  return `${role} "${short}"`;
+  return role === undefined ? `"${short}"` : `${role} "${short}"`;
 }
+
+/** What people call an element of each kind, its implicit role in plain words. */
+const ROLE_WORDS: Readonly<Record<string, string>> = {
+  h1: "heading",
+  h2: "heading",
+  h3: "heading",
+  h4: "heading",
+  h5: "heading",
+  h6: "heading",
+  p: "paragraph",
+  a: "link",
+  button: "button",
+  img: "image",
+  picture: "image",
+  svg: "graphic",
+  canvas: "drawing",
+  video: "video",
+  audio: "audio",
+  iframe: "embedded page",
+  input: "field",
+  textarea: "text field",
+  select: "choice",
+  label: "label",
+  li: "list item",
+  ul: "list",
+  ol: "list",
+  table: "table",
+  tr: "row",
+  td: "cell",
+  th: "column heading",
+  nav: "navigation",
+  header: "header",
+  footer: "footer",
+  section: "section",
+  article: "article",
+  aside: "aside",
+  figure: "figure",
+  form: "form",
+  blockquote: "quote",
+  code: "code",
+  pre: "code",
+};
 
 /** The element's box in its document's coordinates. */
 export function documentRect(element: Element): AnchorRect {

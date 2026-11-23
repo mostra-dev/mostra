@@ -54,6 +54,27 @@ interface Draft {
   };
 }
 
+/**
+ * Where a pin stands on its anchor's box now: at the place the person pointed, kept at the same
+ * share of the box as the box moves or grows; at the box's top right corner for an anchor that
+ * names no point (a whole element, a provider's place).
+ */
+function pinPoint(
+  anchor: ReviewAnchor,
+  box: { readonly x: number; readonly y: number; readonly width: number; readonly height: number },
+): { readonly x: number; readonly y: number } {
+  const point = anchor.point;
+  const rect = anchor.rect;
+  if (!point || !rect || rect.width <= 0 || rect.height <= 0) {
+    return { x: box.x + box.width, y: box.y };
+  }
+  const share = (value: number): number => Math.min(1, Math.max(0, value));
+  return {
+    x: box.x + share((point.x - rect.x) / rect.width) * box.width,
+    y: box.y + share((point.y - rect.y) / rect.height) * box.height,
+  };
+}
+
 /** The state the overlay shares with the page around it. */
 export interface ReviewState {
   readonly threads: readonly ReviewThread[];
@@ -155,12 +176,21 @@ export function useReview(options: ReviewOptions): Review {
     });
   }, [tracked, agent, bridge]);
 
+  // A page reports every anchor it tracks, a lost one without a box. One it leaves out keeps the
+  // place it had, so a page that leaves pins out of its reports can't make them flicker (RV-04).
   const onPositions = useCallback((positions: readonly AnchorPosition[]) => {
-    setState((current) => ({
-      ...current,
-      positions: new Map(positions.map((position) => [position.id, position])),
-    }));
+    setState((current) => {
+      const next = new Map(current.positions);
+      for (const position of positions) next.set(position.id, position);
+      return { ...current, positions: next };
+    });
   }, []);
+  // A new view's page reports its own places.
+  const [positionsView, setPositionsView] = useState(options.viewId);
+  if (positionsView !== options.viewId) {
+    setPositionsView(options.viewId);
+    setState((current) => ({ ...current, positions: new Map() }));
+  }
 
   /** What is at a point of the frame: the page's anchor, or the point alone (an older page). */
   const hit = useCallback(async (x: number, y: number): Promise<Draft | undefined> => {
@@ -423,8 +453,8 @@ export function ReviewLayer(props: {
             // A page reports where its anchors are; a pin stays whole inside the page's box
             // wherever it says, so a page can move its pins but never take them off the page.
             style={{
-              left: `clamp(calc(var(--pin) / 2), ${at.x + at.width}px, calc(100% - var(--pin) / 2))`,
-              top: `clamp(calc(var(--pin) / 2), ${at.y}px, calc(100% - var(--pin) / 2))`,
+              left: `clamp(calc(var(--pin) / 2), ${pinPoint(thread.anchor, at).x}px, calc(100% - var(--pin) / 2))`,
+              top: `clamp(calc(var(--pin) / 2), ${pinPoint(thread.anchor, at).y}px, calc(100% - var(--pin) / 2))`,
             }}
             aria-label={REVIEW_WORDS.pinLabel(number, first?.author.name, first?.text ?? "")}
             onClick={() => review.open(thread.id)}
@@ -438,8 +468,8 @@ export function ReviewLayer(props: {
           className="mostra-pin mostra-pin-draft"
           aria-hidden="true"
           style={{
-            left: review.draft.box.x + review.draft.box.width,
-            top: review.draft.box.y,
+            left: pinPoint(review.draft.anchor, review.draft.box).x,
+            top: pinPoint(review.draft.anchor, review.draft.box).y,
           }}
         />
       )}
@@ -633,7 +663,7 @@ function ThreadCard(props: {
             type="button"
             className="mostra-pin mostra-pin-static"
             onClick={() => review.open(thread.id)}
-            aria-label={REVIEW_WORDS.show}
+            aria-label={REVIEW_WORDS.show(props.number)}
           >
             {props.number}
           </button>
@@ -844,7 +874,8 @@ export function CommentButton(props: { readonly review: Review }): ReactElement 
   const count = review.state.threads.filter((thread) => thread.status === "open").length;
   const on = review.mode || review.panel;
   const words = review.mode ? REVIEW_WORDS.pointHint : REVIEW_WORDS.comment;
-  // On a phone only the icon and the count show: the name is the label, for every reader.
+  // Its name is its words and, for screen readers, what the count counts; on a phone the words are
+  // hidden from sight only, so the name stays the same for every reader.
   const name = count > 0 ? `${words}, ${REVIEW_WORDS.countLabel(count)}` : words;
   return (
     <button
@@ -852,7 +883,6 @@ export function CommentButton(props: { readonly review: Review }): ReactElement 
       className="mostra-pill mostra-comment-button"
       data-mostra-comment-button={review.mode ? "commenting" : on ? "open" : "closed"}
       aria-pressed={on}
-      aria-label={name}
       title={name}
       onClick={() => {
         if (review.mode) {
@@ -865,13 +895,14 @@ export function CommentButton(props: { readonly review: Review }): ReactElement 
       }}
     >
       <CommentIcon />
-      <span className="mostra-button-text" aria-hidden="true">
-        {words}
-      </span>
+      <span className="mostra-button-text">{words}</span>
       {count > 0 && (
-        <span className="mostra-count" aria-hidden="true">
-          {count}
-        </span>
+        <>
+          <span className="mostra-count" aria-hidden="true">
+            {count}
+          </span>
+          <span className="mostra-sr">, {REVIEW_WORDS.countLabel(count)}</span>
+        </>
       )}
     </button>
   );

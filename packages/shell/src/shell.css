@@ -1167,7 +1167,8 @@ body {
 .mostra-comment-button[aria-pressed="true"] {
   border-color: var(--foreground);
 }
-.mostra-comment-button[data-mostra-comment-button="commenting"] {
+.mostra-comment-button[data-mostra-comment-button="commenting"],
+.mostra-pill.mostra-comment-button[data-mostra-comment-button="commenting"]:hover {
   background: var(--foreground);
   color: var(--background);
   border-color: var(--foreground);
@@ -1377,8 +1378,14 @@ body {
   font-size: 0.8125rem;
 }
 @media (max-width: 720px) {
+  /* Out of sight, never out of its name. */
   .mostra-comment-button .mostra-button-text {
-    display: none;
+    position: absolute;
+    inline-size: 1px;
+    block-size: 1px;
+    overflow: hidden;
+    clip-path: inset(50%);
+    white-space: nowrap;
   }
   .mostra-comment-button {
     padding: 0 12px;
@@ -1396,6 +1403,12 @@ body {
     border-radius: 16px 16px 0 0;
     box-shadow: var(--shadow-float);
     z-index: 30;
+  }
+  /* The sheet stands on the dock, never over it: the trusted Submit stays in reach. */
+  .mostra-page:has(.mostra-actionbar[data-mostra-dock]) .mostra-review-panel {
+    inset-block-end: calc(var(--dock-height) + env(safe-area-inset-bottom));
+    max-block-size: calc(62vh - var(--dock-height));
+    padding-block-end: 16px;
   }
   .mostra-pin {
     --pin: 30px;

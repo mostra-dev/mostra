@@ -269,7 +269,7 @@ export const REVIEW_WORDS = {
   cancel: "Cancel",
   resolve: "Resolve",
   reopen: "Reopen",
-  show: "Show on the page",
+  show: (number: number): string => `Show comment ${String(number)} on the page`,
   closePanel: "Close comments",
   you: "You",
   someone: "Someone",

@@ -639,7 +639,14 @@ export function ViewerPage(props: {
       onEvents: (events) => {
         setState((current) => withEvents(current, events));
         // A comment someone made or changed that this page may see (WP-20).
-        if (events.some((event) => event.type.startsWith("review."))) void refreshReview.current();
+        // A submission may close the draft, and its comments with it.
+        if (
+          events.some(
+            (event) => event.type.startsWith("review.") || event.type === "submission.created",
+          )
+        ) {
+          void refreshReview.current();
+        }
         // Another tab's submission: the receipt reads it whole.
         if (events.some((event) => event.type === "submission.created")) {
           void readSnapshot(target.apiBase, ticket.viewId).then((snapshot) => {
@@ -1052,6 +1059,7 @@ export function ViewerPage(props: {
         String(revision),
       );
       setState((latest) => withSubmission(latest, submission));
+      void refreshReview.current();
     } catch (error) {
       if (error instanceof ShellError && error.code === "MOSTRA_SUBMIT_ALREADY") {
         const existing = (error.body as { submission?: ViewState["submission"] } | undefined)
