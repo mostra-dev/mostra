@@ -46,6 +46,13 @@ for (const mode of MODES) {
       /** Checks the shell's document (axe, no sideways scroll) and photographs it when asked. */
       const shoot = async (name: string): Promise<void> => {
         await page.evaluate(() => document.fonts.ready.then(() => true));
+        // The trusted controls take no click for 500 ms after they appear or change (SH-02): the
+        // checks are of the page a person acts on.
+        await page.waitForFunction(
+          () =>
+            document.querySelector("[data-mostra-trusted]") === null ||
+            document.querySelector("[data-mostra-trusted][data-mostra-armed]") !== null,
+        );
         // Colours fade between states even with reduced motion: judge and photograph the state a
         // person sees once it settled.
         await page
