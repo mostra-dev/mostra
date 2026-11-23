@@ -96,6 +96,8 @@ Every check runs through the real interface: a real daemon over the host protoco
 - **The third** (45158488880): the review surfaces suite judged the trusted Submit while it was still arming (its colours fading in); it now waits for it, as a person's click must; the React budget again (69 and 46 kB).
 - **The fourth** (45185569251, after merging `main`): every job green but Firefox's review surfaces in dark, on Linux, macOS and Windows: Playwright's emulated dark scheme doesn't reach the shell's page in Firefox (its `prefers-color-scheme` reads light there), so the shell was light and so was the crop. The check now compares the crop with what the shell showed; dark crops are proven in Chromium and WebKit.
 
+- **The fifth** (45197747940): every job green after a rerun of three legs cancelled at their limits on slow runners (Windows arm64's `windows` group at its 14-minute deadline, which it neared in the run before too; macOS `rust`; darwin-arm64's release smoke), but macOS `remote-access`, which GitHub gave no runner in 15 minutes three times running, nor the `starved` job's retry (#210's class: GitHub's macOS capacity, no test ran).
+
 ## Deviations
 
 - **Candidates that are other versions or artifacts** (ROUND-3 §2's `<Candidate artifact version>`, shown in sibling frames) aren't built: RV-03's check names surfaces within one artifact, and another artifact's frame needs a capability the page's link doesn't hold. A later package can add them to the same `ReviewSet` additively.
