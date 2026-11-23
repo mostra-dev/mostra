@@ -249,6 +249,7 @@ export function buildPlugin(definition: PluginDefinition, input: BuildInput): Pl
       license,
       notice,
       remote,
+      manifest: tree.get(".claude-plugin/plugin.json") as string,
     });
     for (const [path, contents] of folder) tree.set(`${CLAUDE_DIRECTORY}/${path}`, contents);
   }

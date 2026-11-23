@@ -221,6 +221,13 @@ export interface DirectoryInput {
   readonly notice: Buffer;
   /** The remote server, when the feature is on: the folder's only MCP server. */
   readonly remote: { readonly url: string; readonly privacy: string } | undefined;
+  /**
+   * The root's `.claude-plugin/plugin.json`, which the folder carries as it is: its fields are the
+   * ones Claude Code's manifest reference documents, and the directory's report on the root named
+   * none it refuses (`documentationUrl`, `supportUrl` and `privacyPolicyUrl` it reads for the
+   * listing, "no action needed"; VERIFIED_FACTS, MT-07). The icon's path is the same in both.
+   */
+  readonly manifest: string;
 }
 
 const json = (value: unknown): string => `${JSON.stringify(value, null, 2)}\n`;
@@ -236,23 +243,7 @@ export function buildClaudeDirectory(
   const { version, remote } = input;
   const tree = new Map<string, string | Buffer>();
   const author = { name: definition.author.name, url: definition.author.url };
-  // Only the fields Claude Code's manifest reference documents for a listing (VERIFIED_FACTS,
-  // MT-07), and none the directory's report named unknown.
-  tree.set(
-    ".claude-plugin/plugin.json",
-    json({
-      name: definition.name,
-      version,
-      description: definition.description,
-      author,
-      homepage: definition.homepage,
-      repository: definition.repository,
-      license: definition.license,
-      keywords: definition.keywords,
-      ...(input.icon ? { icon: `./${DIRECTORY_ICON}` } : {}),
-      ...(remote ? { privacyPolicyUrl: remote.privacy } : {}),
-    }),
-  );
+  tree.set(".claude-plugin/plugin.json", input.manifest);
   if (input.icon) tree.set(DIRECTORY_ICON, input.icon);
   tree.set(
     ".claude-plugin/marketplace.json",

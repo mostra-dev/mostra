@@ -186,29 +186,12 @@ export const CODEX_MARKETPLACE = {
 } as const;
 
 /**
- * The directory folder's `.claude-plugin/plugin.json` (MT-07): the listing's fields Claude Code's
- * manifest reference documents ("Directory listing fields", code.claude.com/docs/en/plugins/
- * manifest-reference, read 2026-11-22), with no component and none of the fields the directory's
- * report on the 0.18.0 submission named unknown (VERIFIED_FACTS, MT-07). The root's manifest keeps
- * those, since Claude Code itself takes them.
+ * The directory folder's `.claude-plugin/plugin.json` (MT-07): the root's own manifest, the same
+ * closed shape (the listing fields Claude Code's manifest reference documents, read 2026-11-22).
+ * The directory's report on the root's 0.18.0 named `documentationUrl`, `supportUrl` and
+ * `privacyPolicyUrl` as fields it reads for the listing, "no action needed" (VERIFIED_FACTS, MT-07).
  */
-export const DIRECTORY_PLUGIN = {
-  type: "object",
-  required: ["name", "version", "description", "author", "license"],
-  additionalProperties: false,
-  properties: {
-    name,
-    version,
-    description: text,
-    author,
-    homepage: https,
-    repository: https,
-    license: text,
-    keywords,
-    icon: { type: "string", pattern: "^\\./" },
-    privacyPolicyUrl: https,
-  },
-} as const;
+export const DIRECTORY_PLUGIN = CLAUDE_PLUGIN;
 
 /**
  * The directory folder's `.mcp.json`: remote servers only, each by HTTPS URL. "MCP servers that

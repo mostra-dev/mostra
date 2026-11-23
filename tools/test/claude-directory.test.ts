@@ -92,7 +92,7 @@ function outside(tree: PluginTree): Map<string, Buffer> {
 
 describe("Claude's directory's folder (MT-07)", () => {
   it("builds a folder with the Skill and only the remote server, which every rule passes", () => {
-    const { folder, check } = built();
+    const { dir, folder, check } = built();
     expect(check()).toEqual([]);
     const paths = walkTree(folder)
       .filter((entry) => entry.kind === "file")
@@ -119,21 +119,19 @@ describe("Claude's directory's folder (MT-07)", () => {
     expect(readJson(folder, ".mcp.json")).toEqual({
       mcpServers: { "mostra-remote": { type: "http", url: PLUGIN.features.remoteMcp.url } },
     });
-    const manifest = readJson(folder, ".claude-plugin/plugin.json");
-    expect(Object.keys(manifest).sort()).toEqual(
-      [
-        "author",
-        "description",
-        "homepage",
-        "icon",
-        "keywords",
-        "license",
-        "name",
-        "privacyPolicyUrl",
-        "repository",
-        "version",
-      ].sort(),
+    // The root's own manifest, byte for byte: the listing reads the same fields from both.
+    expect(readFileSync(join(folder, ".claude-plugin/plugin.json"))).toEqual(
+      readFileSync(join(dir, ".claude-plugin/plugin.json")),
     );
+    const manifest = readJson(folder, ".claude-plugin/plugin.json");
+    for (const field of [
+      "displayName",
+      "documentationUrl",
+      "supportUrl",
+      "privacyPolicyUrl",
+      "icon",
+    ])
+      expect(manifest, field).toHaveProperty(field);
     expect(manifest).toMatchObject({ name: "mostra", version: "1.2.3" });
     // The icon is the root's, byte for byte: the listing keeps its first submission's.
     expect(readFileSync(join(folder, ".claude-plugin/icon.png"))).toEqual(
@@ -336,12 +334,12 @@ describe("Claude's directory's folder (MT-07)", () => {
         /\.mcp\.json is missing while features\.remoteMcp is on/,
       ],
       [
-        "a field the report named unknown",
+        "a field Claude Code's reference doesn't document",
         (f) => {
           const manifest = readJson(f, ".claude-plugin/plugin.json");
           writeFileSync(
             join(f, ".claude-plugin/plugin.json"),
-            JSON.stringify({ ...manifest, documentationUrl: "https://example.com/docs" }),
+            JSON.stringify({ ...manifest, category: "Productivity" }),
           );
         },
         /plugin\.json breaks its shape/,
@@ -492,7 +490,6 @@ describe("Claude's directory's folder (MT-07)", () => {
     expect(problems).toMatch(/assets\/examples\/decision\/index\.tsx isn't Markdown/);
     expect(problems).toMatch(/assets\/examples\/inbox\/actions\.ts isn't Markdown/);
     expect(problems).toMatch(/server mostra starts a program/);
-    expect(problems).toMatch(/\.claude-plugin\/plugin\.json breaks its shape/);
   });
 
   it("names each rule's source and the day it was read", () => {

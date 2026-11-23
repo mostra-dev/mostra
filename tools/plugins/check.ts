@@ -461,7 +461,7 @@ function pngSize(png: Buffer): { width: number; height: number } | undefined {
 
 /** Where each directory rule was read. */
 const PORTAL_REPORT =
-  "claude.ai/directory/manage, the directory's report on the 0.18.0 submission (VERIFIED_FACTS, MT-07)";
+  "claude.ai/directory/manage, the directory's report on the 0.18.0 submission and its validation of the folder (VERIFIED_FACTS, MT-07)";
 const CHECKLIST = "claude.com/docs/plugins/pre-submission-checklist";
 const MANIFEST_REFERENCE = "code.claude.com/docs/en/plugins/manifest-reference";
 
@@ -655,7 +655,7 @@ const DIRECTORY_RULES: readonly DirectoryRule[] = [
   {
     rule: "every file is UTF-8 Markdown, plain text, JSON or YAML, or a PNG, JPEG, GIF, WebP or ICO image",
     source: PORTAL_REPORT,
-    read: "2026-11-21",
+    read: "2026-11-23",
     check: ({ files }) =>
       [...files].flatMap(([path, bytes]) => {
         const image = DIRECTORY_IMAGES.find(([pattern]) => pattern.test(path));
@@ -668,7 +668,7 @@ const DIRECTORY_RULES: readonly DirectoryRule[] = [
   {
     rule: "no file starts with #!",
     source: PORTAL_REPORT,
-    read: "2026-11-21",
+    read: "2026-11-23",
     check: ({ files }) =>
       [...files].flatMap(([path, bytes]) =>
         bytes.subarray(0, 2).toString("latin1") === "#!" ? [`${path} starts with #!`] : [],
@@ -688,7 +688,7 @@ const DIRECTORY_RULES: readonly DirectoryRule[] = [
   {
     rule: "one .claude-plugin/ and one .mcp.json, at the folder's root",
     source: PORTAL_REPORT,
-    read: "2026-11-21",
+    read: "2026-11-23",
     check: ({ entries }) =>
       entries.flatMap(({ path }) => {
         const name = path.split("/").at(-1) as string;
@@ -702,7 +702,7 @@ const DIRECTORY_RULES: readonly DirectoryRule[] = [
   {
     rule: "no .svg but the manifest's icon",
     source: PORTAL_REPORT,
-    read: "2026-11-21",
+    read: "2026-11-23",
     check: ({ files }) => {
       const manifest = parseJson(files.get(".claude-plugin/plugin.json"));
       const icon = String(manifest?.["icon"] ?? "").replace(/^\.\//, "");

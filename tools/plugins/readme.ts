@@ -76,6 +76,10 @@ function directoryHead(definition: PluginDefinition, version: string, servers: S
     "",
     `${definition.longDescription}`,
     "",
+    // The walkthrough's own opening prompt (skills/mostra/references/walkthrough.md), so anyone who
+    // finds the listing can try Mostra in one message.
+    `**Try it:** ask Claude "Show me what Mostra can do", and it builds one live page for your own work.`,
+    "",
     `This plugin gives Claude the Mostra Agent Skill: how to write, verify, publish and share an artifact, and read the answers back.${servers.remote ? " It also connects Mostra's remote MCP server, whose tools take Claude through the same steps from any Claude app." : ""} Where Claude has a shell, as in Claude Code, the Skill can run Mostra ${version} itself, through \`npx -y @mostra/cli@${version}\` when \`mostra\` isn't installed.`,
     "",
     `This is the build of Mostra's plugin for Claude's directory. The full plugin, which also starts Mostra's local MCP server and installs in Claude Code, Codex, GitHub Copilot CLI, Gemini CLI, Cursor and other agents, is the root of ${definition.repository}. The \`mostra\` command line is the npm package \`@mostra/cli\`. Mostra's source, documentation and issues are at ${definition.homepage}.`,
