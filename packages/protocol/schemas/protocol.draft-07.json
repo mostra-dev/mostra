@@ -3902,6 +3902,10 @@
               "required": [
                 "kind"
               ]
+            },
+            "performance": {
+              "type": "boolean",
+              "const": true
             }
           },
           "required": [

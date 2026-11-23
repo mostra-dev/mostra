@@ -13,10 +13,10 @@ import { themeStylesheet } from "./css.ts";
 import { type HtmlValue, html, type SafeHtml } from "./html.ts";
 import { APPEARANCES, type Appearance, type Theme } from "./theme.ts";
 
-/** The words the template itself says, for a server to translate or reword (D149). */
 /** The name a server that names no other calls itself: its pages then show Mostra's wordmark. */
 const MOSTRA_NAME = "Mostra";
 
+/** The words the template itself says, for a server to translate or reword (D149). */
 export interface PageWords {
   /** The appearance switch's label while the page is light. */
   readonly toDark: string;

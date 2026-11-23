@@ -29,7 +29,7 @@ export default function Page() {
 
 - `choose` asks for Mostra's trusted **Choose** button for the candidate in view. The choice is the field `review.<id>.choice` and arrives in results' `choices` with its label.
 - Give every candidate a stable `id` and a short `label`: the button reads "Choose Airy", and a phone shortens a long label.
-- Mark the parts people will talk about with `data-review-id` (`<h2 data-review-id="pricing.title">`). A comment on them names that ID, which is the handle you act on.
+- Mark the parts people will talk about with `data-review-id` (`<h2 data-review-id="sidebar.title">`). A comment on them names that ID, which is the handle you act on.
 
 Your own review set without the kit: `useChoice(id, { candidates, current })` for the choice ([answers.md](answers.md)) and `useReviewSurface({ id, layout, candidates, current })` so comments record the candidate.
 

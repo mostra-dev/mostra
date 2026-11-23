@@ -334,8 +334,8 @@ export interface PerformanceReport {
   readonly errors: number;
 }
 
-/** The schema of a {@link PerformanceReport}. */
-export const PerformanceReport: z.ZodType<PerformanceReport> = z.object({
+/** The schema of a performance report: unknown keys a later shell adds are read past. */
+export const PerformanceReport: z.ZodType<PerformanceReport> = z.looseObject({
   versionId: z.string().regex(/^ver_[0-9A-HJKMNP-TV-Z]{26}$/),
   loadMs: z.int().min(0).max(600_000),
   errors: z.int().min(0).max(10_000),
