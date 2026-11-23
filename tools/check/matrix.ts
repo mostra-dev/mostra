@@ -163,6 +163,8 @@ const POSIX_GROUPS = [
   // The conformance kit's TypeScript reference host, apart from the other clients' suites: beside
   // them on macOS it brought `clients` to its 10-minute deadline (WP-18, as `windows-conformance`).
   "conformance",
+  // Its other modes, apart since WP-20's review ports brought Windows arm64 past its deadline.
+  "conformance-adapters",
 ] as const;
 const WINDOWS_GROUPS = [
   "windows",
@@ -175,6 +177,7 @@ const WINDOWS_GROUPS = [
   "windows-extensions",
   "windows-clients",
   "windows-conformance",
+  "windows-conformance-adapters",
 ] as const;
 
 /**
@@ -332,7 +335,7 @@ export function ciMatrix(scope: CiScope, plan: Plan, runners: Runners): CiMatrix
   const remoteGroup = (leg: Leg): boolean =>
     String(leg["group"]).startsWith("remote") ||
     leg["group"] === "extensions" ||
-    leg["group"] === "conformance";
+    String(leg["group"]).startsWith("conformance");
   const macos: { readonly list: string; readonly leg: Leg }[] = [
     ...integration.filter((leg) => !remoteGroup(leg)).map((leg) => ({ list: "integration", leg })),
     ...e2e.map((leg) => ({ list: "e2e", leg })),

@@ -8658,6 +8658,8 @@ pub struct FrameTicketHosted {
     #[serde(rename = "madeWith", skip_serializing_if = "::std::option::Option::is_none")]
     pub made_with: ::std::option::Option<FrameTicketHostedMadeWith>,
     #[serde(skip_serializing_if = "::std::option::Option::is_none")]
+    pub performance: ::std::option::Option<crate::wire::ConstTrue>,
+    #[serde(skip_serializing_if = "::std::option::Option::is_none")]
     pub sender: ::std::option::Option<FrameTicketHostedSender>,
     #[serde(rename = "signIn")]
     pub sign_in: bool,
