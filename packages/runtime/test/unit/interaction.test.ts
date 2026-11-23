@@ -1164,7 +1164,9 @@ describe("results (IN-11)", () => {
         '- `sidebar`: "b" ("Compact")',
         "",
         "## Comments",
-        "- Thread thr_01JB8Z3QF6S7W3N8D5K2C4V9XG (open), crop `blobs/abc.png`, on `header`, page `/`",
+        // WP-20's layout: the crop with its size, then every layer of the anchor on a line.
+        "- Thread thr_01JB8Z3QF6S7W3N8D5K2C4V9XG (open), crop `blobs/abc.png` (320×120)",
+        "  - Where: review ID `header`; page `/`",
         '  - "Mirza" at 2026-10-15T08:59:00.000Z: "Header too tall"',
         "",
         "## Actions run in this view",

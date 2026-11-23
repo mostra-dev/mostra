@@ -14,6 +14,7 @@ import type {
 import { createDiagnostic, RpcError } from "@mostra/protocol";
 import type { LedgerDb } from "../ledger/index.ts";
 import { storedPolicy } from "./policy.ts";
+import { type CropPaths, commentMarkdown, relativeCrop, resultComment } from "./review.ts";
 import {
   deliveriesOf,
   overallDelivery,
@@ -120,7 +121,11 @@ export function submissionFor(
 }
 
 /** The complete results of a submission (INTERFACES §8). */
-export function buildResults(db: LedgerDb, row: SubmissionRow): Results {
+export function buildResults(
+  db: LedgerDb,
+  row: SubmissionRow,
+  crops: CropPaths = relativeCrop,
+): Results {
   const snapshot = JSON.parse(row.snapshot_json) as Snapshot;
   const version = db.get<{ manifest_json: string }>(
     "SELECT manifest_json FROM version WHERE id = ?",
@@ -206,7 +211,9 @@ export function buildResults(db: LedgerDb, row: SubmissionRow): Results {
             ]
           : [];
       }),
-    comments: [],
+    comments: (snapshot.review?.threads ?? []).map((thread) =>
+      resultComment(thread, crops, row.version_id),
+    ),
     orphaned: snapshot.orphaned,
     actions: snapshot.actions ?? [],
     signals: snapshot.signals,
@@ -224,7 +231,7 @@ export function buildResults(db: LedgerDb, row: SubmissionRow): Results {
 const LINE_BREAKS = /\r\n|\r|\n|\u2028|\u2029/;
 
 /** Control characters and line separators as spaces: the text stays on its line. */
-function oneLine(text: string): string {
+export function oneLine(text: string): string {
   // biome-ignore lint/suspicious/noControlCharactersInRegex: replacing them is the point.
   return text.replace(/[\u0000-\u001f\u007f-\u009f\u2028\u2029]/g, " ");
 }
@@ -245,7 +252,7 @@ export function code(text: string): string {
 }
 
 /** `text` as a JSON string: quoted, with its line breaks and controls escaped. */
-function quoted(text: string): string {
+export function quoted(text: string): string {
   return oneLine(JSON.stringify(text));
 }
 
@@ -354,15 +361,7 @@ export function resultsMarkdown(results: Results, snapshot: Snapshot): string {
       : ["- (none)"]),
     "",
     "## Comments",
-    ...(results.comments.length > 0
-      ? results.comments.flatMap((comment) => [
-          `- Thread ${comment.threadId} (${comment.status}), crop ${code(comment.crop.path)}${comment.anchor.reviewId ? `, on ${code(comment.anchor.reviewId)}` : ""}${comment.anchor.page ? `, page ${code(comment.anchor.page)}` : ""}`,
-          ...comment.messages.map(
-            (message) =>
-              `  - ${quoted(message.author.name ?? message.author.id)} at ${message.at}: ${quoted(message.text)}`,
-          ),
-        ])
-      : ["- (none)"]),
+    ...(results.comments.length > 0 ? results.comments.flatMap(commentMarkdown) : ["- (none)"]),
     "",
     "## Actions run in this view",
     ...(results.actions.length > 0

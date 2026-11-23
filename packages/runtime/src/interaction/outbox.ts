@@ -13,7 +13,9 @@ import {
   type DraftMirror,
   MAX_LINE_LENGTH,
   portDraftsMirrorMethod,
+  portReviewsMirrorMethod,
   portSubmissionsDeliverMethod,
+  type ReviewEnvelope,
   type SubmissionEnvelope,
   type SubmissionsDeliverResult,
 } from "@mostra/protocol";
@@ -462,6 +464,49 @@ export class Outbox {
           } while (entry.dirty && !this.#stopped);
         } finally {
           this.#mirroring.delete(key);
+        }
+      })();
+    }
+  }
+
+  /**
+   * Mirrors a review change to every connection with a `reviews` port (HO-11, D58): a thread as it
+   * stands, or a review set's choice. Best effort, read afresh when sent, coalesced per `key` while
+   * one is in flight, never retried, as draft mirrors are (D105).
+   */
+  mirrorReview(key: string, read: () => ReviewEnvelope | undefined): void {
+    for (const registrant of this.#options.hosts.registrants("reviews")) {
+      const slot = `reviews ${registrant.session} ${key}`;
+      const running = this.#mirroring.get(slot);
+      if (running) {
+        running.dirty = true;
+        continue;
+      }
+      const entry = { dirty: false };
+      this.#mirroring.set(slot, entry);
+      void (async () => {
+        try {
+          do {
+            entry.dirty = false;
+            const envelope = read();
+            if (!envelope || this.#stopped) break;
+            try {
+              await this.#options.hosts.call(
+                registrant.session,
+                portReviewsMirrorMethod.method,
+                envelope,
+                this.#options.portTimeoutMs ?? PORT_CALL_TIMEOUT_MS,
+              );
+            } catch (error) {
+              this.#options.log.warn("outbox.review_mirror_failed", {
+                artifactId: envelope.artifactId,
+                owner: registrant.owner,
+                error: (error as Error).message,
+              });
+            }
+          } while (entry.dirty && !this.#stopped);
+        } finally {
+          this.#mirroring.delete(slot);
         }
       })();
     }

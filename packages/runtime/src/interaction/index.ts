@@ -34,7 +34,13 @@ import {
   type PausedBy,
   RESULTS_LIST_MAX,
   type RespondentSpec,
+  type ResultComment,
   type Results,
+  type ReviewReplyRequest,
+  type ReviewStatusRequest,
+  type ReviewThread,
+  type ReviewThreadRequest,
+  type ReviewThreads,
   type Roster,
   type RosterForPage,
   RpcError,
@@ -71,6 +77,30 @@ import { type ImportSource, importSubmission } from "./imports.ts";
 import { type HostConnections, Outbox } from "./outbox.ts";
 import { type Pause, pauseOf, setPause } from "./pause.ts";
 import { buildResults, CHOICE, resultsMarkdown, submissionFor } from "./results.ts";
+import {
+  artifactComments,
+  type CropJob,
+  type CropOutcome,
+  type CropPaths,
+  createThread,
+  cropJob,
+  mentionable,
+  pendingCrops,
+  pendingCropsOf,
+  personFor,
+  type ReviewPage,
+  reply,
+  reviewWritable,
+  setCrop,
+  setStatus,
+  type ThreadChange,
+  type ThreadRow,
+  threadById,
+  threadEnvelope,
+  threadForPage,
+  threadsForPage,
+  threadVisible,
+} from "./review.ts";
 import {
   addRespondents,
   peerKey,
@@ -142,6 +172,15 @@ export {
 } from "./imports.ts";
 export type { HostConnections } from "./outbox.ts";
 export { policyInForce } from "./policy.ts";
+export {
+  type CropJob,
+  type CropOutcome,
+  type CropPaths,
+  commentMarkdown,
+  cropRect,
+  relativeCrop,
+  type ThreadChange,
+} from "./review.ts";
 export { peerKey } from "./roster.ts";
 export {
   appendRunOutput,
@@ -333,6 +372,31 @@ export interface Interaction {
     page: PageIdentity,
     version: { readonly id: string; readonly number: number },
   ): CarryOver;
+
+  // ── Review (WP-20) ─────────────────────────────────────────────────────────────────────────
+  /**
+   * The comment threads a page may see (D182 item 1), the people it may mention (CO-06), and
+   * whether it may write: a link with the `review` scope, on a draft no submission closed.
+   */
+  reviewThreads(page: PageIdentity, viewId: string): ReviewThreads;
+  /** Starts a thread with its first comment; its crop is captured after it commits (RV-02). */
+  createThread(page: PageIdentity, request: ReviewThreadRequest): ReviewThread;
+  /** Replies to a thread the page may see. */
+  replyThread(page: PageIdentity, threadId: string, request: ReviewReplyRequest): ReviewThread;
+  /** Resolves or reopens a thread the page may see. */
+  setThreadStatus(page: PageIdentity, threadId: string, request: ReviewStatusRequest): ReviewThread;
+  /** A thread's captured crop, when the page may see the thread and it has one. */
+  threadCrop(page: PageIdentity, threadId: string): { readonly blob: string } | undefined;
+  /** The threads whose crops are still to be captured, oldest first. */
+  pendingCrops(): readonly CropJob[];
+  /** The pending crops of the threads a viewer's submission would carry. */
+  pendingCropsOf(artifactId: string, viewerId: string): readonly string[];
+  /** Records a thread's crop or why it couldn't be captured, once (RV-02). */
+  setCrop(threadId: string, outcome: CropOutcome): void;
+  /** Hears every thread made, replied to, resolved, reopened or cropped, after the commit. */
+  onThread(listener: (job: CropJob, change: ThreadChange) => void): () => void;
+  /** Every thread of an artifact as results carry them, for `review export` (RV-05). */
+  artifactComments(artifactId: string, crops: CropPaths): ResultComment[];
   /** Whether the viewer follows the artifact's new versions (D63). */
   following(page: PageIdentity): boolean;
   /** Sets the viewer's "Always follow this artifact" (D63, LL-03). */
@@ -729,6 +793,59 @@ export function createInteraction(options: InteractionOptions): Interaction {
       : row.kind === "local";
   };
 
+  /** A page as the review layer sees it: with whether its viewer owns the artifact. */
+  const reviewPageOf = (db: LedgerDb, page: PageIdentity): ReviewPage => ({
+    artifactId: page.artifactId,
+    viewerId: page.viewerId,
+    ...(page.tokenId !== undefined ? { tokenId: page.tokenId } : {}),
+    owner: ownerOf(db, page.viewerId),
+  });
+  /** A page writes review threads only through a link with the `review` scope (D97). */
+  const assertReviewScope = (page: PageIdentity): void => {
+    if (page.scopes !== undefined && !scopeAllows(page.scopes, "review")) {
+      throw new RpcError(
+        createDiagnostic("MOSTRA_HYGIENE_SCOPE_DENIED", {
+          message: "This link can view the artifact, but not comment on it.",
+        }),
+      );
+    }
+  };
+  const threadListeners = new Set<(job: CropJob, change: ThreadChange) => void>();
+  /** After a thread's commit: its listeners (the capture service) and the `reviews` mirror. */
+  const threadChanged = (row: ThreadRow, change: ThreadChange): void => {
+    const job = cropJob(row);
+    for (const listener of threadListeners) {
+      try {
+        listener(job, change);
+      } catch (error) {
+        log.error("interaction.thread_listener_failed", { error });
+      }
+    }
+    outbox.mirrorReview(`thread ${row.id}`, () => ledger.read((db) => threadEnvelope(db, row.id)));
+  };
+  /** Mirrors a viewer's choices of an artifact's review sets to the `reviews` port (HO-11). */
+  const choicesChanged = (artifactId: string, viewerId: string, ids: readonly string[]): void => {
+    for (const id of ids) {
+      const match = CHOICE.exec(id);
+      if (!match) continue;
+      const reviewSetId = match[1] as string;
+      outbox.mirrorReview(`choice ${artifactId} ${viewerId} ${reviewSetId}`, () =>
+        ledger.read((db) => {
+          const draft = documentFor(db, artifactId, viewerId);
+          const field = draft ? liveFields(db, draft.id)[id] : undefined;
+          return {
+            kind: "choice" as const,
+            artifactId,
+            viewerId,
+            reviewSetId,
+            ...(typeof field?.value === "string" ? { candidateId: field.value } : {}),
+            ...(field?.label !== undefined ? { label: field.label } : {}),
+          };
+        }),
+      );
+    }
+  };
+
   return {
     start() {
       outbox.start();
@@ -820,6 +937,11 @@ export function createInteraction(options: InteractionOptions): Interaction {
       if (outcome.changed && input.scope === "viewer") {
         outbox.mirror(page.artifactId, page.viewerId);
         touched(page.artifactId);
+        choicesChanged(
+          page.artifactId,
+          page.viewerId,
+          input.ops.map((op) => op.id),
+        );
       }
       return result;
     },
@@ -976,7 +1098,10 @@ export function createInteraction(options: InteractionOptions): Interaction {
         asPage(() => assertDraftOpen(db, page.artifactId, page.viewerId));
         return applyMutation(db, mutation);
       });
-      if (outcome.changed) outbox.mirror(page.artifactId, page.viewerId);
+      if (outcome.changed) {
+        outbox.mirror(page.artifactId, page.viewerId);
+        choicesChanged(page.artifactId, page.viewerId, [`review.${input.reviewSetId}.choice`]);
+      }
       return outcome.result;
     },
     carryOver(page, version) {
@@ -992,6 +1117,88 @@ export function createInteraction(options: InteractionOptions): Interaction {
               );
         return { version, orphans: orphansOf(rows.filter((row) => !covers(row.field_id))) };
       });
+    },
+    reviewThreads(page, viewId) {
+      return ledger.read((db) => {
+        viewFor(db, viewId, page.artifactId, page.viewerId, page.tokenId);
+        const review = reviewPageOf(db, page);
+        const self = page.viewerId;
+        return {
+          threads: threadsForPage(db, review),
+          people: [...mentionable(db, review).values()].map((id) =>
+            personFor(db, page.artifactId, id, self),
+          ),
+          writable: reviewWritable(db, {
+            ...review,
+            ...(page.scopes ? { scopes: page.scopes } : {}),
+          }),
+        };
+      });
+    },
+    createThread(page, request) {
+      assertReviewScope(page);
+      const outcome = asPage(() =>
+        ledger.write((db) => {
+          const review = reviewPageOf(db, page);
+          const made = createThread(db, review, request);
+          return { ...made, thread: threadForPage(db, review, made.row) };
+        }),
+      );
+      if (outcome.created) threadChanged(outcome.row, "created");
+      return outcome.thread;
+    },
+    replyThread(page, threadId, request) {
+      assertReviewScope(page);
+      const outcome = asPage(() =>
+        ledger.write((db) => {
+          const review = reviewPageOf(db, page);
+          const made = reply(db, review, threadId, request);
+          return { ...made, thread: threadForPage(db, review, made.row) };
+        }),
+      );
+      if (outcome.created) threadChanged(outcome.row, "replied");
+      return outcome.thread;
+    },
+    setThreadStatus(page, threadId, request) {
+      assertReviewScope(page);
+      const outcome = asPage(() =>
+        ledger.write((db) => {
+          const review = reviewPageOf(db, page);
+          const made = setStatus(db, review, threadId, request);
+          return { ...made, thread: threadForPage(db, review, made.row) };
+        }),
+      );
+      if (outcome.changed)
+        threadChanged(outcome.row, request.status === "resolved" ? "resolved" : "reopened");
+      return outcome.thread;
+    },
+    threadCrop(page, threadId) {
+      return ledger.read((db) => {
+        if (!threadVisible(db, reviewPageOf(db, page), threadId)) return undefined;
+        const row = threadById(db, threadId);
+        return row?.crop_state === "captured" && row.crop_blob !== null
+          ? { blob: row.crop_blob }
+          : undefined;
+      });
+    },
+    pendingCrops() {
+      return ledger.read((db) => pendingCrops(db).map(cropJob));
+    },
+    pendingCropsOf(artifactId, viewerId) {
+      return ledger.read((db) => pendingCropsOf(db, artifactId, viewerId));
+    },
+    setCrop(threadId, outcome) {
+      const row = ledger.write((db) =>
+        setCrop(db, threadId, outcome) ? threadById(db, threadId) : undefined,
+      );
+      if (row) threadChanged(row, "cropped");
+    },
+    onThread(listener) {
+      threadListeners.add(listener);
+      return () => threadListeners.delete(listener);
+    },
+    artifactComments(artifactId, crops) {
+      return ledger.read((db) => artifactComments(db, artifactId, crops));
     },
     following(page) {
       return ledger.read(
@@ -1093,6 +1300,7 @@ export function createInteraction(options: InteractionOptions): Interaction {
           return runs.get(runId);
         };
         const standing = submissionStanding(db, page.artifactId, ownerOf(db, page.viewerId));
+        const threads = new Map<string, boolean>();
         const submitters = new Map<string, string | undefined>();
         const submitterOf = (submissionId: string): string | undefined => {
           if (!submitters.has(submissionId)) {
@@ -1123,6 +1331,16 @@ export function createInteraction(options: InteractionOptions): Interaction {
               events.push(
                 shown === "anonymous" ? { ...seen, actor: { kind: seen.actor.kind } } : seen,
               );
+              continue;
+            }
+            if (event.type.startsWith("review.")) {
+              // A mention is for hosts only; a page hears of a thread it may see (D182 item 1).
+              if (event.type === "review.mentioned") continue;
+              const threadId = String(event.payload["threadId"] ?? "");
+              if (!threads.has(threadId)) {
+                threads.set(threadId, threadVisible(db, reviewPageOf(db, page), threadId));
+              }
+              if (threads.get(threadId)) events.push(eventForPage(event, page.viewerId));
               continue;
             }
             if (visibleTo(event, page, runOf)) events.push(eventForPage(event, page.viewerId));
