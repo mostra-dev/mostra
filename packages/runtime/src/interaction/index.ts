@@ -843,7 +843,9 @@ export function createInteraction(options: InteractionOptions): Interaction {
         log.error("interaction.thread_listener_failed", { error });
       }
     }
-    outbox.mirrorReview(`thread ${row.id}`, () => ledger.read((db) => threadEnvelope(db, row.id)));
+    outbox.mirrorReview(`thread ${row.id}`, () =>
+      ledger.read((db) => threadEnvelope(db, row.id, cropPaths)),
+    );
   };
   /** Mirrors a viewer's choices of an artifact's review sets to the `reviews` port (HO-11). */
   const choicesChanged = (artifactId: string, viewerId: string, ids: readonly string[]): void => {

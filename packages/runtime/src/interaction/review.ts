@@ -666,15 +666,19 @@ export function threadVisible(db: LedgerDb, page: ReviewPage, threadId: string):
   );
 }
 
-/** A thread for the `reviews` port's mirror (HO-11). */
-export function threadEnvelope(db: LedgerDb, threadId: string): ReviewEnvelope | undefined {
+/** A thread for the `reviews` port's mirror (HO-11), its crop named by its path in the home, as results name it. */
+export function threadEnvelope(
+  db: LedgerDb,
+  threadId: string,
+  crops: CropPaths = relativeCrop,
+): ReviewEnvelope | undefined {
   const row = threadById(db, threadId);
   if (!row) return undefined;
   return {
     kind: "thread",
     artifactId: row.artifact_id,
     viewerId: row.viewer_id,
-    thread: resultComment(snapshotThread(db, row), relativeCrop),
+    thread: resultComment(snapshotThread(db, row), crops),
   };
 }
 

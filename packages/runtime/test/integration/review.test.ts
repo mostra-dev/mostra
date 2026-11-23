@@ -116,11 +116,19 @@ describe("review: ports, routes, mentions and export (HO-11, CO-06, RV-05)", () 
    */
   const mirrored = async (
     threadId: string,
-    until: (thread: { status: string; messages: { text: string }[] }) => boolean,
+    until: (thread: {
+      status: string;
+      messages: { text: string }[];
+      crop: { path: string; state?: string };
+    }) => boolean,
   ): Promise<{
     kind: string;
     artifactId: string;
-    thread: { status: string; messages: { text: string }[] };
+    thread: {
+      status: string;
+      messages: { text: string }[];
+      crop: { path: string; state?: string };
+    };
   }> => {
     for (;;) {
       const call = (await host.next(
@@ -135,7 +143,11 @@ describe("review: ports, routes, mentions and export (HO-11, CO-06, RV-05)", () 
       const params = call.params as {
         kind: string;
         artifactId: string;
-        thread: { status: string; messages: { text: string }[] };
+        thread: {
+          status: string;
+          messages: { text: string }[];
+          crop: { path: string; state?: string };
+        };
       };
       if (until(params.thread)) return params;
     }
@@ -193,7 +205,10 @@ describe("review: ports, routes, mentions and export (HO-11, CO-06, RV-05)", () 
     for (const status of ["resolved", "open"] as const) {
       const changed = await ada.post(`/threads/${threadId}/status`, { status });
       expect(changed.status, changed.body).toBe(200);
-      await mirrored(threadId, (thread) => thread.status === status);
+      const mirror = await mirrored(threadId, (thread) => thread.status === status);
+      // The mirror names the crop as results do: by its path in the home, which exists.
+      expect(mirror.thread.crop.state ?? "captured").toBe("captured");
+      expect(existsSync(mirror.thread.crop.path), mirror.thread.crop.path).toBe(true);
     }
 
     // review/export: JSON and Markdown name the crop by a path that exists.
