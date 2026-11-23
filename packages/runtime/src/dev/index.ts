@@ -43,7 +43,12 @@ import type {
 import { type Dependencies, lockKey, parseLock } from "../deps/index.ts";
 import type { Faults } from "../faults.ts";
 import type { Gate } from "../gate.ts";
-import { contributedThemes, kitBuildFor, kitRegistry } from "../kit/index.ts";
+import {
+  contributedAnchorProviders,
+  contributedThemes,
+  kitBuildFor,
+  kitRegistry,
+} from "../kit/index.ts";
 import type { Log } from "../log.ts";
 import { removeTree } from "../platform/index.ts";
 import { handler, type MethodHandler, type Session } from "../protocol-server/index.ts";
@@ -315,6 +320,7 @@ export function createDev(options: DevOptions): Dev {
           sourceDir: join(root, "source"),
           nodeModules,
           contributed: contributedThemes(nodeModules, lockPlugins),
+          anchorProviders: contributedAnchorProviders(nodeModules, lockPlugins),
           ...(homeTheme !== undefined ? { homeTheme } : {}),
         }).kit;
       } catch (error) {

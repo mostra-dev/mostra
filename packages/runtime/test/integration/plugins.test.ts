@@ -15,14 +15,18 @@ import {
   writeFileSync,
 } from "node:fs";
 import { createRequire } from "node:module";
+import { homedir } from "node:os";
 import { join } from "node:path";
+import { BROWSER_PROTOCOL_REVISION, CommentId, ThreadId } from "@mostra/protocol";
 import { cssColor } from "@mostra/themes";
 import { afterAll, afterEach, beforeAll, describe, expect, it } from "vitest";
+import { Browser, openLink } from "../browser-client.ts";
 import { HARBOR_FACE, HARBOR_PRIMARY, implemented, pluginFixtures } from "../plugin-fixtures.ts";
 import { type FakeRegistry, FIXTURE_PACKAGES, startRegistry } from "../registry.ts";
 import {
   connectTo,
   type DaemonStatus,
+  eventually,
   initializeParams,
   type LineClient,
   type Message,
@@ -979,6 +983,95 @@ describe("the plugin gate on every change (WP-16 review)", () => {
     expect(commands.commands).toEqual([]);
     expect(readdirSync(locks)).toEqual([]);
   });
+});
+
+describe("an anchor provider a plugin carries (WP-20, D172)", () => {
+  it("is registered by the page, so a comment on its content is found again in its terms", async () => {
+    // The crop renders in the verify runner's browser, which Playwright keeps under the person's
+    // own home: this suite's daemon runs with a home of its own.
+    const browsers =
+      process.env["PLAYWRIGHT_BROWSERS_PATH"] ??
+      (process.platform === "darwin"
+        ? join(homedir(), "Library", "Caches", "ms-playwright")
+        : WINDOWS
+          ? join(
+              process.env["LOCALAPPDATA"] ?? join(homedir(), "AppData", "Local"),
+              "ms-playwright",
+            )
+          : join(process.env["XDG_CACHE_HOME"] ?? join(homedir(), ".cache"), "ms-playwright"));
+    const target = await start({ env: { PLAYWRIGHT_BROWSERS_PATH: browsers } });
+    const dir = artifact({
+      "index.tsx": `import { defineArtifact } from "@mostra/react";
+
+export const artifact = defineArtifact({ title: "Seats" });
+
+export default function Page() {
+  return (
+    <main>
+      <h1>Seats</h1>
+      <div data-seat="B2" style={{ width: 400, height: 300, marginTop: 1200, background: "#2340c8" }} />
+    </main>
+  );
+}
+`,
+    });
+    const added = ok<AddResult>(
+      await target.client.call("plugin/add", {
+        artifact: { path: dir },
+        packages: ["mostra-fixture-anchors@1.0.0"],
+      }),
+    );
+    expect(added.plugins).toMatchObject([
+      { package: "mostra-fixture-anchors", status: "ok", scope: "artifact", diagnostics: [] },
+    ]);
+    const receipt = ok<{ artifactId: string; url: string }>(
+      await target.client.call("artifact/publish", { source: { path: dir } }, 180_000),
+    );
+    const browser = new Browser();
+    const opened = await openLink(browser, receipt.url);
+    const threadId = ThreadId.create();
+    // The anchor names the seat in the provider's terms alone: only the page's provider finds it.
+    const made = await browser.fetchJson(
+      opened.link.shell,
+      `/a/${receipt.artifactId}/_mostra/v/${BROWSER_PROTOCOL_REVISION}/review/threads`,
+      {
+        csrf: opened.shellCsrf,
+        body: {
+          viewId: opened.viewId,
+          threadId,
+          commentId: CommentId.create(),
+          anchor: {
+            provider: { id: "fixture-seat", kind: "seat", data: { seat: "B2" }, label: "Seat" },
+            viewport: { width: 1280, height: 800, dpr: 1 },
+          },
+          text: "This seat is taken.",
+        },
+      },
+    );
+    expect(made.status, made.body).toBe(200);
+    // Its crop is the seat with the crop's margin around it: 400 × 300 and 24 px each side.
+    let crop: { state?: string; width: number; height: number } | undefined;
+    await eventually(
+      async () => {
+        const review = ok<{ content: string }>(
+          await target.client.call("review/export", {
+            artifact: { artifactId: receipt.artifactId },
+            format: "json",
+          }),
+        );
+        crop = (
+          JSON.parse(review.content) as {
+            comments: { crop: { state?: string; width: number; height: number } }[];
+          }
+        ).comments[0]?.crop;
+        return crop !== undefined && crop.state !== "pending";
+      },
+      150_000,
+      "the seat's crop",
+    );
+    expect(crop, JSON.stringify(crop)).toMatchObject({ width: 448, height: 348 });
+    expect(crop?.state ?? "captured").toBe("captured");
+  }, 300_000);
 });
 
 describe("a theme a plugin carries (D181 item 4)", () => {

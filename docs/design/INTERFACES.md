@@ -626,6 +626,8 @@ The shapes are [rounds/ROUND-3.md §6](rounds/ROUND-3.md#6-extensions-ex1-to-ex3
 | `@mostra/contract-embed-engine` | `defineEmbedEngine({ id, sources: string[], capabilities?, mount({ element, source, size, options }, context) → { resize?({ size }), snapshot?(request), seek?({ time }), dispose() } })` | the page | artifact |
 | `@mostra/contract-anchor-provider` | `defineAnchorProvider({ id, kind, matches?({ target, point?, selection? }, context) → boolean, serialize({ target, point?, selection? }, context) → { anchor, label? } \| undefined, resolve({ anchor, root }, context) → { element?, rect?, label? } })` | the shell's overlay | artifact |
 
+As built (WP-20, D183 item 6): the page runs anchor providers. The built-in ones (a kit chart's series and datum, a slide and its step, a timeline's time) and those a page registers with `registerAnchorProvider` from `@mostra/react` (a `defineAnchorProvider` result, or an object of its shape) come first; every page of an artifact registers the anchor providers its plugins contribute (`contributes.anchorProviders`, each entry's `export`, default `default`) before it mounts, from the build's layout, so the version's lockfile names them.
+
 A finding (`Finding`) is `{ code (upper-case letters, digits and _), severity: "error" | "warning" | "hint", message, hint?, location? }`, in the contribution's own codes. Every context carries `signal` (a `Cancellation`), `log(message)` and `mostraVersion`.
 
 **The manifest** is the `"mostra"` key of the plugin's `package.json`, revision `PLUGIN_MANIFEST_REVISION` (`2026-11-14`), schema `@mostra/protocol/schemas/plugin-manifest.schema.json`, checked by `checkPluginManifest` (D172 item 3):

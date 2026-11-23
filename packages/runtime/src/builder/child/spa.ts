@@ -20,6 +20,7 @@ import type { FieldCoverage } from "../coverage.ts";
 import {
   type BuildRequest,
   type BuildResponse,
+  type KitBuild,
   LIVE_DECLARATION,
   type ServerFunctionEntry,
   STAGING_FILES,
@@ -62,11 +63,23 @@ export const html = (title: string, versionId: string, attributes = "", head = "
  * `window.storage` (D53). A single page never loads React Router.
  */
 export function clientEntry(
-  request: Pick<BuildRequest, "entry" | "entryHasDefault">,
+  request: Pick<BuildRequest, "entry" | "entryHasDefault"> & { readonly kit?: KitBuild },
   scan: ScanResult,
 ): string {
   const source = (file: string): string => JSON.stringify(`../source/${file}`);
   const lines = [`import "./styles.css";`];
+  // The anchor providers the artifact's plugins contribute, registered before the page mounts
+  // (D172, WP-20): comments then anchor in their terms.
+  const providers = request.kit?.anchorProviders ?? [];
+  if (providers.length > 0) {
+    lines.push(`import { registerAnchorProvider } from "@mostra/react";`);
+    providers.forEach((provider, index) => {
+      lines.push(
+        `import * as anchorProvider${index} from ${JSON.stringify(provider.file.replaceAll("\\", "/"))};`,
+        `registerAnchorProvider(anchorProvider${index}[${JSON.stringify(provider.export)}]);`,
+      );
+    });
+  }
   if (scan.pages.length === 0) {
     lines.push(
       `import { mountArtifact } from "@mostra/react";`,

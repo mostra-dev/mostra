@@ -44,7 +44,7 @@ export function pluginFixtures(): FixturePackage[] {
   const exporter = contractPackage("exporter");
   const command = contractPackage("cli-command");
   const list = base(exporter, command);
-  return [...list, ...reviewFixtures(list), ownMcpApp(), themePlugin()];
+  return [...list, ...reviewFixtures(list), ownMcpApp(), themePlugin(), anchorPlugin()];
 }
 
 /** The primary colour the fixture theme gives (D181 item 4): a dark teal at AA on white. */
@@ -99,6 +99,47 @@ function themePlugin(): FixturePackage {
       "themes/harbor.json": JSON.stringify(layer),
       "fonts/harbor-display.woff2": HARBOR_FACE,
     },
+  };
+}
+
+/**
+ * A plugin contributing an anchor provider (WP-20): comments on a seat of a seat map anchor to the
+ * seat's name, found again wherever the seat is drawn.
+ */
+function anchorPlugin(): FixturePackage {
+  const provider = [
+    "export const seats = {",
+    `  contract: { name: "anchor-provider", version: ${JSON.stringify(implemented("anchor-provider"))} },`,
+    '  id: "fixture-seat",',
+    '  kind: "seat",',
+    '  matches: ({ target }) => target.closest("[data-seat]") !== null,',
+    "  serialize: ({ target }) => {",
+    '    const seat = target.closest("[data-seat]");',
+    '    return seat ? { anchor: { seat: seat.getAttribute("data-seat") }, label: "Seat" } : undefined;',
+    "  },",
+    "  resolve: ({ anchor, root }) => {",
+    '    const seat = [...root.querySelectorAll("[data-seat]")].find((node) => node.getAttribute("data-seat") === anchor.seat);',
+    "    return seat ? { element: seat } : undefined;",
+    "  },",
+    "};",
+    "",
+  ].join("\n");
+  return {
+    name: "mostra-fixture-anchors",
+    version: "1.0.0",
+    manifest: {
+      type: "module",
+      license: "MIT",
+      mostra: {
+        name: "dev.mostra.fixtures/anchors",
+        contracts: { "anchor-provider": `^${range("anchor-provider")}` },
+        contributes: {
+          anchorProviders: [{ id: "fixture-seat", entry: "./providers/seats.js", export: "seats" }],
+        },
+        license: "MIT",
+      },
+    },
+    files: { "providers/seats.js": provider },
   };
 }
 

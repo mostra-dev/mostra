@@ -279,6 +279,14 @@ const SEEDS: readonly Seed[] = [
     e2e: true,
   },
   {
+    requirement: "RV-02",
+    name: "a plugin's anchor provider is never registered",
+    file: "src/builder/child/spa.ts",
+    from: "  const providers = request.kit?.anchorProviders ?? [];",
+    to: "  const providers = (request.kit?.anchorProviders ?? []).slice(0, 0);",
+    check: integration("plugins.test.ts", "anchor provider a plugin carries"),
+  },
+  {
     requirement: "HO-09",
     name: "#167: a shell session's every performance report is counted",
     file: "src/server/hosted-pages.ts",

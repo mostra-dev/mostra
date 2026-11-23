@@ -11,7 +11,7 @@
  */
 import { createHash } from "node:crypto";
 import { type Dirent, existsSync, readdirSync, readFileSync, statSync } from "node:fs";
-import { join, relative, resolve } from "node:path";
+import { isAbsolute, join, relative, resolve } from "node:path";
 import {
   type ArtifactManifest,
   createDiagnostic,
@@ -380,8 +380,61 @@ export function kitVersionOf(nodeModules: string): string | null {
 /** Each layout's kit version, by its kit's directory, with the stats it was read under. */
 const KIT_VERSIONS = new Map<string, { readonly key: string; readonly version: string }>();
 
+/** An anchor provider a plugin installed for the artifact contributes. */
+export interface ContributedAnchorProvider {
+  /** The plugin's package. */
+  readonly package: string;
+  /** The entry's file in the build's layout. */
+  readonly file: string;
+  /** The export that is the provider. */
+  readonly export: string;
+}
+
+/**
+ * The anchor providers the plugins in an artifact's lockfile contribute (D172 items 2 and 11,
+ * WP-20): each `contributes.anchorProviders` entry of each plugin's package in the build's layout,
+ * in the lockfile's order, which is the plugins' load order. They run in the page; the plugin gate
+ * checked the manifests before. An entry outside its package is left out.
+ */
+export function contributedAnchorProviders(
+  nodeModules: string,
+  plugins: readonly string[],
+): ContributedAnchorProvider[] {
+  const found: ContributedAnchorProvider[] = [];
+  for (const name of plugins) {
+    const dir = join(nodeModules, name);
+    let manifest:
+      | { contributes?: { anchorProviders?: { entry?: unknown; export?: unknown }[] } }
+      | undefined;
+    try {
+      manifest = (
+        JSON.parse(readFileSync(join(dir, "package.json"), "utf8")) as { mostra?: typeof manifest }
+      ).mostra;
+    } catch {
+      continue;
+    }
+    for (const entry of manifest?.contributes?.anchorProviders ?? []) {
+      if (typeof entry.entry !== "string") continue;
+      const file = resolve(dir, entry.entry);
+      const inside = relative(dir, file);
+      if (inside === "" || inside.startsWith("..") || isAbsolute(inside)) continue;
+      found.push({
+        package: name,
+        file,
+        export: typeof entry.export === "string" && entry.export !== "" ? entry.export : "default",
+      });
+    }
+  }
+  return found;
+}
+
 /** What a build takes of the kit and the theme stack, and the stack as resolved. */
-export function kitBuildFor(input: StackInput & { readonly nodeModules: string }): {
+export function kitBuildFor(
+  input: StackInput & {
+    readonly nodeModules: string;
+    readonly anchorProviders?: readonly ContributedAnchorProvider[];
+  },
+): {
   readonly kit: KitBuild;
   readonly theme: ThemeBuild;
 } {
@@ -394,6 +447,14 @@ export function kitBuildFor(input: StackInput & { readonly nodeModules: string }
       themeFiles: theme.files,
       ...(theme.id !== undefined ? { themeId: theme.id } : {}),
       ...(theme.host !== undefined ? { host: theme.host } : {}),
+      ...(input.anchorProviders !== undefined && input.anchorProviders.length > 0
+        ? {
+            anchorProviders: input.anchorProviders.map((provider) => ({
+              file: provider.file,
+              export: provider.export,
+            })),
+          }
+        : {}),
     },
     theme,
   };

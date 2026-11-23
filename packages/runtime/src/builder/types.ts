@@ -82,6 +82,11 @@ export interface KitBuild {
   readonly themeId?: string;
   /** Where the host's look goes (`<html data-host-look>`), when the stack has `"host"`. */
   readonly host?: "over" | "under";
+  /**
+   * The anchor providers the artifact's plugins contribute (D172, WP-20): each entry's file in the
+   * build's layout and the export that is the provider. The page registers them before it mounts.
+   */
+  readonly anchorProviders?: readonly { readonly file: string; readonly export: string }[];
 }
 
 /** What the supervisor asks the builder child to build (`builder/build`). */
