@@ -5,7 +5,17 @@ import tseslint from "typescript-eslint";
 
 export default [
   {
-    ignores: ["**/dist/**", "**/.tsbuild/**", "**/node_modules/**", "**/fixtures/**", "docs/**"],
+    // The git-ignored scratch (`temp/`) can hold whole worktrees: walking it ran ESLint out of
+    // memory (MT-07's baseline).
+    ignores: [
+      "**/dist/**",
+      "**/.tsbuild/**",
+      "**/node_modules/**",
+      "**/fixtures/**",
+      "docs/**",
+      "temp/**",
+      "packages/*/temp/**",
+    ],
   },
   {
     files: [

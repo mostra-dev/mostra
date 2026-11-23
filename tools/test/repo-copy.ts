@@ -49,6 +49,20 @@ function packageModuleDirs(): string[] {
 }
 
 /**
+ * Git-ignored scratch and tool output the copy leaves out (rsync patterns, `/` anchoring at the
+ * repository's root), as `.gitignore` names them.
+ */
+const SCRATCH = [
+  "/temp",
+  "/packages/*/temp",
+  "/.cache",
+  "/packages/kit/.check",
+  "test-results",
+  "playwright-report",
+  "coverage",
+] as const;
+
+/**
  * Copies the working tree (committed or not) into a temporary Git repository whose single commit
  * is the current state. That commit is also `origin/main`, so every gate compares against the
  * clean baseline and sees exactly the violation a test plants.
@@ -74,6 +88,11 @@ export function copyRepository(): RepoCopy {
       // And the type checker's incremental state, which `tsc -b` rewrites as it runs.
       "--exclude",
       ".tsbuild",
+      // The git-ignored scratch and tool output (.gitignore's "Tool output", the bundle assembler's
+      // downloads, the kit check's projects): no gate reads them, and a session's `temp/` can hold
+      // tens of gigabytes of worktrees and test homes, which filled the system disk under the copy
+      // (MT-07's baseline).
+      ...SCRATCH.flatMap((pattern) => ["--exclude", pattern]),
       `${ROOT}/`,
       `${root}/`,
     ],

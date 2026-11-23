@@ -12,11 +12,14 @@
  * - Gemini CLI (`gemini-extension.json` with `mcpServers`, `skills/`).
  * - Marketplaces: `.claude-plugin/marketplace.json` (Claude Code; Copilot CLI reads it too) and
  *   `.agents/plugins/marketplace.json` (Codex and the ChatGPT desktop app).
+ * - Claude's plugin directory, from the folder `claude-directory/` (`claude-directory.ts`, MT-07):
+ *   the Skill and the remote server only, built from the same bytes in the same run.
  */
 import { mkdirSync, readdirSync, readFileSync, writeFileSync } from "node:fs";
 import { dirname, join, relative } from "node:path";
 import { walkTree } from "../lib/files.ts";
 import { isReleaseVersion } from "../lib/release-version.ts";
+import { buildClaudeDirectory, CLAUDE_DIRECTORY } from "./claude-directory.ts";
 import type { PluginDefinition } from "./definition.ts";
 import { readme } from "./readme.ts";
 
@@ -218,20 +221,38 @@ export function buildPlugin(definition: PluginDefinition, input: BuildInput): Pl
     }),
   );
 
-  // The Skill, a real copy of every file.
+  // The Skill, a real copy of every file, read once: the directory's folder takes the same bytes.
+  const skills = new Map<string, Map<string, Buffer>>();
   for (const skill of definition.skills) {
     const source = join(input.root, "skills", skill);
-    for (const file of filesBelow(source))
-      tree.set(`skills/${skill}/${file}`, readFileSync(join(source, file)));
+    const files = new Map<string, Buffer>();
+    for (const file of filesBelow(source)) files.set(file, readFileSync(join(source, file)));
+    skills.set(skill, files);
+    for (const [file, bytes] of files) tree.set(`skills/${skill}/${file}`, bytes);
   }
 
-  if (definition.icon) {
-    const icon = readFileSync(join(input.root, definition.icon));
-    for (const path of ICON_PATHS) tree.set(path, icon);
-  }
+  const icon = definition.icon ? readFileSync(join(input.root, definition.icon)) : undefined;
+  if (icon) for (const path of ICON_PATHS) tree.set(path, icon);
   tree.set("README.md", readme(definition, input, { local: local !== undefined, remote }));
-  tree.set("LICENSE", readFileSync(join(input.root, "LICENSE")));
-  tree.set("NOTICE", readFileSync(join(input.root, "NOTICE")));
+  const license = readFileSync(join(input.root, "LICENSE"));
+  const notice = readFileSync(join(input.root, "NOTICE"));
+  tree.set("LICENSE", license);
+  tree.set("NOTICE", notice);
+
+  // Claude's directory's folder (MT-07): beside the full plugin, which it leaves as it is.
+  if (definition.features.claudeDirectory.enabled) {
+    const folder = buildClaudeDirectory(definition, {
+      version,
+      telemetryEndpoint: input.telemetryEndpoint,
+      skills,
+      icon,
+      license,
+      notice,
+      remote,
+      manifest: tree.get(".claude-plugin/plugin.json") as string,
+    });
+    for (const [path, contents] of folder) tree.set(`${CLAUDE_DIRECTORY}/${path}`, contents);
+  }
   return tree;
 }
 

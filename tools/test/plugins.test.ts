@@ -265,6 +265,7 @@ describe("the harness plugins (AX-10)", () => {
           url: "https://mcp.example.com/mcp",
           privacyPolicyUrl: "https://example.com/privacy",
         },
+        claudeDirectory: PLUGIN.features.claudeDirectory,
       },
     };
     const { dir, check } = built(definition);
@@ -341,6 +342,7 @@ describe("the harness plugins (AX-10)", () => {
       features: {
         localMcp: { ...PLUGIN.features.localMcp, enabled: false },
         remoteMcp: { enabled: false, owner: "WP-30" },
+        claudeDirectory: PLUGIN.features.claudeDirectory,
       },
     });
     writeFileSync(join(off.dir, "mcp.json"), readFileSync(join(dir, "mcp.json")));
