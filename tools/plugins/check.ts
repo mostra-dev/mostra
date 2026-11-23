@@ -531,10 +531,19 @@ const COMPONENT_DIRECTORIES = ["bin", "hooks", "commands", "agents", "output-sty
 /** Every relative link target of a Markdown text (inline links and images), without its anchor. */
 function markdownLinks(text: string): string[] {
   const prose = text.replace(/^(`{3,}|~{3,})[^\n]*\n[\s\S]*?^\1[ \t]*$/gm, "");
-  return [...prose.matchAll(/!?\[[^\]]*\]\(\s*<?([^)\s>]+)>?(?:\s+"[^"]*")?\s*\)/g)]
+  const inline = [...prose.matchAll(/!?\[[^\]]*\]\(\s*<?([^)\s>]+)>?(?:\s+"[^"]*")?\s*\)/g)];
+  const references = [...prose.matchAll(/^ {0,3}\[[^\]]+\]:\s*<?([^\s>]+)>?/gm)];
+  return [...inline, ...references]
     .map((match) => match[1] as string)
     .filter((target) => !/^([a-z][a-z0-9+.-]*:|#)/i.test(target))
-    .map((target) => decodeURI(target.split("#")[0] as string));
+    .map((target) => {
+      const path = target.split("#")[0] as string;
+      try {
+        return decodeURI(path);
+      } catch {
+        return path;
+      }
+    });
 }
 
 /** The repository's Skill, each file by its path below `skills/<name>/`. */
@@ -569,55 +578,68 @@ const directoryMarketplace = shapes.compile(CLAUDE_MARKETPLACE);
 /** The Skill rule: the folder's copy is `forClaudeDirectory` of the repository's, exactly. */
 function skillProblems({ files, definition, input }: DirectoryFolder): string[] {
   const { compatibility } = definition.features.claudeDirectory;
-  return definition.skills.flatMap((name) => {
-    const prefix = `skills/${name}/`;
-    const source = repositorySkill(input.root, name);
-    const expected = forClaudeDirectory(source, compatibility);
-    const actual = new Map(
-      [...files]
-        .filter(([path]) => path.startsWith(prefix))
-        .map(([path, bytes]) => [path.slice(prefix.length), bytes] as const),
-    );
-    const problems: string[] = [];
-    if ([...expected.keys()].join("\n") !== [...actual.keys()].sort().join("\n"))
-      problems.push(
-        `${prefix} doesn't hold exactly the repository's Skill with its examples as Markdown`,
+  // No skill but the definition's: an indexer would list another one beside the Skill.
+  const others = new Set(
+    [...files.keys()]
+      .map((path) => /^skills\/([^/]+)\//.exec(path)?.[1])
+      .filter((name): name is string => name !== undefined && !definition.skills.includes(name)),
+  );
+  const extra = [...others].map(
+    (name) => `skills/${name}/ is a skill the definition doesn't carry`,
+  );
+  return extra.concat(
+    definition.skills.flatMap((name) => {
+      const prefix = `skills/${name}/`;
+      const source = repositorySkill(input.root, name);
+      const expected = forClaudeDirectory(source, compatibility);
+      const actual = new Map(
+        [...files]
+          .filter(([path]) => path.startsWith(prefix))
+          .map(([path, bytes]) => [path.slice(prefix.length), bytes] as const),
       );
-    for (const [path, bytes] of expected) {
-      const copied = actual.get(path);
-      if (copied !== undefined && !copied.equals(bytes))
-        problems.push(`${prefix}${path} differs from the repository's Skill as the folder has it`);
-    }
-    // Each Markdown example gives back its source example's files, byte for byte.
-    for (const example of exampleNames(source)) {
-      const markdown = actual.get(`${EXAMPLES}/${example}.md`);
-      if (markdown === undefined) continue;
-      const own = `${EXAMPLES}/${example}/`;
-      const want = [...source].filter(([path]) => path.startsWith(own));
-      try {
-        const back = splitExampleMarkdown(markdown.toString("utf8"));
-        if (back.size !== want.length)
-          problems.push(`${prefix}${EXAMPLES}/${example}.md doesn't hold the example's files`);
-        for (const [path, bytes] of want) {
-          const file = path.slice(own.length);
-          if (back.get(file) !== bytes.toString("utf8"))
-            problems.push(`${prefix}${EXAMPLES}/${example}.md doesn't give back ${file} exactly`);
-        }
-      } catch (error) {
-        problems.push(`${prefix}${EXAMPLES}/${example}.md: ${(error as Error).message}`);
+      const problems: string[] = [];
+      if ([...expected.keys()].join("\n") !== [...actual.keys()].sort().join("\n"))
+        problems.push(
+          `${prefix} doesn't hold exactly the repository's Skill with its examples as Markdown`,
+        );
+      for (const [path, bytes] of expected) {
+        const copied = actual.get(path);
+        if (copied !== undefined && !copied.equals(bytes))
+          problems.push(
+            `${prefix}${path} differs from the repository's Skill as the folder has it`,
+          );
       }
-    }
-    const main = actual.get("SKILL.md")?.toString("utf8") ?? "";
-    const frontmatter = /^---\n([\s\S]*?)\n---\n/.exec(main);
-    const field = frontmatter
-      ? (parseYaml(frontmatter[1] as string) as { compatibility?: unknown }).compatibility
-      : undefined;
-    if (field !== compatibility)
-      problems.push(`${prefix}SKILL.md's compatibility isn't the folder's`);
-    if (typeof field === "string" && field.length > 500)
-      problems.push(`${prefix}SKILL.md's compatibility is over 500 characters`);
-    return problems;
-  });
+      // Each Markdown example gives back its source example's files, byte for byte.
+      for (const example of exampleNames(source)) {
+        const markdown = actual.get(`${EXAMPLES}/${example}.md`);
+        if (markdown === undefined) continue;
+        const own = `${EXAMPLES}/${example}/`;
+        const want = [...source].filter(([path]) => path.startsWith(own));
+        try {
+          const back = splitExampleMarkdown(markdown.toString("utf8"));
+          if (back.size !== want.length)
+            problems.push(`${prefix}${EXAMPLES}/${example}.md doesn't hold the example's files`);
+          for (const [path, bytes] of want) {
+            const file = path.slice(own.length);
+            if (back.get(file) !== bytes.toString("utf8"))
+              problems.push(`${prefix}${EXAMPLES}/${example}.md doesn't give back ${file} exactly`);
+          }
+        } catch (error) {
+          problems.push(`${prefix}${EXAMPLES}/${example}.md: ${(error as Error).message}`);
+        }
+      }
+      const main = actual.get("SKILL.md")?.toString("utf8") ?? "";
+      const frontmatter = /^---\n([\s\S]*?)\n---\n/.exec(main);
+      const field = frontmatter
+        ? (parseYaml(frontmatter[1] as string) as { compatibility?: unknown }).compatibility
+        : undefined;
+      if (field !== compatibility)
+        problems.push(`${prefix}SKILL.md's compatibility isn't the folder's`);
+      if (typeof field === "string" && field.length > 500)
+        problems.push(`${prefix}SKILL.md's compatibility is over 500 characters`);
+      return problems;
+    }),
+  );
 }
 
 const DIRECTORY_RULES: readonly DirectoryRule[] = [

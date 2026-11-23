@@ -450,6 +450,22 @@ describe("Claude's directory's folder (MT-07)", () => {
       ],
       ["no license", (f) => rmSync(join(f, "LICENSE")), /LICENSE is missing/],
       [
+        "a second skill",
+        (f) => {
+          mkdirSync(join(f, "skills/other"));
+          writeFileSync(join(f, "skills/other/SKILL.md"), "---\nname: other\n---\n");
+        },
+        /skills\/other\/ is a skill the definition doesn't carry/,
+      ],
+      [
+        "a reference link to a file the folder lacks",
+        (f) => {
+          const path = join(f, "README.md");
+          writeFileSync(path, `${readFileSync(path, "utf8")}\n[x][gone]\n\n[gone]: ./GONE.md\n`);
+        },
+        /README\.md links to \.\/GONE\.md, which the folder lacks/,
+      ],
+      [
         "a link",
         (f) => symlinkSync("README.md", join(f, "LINK.md")),
         /LINK\.md isn't a regular file or folder/,
