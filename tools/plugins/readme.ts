@@ -111,7 +111,8 @@ function shared(
         : "The plugin has no hooks and runs nothing on its own. When your agent follows the Skill:",
     "",
     `- **It runs \`mostra\`** on your computer, or \`${cli}\` where \`mostra\` isn't installed.`,
-    "- **The first run downloads Mostra** (no account, nothing sent about you), the MCP server's first start included:",
+    // The folder starts no server; the root's words stay as they are in every configuration.
+    `- **The first run downloads Mostra** (no account, nothing sent about you)${options.variant === "claude-directory" ? "" : ", the MCP server's first start included"}:`,
     `  - the \`@mostra/cli\` package from the npm registry (\`registry.npmjs.org\`, or the registry your npm is set to);`,
     `  - Mostra's runtime for your platform from its GitHub release (\`github.com/mostra-dev/mostra/releases/download/v${version}/\`, served from GitHub's download hosts), checked against the SHA-256 the package pins;`,
     "  - the headless Chromium that `mostra verify` renders pages in, from Playwright's download server (`cdn.playwright.dev`), checked file by file against the pins in the runtime.",
