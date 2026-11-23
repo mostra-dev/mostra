@@ -29,9 +29,10 @@ use serde_json::value::RawValue;
 
 use crate::rpc::{BoxFuture, Failure, Incoming};
 use crate::wire::{
-    ArtifactSummary, ControlsPolicy, DraftMirror, ExternalBase, PortAddressingExternalBaseParams,
-    PortIdentityResolveParams, PortSecretsGetParams, PortTrustedControlsActivatedParams,
-    PortTrustedControlsPolicyParams, SubmissionEnvelope,
+    ArtifactSummary, CaptureRequest, ControlsPolicy, DraftMirror, ExternalBase,
+    PortAddressingExternalBaseParams, PortCaptureScreenshotResult, PortIdentityResolveParams,
+    PortSecretsGetParams, PortTrustedControlsActivatedParams, PortTrustedControlsPolicyParams,
+    ReviewEnvelope, SubmissionEnvelope,
 };
 
 /// A host's failure to answer a port call. Mostra treats it as a failed attempt: a delivery is
@@ -196,6 +197,23 @@ pub trait Drafts: Send + Sync + 'static {
     fn mirror(&self, draft: DraftMirror) -> impl Future<Output = Result<(), PortError>> + Send;
 }
 
+/// `reviews`: receives each review thread and each review set's choice as it changes, best effort
+/// and never retried (HO-11): a mirror of the review in the host's own store.
+pub trait Reviews: Send + Sync + 'static {
+    /// Mirrors the thread or the choice.
+    fn mirror(&self, review: ReviewEnvelope) -> impl Future<Output = Result<(), PortError>> + Send;
+}
+
+/// `capture`: supplies the screenshot a comment's crop is cut from (HO-11).
+pub trait Capture: Send + Sync + 'static {
+    /// The place `request.anchor` names in the view's version, as a base64 PNG with its size.
+    /// Answer within 30 s; a failure falls back to Mostra's own capture.
+    fn screenshot(
+        &self,
+        request: CaptureRequest,
+    ) -> impl Future<Output = Result<PortCaptureScreenshotResult, PortError>> + Send;
+}
+
 /// `trustedControls`: decides each view's submit channels and trusted controls (D108).
 pub trait TrustedControls: Send + Sync + 'static {
     /// The channels and controls for a new view of `artifact`. Answer within 5 s; a failure
@@ -324,6 +342,36 @@ impl PortSet {
                 Box::pin(async move {
                     port.mirror(parse(params)?).await?;
                     Ok(serde_json::json!({}))
+                })
+            }),
+        );
+    }
+
+    pub(crate) fn reviews<T: Reviews>(&mut self, port: T) {
+        let port = Arc::new(port);
+        self.add(
+            "reviews",
+            "port/reviews.mirror",
+            Arc::new(move |params| {
+                let port = Arc::clone(&port);
+                Box::pin(async move {
+                    port.mirror(parse(params)?).await?;
+                    Ok(serde_json::json!({}))
+                })
+            }),
+        );
+    }
+
+    pub(crate) fn capture<T: Capture>(&mut self, port: T) {
+        let port = Arc::new(port);
+        self.add(
+            "capture",
+            "port/capture.screenshot",
+            Arc::new(move |params| {
+                let port = Arc::clone(&port);
+                Box::pin(async move {
+                    let answer = port.screenshot(parse(params)?).await?;
+                    serde_json::to_value(answer).map_err(|e| PortError::new(e.to_string()))
                 })
             }),
         );

@@ -29,7 +29,9 @@ use tokio::process::{Child, Command};
 use crate::bundle::{Environment, InstallStep};
 use crate::error::{Error, Result};
 use crate::events::{EventStream, EventStreamOptions};
-use crate::ports::{Addressing, Drafts, Identity, PortSet, Secrets, Submissions, TrustedControls};
+use crate::ports::{
+    Addressing, Capture, Drafts, Identity, PortSet, Reviews, Secrets, Submissions, TrustedControls,
+};
 use crate::rpc::Peer;
 use crate::runtime::{Runtime, RuntimeOptions, resolve_runtime};
 use crate::wire::{
@@ -128,6 +130,20 @@ impl Options {
     #[must_use]
     pub fn drafts(mut self, port: impl Drafts) -> Self {
         self.ports.drafts(port);
+        self
+    }
+
+    /// Serves the `reviews` port (HO-11): a mirror of each review thread and choice.
+    #[must_use]
+    pub fn reviews(mut self, port: impl Reviews) -> Self {
+        self.ports.reviews(port);
+        self
+    }
+
+    /// Serves the `capture` port (HO-11): the screenshots comments' crops are cut from.
+    #[must_use]
+    pub fn capture(mut self, port: impl Capture) -> Self {
+        self.ports.capture(port);
         self
     }
 

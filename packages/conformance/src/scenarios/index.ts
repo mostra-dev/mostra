@@ -3,11 +3,13 @@
  * baselines name it. New scenarios join additively (WP-13 adds addressing, WP-20 reviews and
  * capture, WP-29 remote and WP-31 team scenarios).
  */
+
 import type { Scenario } from "../scenario.ts";
 import { DELIVERY_SCENARIOS } from "./delivery.ts";
 import { INTERACTION_SCENARIOS } from "./interaction.ts";
 import { PORT_SCENARIOS } from "./ports.ts";
 import { REMOTE_SCENARIOS } from "./remote.ts";
+import { REVIEW_SCENARIOS } from "./review.ts";
 import { SESSION_SCENARIOS } from "./session.ts";
 import { TEAM_SCENARIOS } from "./team.ts";
 import { VIEWING_SCENARIOS } from "./viewing.ts";
@@ -18,6 +20,7 @@ export const SCENARIOS: readonly Scenario[] = [
   ...DELIVERY_SCENARIOS,
   ...INTERACTION_SCENARIOS,
   ...PORT_SCENARIOS,
+  ...REVIEW_SCENARIOS,
   ...VIEWING_SCENARIOS,
   ...REMOTE_SCENARIOS,
   ...TEAM_SCENARIOS,

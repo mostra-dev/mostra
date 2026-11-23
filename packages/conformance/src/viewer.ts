@@ -382,6 +382,29 @@ export class Viewer {
     });
   }
 
+  /**
+   * The shell's review routes (WP-20): `GET threads?view=`, `POST threads`, a thread's
+   * `comments`, `status` and `crop`, and `choose`.
+   */
+  review(path: string, body?: unknown): Promise<Answer> {
+    return this.shell(`v/${REVISION}/review/${path}`, body);
+  }
+
+  /** Starts a comment thread on the page, pointing at its heading; answers the route. */
+  comment(threadId: string, commentId: string, text: string): Promise<Answer> {
+    return this.review("threads", {
+      viewId: this.viewId,
+      threadId,
+      commentId,
+      text,
+      anchor: {
+        selectors: [{ type: "CssSelector", value: "h1" }],
+        rect: { x: 0, y: 0, width: 320, height: 48 },
+        viewport: { width: 1280, height: 800, dpr: 1 },
+      },
+    });
+  }
+
   /** Submits on the artifact channel (D40). */
   submit(expectedRevision: string): Promise<Answer> {
     return this.page("submit", { viewId: this.viewId, expectedRevision, channel: "artifact" });

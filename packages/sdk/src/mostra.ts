@@ -46,20 +46,25 @@ import {
   mostraInitializeMethod,
   type PortAddressingExternalBaseParams,
   type PortAddressingExternalBaseResult,
+  type PortCaptureScreenshotParams,
+  type PortCaptureScreenshotResult,
   type PortIdentityResolveParams,
   type PortName,
   type PortSecretsGetParams,
   type PortTrustedControlsActivatedParams,
   type PublishReceipt,
   portAddressingExternalBaseMethod,
+  portCaptureScreenshotMethod,
   portDraftsMirrorMethod,
   portIdentityResolveMethod,
+  portReviewsMirrorMethod,
   portSecretsGetMethod,
   portSubmissionsDeliverMethod,
   portTrustedControlsActivatedMethod,
   portTrustedControlsPolicyMethod,
   type Results,
   type ResultsMarkdown,
+  type ReviewEnvelope,
   RpcError,
   RpcPeer,
   receivable,
@@ -117,6 +122,21 @@ export interface Ports {
   };
   /** Receives each viewer draft's latest revision, best effort, never retried (IN-06). */
   readonly drafts?: { mirror(draft: DraftMirror): void | Promise<void> };
+  /**
+   * Receives each review thread and each review set's choice as it changes, best effort, never
+   * retried (HO-11): a mirror of the review in the host's own store.
+   */
+  readonly reviews?: { mirror(review: ReviewEnvelope): void | Promise<void> };
+  /**
+   * Supplies the screenshot a comment's crop is cut from (HO-11): the place `request.anchor` names
+   * in the view's version, as a PNG. A failure or a missing answer falls back to Mostra's own
+   * capture through its verify browser. Answer within 30 s.
+   */
+  readonly capture?: {
+    screenshot(
+      request: PortCaptureScreenshotParams,
+    ): PortCaptureScreenshotResult | Promise<PortCaptureScreenshotResult>;
+  };
   /**
    * Gives one of an artifact's listeners an external address (HO-10, D158 item 6): the origin of
    * the host's own tunnel that forwards to `request.local`, which joins the links Mostra mints
@@ -303,6 +323,8 @@ const PORT_METHODS = {
   addressing: [portAddressingExternalBaseMethod],
   submissions: [portSubmissionsDeliverMethod],
   drafts: [portDraftsMirrorMethod],
+  reviews: [portReviewsMirrorMethod],
+  capture: [portCaptureScreenshotMethod],
   secrets: [portSecretsGetMethod],
   trustedControls: [portTrustedControlsPolicyMethod, portTrustedControlsActivatedMethod],
 } as const satisfies Record<keyof Ports, readonly AnyMethod[]>;
@@ -338,6 +360,13 @@ function portHandler(ports: Ports, method: string): ((params: unknown) => unknow
       );
     case portDraftsMirrorMethod.method:
       return ports.drafts && ((params) => ports.drafts?.mirror(params as DraftMirror));
+    case portReviewsMirrorMethod.method:
+      return ports.reviews && ((params) => ports.reviews?.mirror(params as ReviewEnvelope));
+    case portCaptureScreenshotMethod.method:
+      return (
+        ports.capture &&
+        ((params) => ports.capture?.screenshot(params as PortCaptureScreenshotParams))
+      );
     case portSecretsGetMethod.method:
       return ports.secrets && ((params) => ports.secrets?.get(params as PortSecretsGetParams));
     case portTrustedControlsPolicyMethod.method:

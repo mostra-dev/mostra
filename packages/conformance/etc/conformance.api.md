@@ -478,6 +478,11 @@ export interface StoreResult {
             readonly mode?: string;
         } | null;
     }[];
+    readonly captures?: readonly {
+        readonly artifactId: string;
+        readonly threadId: string;
+        readonly sha256: string;
+    }[];
     readonly deliveries: readonly StoredDelivery[];
     readonly drafts: readonly {
         readonly artifactId: string;
@@ -501,6 +506,14 @@ export interface StoreResult {
             readonly controls?: readonly string[];
         };
     }[];
+    readonly reviews?: readonly {
+        readonly kind: string;
+        readonly artifactId: string;
+        readonly threadId?: string;
+        readonly status?: string;
+        readonly reviewSetId?: string;
+        readonly candidateId?: string;
+    }[];
     readonly secrets: readonly {
         readonly artifactId: string;
         readonly name: string;
@@ -514,6 +527,7 @@ export const StoreResult: z.ZodType<StoreResult>;
 export class Viewer {
     answer(fields: Record<string, unknown>, channel?: "artifact" | "shell", labels?: Readonly<Record<string, string>>): Promise<Answer>;
     readonly browser: Browser;
+    comment(threadId: string, commentId: string, text: string): Promise<Answer>;
     readonly link: ParsedLink;
     static open(link: string, options?: {
         browser?: Browser;
@@ -521,6 +535,7 @@ export class Viewer {
     }): Promise<Viewer>;
     page(path: string, body: unknown): Promise<Answer>;
     poll(cursor?: string): Promise<Answer>;
+    review(path: string, body?: unknown): Promise<Answer>;
     run(fnId: string, args: unknown[], timeoutMs?: number): Promise<RunState>;
     shell(path: string, body?: unknown, method?: string): Promise<Answer>;
     shellSubmit(expectedRevision: string): Promise<Answer>;

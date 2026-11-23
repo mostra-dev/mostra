@@ -7,7 +7,13 @@
  */
 import { existsSync, readFileSync } from "node:fs";
 import { join } from "node:path";
-import { BROWSER_PROTOCOL_REVISION, CommentId, ThreadId } from "@mostra/protocol";
+import {
+  BROWSER_PROTOCOL_REVISION,
+  CommentId,
+  portCaptureScreenshotMethod,
+  portReviewsMirrorMethod,
+  ThreadId,
+} from "@mostra/protocol";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
 import { Browser, type Opened, openLink } from "../browser-client.ts";
 import { GatewayHome, ok, type Receipt } from "../gateway-home.ts";
@@ -98,6 +104,9 @@ describe("review: ports, routes, mentions and export (HO-11, CO-06, RV-05)", () 
         (message.params as { threadId: string }).threadId === threadId,
       20_000,
     );
+    // What a host's typed handler reads: the method's own schema (the SDK and the crate check it).
+    const parsed = portCaptureScreenshotMethod.params.safeParse(call.params);
+    expect(parsed.success, JSON.stringify(parsed.error?.issues)).toBe(true);
     answer(host, call, { png: PNG_BASE64, width: 2, height: 1 });
   };
 
@@ -120,6 +129,8 @@ describe("review: ports, routes, mentions and export (HO-11, CO-06, RV-05)", () 
           (message.params as { thread?: { threadId: string } }).thread?.threadId === threadId,
         20_000,
       )) as Call;
+      const parsed = portReviewsMirrorMethod.params.safeParse(call.params);
+      expect(parsed.success, JSON.stringify(parsed.error?.issues)).toBe(true);
       answer(host, call, {});
       const params = call.params as {
         kind: string;

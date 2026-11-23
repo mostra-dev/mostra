@@ -18,6 +18,7 @@
  * Its own runtime is found like any SDK host's (`MOSTRA_BUNDLE`, `MOSTRA_RUNTIME_BIN`, the pinned
  * bundle, a development checkout).
  */
+import { createHash } from "node:crypto";
 import { realpathSync } from "node:fs";
 import { pathToFileURL } from "node:url";
 import { parseArgs } from "node:util";
@@ -29,9 +30,12 @@ import {
   hostMethods,
   type PortAddressingExternalBaseParams,
   type PortAddressingExternalBaseResult,
+  type PortCaptureScreenshotParams,
+  type PortCaptureScreenshotResult,
   type PortIdentityResolveParams,
   type PortSecretsGetParams,
   type PortTrustedControlsActivatedParams,
+  type ReviewEnvelope,
   RpcError,
   type SubmissionEnvelope,
   type SubmissionsDeliverResult,
@@ -56,6 +60,13 @@ export const REFERENCE_FAULTS: readonly string[] = [
   "ignore-policy",
 ];
 
+/**
+ * The crop the reference host's capture port answers every comment with (HO-11): a 2×1 PNG, one
+ * blue pixel and one red. The Rust reference host answers the same bytes.
+ */
+export const REFERENCE_CROP_PNG =
+  "iVBORw0KGgoAAAANSUhEUgAAAAIAAAABCAIAAAB7QOjdAAAAEElEQVR4nGNQ2f+fgYGBAQAJ7AJ7ZbB2WAAAAABJRU5ErkJggg==";
+
 /** The reference host's store and port answers: what a real host keeps in its own database. */
 export class ReferenceStore {
   readonly #deliveries = new Map<string, StoredDelivery & { attempts: number[] }>();
@@ -64,6 +75,8 @@ export class ReferenceStore {
   readonly #identity: StoreResult["identity"][number][] = [];
   readonly #policies: StoreResult["policies"][number][] = [];
   readonly #secrets: StoreResult["secrets"][number][] = [];
+  readonly #reviews: NonNullable<StoreResult["reviews"]>[number][] = [];
+  readonly #captures: NonNullable<StoreResult["captures"]>[number][] = [];
   readonly #addressing: NonNullable<StoreResult["addressing"]>[number][] = [];
   /** No external base until scripted: the loopback ports every other scenario expects. */
   #base: Extract<ScriptParams, { port: "addressing" }>["answer"] = null;
@@ -234,6 +247,37 @@ export class ReferenceStore {
           return base;
         },
       },
+      reviews: {
+        mirror: (review: ReviewEnvelope) => {
+          this.#reviews.push(
+            review.kind === "thread"
+              ? {
+                  kind: review.kind,
+                  artifactId: review.artifactId,
+                  threadId: review.thread.threadId,
+                  status: review.thread.status,
+                }
+              : {
+                  kind: review.kind,
+                  artifactId: review.artifactId,
+                  reviewSetId: review.reviewSetId,
+                  ...(review.candidateId !== undefined ? { candidateId: review.candidateId } : {}),
+                },
+          );
+        },
+      },
+      capture: {
+        screenshot: (request: PortCaptureScreenshotParams): PortCaptureScreenshotResult => {
+          this.#captures.push({
+            artifactId: request.artifactId,
+            threadId: request.threadId,
+            sha256: createHash("sha256")
+              .update(Buffer.from(REFERENCE_CROP_PNG, "base64"))
+              .digest("hex"),
+          });
+          return { png: REFERENCE_CROP_PNG, width: 2, height: 1 };
+        },
+      },
       secrets: {
         get: (request: PortSecretsGetParams) => {
           this.#secrets.push({ artifactId: request.artifactId, name: request.name });
@@ -253,6 +297,8 @@ export class ReferenceStore {
       policies: [...this.#policies],
       secrets: [...this.#secrets],
       addressing: [...this.#addressing],
+      reviews: [...this.#reviews],
+      captures: [...this.#captures],
     };
   }
 }
