@@ -729,10 +729,12 @@ body {
 .mostra-page[data-mostra-folded] .mostra-following {
   display: none;
 }
+/* Folded, the status and the way back stay where the bar was (#218): at the top on a computer,
+   at the bottom on a phone, where the dock was. */
 .mostra-folded {
   position: fixed;
   inset-inline-end: max(16px, env(safe-area-inset-right));
-  inset-block-end: max(16px, env(safe-area-inset-bottom));
+  inset-block-start: max(10px, env(safe-area-inset-top));
   z-index: 30;
   display: flex;
   align-items: center;
@@ -1026,6 +1028,10 @@ body {
   }
   .mostra-page[data-mostra-folded] {
     padding-block-end: 0;
+  }
+  .mostra-folded {
+    inset-block-start: auto;
+    inset-block-end: max(16px, env(safe-area-inset-bottom));
   }
   .mostra-footer {
     gap: 2px 14px;

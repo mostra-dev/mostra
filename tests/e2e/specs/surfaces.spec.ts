@@ -402,6 +402,15 @@ test.describe("every surface a person meets (UX-01, D171)", () => {
         await expect(page.locator("#mostra-unfold")).toBeFocused();
         await expect(page.locator(".mostra-rail")).toBeHidden();
         await expect(page.locator("[data-mostra-passwords]")).toHaveCount(0);
+        // Folded where the bar was (#218): at the top on a computer, at the dock's place, the
+        // bottom, on a phone.
+        const folded = await page.locator("[data-mostra-folded-bar]").boundingBox();
+        const screen = page.viewportSize();
+        expect(folded && screen).toBeTruthy();
+        if (folded && screen) {
+          if (phone) expect(folded.y + folded.height).toBeGreaterThan(screen.height - 80);
+          else expect(folded.y).toBeLessThan(40);
+        }
         await shoot(page, "hosted-folded");
         await page.locator("#mostra-unfold").click();
         await expect(page.locator("#mostra-fold")).toBeFocused();

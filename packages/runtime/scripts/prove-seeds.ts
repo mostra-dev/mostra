@@ -192,6 +192,15 @@ const SEEDS: readonly Seed[] = [
     e2e: true,
   },
   {
+    requirement: "SH-05",
+    name: "#218: the folded bar jumps to the bottom of a computer's screen",
+    file: "../shell/src/shell.css",
+    from: "  inset-block-start: max(10px, env(safe-area-inset-top));",
+    to: "  inset-block-end: max(16px, env(safe-area-inset-bottom));",
+    check: e2e("every surface, light, 1280 px wide"),
+    e2e: true,
+  },
+  {
     requirement: "KT-04",
     name: "dark mode: the shell's light or dark never reaches the page",
     file: "../shell/src/viewer.tsx",
