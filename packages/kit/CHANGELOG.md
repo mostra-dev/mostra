@@ -1,5 +1,12 @@
 # @mostra/kit
 
+## 0.19.1
+
+### Patch Changes
+
+- Updated dependencies []:
+  - @mostra/react@0.19.1
+
 ## 0.19.0
 
 ### Minor Changes

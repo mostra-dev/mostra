@@ -1,5 +1,15 @@
 # @mostra/cli
 
+## 0.19.1
+
+### Patch Changes
+
+- [#238](https://github.com/mostra-dev/mostra/pull/238) [`3a96864`](https://github.com/mostra-dev/mostra/commit/3a96864505ae04caabca491d06195730e91da605) Thanks [@dev-mirzabicer](https://github.com/dev-mirzabicer)! - Mostra's plugin repository, `mostra-dev/mostra-plugin`, has a folder for Claude's plugin directory, `claude-directory/`: the Agent Skill, its example artifacts as Markdown files, and Mostra's remote MCP server, built from the same source as the full plugin by every release. The full plugin at the repository's root, with its local MCP server, is unchanged.
+- Updated dependencies []:
+  - @mostra/mcp@0.19.1
+  - @mostra/protocol@0.19.1
+  - @mostra/sdk@0.19.1
+
 ## 0.19.0
 
 ### Minor Changes

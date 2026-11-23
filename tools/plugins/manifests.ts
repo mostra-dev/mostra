@@ -184,3 +184,26 @@ export const CODEX_MARKETPLACE = {
     },
   },
 } as const;
+
+/**
+ * The directory folder's `.mcp.json`: remote servers only, each by HTTPS URL. "MCP servers that
+ * Claude Code connects to at a public URL can stay"; a local (stdio) one is taken only from a
+ * verified organization (the directory's report on 0.18.0, VERIFIED_FACTS, MT-07).
+ */
+export const DIRECTORY_MCP = {
+  type: "object",
+  required: ["mcpServers"],
+  additionalProperties: false,
+  properties: {
+    mcpServers: {
+      type: "object",
+      minProperties: 1,
+      additionalProperties: {
+        type: "object",
+        required: ["type", "url"],
+        additionalProperties: false,
+        properties: { type: { const: "http" }, url: https },
+      },
+    },
+  },
+} as const;

@@ -428,7 +428,7 @@ The security review of shared ownership (removed members' tokens and links, a ma
 | A client's metadata document can't be read when the server judges how its chat host renders | Its last answer holds, kept a minute per client; a client never judged before renders as `app` |
 | `artifact_verify` answers `running` and the source changes before it is called again | A write through the tools forgets the directory's runs, and a fingerprint that differs from the run's start starts a new one, so no verdict is given for code it didn't verify; a run that never settles is left after 30 minutes |
 
-## 14. Review (WP-20, D182)
+## 14. Review (WP-20, D183)
 
 | Case | Behavior |
 |---|---|

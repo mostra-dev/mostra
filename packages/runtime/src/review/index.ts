@@ -3,7 +3,7 @@
  * captured after the thread commits and kept as a content-addressed file in the home's `blobs/`,
  * and `review/export`, an artifact's review for agents with every anchor layer and crop path.
  *
- * Crops (D182 item 5): a thread's crop is asked of the host's `capture` port when one is
+ * Crops (D183 item 5): a thread's crop is asked of the host's `capture` port when one is
  * registered, else made by the default, the verify runner's browser rendering the view's version
  * with the viewer's answers at the view's viewport (ARCHITECTURE §8); a host whose capture fails
  * leaves it to the default. A capture is tried three times, with a growing pause; then the crop is
@@ -62,7 +62,7 @@ export const CROP_BYTES_MAX: number = 8 * 1024 * 1024;
 /** How many times a capture is tried before its crop is `failed`. */
 export const CAPTURE_ATTEMPTS = 3;
 /**
- * How long a submit waits for the crops of the threads it carries (D182 item 2): a crop is
+ * How long a submit waits for the crops of the threads it carries (D183 item 2): a crop is
  * usually captured within seconds of its comment; one still pending past this is submitted as
  * `pending`, and the submission is never held back for it.
  */

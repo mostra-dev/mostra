@@ -124,7 +124,7 @@ export interface BrowserRoutesOptions {
   readonly crops?: (sha256: string) => Promise<Uint8Array | undefined>;
   /**
    * Before a submit, from the frame or the shell (WP-20): waits, bounded, for the crops of the
-   * threads the submission will carry, so it carries them captured (D182 item 2).
+   * threads the submission will carry, so it carries them captured (D183 item 2).
    */
   readonly beforeSubmit?: (page: PageIdentity) => Promise<void>;
   /** Tells a host with a `trustedControls` port that a trusted control was used (D108). */

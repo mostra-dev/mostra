@@ -525,7 +525,7 @@ export async function openHostedHome(options: HostedHomeOptions): Promise<Hosted
       );
     },
   };
-  // A hosted page's comments (WP-20, D182 item 4): this home holds no build and runs no browser,
+  // A hosted page's comments (WP-20, D183 item 4): this home holds no build and runs no browser,
   // so each crop is rendered on the artifact's owner instance, from the answers the comment's viewer
   // gave here, while the owner is connected; while it is away, a crop waits, never failing for it.
   const blobs = openBlobs(options.dir);

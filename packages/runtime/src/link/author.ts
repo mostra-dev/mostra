@@ -44,7 +44,7 @@ export interface OwnerAuthorOptions {
   readonly hostedOn: (artifactId: string) => readonly string[];
   /**
    * Renders a review comment's crop of a version this home holds, from the answers a hosted home
-   * sends (WP-20, D182 item 4), keeping it in this home's blobs too. Absent: crops are refused.
+   * sends (WP-20, D183 item 4), keeping it in this home's blobs too. Absent: crops are refused.
    */
   readonly crop?: (request: OwnerCropRequest) => Promise<{
     readonly png: Uint8Array;

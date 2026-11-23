@@ -585,7 +585,7 @@ describe("operator ports (HO-09)", () => {
     expect((await send(port, label, "/")).status).toBe(421);
   }, 180_000);
 
-  it("removing a hosted artifact removes its comments' crops, which show what its viewers answered (D182 item 4)", async () => {
+  it("removing a hosted artifact removes its comments' crops, which show what its viewers answered (D183 item 4)", async () => {
     const { answer: shared } = await share();
     const url = ok<{ url: string }>(shared).url;
     const host = await connectTo(owner.daemon.status.socket as string);

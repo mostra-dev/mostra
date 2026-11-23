@@ -6,9 +6,12 @@
 #
 # It builds the plugin with tools/plugins/cli.ts, then, for each CLI on PATH (or in
 # $MOSTRA_HARNESS_BIN, a directory of them): Claude Code (`claude plugin validate --strict`,
-# marketplace add, install, details), Codex (marketplace add, plugin add, the cached SKILL.md),
-# Gemini CLI (extensions install, list), GitHub Copilot CLI (marketplace add, plugin install), the
-# `skills` CLI (`skills add --list`) and skills-ref (`agentskills validate`, through uvx). A
+# marketplace add, install, details), Codex (marketplace add, plugin add, the skills its app
+# server loaded), Gemini CLI (extensions install, list), GitHub Copilot CLI (marketplace add,
+# plugin install), the `skills` CLI (`skills add --list`) and skills-ref (`agentskills validate`,
+# through uvx). Each must find exactly one Skill, so the second copy in claude-directory/ is never
+# a second skill (MT-07); the root's Claude Code install carries both servers. Then Claude Code
+# installs claude-directory/ from disk on its own: one Skill, and the remote server alone. A
 # harness that isn't installed is reported as skipped. Nothing outside the scratch directory is
 # written: every harness runs with its home there. Exit 1 when any harness that ran failed.
 set -uo pipefail
@@ -38,10 +41,25 @@ if command -v claude >/dev/null; then
     CLAUDE_CONFIG_DIR="$home" limited 120 claude plugin marketplace add "$plugin" >"$home/add.log" 2>&1 &&
     CLAUDE_CONFIG_DIR="$home" limited 120 claude plugin install mostra@mostra >"$home/install.log" 2>&1 &&
     CLAUDE_CONFIG_DIR="$home" limited 120 claude plugin details mostra@mostra >"$home/details.log" 2>&1 &&
-    grep -q "Skills (1)  mostra" "$home/details.log"; then
-    pass "Claude Code $(claude --version | head -1): validated (--strict), installed, Skill mostra found"
+    grep -q "Skills (1)  mostra$" "$home/details.log" &&
+    grep -q "MCP servers (2)  mostra, mostra-remote" "$home/details.log"; then
+    pass "Claude Code $(claude --version | head -1): validated (--strict), installed, one Skill and both servers"
   else
     fail "Claude Code: see $home/*.log"
+  fi
+  # Claude's directory's folder, installed from disk on its own (MT-07).
+  home="$scratch/claude-directory"; mkdir -p "$home"
+  folder="$plugin/claude-directory"
+  if [ ! -d "$folder" ]; then skip "Claude Code, claude-directory/ (the feature is off)"
+  elif CLAUDE_CONFIG_DIR="$home" limited 120 claude plugin validate "$folder" --strict >"$home/validate.log" 2>&1 &&
+    CLAUDE_CONFIG_DIR="$home" limited 120 claude plugin marketplace add "$folder" >"$home/add.log" 2>&1 &&
+    CLAUDE_CONFIG_DIR="$home" limited 120 claude plugin install mostra@mostra-claude-directory >"$home/install.log" 2>&1 &&
+    CLAUDE_CONFIG_DIR="$home" limited 120 claude plugin details mostra@mostra-claude-directory >"$home/details.log" 2>&1 &&
+    grep -q "Skills (1)  mostra$" "$home/details.log" &&
+    grep -q "MCP servers (1)  mostra-remote" "$home/details.log"; then
+    pass "Claude Code, claude-directory/: validated (--strict), installed from disk, one Skill and the remote server alone"
+  else
+    fail "Claude Code, claude-directory/: see $home/*.log"
   fi
 else skip "Claude Code"; fi
 
@@ -49,8 +67,11 @@ if command -v codex >/dev/null; then
   home="$scratch/codex"; mkdir -p "$home"
   if CODEX_HOME="$home" limited 120 codex plugin marketplace add "$plugin" >"$home/add.log" 2>&1 &&
     CODEX_HOME="$home" limited 120 codex plugin add mostra@mostra >"$home/install.log" 2>&1 &&
-    cmp -s "$(find "$home/plugins/cache" -path '*/skills/mostra/SKILL.md' | head -1)" "$plugin/skills/mostra/SKILL.md"; then
-    pass "Codex $(codex --version 2>/dev/null | tail -1): installed, its cached SKILL.md is the plugin's"
+    (cd "$home" && HOME="$home" CODEX_HOME="$home" limited 120 node "$root/tools/plugins/codex-mcp-status.mjs" --skills mostra@mostra >"$home/skills.log" 2>&1) &&
+    loaded="$(sed -n 's/^SKILL [^ ]* //p' "$home/skills.log")" &&
+    case "$loaded" in */claude-directory/*) false ;; *) true ;; esac &&
+    cmp -s "$loaded" "$plugin/skills/mostra/SKILL.md"; then
+    pass "Codex $(codex --version 2>/dev/null | tail -1): installed, loads one Skill, the plugin's"
   else
     fail "Codex: see $home/*.log"
   fi
@@ -61,7 +82,7 @@ if command -v gemini >/dev/null; then
   # Gemini asks whether to trust the folder even with --consent: answer it.
   if echo y | HOME="$home" perl -e 'alarm 120; exec @ARGV' gemini extensions install "$plugin" --consent --skip-settings >"$home/install.log" 2>&1 &&
     HOME="$home" limited 120 gemini extensions list >"$home/list.log" 2>&1 &&
-    grep -q "^  mostra:" "$home/list.log"; then
+    [ "$(grep -c "^  mostra:" "$home/list.log")" = 1 ]; then
     pass "Gemini CLI $(HOME="$home" gemini --version 2>/dev/null | tail -1): installed, agent skill mostra listed"
   else
     fail "Gemini CLI: see $home/*.log"
@@ -82,19 +103,22 @@ else skip "Copilot CLI"; fi
 if command -v skills >/dev/null; then
   home="$scratch/skills"; mkdir -p "$home"
   if (cd "$home" && DO_NOT_TRACK=1 DISABLE_TELEMETRY=1 limited 120 skills add "$plugin" --list >"$home/list.log" 2>&1) &&
-    grep -q "mostra" "$home/list.log"; then
-    pass "skills CLI $(skills --version 2>/dev/null | tail -1): lists the Skill mostra"
+    grep -q "Found 1 skill" "$home/list.log" && grep -q "mostra" "$home/list.log"; then
+    pass "skills CLI $(skills --version 2>/dev/null | tail -1): lists one Skill, mostra"
   else
     fail "skills CLI: see $home/list.log"
   fi
 else skip "skills CLI"; fi
 
 if command -v uvx >/dev/null; then
-  if limited 300 uvx --from skills-ref==0.1.1 agentskills validate "$plugin/skills/mostra" >"$scratch/skills-ref.log" 2>&1; then
-    pass "skills-ref 0.1.1: $(tail -1 "$scratch/skills-ref.log")"
-  else
-    fail "skills-ref: see $scratch/skills-ref.log"
-  fi
+  for skill in "$plugin/skills/mostra" "$plugin/claude-directory/skills/mostra"; do
+    [ -d "$skill" ] || continue
+    if limited 300 uvx --from skills-ref==0.1.1 agentskills validate "$skill" >"$scratch/skills-ref.log" 2>&1; then
+      pass "skills-ref 0.1.1: $(tail -1 "$scratch/skills-ref.log")"
+    else
+      fail "skills-ref: see $scratch/skills-ref.log"
+    fi
+  done
 else skip "skills-ref (uvx)"; fi
 
 echo "scratch: $scratch"

@@ -380,7 +380,7 @@ export interface Interaction {
 
   // ── Review (WP-20) ─────────────────────────────────────────────────────────────────────────
   /**
-   * The comment threads a page may see (D182 item 1), the people it may mention (CO-06), and
+   * The comment threads a page may see (D183 item 1), the people it may mention (CO-06), and
    * whether it may write: a link with the `review` scope, on a draft no submission closed.
    */
   reviewThreads(page: PageIdentity, viewId: string): ReviewThreads;
@@ -1394,7 +1394,7 @@ export function createInteraction(options: InteractionOptions): Interaction {
               continue;
             }
             if (event.type.startsWith("review.")) {
-              // A mention is for hosts only; a page hears of a thread it may see (D182 item 1).
+              // A mention is for hosts only; a page hears of a thread it may see (D183 item 1).
               if (event.type === "review.mentioned") continue;
               const threadId = String(event.payload["threadId"] ?? "");
               if (!threads.has(threadId)) {

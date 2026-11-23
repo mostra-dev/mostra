@@ -3,7 +3,7 @@
  * comments, who may see and write them, mentions, and the crop each thread keeps. Every change is
  * one transaction with its event; the crop is captured after the thread commits and set once.
  *
- * Who sees a thread (D182 item 1): hosts and agents every thread; a page the threads its viewer
+ * Who sees a thread (D183 item 1): hosts and agents every thread; a page the threads its viewer
  * started, wrote in or is mentioned in, and every thread when its viewer is the artifact's owner
  * or the artifact's `team.visibility` is `names` (D168 item 8). People appear to a page by their
  * key on the artifact and display name, never a viewer ID or `ref` (D168 item 2).
@@ -598,7 +598,7 @@ export interface SnapshotThread {
 }
 
 /**
- * The threads a viewer's submission carries (D182 item 2): every thread they started or wrote in on
+ * The threads a viewer's submission carries (D183 item 2): every thread they started or wrote in on
  * the artifact, as it stands, with every message and its crop.
  */
 export function snapshotThreads(

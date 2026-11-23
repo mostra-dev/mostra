@@ -140,7 +140,7 @@ describe("hosted pages (§18.4)", () => {
     ).toEqual([]);
   }, 120_000);
 
-  it("takes a hosted page's comment, its crop rendered on the owner, and hands both to the owner (D182 item 4)", async () => {
+  it("takes a hosted page's comment, its crop rendered on the owner, and hands both to the owner (D183 item 4)", async () => {
     const receipt = await owner.publish("single-tsx", "page.tsx");
     const share = ok<{ url: string }>(
       await owner.client.call("share/start", {

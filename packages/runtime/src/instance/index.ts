@@ -945,7 +945,7 @@ async function assemble(home: OwnedHome, options: StartInstanceOptions): Promise
     runtimeVersion: runtimeVersion(),
     protocol: () => server,
     hostedOn: (artifactId) => link.hostedServers(artifactId),
-    // A hosted page's comment's crop (D182 item 4): rendered here, where the version is, and kept
+    // A hosted page's comment's crop (D183 item 4): rendered here, where the version is, and kept
     // in this home's blobs too, so the submission's results, imported here, name a crop that exists.
     crop: async (request) => {
       const detail = registry.get(canonicalRef({ artifactId: request.artifactId }));

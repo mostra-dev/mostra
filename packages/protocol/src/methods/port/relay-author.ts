@@ -21,7 +21,7 @@ export const RELAY_AUTHOR_METHODS = [
   "workspace/fingerprint",
   "verify/screenshot",
   // A review comment's crop, rendered by the owner's verify runner from what the hosted home sends
-  // (WP-20, D182 item 4): `{ artifactId, versionId, threadId, viewId, viewerId, anchor, draft,
+  // (WP-20, D183 item 4): `{ artifactId, versionId, threadId, viewId, viewerId, anchor, draft,
   // state }` → `{ png, width, height }`.
   "review/crop",
 ] as const;

@@ -106,7 +106,7 @@ v1 requirements: 154. v1.1 requirements: 15. Owned exactly once: 169. Neither v1
 | AX-04 | WP-09 | I | Regression fixture (removed control, layout shift, missing field) detected against the last passing version | verified ([WP-09](../progress/PROGRESS-WP-09.md)) |
 | AX-05 | WP-09 | M | Screenshots at DPR 1 with token estimates; images returned only on failure or request | verified ([WP-09](../progress/PROGRESS-WP-09.md)) |
 | AX-06 | WP-14 | R | Mirza's acceptance of the Skill and AGENTS.md prose; skills-ref validate; loading mechanism tests | verified ([WP-14](../progress/PROGRESS-WP-14.md)) |
-| AX-07 | WP-26 | B, R | Docs site built with Mostra deploys to GitHub Pages; llms.txt and per-page Markdown generated; Mirza reviews | unverified |
+| AX-07 | WP-26 | B, R | Docs site deploys from the release workflow on a release tag to docs.mostradev.com; llms.txt and per-page Markdown generated; a link from the previous release resolves; Mirza reviews | unverified |
 | AX-08 | WP-27 | E | Evaluation harness pilot report with provider, model, date and tokens; batches announced (D34, D64) | unverified |
 | MC-01 | WP-15 | I, X | MCP conformance suite; scripted session create → results; HTTP hygiene tests; external: Claude Desktop or Codex | verified ([WP-15](../progress/PROGRESS-WP-15.md)) |
 | MC-02 | WP-17 | I, X | ext-apps reference host renders the export; fields, submit and actions round-trip; CSP and variables declared; URL fallback offered; external: Claude Desktop and VS Code | verified ([WP-17](../progress/PROGRESS-WP-17.md)) |

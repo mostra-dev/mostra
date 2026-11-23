@@ -359,7 +359,7 @@ describe("item 7 and 8: CORP, Referrer-Policy and framing on every response", ()
     }
   });
 
-  it("lets nothing frame the shell, and only the shell frame an artifact (D98 item 4, D182)", async () => {
+  it("lets nothing frame the shell, and only the shell frame an artifact (D98 item 4, D183)", async () => {
     const shell = await holder.navigate(`${opened.link.shell}/a/${receipt.artifactId}`);
     expect(shell.header("content-security-policy")).toContain("frame-ancestors 'none'");
     expect(shell.header("x-frame-options")).toBe("DENY");

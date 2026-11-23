@@ -1,5 +1,12 @@
 # create-mostra
 
+## 0.19.1
+
+### Patch Changes
+
+- Updated dependencies [[`3a96864`](https://github.com/mostra-dev/mostra/commit/3a96864505ae04caabca491d06195730e91da605)]:
+  - @mostra/cli@0.19.1
+
 ## 0.19.0
 
 ### Patch Changes

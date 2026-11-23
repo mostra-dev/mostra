@@ -46,10 +46,29 @@ export interface RemoteMcpFeature {
   readonly privacyPolicyUrl?: string;
 }
 
+/**
+ * A second build of the plugin for Claude's plugin directory (MT-07): the folder
+ * `claude-directory/` beside the full plugin in the same repository, holding the Skill (its
+ * examples as Markdown) and the remote MCP server and nothing the directory refuses from an
+ * organization that isn't verified (no local server, only Markdown, text, JSON, YAML and images).
+ * The plugin's root stays byte for byte as it is without it.
+ */
+export interface ClaudeDirectoryFeature {
+  readonly enabled: boolean;
+  readonly owner: "MT-07";
+  /**
+   * The folder Skill's `compatibility` field, which names both ways in: a shell that runs `mostra`,
+   * or Mostra's tools from a connector, the only way in on the Claude apps. The repository's Skill
+   * keeps its own.
+   */
+  readonly compatibility: string;
+}
+
 /** The plugin's features. */
 export interface PluginFeatures {
   readonly localMcp: LocalMcpFeature;
   readonly remoteMcp: RemoteMcpFeature;
+  readonly claudeDirectory: ClaudeDirectoryFeature;
 }
 
 /** Everything a harness or directory shows about the plugin. */
@@ -125,6 +144,12 @@ export const PLUGIN: PluginDefinition = {
       owner: "WP-30",
       url: "https://api.mostradev.com/mcp",
       privacyPolicyUrl: "https://mostradev.com/privacy",
+    },
+    claudeDirectory: {
+      enabled: true,
+      owner: "MT-07",
+      compatibility:
+        "Needs a shell that runs `mostra` (or `npx` with Node.js 22.19 or later) on macOS, Linux or Windows, x64 or arm64, or Mostra's tools from a connector (`artifact_create` and the rest), which is the only way in on the Claude apps.",
     },
   },
 };
