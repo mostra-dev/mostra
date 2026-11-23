@@ -201,6 +201,15 @@ const SEEDS: readonly Seed[] = [
     e2e: true,
   },
   {
+    requirement: "SH-05",
+    name: "#152: a frame without a layout is shown as it is",
+    file: "../shell/src/viewer.tsx",
+    from: "      if (!painted && repaints.current < REPAINT_LIMIT) {",
+    to: "      if (!painted && repaints.current < 0) {",
+    check: e2e("without a layout is entered again"),
+    e2e: true,
+  },
+  {
     requirement: "HO-09",
     name: "#167: a shell session's every performance report is counted",
     file: "src/server/hosted-pages.ts",

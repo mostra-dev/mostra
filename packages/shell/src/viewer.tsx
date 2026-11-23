@@ -131,6 +131,9 @@ const ORPHANS_REFRESH_MS = 150;
 /** How long the shell waits for its own stream to see the frame's last save. */
 const CATCH_UP_MS = 5_000;
 
+/** How many times a page whose frame came up without a layout enters it again (#152). */
+const REPAINT_LIMIT = 2;
+
 /** How many times within {@link REENTRY_WINDOW_MS} the frame is loaded again at its version. */
 const REENTRY_LIMIT = 3;
 const REENTRY_WINDOW_MS = 10_000;
@@ -251,8 +254,11 @@ interface FrameHandlers {
    * The page rendered (`mostra/ready`): its review agent listens from now on, so the overlay
    * tracks its anchors only then (WP-20).
    */
-  /** The page said it is ready, with the errors it raised by then. */
-  onReady(errors: number): void;
+  /**
+   * The page said it is ready, with the errors it raised by then and whether its document has a
+   * layout (`painted`; #152).
+   */
+  onReady(errors: number, painted: boolean): void;
   /** Where the page says the tracked comment anchors are (WP-20). */
   onPositions(positions: readonly AnchorPosition[]): void;
   /** The review sets the page shows (WP-20). */
@@ -350,9 +356,11 @@ function Frame(props: {
       onNotification: (message, params) => {
         if (message === uiInitialized) mark("initialized");
         if (message === mostraReady) {
-          mark("ready");
+          // The page marks the shell ready itself (`onReady`), once it has a layout (#152).
+          const ready = params as { errors?: unknown; painted?: unknown };
           handlersRef.current.onReady(
-            Math.max(0, Math.min(10_000, Number((params as { errors?: unknown }).errors) || 0)),
+            Math.max(0, Math.min(10_000, Number(ready.errors) || 0)),
+            ready.painted !== false,
           );
         }
         if (message === mostraFields) handlersRef.current.onFields(params as FieldsParams);
@@ -516,6 +524,8 @@ export function ViewerPage(props: {
   const [shownAt, setShownAt] = useState(() => Date.now());
   const [armedFor, setArmedFor] = useState<number | undefined>();
   const latestStateRef = useLatest(state);
+  /** How many times a frame without a layout was entered again (#152). */
+  const repaints = useRef(0);
   /** Whether this page sent its one performance report (#167). */
   const performanceSent = useRef(false);
 
@@ -869,7 +879,26 @@ export function ViewerPage(props: {
       // Whether it shows depends on the view's ticket only, which no event changes.
       return withControlRequest(latestStateRef.current, request, now).shown;
     },
-    onReady: (errors) => {
+    onReady: (errors, painted) => {
+      // A page whose document came up without a layout (Chromium, a cross-origin frame whose
+      // embedding page loaded again under load, #152) shows the viewer a blank frame that takes no
+      // input: nothing the viewer typed is in it, so it is entered again, at most twice per page.
+      if (!painted && repaints.current < REPAINT_LIMIT) {
+        repaints.current += 1;
+        mark("", { frameRepaints: String(repaints.current) });
+        void entries
+          .enter((signal) =>
+            frameTicket(target.apiBase, session.csrf, ticket.version.number, signal),
+          )
+          .then((next) => {
+            if (next === undefined) return;
+            setFocusFrame(frameHasFocus());
+            setTicket(next);
+          })
+          .catch(() => setProblem(FRAME_WORDS.unreachable));
+        return;
+      }
+      mark("ready");
       setPageReady(ticket.viewId);
       // One report per page, where the server's operator asks for it (#167): how long the page
       // took to be ready from the shell's own start, and its errors; nothing of the viewer.

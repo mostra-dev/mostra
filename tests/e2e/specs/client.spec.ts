@@ -200,6 +200,55 @@ test.describe("a frame whose load fails (D157, #66)", () => {
     }
   });
 
+  test("whose document comes up without a layout is entered again, and works (#152)", async ({
+    page,
+  }, info) => {
+    test.setTimeout(90_000);
+    const client = await Client.connect(run.socket);
+    try {
+      const own = await publishOwn(client, run.home, info);
+      // The page's first document has no layout at all, as Chromium left a hosted frame whose
+      // embedding page loaded again under load (#152): its root has no box, though the window has
+      // a size. Every later document of the tab is laid out as usual.
+      await page.addInitScript(() => {
+        if (window.parent === window || location.pathname !== "/") return;
+        if (sessionStorage.getItem("mostra-e2e-unpainted") !== null) return;
+        sessionStorage.setItem("mostra-e2e-unpainted", "1");
+        const hide = (): void => {
+          document.documentElement.style.display = "none";
+        };
+        if (document.documentElement) hide();
+        else {
+          new MutationObserver((_, observer) => {
+            if (!document.documentElement) return;
+            hide();
+            observer.disconnect();
+          }).observe(document, { childList: true });
+        }
+      });
+      await gotoShell(page, await linkFor(client, own.artifactId, viewerName(info)));
+      await expect(page.locator("html")).toHaveAttribute("data-shell", "ready", {
+        timeout: 45_000,
+      });
+      await expect(page.locator("html")).toHaveAttribute("data-frame-repaints", "1");
+      const frame = page.frameLocator("iframe.mostra-frame");
+      await expect(frame.getByTestId("mode")).toHaveText("live");
+      await expect(frame.getByTestId("notes")).toBeVisible();
+      const typing = await watchTyping(page, frame);
+      await frame.getByTestId("notes").fill("after a blank frame");
+      await frame.getByTestId("name").fill("Ana");
+      await typing.typed("notes", "after a blank frame");
+      await typing.typed("name", "Ana");
+      await saved(page);
+      await page.locator("#mostra-submit").click();
+      await expect(page.locator("#mostra-submit")).toHaveText("Submitted");
+      const done = (await results(client, own.artifactId)) as { answers: Record<string, unknown> };
+      expect(done.answers).toMatchObject({ notes: "after a blank frame", name: "Ana" });
+    } finally {
+      client.close();
+    }
+  });
+
   test("is loaded again as often as it needs within the bound when the reloaded frame greets late (#174)", async ({
     page,
   }, info) => {

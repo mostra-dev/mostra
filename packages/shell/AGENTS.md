@@ -50,6 +50,12 @@ from `dist/`, found beside the runtime package or through `MOSTRA_SHELL_DIR`.
   `src/entries.ts`, which drops a ticket asked for before something happened to the frame: never
   call `frameTicket` and `setTicket` around it. `verify` loads a failed frame again once
   (`VERIFY_RELOAD_LIMIT`), and a switch the viewer chooses gets the whole budget again.
+- **A frame whose document has no layout is entered again (#152).** On Chromium a cross-origin
+  frame whose embedding page loaded again under load came up once with no boxes at all (its root
+  0 × 0 in a window with a size), blank and taking no input. The page says so with
+  `mostra/ready`'s `painted: false`; the shell enters the frame again, at most `REPAINT_LIMIT`
+  times per page (`data-frame-repaints`), and marks itself `ready` only for a page with a layout.
+  `client.spec.ts` "without a layout" proves it.
 - **A worker-mode frame enters through its bootstrap (D70, D158).** The ticket's `src` is
   `/_mostra/enter#t=…` and `mode: "worker"`: the bootstrap page registers Mostra's service worker,
   says `mostra/frameSession.entered`, then loads the version, so the page's greeting wait starts
