@@ -600,6 +600,10 @@ export interface ResultComment {
     readonly author: Viewer;
     readonly at: string;
     readonly text: string;
+    /** The comment's ID (WP-20). */
+    readonly id?: string;
+    /** The people it mentions (CO-06). */
+    readonly mentions?: readonly Viewer[];
   }[];
   /** Every layer of the anchor that applies (D23). */
   readonly anchor: {
@@ -617,9 +621,37 @@ export interface ResultComment {
     };
     readonly time?: number;
     readonly slide?: { readonly index: number; readonly step: number };
+    /** The review set the target is in (WP-20). */
+    readonly reviewSetId?: string;
+    /** Where the viewer pointed, and the page's scroll then (document coordinates). */
+    readonly point?: { readonly x: number; readonly y: number };
+    readonly scroll?: { readonly x: number; readonly y: number };
+    /** An anchor provider's layer (a chart's series and datum). */
+    readonly provider?: {
+      readonly id: string;
+      readonly kind: string;
+      readonly data: Readonly<Record<string, unknown>>;
+      readonly label?: string;
+    };
+    /** The nested frames the target is in, outermost first. */
+    readonly frames?: readonly { readonly selector: string; readonly served: boolean }[];
+    /** What the target is, for people. */
+    readonly label?: string;
   };
-  /** The screenshot crop, always stored (D23). */
-  readonly crop: { readonly path: string; readonly width: number; readonly height: number };
+  /**
+   * The screenshot crop (D23). `state` says whether it was captured when the viewer submitted:
+   * `pending` (still being captured, as when a hosted page's owner was away) or `failed` (with
+   * `reason`) leave `path` empty and the size 0; the anchor's other layers still say where.
+   */
+  readonly crop: {
+    readonly path: string;
+    readonly width: number;
+    readonly height: number;
+    readonly state?: "captured" | "pending" | "failed";
+    readonly reason?: string;
+  };
+  /** The thread's version, when it differs from the submission's (WP-20). */
+  readonly versionId?: string;
 }
 
 /**
@@ -722,7 +754,15 @@ export const ResultComment: z.ZodType<ResultComment> = z
     threadId: z.string(),
     status: z.enum(["open", "resolved"]),
     messages: z
-      .array(z.object({ author: Viewer, at: z.iso.datetime(), text: z.string() }))
+      .array(
+        z.object({
+          author: Viewer,
+          at: z.iso.datetime(),
+          text: z.string(),
+          id: z.string().exactOptional(),
+          mentions: z.array(Viewer).readonly().exactOptional(),
+        }),
+      )
       .readonly(),
     anchor: z.object({
       reviewId: z.string().exactOptional(),
@@ -742,8 +782,31 @@ export const ResultComment: z.ZodType<ResultComment> = z
         .exactOptional(),
       time: z.number().exactOptional(),
       slide: z.object({ index: z.int(), step: z.int() }).exactOptional(),
+      reviewSetId: z.string().exactOptional(),
+      point: z.object({ x: z.number(), y: z.number() }).exactOptional(),
+      scroll: z.object({ x: z.number(), y: z.number() }).exactOptional(),
+      provider: z
+        .object({
+          id: z.string(),
+          kind: z.string(),
+          data: z.record(z.string(), z.unknown()),
+          label: z.string().exactOptional(),
+        })
+        .exactOptional(),
+      frames: z
+        .array(z.object({ selector: z.string(), served: z.boolean() }))
+        .readonly()
+        .exactOptional(),
+      label: z.string().exactOptional(),
     }),
-    crop: z.object({ path: z.string(), width: z.int(), height: z.int() }),
+    crop: z.object({
+      path: z.string(),
+      width: z.int(),
+      height: z.int(),
+      state: z.enum(["captured", "pending", "failed"]).exactOptional(),
+      reason: z.string().exactOptional(),
+    }),
+    versionId: z.string().exactOptional(),
   })
   .register(wireRegistry, {
     id: "ResultComment",

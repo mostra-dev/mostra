@@ -574,7 +574,7 @@ interface Diagnostic {
   code: `MOSTRA_${Area}_${string}`;   // codes are semver surface (AX-03)
   // Area: MANIFEST BUILD TYPE LINT DEP KIT FIELD ACTION LIVE RUNTIME CONSOLE NETWORK A11Y VISUAL SMOKE REGRESSION
   //       TERM PUBLISH SUBMIT HOST HOME HYGIENE SECRET SHARE VERIFY TARGET ENV PLATFORM ARTIFACT (D92) CLI (D140)
-  //       REMOTE (D165) PLUGIN PACK LICENSE (D172)
+  //       REMOTE (D165) PLUGIN PACK LICENSE (D172) REVIEW (WP-20)
   // (ROUND-3 §9's list, extended additively here; this list is the authority)
   severity: "error" | "warning" | "hint";  // error only for definite failures; smoke observations are warnings (D72)
   message: string;                     // what is wrong

@@ -85,7 +85,7 @@
       "ignore": [
         "zod"
       ],
-      "limit": "70 kB"
+      "limit": "76 kB"
     },
     {
       "name": "@mostra/protocol/plugin (D30, zod excluded)",

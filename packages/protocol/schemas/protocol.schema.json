@@ -355,6 +355,16 @@
         "$ref": "#/$defs/PortAddressingExternalBaseResult"
       }
     },
+    "port/capture.screenshot": {
+      "direction": "instance-to-host",
+      "mutating": false,
+      "params": {
+        "$ref": "#/$defs/CaptureRequest"
+      },
+      "result": {
+        "$ref": "#/$defs/PortCaptureScreenshotResult"
+      }
+    },
     "port/drafts.mirror": {
       "direction": "instance-to-host",
       "mutating": false,
@@ -432,6 +442,14 @@
       "result": {
         "$ref": "#/$defs/PortRelayRunResult"
       }
+    },
+    "port/reviews.mirror": {
+      "direction": "instance-to-host",
+      "mutating": false,
+      "params": {
+        "$ref": "#/$defs/ReviewEnvelope"
+      },
+      "result": {}
     },
     "port/secrets.get": {
       "direction": "instance-to-host",
@@ -599,6 +617,16 @@
       },
       "result": {
         "$ref": "#/$defs/ResultsListResult"
+      }
+    },
+    "review/export": {
+      "direction": "client-to-instance",
+      "mutating": false,
+      "params": {
+        "$ref": "#/$defs/ReviewExportParams"
+      },
+      "result": {
+        "$ref": "#/$defs/ReviewExportResult"
       }
     },
     "roster/add": {
@@ -881,6 +909,110 @@
         "warm"
       ],
       "description": "A package deps/add settled: its name, exact version and whether it is warm."
+    },
+    "AnchorRect": {
+      "type": "object",
+      "properties": {
+        "x": {
+          "type": "number",
+          "minimum": -10000000,
+          "maximum": 10000000
+        },
+        "y": {
+          "type": "number",
+          "minimum": -10000000,
+          "maximum": 10000000
+        },
+        "width": {
+          "type": "number",
+          "minimum": 0,
+          "maximum": 10000000
+        },
+        "height": {
+          "type": "number",
+          "minimum": 0,
+          "maximum": 10000000
+        }
+      },
+      "required": [
+        "x",
+        "y",
+        "width",
+        "height"
+      ],
+      "description": "A rectangle in CSS pixels."
+    },
+    "AnchorSelector": {
+      "oneOf": [
+        {
+          "type": "object",
+          "properties": {
+            "type": {
+              "type": "string",
+              "const": "CssSelector"
+            },
+            "value": {
+              "type": "string",
+              "minLength": 1,
+              "maxLength": 2048
+            }
+          },
+          "required": [
+            "type",
+            "value"
+          ]
+        },
+        {
+          "type": "object",
+          "properties": {
+            "type": {
+              "type": "string",
+              "const": "TextQuoteSelector"
+            },
+            "exact": {
+              "type": "string",
+              "minLength": 1,
+              "maxLength": 2048
+            },
+            "prefix": {
+              "type": "string",
+              "maxLength": 2048
+            },
+            "suffix": {
+              "type": "string",
+              "maxLength": 2048
+            }
+          },
+          "required": [
+            "type",
+            "exact"
+          ]
+        },
+        {
+          "type": "object",
+          "properties": {
+            "type": {
+              "type": "string",
+              "const": "FragmentSelector"
+            },
+            "conformsTo": {
+              "type": "string",
+              "maxLength": 256
+            },
+            "value": {
+              "type": "string",
+              "minLength": 1,
+              "maxLength": 256
+            }
+          },
+          "required": [
+            "type",
+            "conformsTo",
+            "value"
+          ]
+        }
+      ],
+      "description": "A W3C Web Annotation selector: CSS, a text quote, or a media fragment."
     },
     "AppOpenParams": {
       "type": "object",
@@ -2252,6 +2384,38 @@
       "type": "string",
       "pattern": "^(view|draft|submit|review|signal|action:(\\*|[^\\s#*]+(#[^\\s#*]+)?))$",
       "description": "A capability token's scope: view, draft, submit, review, signal, action:*, action:<export> or action:<module path>#<export>."
+    },
+    "CaptureRequest": {
+      "type": "object",
+      "properties": {
+        "artifactId": {
+          "$ref": "#/$defs/ArtifactId"
+        },
+        "versionId": {
+          "$ref": "#/$defs/VersionId"
+        },
+        "viewId": {
+          "$ref": "#/$defs/ViewId"
+        },
+        "viewerId": {
+          "$ref": "#/$defs/ViewerId"
+        },
+        "threadId": {
+          "$ref": "#/$defs/ThreadId"
+        },
+        "anchor": {
+          "$ref": "#/$defs/ReviewAnchor"
+        }
+      },
+      "required": [
+        "artifactId",
+        "versionId",
+        "viewId",
+        "viewerId",
+        "threadId",
+        "anchor"
+      ],
+      "description": "A comment thread's place for a host to photograph: its view and its anchor."
     },
     "CarryOver": {
       "type": "object",
@@ -5635,6 +5799,32 @@
       ],
       "description": "The external origin a host gives a listener, or null for loopback."
     },
+    "PortCaptureScreenshotResult": {
+      "type": "object",
+      "properties": {
+        "png": {
+          "type": "string",
+          "maxLength": 8388608,
+          "pattern": "^[A-Za-z0-9+/]*={0,2}$"
+        },
+        "width": {
+          "type": "integer",
+          "minimum": 1,
+          "maximum": 16384
+        },
+        "height": {
+          "type": "integer",
+          "minimum": 1,
+          "maximum": 16384
+        }
+      },
+      "required": [
+        "png",
+        "width",
+        "height"
+      ],
+      "description": "A comment thread's crop as a base64 PNG, with its size in pixels."
+    },
     "PortIdentityResolveParams": {
       "type": "object",
       "properties": {
@@ -7052,6 +7242,16 @@
               },
               "text": {
                 "type": "string"
+              },
+              "id": {
+                "type": "string"
+              },
+              "mentions": {
+                "readOnly": true,
+                "type": "array",
+                "items": {
+                  "$ref": "#/$defs/Viewer"
+                }
               }
             },
             "required": [
@@ -7191,6 +7391,87 @@
                 "index",
                 "step"
               ]
+            },
+            "reviewSetId": {
+              "type": "string"
+            },
+            "point": {
+              "type": "object",
+              "properties": {
+                "x": {
+                  "type": "number"
+                },
+                "y": {
+                  "type": "number"
+                }
+              },
+              "required": [
+                "x",
+                "y"
+              ]
+            },
+            "scroll": {
+              "type": "object",
+              "properties": {
+                "x": {
+                  "type": "number"
+                },
+                "y": {
+                  "type": "number"
+                }
+              },
+              "required": [
+                "x",
+                "y"
+              ]
+            },
+            "provider": {
+              "type": "object",
+              "properties": {
+                "id": {
+                  "type": "string"
+                },
+                "kind": {
+                  "type": "string"
+                },
+                "data": {
+                  "type": "object",
+                  "propertyNames": {
+                    "type": "string"
+                  },
+                  "additionalProperties": {}
+                },
+                "label": {
+                  "type": "string"
+                }
+              },
+              "required": [
+                "id",
+                "kind",
+                "data"
+              ]
+            },
+            "frames": {
+              "readOnly": true,
+              "type": "array",
+              "items": {
+                "type": "object",
+                "properties": {
+                  "selector": {
+                    "type": "string"
+                  },
+                  "served": {
+                    "type": "boolean"
+                  }
+                },
+                "required": [
+                  "selector",
+                  "served"
+                ]
+              }
+            },
+            "label": {
+              "type": "string"
             }
           }
         },
@@ -7209,6 +7490,17 @@
               "type": "integer",
               "minimum": -9007199254740991,
               "maximum": 9007199254740991
+            },
+            "state": {
+              "type": "string",
+              "enum": [
+                "captured",
+                "pending",
+                "failed"
+              ]
+            },
+            "reason": {
+              "type": "string"
             }
           },
           "required": [
@@ -7216,6 +7508,9 @@
             "width",
             "height"
           ]
+        },
+        "versionId": {
+          "type": "string"
         }
       },
       "required": [
@@ -7634,6 +7929,685 @@
         "markdown"
       ],
       "description": "A submission's results as Markdown for agents."
+    },
+    "ReviewAnchor": {
+      "type": "object",
+      "properties": {
+        "reviewId": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 256
+        },
+        "selectors": {
+          "readOnly": true,
+          "maxItems": 4,
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/AnchorSelector"
+          }
+        },
+        "rect": {
+          "$ref": "#/$defs/AnchorRect"
+        },
+        "point": {
+          "type": "object",
+          "properties": {
+            "x": {
+              "type": "number",
+              "minimum": -10000000,
+              "maximum": 10000000
+            },
+            "y": {
+              "type": "number",
+              "minimum": -10000000,
+              "maximum": 10000000
+            }
+          },
+          "required": [
+            "x",
+            "y"
+          ]
+        },
+        "viewport": {
+          "type": "object",
+          "properties": {
+            "width": {
+              "type": "number",
+              "minimum": 0,
+              "maximum": 10000000
+            },
+            "height": {
+              "type": "number",
+              "minimum": 0,
+              "maximum": 10000000
+            },
+            "dpr": {
+              "type": "number",
+              "minimum": 0.1,
+              "maximum": 16
+            }
+          },
+          "required": [
+            "width",
+            "height",
+            "dpr"
+          ]
+        },
+        "scroll": {
+          "type": "object",
+          "properties": {
+            "x": {
+              "type": "number",
+              "minimum": -10000000,
+              "maximum": 10000000
+            },
+            "y": {
+              "type": "number",
+              "minimum": -10000000,
+              "maximum": 10000000
+            }
+          },
+          "required": [
+            "x",
+            "y"
+          ]
+        },
+        "page": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 2048
+        },
+        "reviewSetId": {
+          "type": "string",
+          "pattern": "^[A-Za-z0-9_-]{1,64}$"
+        },
+        "candidateId": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 256
+        },
+        "provider": {
+          "type": "object",
+          "properties": {
+            "id": {
+              "type": "string",
+              "pattern": "^[a-z0-9][a-z0-9._-]{0,63}$"
+            },
+            "kind": {
+              "type": "string",
+              "pattern": "^[a-z0-9][a-z0-9._-]{0,63}$"
+            },
+            "data": {
+              "type": "object",
+              "propertyNames": {
+                "type": "string"
+              },
+              "additionalProperties": {}
+            },
+            "label": {
+              "type": "string",
+              "maxLength": 256
+            }
+          },
+          "required": [
+            "id",
+            "kind",
+            "data"
+          ]
+        },
+        "frames": {
+          "readOnly": true,
+          "maxItems": 8,
+          "type": "array",
+          "items": {
+            "type": "object",
+            "properties": {
+              "selector": {
+                "type": "string",
+                "minLength": 1,
+                "maxLength": 2048
+              },
+              "served": {
+                "type": "boolean"
+              }
+            },
+            "required": [
+              "selector",
+              "served"
+            ]
+          }
+        },
+        "label": {
+          "type": "string",
+          "maxLength": 256
+        },
+        "slide": {
+          "type": "object",
+          "properties": {
+            "index": {
+              "type": "integer",
+              "minimum": 0,
+              "maximum": 9007199254740991
+            },
+            "step": {
+              "type": "integer",
+              "minimum": 0,
+              "maximum": 9007199254740991
+            }
+          },
+          "required": [
+            "index",
+            "step"
+          ]
+        },
+        "time": {
+          "type": "number",
+          "minimum": 0
+        }
+      },
+      "description": "Where a comment points: provider data, data-review-id, W3C selectors, coordinates with viewport, page and candidate."
+    },
+    "ReviewEnvelope": {
+      "oneOf": [
+        {
+          "type": "object",
+          "properties": {
+            "kind": {
+              "type": "string",
+              "const": "thread"
+            },
+            "artifactId": {
+              "$ref": "#/$defs/ArtifactId"
+            },
+            "viewerId": {
+              "$ref": "#/$defs/ViewerId"
+            },
+            "thread": {
+              "$ref": "#/$defs/ResultComment"
+            }
+          },
+          "required": [
+            "kind",
+            "artifactId",
+            "viewerId",
+            "thread"
+          ]
+        },
+        {
+          "type": "object",
+          "properties": {
+            "kind": {
+              "type": "string",
+              "const": "choice"
+            },
+            "artifactId": {
+              "$ref": "#/$defs/ArtifactId"
+            },
+            "viewerId": {
+              "$ref": "#/$defs/ViewerId"
+            },
+            "reviewSetId": {
+              "type": "string"
+            },
+            "candidateId": {
+              "type": "string"
+            },
+            "label": {
+              "type": "string"
+            }
+          },
+          "required": [
+            "kind",
+            "artifactId",
+            "viewerId",
+            "reviewSetId"
+          ]
+        }
+      ],
+      "description": "A comment thread or a review-set choice mirrored to a host; never a submission."
+    },
+    "ReviewExport": {
+      "type": "object",
+      "properties": {
+        "artifact": {
+          "type": "object",
+          "properties": {
+            "id": {
+              "$ref": "#/$defs/ArtifactId"
+            },
+            "title": {
+              "type": "string"
+            }
+          },
+          "required": [
+            "id",
+            "title"
+          ]
+        },
+        "submission": {
+          "type": "object",
+          "properties": {
+            "id": {
+              "$ref": "#/$defs/SubmissionId"
+            },
+            "at": {
+              "type": "string",
+              "format": "date-time",
+              "pattern": "^(?:(?:\\d\\d[2468][048]|\\d\\d[13579][26]|\\d\\d0[48]|[02468][048]00|[13579][26]00)-02-29|\\d{4}-(?:(?:0[13578]|1[02])-(?:0[1-9]|[12]\\d|3[01])|(?:0[469]|11)-(?:0[1-9]|[12]\\d|30)|(?:02)-(?:0[1-9]|1\\d|2[0-8])))T(?:(?:[01]\\d|2[0-3]):[0-5]\\d:[0-5]\\d(?:\\.\\d+)?(?:Z))$"
+            },
+            "viewer": {
+              "$ref": "#/$defs/Viewer"
+            },
+            "version": {
+              "type": "integer",
+              "minimum": 1,
+              "maximum": 9007199254740991
+            }
+          },
+          "required": [
+            "id",
+            "at",
+            "viewer",
+            "version"
+          ]
+        },
+        "choices": {
+          "readOnly": true,
+          "type": "array",
+          "items": {
+            "type": "object",
+            "properties": {
+              "reviewSetId": {
+                "type": "string"
+              },
+              "candidateId": {
+                "type": "string"
+              },
+              "label": {
+                "type": "string"
+              },
+              "viewer": {
+                "$ref": "#/$defs/Viewer"
+              }
+            },
+            "required": [
+              "reviewSetId",
+              "candidateId"
+            ]
+          }
+        },
+        "comments": {
+          "readOnly": true,
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/ResultComment"
+          }
+        }
+      },
+      "required": [
+        "artifact",
+        "choices",
+        "comments"
+      ],
+      "description": "An artifact's review for agents: its choices and comment threads with every anchor layer and crop path."
+    },
+    "ReviewExportParams": {
+      "type": "object",
+      "properties": {
+        "artifact": {
+          "$ref": "#/$defs/ArtifactRef"
+        },
+        "submission": {
+          "$ref": "#/$defs/SubmissionId"
+        },
+        "format": {
+          "type": "string",
+          "enum": [
+            "md",
+            "json"
+          ]
+        },
+        "out": {
+          "type": "string",
+          "pattern": "^(?:\\/|[A-Za-z]:[\\\\/]|\\\\\\\\[^\\\\])"
+        }
+      },
+      "required": [
+        "artifact"
+      ]
+    },
+    "ReviewExportResult": {
+      "type": "object",
+      "properties": {
+        "format": {
+          "type": "string",
+          "enum": [
+            "md",
+            "json"
+          ]
+        },
+        "threads": {
+          "type": "integer",
+          "minimum": 0,
+          "maximum": 9007199254740991
+        },
+        "crops": {
+          "type": "integer",
+          "minimum": 0,
+          "maximum": 9007199254740991
+        },
+        "path": {
+          "type": "string"
+        },
+        "content": {
+          "type": "string"
+        }
+      },
+      "required": [
+        "format",
+        "threads",
+        "crops"
+      ]
+    },
+    "ReviewPerson": {
+      "type": "object",
+      "properties": {
+        "key": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 64
+        },
+        "name": {
+          "type": "string",
+          "maxLength": 256
+        },
+        "kind": {
+          "type": "string",
+          "enum": [
+            "local",
+            "tailnet",
+            "token",
+            "host",
+            "account",
+            "anonymous"
+          ]
+        },
+        "verified": {
+          "type": "boolean"
+        },
+        "self": {
+          "type": "boolean"
+        }
+      },
+      "required": [
+        "key",
+        "kind",
+        "self"
+      ],
+      "description": "A person as a page may know them: their key on the artifact and display name."
+    },
+    "ReviewReplyRequest": {
+      "type": "object",
+      "properties": {
+        "viewId": {
+          "$ref": "#/$defs/ViewId"
+        },
+        "commentId": {
+          "$ref": "#/$defs/CommentId"
+        },
+        "text": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 10000
+        },
+        "mentions": {
+          "readOnly": true,
+          "maxItems": 20,
+          "type": "array",
+          "items": {
+            "type": "object",
+            "properties": {
+              "key": {
+                "type": "string",
+                "minLength": 1,
+                "maxLength": 64
+              }
+            },
+            "required": [
+              "key"
+            ]
+          }
+        }
+      },
+      "required": [
+        "viewId",
+        "commentId",
+        "text"
+      ],
+      "description": "A reply to a comment thread, under a client-made comment ID."
+    },
+    "ReviewStatusRequest": {
+      "type": "object",
+      "properties": {
+        "viewId": {
+          "$ref": "#/$defs/ViewId"
+        },
+        "status": {
+          "type": "string",
+          "enum": [
+            "open",
+            "resolved"
+          ]
+        }
+      },
+      "required": [
+        "viewId",
+        "status"
+      ],
+      "description": "Resolves or reopens a comment thread."
+    },
+    "ReviewThread": {
+      "type": "object",
+      "properties": {
+        "id": {
+          "$ref": "#/$defs/ThreadId"
+        },
+        "versionId": {
+          "$ref": "#/$defs/VersionId"
+        },
+        "version": {
+          "type": "integer",
+          "minimum": 1,
+          "maximum": 9007199254740991
+        },
+        "status": {
+          "type": "string",
+          "enum": [
+            "open",
+            "resolved"
+          ]
+        },
+        "anchor": {
+          "$ref": "#/$defs/ReviewAnchor"
+        },
+        "createdAt": {
+          "type": "string",
+          "format": "date-time",
+          "pattern": "^(?:(?:\\d\\d[2468][048]|\\d\\d[13579][26]|\\d\\d0[48]|[02468][048]00|[13579][26]00)-02-29|\\d{4}-(?:(?:0[13578]|1[02])-(?:0[1-9]|[12]\\d|3[01])|(?:0[469]|11)-(?:0[1-9]|[12]\\d|30)|(?:02)-(?:0[1-9]|1\\d|2[0-8])))T(?:(?:[01]\\d|2[0-3]):[0-5]\\d:[0-5]\\d(?:\\.\\d+)?(?:Z))$"
+        },
+        "messages": {
+          "readOnly": true,
+          "type": "array",
+          "items": {
+            "type": "object",
+            "properties": {
+              "id": {
+                "$ref": "#/$defs/CommentId"
+              },
+              "at": {
+                "type": "string",
+                "format": "date-time",
+                "pattern": "^(?:(?:\\d\\d[2468][048]|\\d\\d[13579][26]|\\d\\d0[48]|[02468][048]00|[13579][26]00)-02-29|\\d{4}-(?:(?:0[13578]|1[02])-(?:0[1-9]|[12]\\d|3[01])|(?:0[469]|11)-(?:0[1-9]|[12]\\d|30)|(?:02)-(?:0[1-9]|1\\d|2[0-8])))T(?:(?:[01]\\d|2[0-3]):[0-5]\\d:[0-5]\\d(?:\\.\\d+)?(?:Z))$"
+              },
+              "author": {
+                "$ref": "#/$defs/ReviewPerson"
+              },
+              "text": {
+                "type": "string",
+                "maxLength": 10000
+              },
+              "mentions": {
+                "readOnly": true,
+                "maxItems": 20,
+                "type": "array",
+                "items": {
+                  "$ref": "#/$defs/ReviewPerson"
+                }
+              }
+            },
+            "required": [
+              "id",
+              "at",
+              "author",
+              "text"
+            ]
+          }
+        },
+        "resolved": {
+          "type": "object",
+          "properties": {
+            "at": {
+              "type": "string",
+              "format": "date-time",
+              "pattern": "^(?:(?:\\d\\d[2468][048]|\\d\\d[13579][26]|\\d\\d0[48]|[02468][048]00|[13579][26]00)-02-29|\\d{4}-(?:(?:0[13578]|1[02])-(?:0[1-9]|[12]\\d|3[01])|(?:0[469]|11)-(?:0[1-9]|[12]\\d|30)|(?:02)-(?:0[1-9]|1\\d|2[0-8])))T(?:(?:[01]\\d|2[0-3]):[0-5]\\d:[0-5]\\d(?:\\.\\d+)?(?:Z))$"
+            },
+            "by": {
+              "$ref": "#/$defs/ReviewPerson"
+            }
+          },
+          "required": [
+            "at",
+            "by"
+          ]
+        },
+        "crop": {
+          "type": "object",
+          "properties": {
+            "state": {
+              "type": "string",
+              "enum": [
+                "pending",
+                "captured",
+                "failed"
+              ]
+            },
+            "width": {
+              "type": "integer",
+              "minimum": 1,
+              "maximum": 9007199254740991
+            },
+            "height": {
+              "type": "integer",
+              "minimum": 1,
+              "maximum": 9007199254740991
+            },
+            "reason": {
+              "type": "string",
+              "maxLength": 1024
+            }
+          },
+          "required": [
+            "state"
+          ]
+        }
+      },
+      "required": [
+        "id",
+        "versionId",
+        "version",
+        "status",
+        "anchor",
+        "createdAt",
+        "messages",
+        "crop"
+      ],
+      "description": "A comment thread as a page sees it: anchor, messages, status and crop state."
+    },
+    "ReviewThreadRequest": {
+      "type": "object",
+      "properties": {
+        "viewId": {
+          "$ref": "#/$defs/ViewId"
+        },
+        "threadId": {
+          "$ref": "#/$defs/ThreadId"
+        },
+        "commentId": {
+          "$ref": "#/$defs/CommentId"
+        },
+        "anchor": {
+          "$ref": "#/$defs/ReviewAnchor"
+        },
+        "text": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 10000
+        },
+        "mentions": {
+          "readOnly": true,
+          "maxItems": 20,
+          "type": "array",
+          "items": {
+            "type": "object",
+            "properties": {
+              "key": {
+                "type": "string",
+                "minLength": 1,
+                "maxLength": 64
+              }
+            },
+            "required": [
+              "key"
+            ]
+          }
+        }
+      },
+      "required": [
+        "viewId",
+        "threadId",
+        "commentId",
+        "anchor",
+        "text"
+      ],
+      "description": "A new comment thread: the view, client-made IDs, its anchor and first comment."
+    },
+    "ReviewThreads": {
+      "type": "object",
+      "properties": {
+        "threads": {
+          "readOnly": true,
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/ReviewThread"
+          }
+        },
+        "people": {
+          "readOnly": true,
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/ReviewPerson"
+          }
+        },
+        "writable": {
+          "type": "boolean"
+        }
+      },
+      "required": [
+        "threads",
+        "people",
+        "writable"
+      ],
+      "description": "The threads a page may see, the people it may mention, and whether it may write."
     },
     "Revision": {
       "type": "string",

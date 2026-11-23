@@ -39,6 +39,7 @@ import { pluginListMethod } from "./plugin/list.ts";
 import { pluginRemoveMethod } from "./plugin/remove.ts";
 import { pluginValidateMethod } from "./plugin/validate.ts";
 import { portAddressingExternalBaseMethod } from "./port/addressing-external-base.ts";
+import { portCaptureScreenshotMethod } from "./port/capture-screenshot.ts";
 import { portDraftsMirrorMethod } from "./port/drafts-mirror.ts";
 import { portIdentityResolveMethod } from "./port/identity-resolve.ts";
 import { portRelayAuthorMethod } from "./port/relay-author.ts";
@@ -47,6 +48,7 @@ import { portRelayCancelMethod } from "./port/relay-cancel.ts";
 import { portRelayLiveMethod } from "./port/relay-live.ts";
 import { portRelayReconcileMethod } from "./port/relay-reconcile.ts";
 import { portRelayRunMethod } from "./port/relay-run.ts";
+import { portReviewsMirrorMethod } from "./port/reviews-mirror.ts";
 import { portSecretsGetMethod } from "./port/secrets-get.ts";
 import { portSubmissionsDeliverMethod } from "./port/submissions-deliver.ts";
 import { portTrustedControlsActivatedMethod } from "./port/trusted-controls-activated.ts";
@@ -64,6 +66,7 @@ import { remoteStatusMethod } from "./remote/status.ts";
 import { remoteTokenMethod } from "./remote/token.ts";
 import { resultsGetMethod } from "./results/get.ts";
 import { resultsListMethod } from "./results/list.ts";
+import { reviewExportMethod } from "./review/export.ts";
 import { rosterAddMethod } from "./roster/add.ts";
 import { rosterGetMethod } from "./roster/get.ts";
 import { rosterRemoveMethod } from "./roster/remove.ts";
@@ -166,6 +169,9 @@ export const hostMethods: readonly AnyMethod[] = [
   themeListMethod,
   themeShowMethod,
   packKitMethod,
+  reviewExportMethod,
+  portReviewsMirrorMethod,
+  portCaptureScreenshotMethod,
   // gen:methods
 ];
 
