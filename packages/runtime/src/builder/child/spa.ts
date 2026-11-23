@@ -436,7 +436,14 @@ export async function injectReviewAgent(
   const name = `assets/mostra-review-agent-${createHash("sha256").update(agent).digest("hex").slice(0, 10)}.js`;
   await mkdir(join(clientDir, "assets"), { recursive: true });
   await writeFile(join(clientDir, name), agent);
-  const tag = `<script src="/${name}"></script>`;
+  // Inline in each page: a frame the artifact sandboxes has an opaque origin, whose requests carry
+  // no session, so it couldn't fetch the agent; its own document still loads, the agent with it.
+  // The file stays for what loads it by name (WP-24's proxied demos).
+  // An agent whose text an HTML parser would end early (never the case today) goes by name.
+  const code = agent.toString("utf8");
+  const tag = /<\/script|<!--/i.test(code)
+    ? `<script src="/${name}"></script>`
+    : `<script>${code}</script>`;
   for (const page of pages) {
     const html = await readFile(page, "utf8");
     const head = /<head[^>]*>/i.exec(html);

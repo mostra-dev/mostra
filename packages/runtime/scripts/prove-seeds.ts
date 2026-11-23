@@ -243,6 +243,23 @@ const SEEDS: readonly Seed[] = [
     check: integration("operator.test.ts", "removes its comments' crops"),
   },
   {
+    requirement: "RV-01",
+    name: "a served frame's pages carry no review agent",
+    file: "src/builder/child/spa.ts",
+    from: "  const reviewAgent = runtimeDir",
+    to: "  const reviewAgent = undefined && runtimeDir",
+    check: e2e("pin on DOM, canvas, a kit chart, a served frame and an opaque frame"),
+    e2e: true,
+  },
+  {
+    requirement: "RV-02",
+    name: "a crop is recorded without its picture",
+    file: "src/review/index.ts",
+    from: "      const blob = await options.blobs.put(captured.png);",
+    to: '      const blob = "0".repeat(64);',
+    check: integration("review.test.ts", "stores the crop the capture port supplies"),
+  },
+  {
     requirement: "HO-09",
     name: "#167: a shell session's every performance report is counted",
     file: "src/server/hosted-pages.ts",

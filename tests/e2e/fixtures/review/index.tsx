@@ -42,6 +42,16 @@ export default function Page() {
         </BarChart>
       </ChartContainer>
       <iframe data-testid="served" title="Served" src="/embed.html" width={320} height={120} />
+      {/* A page of the version the artifact can't read itself (its own origin, sandboxed): only the
+          review agent the version's pages carry answers for it. */}
+      <iframe
+        data-testid="served-sandboxed"
+        title="Served, sandboxed"
+        sandbox="allow-scripts"
+        src="/embed.html"
+        width={320}
+        height={120}
+      />
       <iframe
         data-testid="opaque"
         title="Opaque"

@@ -47,6 +47,8 @@ interface Comment {
 
 /** Puts the overlay in comment mode, points at the middle of `target`, and posts `text`. */
 async function comment(page: Page, target: Locator, text: string): Promise<void> {
+  // In view first, as a person scrolls to what they comment on.
+  await target.scrollIntoViewIfNeeded();
   await page.locator("[data-mostra-comment-button]").click();
   await expect(page.locator("[data-mostra-review-surface]")).toBeVisible();
   // The panel opened beside the page, which may have moved: where the target is now.
@@ -86,19 +88,29 @@ test.describe("comments on any content (RV-01, RV-02)", () => {
         frame.frameLocator('[data-testid="served"]').locator('[data-review-id="embed.heading"]'),
         "Rename the embedded plan.",
       );
+      await expect(
+        frame.frameLocator('[data-testid="served-sandboxed"]').locator("#embed-line"),
+      ).toBeVisible();
+      await comment(
+        page,
+        frame
+          .frameLocator('[data-testid="served-sandboxed"]')
+          .locator('[data-review-id="embed.heading"]'),
+        "The sandboxed plan's heading is too small.",
+      );
       await comment(page, frame.locator('[data-testid="opaque"]'), "What is this page?");
 
-      // Five pins, numbered, each beside its place.
-      await expect(page.locator("[data-mostra-pin]")).toHaveCount(5);
+      // Six pins, numbered, each beside its place.
+      await expect(page.locator("[data-mostra-pin]")).toHaveCount(6);
       // Every crop is captured by the daemon's verify runner (the capture port's default).
-      await expect(page.locator('[data-mostra-crop="captured"]')).toHaveCount(5, {
+      await expect(page.locator('[data-mostra-crop="captured"]')).toHaveCount(6, {
         timeout: 120_000,
       });
 
       // A reload shows the same pins, placed by the page again.
       await page.reload();
       await expect(page.locator("html")).toHaveAttribute("data-shell", "ready");
-      await expect(page.locator("[data-mostra-pin]")).toHaveCount(5);
+      await expect(page.locator("[data-mostra-pin]")).toHaveCount(6);
 
       // What the host reads: every layer that applies, and always a crop.
       const exported = await client.call<{ content: string }>("review/export", {
@@ -138,6 +150,11 @@ test.describe("comments on any content (RV-01, RV-02)", () => {
       const served = byText("Rename the embedded plan.");
       expect(served.anchor.frames?.[0]?.served).toBe(true);
       expect(served.anchor.reviewId).toBe("embed.heading");
+      // A page the artifact can't read itself anchors semantically too: its own review agent,
+      // which every page of the version carries, answers for it.
+      const sandboxed = byText("The sandboxed plan's heading is too small.");
+      expect(sandboxed.anchor.reviewId).toBe("embed.heading");
+      expect(sandboxed.anchor.frames?.[0]?.served).toBe(true);
       const opaque = byText("What is this page?");
       expect(opaque.anchor.frames?.[0]?.served).toBe(false);
 
@@ -147,7 +164,7 @@ test.describe("comments on any content (RV-01, RV-02)", () => {
       const results = await client.call<{ comments: Comment[] }>("results/get", {
         artifact: { artifactId: own.artifactId },
       });
-      expect(results.comments).toHaveLength(5);
+      expect(results.comments).toHaveLength(6);
       for (const entry of results.comments) expect(existsSync(entry.crop.path)).toBe(true);
     } finally {
       client.close();
