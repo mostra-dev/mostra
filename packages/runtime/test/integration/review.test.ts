@@ -105,7 +105,7 @@ describe("review: ports, routes, mentions and export (HO-11, CO-06, RV-05)", () 
       20_000,
     );
     // What a host's typed handler reads: the method's own schema (the SDK and the crate check it).
-    const parsed = portCaptureScreenshotMethod.params.safeParse(call.params);
+    const parsed = portCaptureScreenshotMethod.params.safeParse((call as Call).params);
     expect(parsed.success, JSON.stringify(parsed.error?.issues)).toBe(true);
     answer(host, call, { png: PNG_BASE64, width: 2, height: 1 });
   };
