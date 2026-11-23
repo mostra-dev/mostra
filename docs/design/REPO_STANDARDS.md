@@ -150,7 +150,7 @@ These are pinned through pnpm catalogs, and versions are re-verified when a WP t
 - **Playbooks** in `docs/agents/` for every recurring task, each ending in a checkable completion criterion.
 - **WP specifications** list their required reading, erring towards more.
 - **Generated references:** the CLI help, the diagnostic catalog (one docs page per code), API reports, protocol schemas and `llms.txt` are all generated in CI from source.
-- **The docs site** is built with Mostra (AX-07) and deployed to GitHub Pages under `mostra-dev` (D37). The base URL is configurable, so a domain can come later without code changes.
+- **The docs site** (AX-07) is built with a standard static docs generator and served at `docs.mostradev.com` by its own Cloudflare Worker, deployed by the release workflow on each release tag, so the docs describe what people can install; a preview from `main` is built but not listed. The base URL stays configurable (D37). The earlier address on GitHub Pages keeps redirecting every path to the same path on the new one, so links in released versions keep working.
 
 ## 9. Releases
 

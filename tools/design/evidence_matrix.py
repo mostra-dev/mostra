@@ -153,7 +153,7 @@ CHECKS = {
  "AX-04": "Regression fixture (removed control, layout shift, missing field) detected against the last passing version",
  "AX-05": "Screenshots at DPR 1 with token estimates; images returned only on failure or request",
  "AX-06": "Mirza's acceptance of the Skill and AGENTS.md prose; skills-ref validate; loading mechanism tests",
- "AX-07": "Docs site built with Mostra deploys to GitHub Pages; llms.txt and per-page Markdown generated; Mirza reviews",
+ "AX-07": "Docs site deploys from the release workflow on a release tag to docs.mostradev.com; llms.txt and per-page Markdown generated; a link from the previous release resolves; Mirza reviews",
  "AX-08": "Evaluation harness pilot report with provider, model, date and tokens; batches announced (D34, D64)",
  "AX-09": "Every D60 command plus run and state implemented with contract tests (`run` arrives with WP-29's bundle, D125; `term` with WP-22 in v1.1, D122)",
  "AX-10": "Generated harness plugins for five harnesses are real copies and load in each harness's documented layout; external: at least Claude Code and Codex",
