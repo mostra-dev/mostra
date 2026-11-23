@@ -147,6 +147,9 @@ export interface LinkPolicy extends Cacheable {
         readonly href?: string;
     };
     readonly maxTtl?: string;
+    readonly performance?: {
+        readonly report: boolean;
+    };
 }
 
 // @public
@@ -181,7 +184,7 @@ export interface MeterCounter {
 }
 
 // @public
-export type MeterName = "views" | "submissions" | "requests" | "bytes.stored" | "bytes.held" | "bytes.egress" | "relay.messages" | "mcp.calls" | "home.activeSeconds" | (string & {});
+export type MeterName = "views" | "submissions" | "requests" | "bytes.stored" | "bytes.held" | "bytes.egress" | "relay.messages" | "mcp.calls" | "home.activeSeconds" | "page.loads" | "page.errors" | (string & {});
 
 // @public
 export const OPERATOR_REVISION = "2026-11-08";

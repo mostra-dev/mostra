@@ -49,6 +49,7 @@ import {
   carryOver,
   choose,
   frameTicket,
+  reportPerformance,
   ShellError,
   type ShellSession,
   setFollow,
@@ -250,7 +251,8 @@ interface FrameHandlers {
    * The page rendered (`mostra/ready`): its review agent listens from now on, so the overlay
    * tracks its anchors only then (WP-20).
    */
-  onReady(): void;
+  /** The page said it is ready, with the errors it raised by then. */
+  onReady(errors: number): void;
   /** Where the page says the tracked comment anchors are (WP-20). */
   onPositions(positions: readonly AnchorPosition[]): void;
   /** The review sets the page shows (WP-20). */
@@ -349,7 +351,9 @@ function Frame(props: {
         if (message === uiInitialized) mark("initialized");
         if (message === mostraReady) {
           mark("ready");
-          handlersRef.current.onReady();
+          handlersRef.current.onReady(
+            Math.max(0, Math.min(10_000, Number((params as { errors?: unknown }).errors) || 0)),
+          );
         }
         if (message === mostraFields) handlersRef.current.onFields(params as FieldsParams);
         if (message === mostraPage) handlersRef.current.onPage((params as { path: string }).path);
@@ -512,6 +516,8 @@ export function ViewerPage(props: {
   const [shownAt, setShownAt] = useState(() => Date.now());
   const [armedFor, setArmedFor] = useState<number | undefined>();
   const latestStateRef = useLatest(state);
+  /** Whether this page sent its one performance report (#167). */
+  const performanceSent = useRef(false);
 
   const onBridge = useCallback((next: Bridge | undefined) => {
     bridge.current = next;
@@ -863,7 +869,19 @@ export function ViewerPage(props: {
       // Whether it shows depends on the view's ticket only, which no event changes.
       return withControlRequest(latestStateRef.current, request, now).shown;
     },
-    onReady: () => setPageReady(ticket.viewId),
+    onReady: (errors) => {
+      setPageReady(ticket.viewId);
+      // One report per page, where the server's operator asks for it (#167): how long the page
+      // took to be ready from the shell's own start, and its errors; nothing of the viewer.
+      if (chrome?.performance && !performanceSent.current) {
+        performanceSent.current = true;
+        void reportPerformance(target.apiBase, session.csrf, {
+          versionId: ticket.version.id,
+          loadMs: Math.round(performance.now()),
+          errors,
+        }).catch(() => undefined);
+      }
+    },
     onPositions: (positions) => review.onPositions(positions),
     onSurfaces: (sets) => setSurfaces(sets),
     onPage: (path) => {

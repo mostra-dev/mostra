@@ -206,14 +206,28 @@ function isViewer(value: unknown): value is Viewer {
 /** How long one attempt at the shell's handshake may take. */
 const HANDSHAKE_TIMEOUT_MS = 10_000;
 
+/** The errors the page raised since this module loaded: uncaught, and unhandled rejections. */
+let pageErrors = 0;
+if (typeof window !== "undefined") {
+  window.addEventListener("error", () => {
+    pageErrors += 1;
+  });
+  window.addEventListener("unhandledrejection", () => {
+    pageErrors += 1;
+  });
+}
+
 /**
- * Tells the shell the page has rendered (`mostra/ready`), after the next frame paints. The
- * client runtime calls it right after mounting the page.
+ * Tells the shell the page has rendered (`mostra/ready`), after the next frame paints, with how
+ * many errors it raised by then (`errors`, for an operator's performance report, #167). The client
+ * runtime calls it right after mounting the page.
  */
 export function reportReady(): void {
   void connectShell().then((connection) => {
     if (!connection) return;
-    requestAnimationFrame(() => connection.bridge.notify(mostraReady, {}));
+    requestAnimationFrame(() =>
+      connection.bridge.notify(mostraReady, { errors: Math.min(pageErrors, 10_000) }),
+    );
   });
 }
 

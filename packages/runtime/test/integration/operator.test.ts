@@ -361,6 +361,73 @@ describe("operator ports (HO-09)", () => {
     await operator.set({ policy: {} });
   }, 120_000);
 
+  it("counts a page's load time and errors where the operator's policy asks, once per session, keeping nothing (#167)", async () => {
+    await operator.set({ metering: "ok", policy: { performance: { report: true } } });
+    const { answer: shared } = await share();
+    const url = ok<{ url: string }>(shared).url;
+    const browser = new Browser();
+    const opened = await openLink(browser, url);
+    const api = `${new URL(url).pathname}/_mostra`;
+    const ticket = await browser.fetchJson(opened.link.shell, `${api}/ticket`, {
+      body: {},
+      csrf: opened.shellCsrf,
+    });
+    const { hosted, version } = ticket.json<{
+      hosted: { performance?: true };
+      version: { id: string };
+    }>();
+    expect(hosted.performance).toBe(true);
+    const send = (body: unknown) =>
+      browser.fetchJson(opened.link.shell, `${api}/performance`, { body, csrf: opened.shellCsrf });
+    // Malformed is refused; a report outside the bounds names nothing.
+    expect((await send({ versionId: version.id, loadMs: -1, errors: 0 })).status).toBe(400);
+    expect((await send({ versionId: version.id, loadMs: 320, errors: 2 })).status).toBe(204);
+    // A second report of the same session counts nothing.
+    expect((await send({ versionId: version.id, loadMs: 9_000, errors: 5 })).status).toBe(204);
+    const counted = async () =>
+      (await operator.calls("metering"))
+        .flatMap(
+          (call) =>
+            call.payload["counters"] as {
+              name: string;
+              value: number;
+              dimensions?: Record<string, string>;
+            }[],
+        )
+        .filter((counter) => counter.name.startsWith("page."));
+    await eventually(
+      async () => (await counted()).some((counter) => counter.name === "page.errors"),
+      30_000,
+      "the page's report counted",
+    );
+    const pages = await counted();
+    expect(pages.filter((counter) => counter.name === "page.loads")).toEqual([
+      expect.objectContaining({ value: 1, dimensions: { versionId: version.id, bucket: "500" } }),
+    ]);
+    expect(pages.filter((counter) => counter.name === "page.errors")).toEqual([
+      expect.objectContaining({ value: 2, dimensions: { versionId: version.id } }),
+    ]);
+    // Nothing of the viewer or the request travels with the counters.
+    expect(JSON.stringify(pages)).not.toMatch(/viewerKey|127\.0\.0\.1|vwr_|vw_/);
+    // Without the policy the shell is told nothing, and a report counts nothing.
+    await operator.set({ policy: {} });
+    const other = new Browser();
+    const second = await openLink(other, url);
+    const quiet = await other.fetchJson(second.link.shell, `${api}/ticket`, {
+      body: {},
+      csrf: second.shellCsrf,
+    });
+    expect(quiet.json<{ hosted: { performance?: true } }>().hosted.performance).toBeUndefined();
+    const before = (await counted()).length;
+    const ignored = await other.fetchJson(second.link.shell, `${api}/performance`, {
+      body: { versionId: version.id, loadMs: 100, errors: 0 },
+      csrf: second.shellCsrf,
+    });
+    expect(ignored.status).toBe(204);
+    await new Promise((resolve) => setTimeout(resolve, 2_500));
+    expect((await counted()).length).toBe(before);
+  }, 120_000);
+
   it("serves a host the operator supplies, mints links on it, and gives an unknown host nothing", async () => {
     const { answer: shared } = await share();
     const url = ok<{ url: string }>(shared).url;

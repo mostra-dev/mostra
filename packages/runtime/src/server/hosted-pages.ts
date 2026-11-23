@@ -14,6 +14,7 @@ import {
   type ArtifactDetail,
   createDiagnostic,
   type HostedChrome,
+  PerformanceReport,
   type Refusal,
   refusal,
 } from "@mostra/protocol";
@@ -89,9 +90,22 @@ export interface HostedPagesOptions {
   };
   /** Told each view the server admitted, for metering (`views`). */
   readonly viewed?: (input: { readonly artifactId: string; readonly viewerId: string }) => void;
+  /**
+   * Told a page view's performance report, where the operator asks for them (#167): counted into
+   * `page.loads` and `page.errors`, never stored.
+   */
+  readonly performed?: (input: {
+    readonly artifactId: string;
+    readonly versionId: string;
+    readonly loadMs: number;
+    readonly errors: number;
+  }) => void;
   readonly log: Log;
   readonly now?: () => number;
 }
+
+/** How many shell sessions' performance reports are remembered, so each counts once (#167). */
+const REPORTED_SESSIONS_MAX = 100_000;
 
 /** A refusal with any cataloged code (the gateway's own `refusal` takes HYGIENE codes only). */
 function refuseWith(
@@ -223,6 +237,8 @@ export function hostedPages(
     retryAfter: retryAfterS,
   });
 
+  /** The shell sessions that sent their one performance report (#167), oldest first. */
+  const reported = new Set<string>();
   const shellRoutes = (helpers: Parameters<NonNullable<HostedAddressing["shellRoutes"]>>[0]) => {
     const meta = (context: RouteContext) => ({
       method: context.request.method,
@@ -276,6 +292,48 @@ export function hostedPages(
       });
       log.info("hosted.reported", { routeId: route.id, reason });
       return jsonResponse({}, { status: 202 });
+    };
+
+    /**
+     * A page view's performance report (#167), where the operator's policy asks for them: one per
+     * shell session, its version this route's, counted and forgotten. Without the policy, or past
+     * the first, it is taken (204) and nothing is counted.
+     */
+    const performance = async (context: RouteContext): Promise<Response> => {
+      const artifactId = context.artifactId as string;
+      const body = await readJsonObject(context.request, 1024);
+      if (isRefusal(body)) return helpers.refuse(body, meta(context));
+      const parsed = PerformanceReport.safeParse(body);
+      if (!parsed.success) {
+        return helpers.refuse(
+          refusal(
+            "MOSTRA_HYGIENE_REQUEST_MALFORMED",
+            "A performance report names `versionId`, `loadMs` and `errors`, each within bounds.",
+          ),
+          meta(context),
+        );
+      }
+      const session = context.session;
+      if (!session || reported.has(session.id)) return new Response(null, { status: 204 });
+      const policy = await policyFor(artifactId, session.grant.tokenId);
+      if (policy.performance?.report !== true) return new Response(null, { status: 204 });
+      const known = ledger.read(
+        (db) =>
+          db.get<{ id: string }>(
+            "SELECT id FROM version WHERE id = ? AND artifact_id = ?",
+            parsed.data.versionId,
+            artifactId,
+          ) !== undefined,
+      );
+      if (!known) return new Response(null, { status: 204 });
+      reported.add(session.id);
+      // Bounded: the oldest sessions are forgotten first; a forgotten one could report once more.
+      if (reported.size > REPORTED_SESSIONS_MAX) {
+        const oldest = reported.values().next().value;
+        if (oldest !== undefined) reported.delete(oldest);
+      }
+      options.performed?.({ artifactId, ...parsed.data });
+      return new Response(null, { status: 204 });
     };
 
     /** An anonymous viewer's self-chosen name, recorded unverified (D165 item 8). */
@@ -490,6 +548,13 @@ export function hostedPages(
       },
       {
         method: "POST",
+        path: "/a/:artifactId/_mostra/performance",
+        intent: "mutation",
+        auth: "session",
+        handler: performance,
+      },
+      {
+        method: "POST",
         path: "/a/:artifactId/_mostra/session/name",
         intent: "mutation",
         auth: "session",
@@ -568,6 +633,7 @@ export function hostedPages(
             }
           : {}),
         ...(policy.interstitial !== undefined ? { interstitial: policy.interstitial } : {}),
+        ...(policy.performance?.report === true ? { performance: true as const } : {}),
       };
       return chrome;
     },

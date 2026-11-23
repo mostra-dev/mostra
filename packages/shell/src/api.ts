@@ -273,6 +273,19 @@ export function report(
   });
 }
 
+/** A page's one performance report, where the operator asks for it (#167). */
+export function reportPerformance(
+  apiBase: string,
+  csrf: string,
+  report: { readonly versionId: string; readonly loadMs: number; readonly errors: number },
+): Promise<unknown> {
+  return call(`${apiBase}/performance`, {
+    method: "POST",
+    headers: { ...JSON_HEADERS, "x-mostra-csrf": csrf },
+    body: JSON.stringify(report),
+  });
+}
+
 /** An anonymous viewer's name for this page, recorded unverified (D165 item 8). */
 export function nameViewer(apiBase: string, csrf: string, name: string | null): Promise<unknown> {
   return call(`${apiBase}/session/name`, {

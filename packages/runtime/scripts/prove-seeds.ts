@@ -201,6 +201,22 @@ const SEEDS: readonly Seed[] = [
     e2e: true,
   },
   {
+    requirement: "HO-09",
+    name: "#167: a shell session's every performance report is counted",
+    file: "src/server/hosted-pages.ts",
+    from: "      if (!session || reported.has(session.id)) return new Response(null, { status: 204 });",
+    to: "      if (!session) return new Response(null, { status: 204 });",
+    check: integration("operator.test.ts", "load time and errors"),
+  },
+  {
+    requirement: "HO-09",
+    name: "#167: reports are counted without the operator's policy",
+    file: "src/server/hosted-pages.ts",
+    from: "      if (policy.performance?.report !== true) return new Response(null, { status: 204 });",
+    to: "      void policy;",
+    check: integration("operator.test.ts", "load time and errors"),
+  },
+  {
     requirement: "KT-04",
     name: "dark mode: the shell's light or dark never reaches the page",
     file: "../shell/src/viewer.tsx",

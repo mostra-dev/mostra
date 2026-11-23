@@ -29,6 +29,7 @@ import {
   hostedSubmissionMethod,
   type InstanceInfo,
   type PausedBy,
+  performanceBucket,
   type RelayAuthorProgressParams,
   RouteId,
   RpcError,
@@ -601,6 +602,7 @@ export async function openHostedHome(options: HostedHomeOptions): Promise<Hosted
             madeWith: options.services.madeWith,
             ...(options.services.signin ? { signin: options.services.signin } : {}),
             viewed: (input) => metered(input.artifactId, input.viewerId),
+            performed: (input) => performed(input),
             log,
           })
         : {}),
@@ -768,6 +770,34 @@ export async function openHostedHome(options: HostedHomeOptions): Promise<Hosted
    * A view for metering, under the viewer's monthly pseudonymous key (D167): the account for a
    * signed-in viewer, the viewer for a link minted with one, the route's key for anyone else.
    */
+  /** A page view's performance report (#167): its load time's bucket, and its errors. */
+  const performed = (input: {
+    readonly artifactId: string;
+    readonly versionId: string;
+    readonly loadMs: number;
+    readonly errors: number;
+  }): void => {
+    const meter = options.services?.meter;
+    if (!meter?.on) return;
+    const route = routeOf(input.artifactId);
+    const scope = {
+      account: (options.services as HostedServices).owner(id).account,
+      home: id,
+      artifactId: input.artifactId,
+      ...(route ? { routeId: route.id } : {}),
+    };
+    meter.add("page.loads", {
+      ...scope,
+      dimensions: { versionId: input.versionId, bucket: performanceBucket(input.loadMs) },
+    });
+    if (input.errors > 0) {
+      meter.add(
+        "page.errors",
+        { ...scope, dimensions: { versionId: input.versionId } },
+        input.errors,
+      );
+    }
+  };
   const metered = (artifactId: string, viewerId: string): void => {
     const meter = options.services?.meter;
     if (!meter?.on) return;

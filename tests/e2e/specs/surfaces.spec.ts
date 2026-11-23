@@ -167,6 +167,8 @@ test.describe("every surface a person meets (UX-01, D171)", () => {
           ...process.env,
           MOSTRA_TEST_OPERATOR_PORT: String(control),
           MOSTRA_TEST_CIMD_ORIGIN: documentsOrigin,
+          // The meter's window, short, so a page's performance report is seen at once (#167).
+          MOSTRA_TEST_METER_WINDOW_MS: "300",
         },
       },
     );
@@ -578,6 +580,32 @@ test.describe("every surface a person meets (UX-01, D171)", () => {
         await gotoShell(device, guarded.url);
         await expect(device.locator("[data-mostra-interstitial]")).toBeVisible();
         await shoot(device, "hosted-interstitial");
+        // Where the operator asks (#167), the shell sends one report of the page's load, which
+        // the server counts for the operator's metering and keeps nowhere.
+        await operator("/state", { policy: { performance: { report: true } } });
+        const measured = await share();
+        await openInShell(device, measured.url);
+        await expect(device.locator("html")).toHaveAttribute("data-shell", "ready");
+        await expect
+          .poll(
+            async () => {
+              const answer = await ask(control, `127.0.0.1:${control}`, "/calls");
+              const calls = JSON.parse(answer.body) as {
+                port: string;
+                payload: { counters?: { name: string; artifactId?: string }[] };
+              }[];
+              return calls.some(
+                (call) =>
+                  call.port === "metering" &&
+                  (call.payload.counters ?? []).some(
+                    (counter) =>
+                      counter.name === "page.loads" && counter.artifactId === measured.artifactId,
+                  ),
+              );
+            },
+            { timeout: 30_000 },
+          )
+          .toBe(true);
         await operator("/state", { policy: {} });
         const paused = await share();
         await owner.call("artifact/pause", {

@@ -274,6 +274,11 @@ export interface HostedChrome {
   readonly madeWith?: { readonly href?: string };
   /** A page shown before the artifact, once per browser and link. */
   readonly interstitial?: { readonly kind: string; readonly message?: string };
+  /**
+   * The operator asks for one performance report per page view (#167, `policy.link`'s
+   * `performance`): how long the page took to be ready, and how many errors it raised by then.
+   */
+  readonly performance?: true;
 }
 
 const HostedChrome: z.ZodType<HostedChrome> = z.object({
@@ -299,6 +304,41 @@ const HostedChrome: z.ZodType<HostedChrome> = z.object({
   interstitial: z
     .object({ kind: z.string().max(64), message: z.string().max(2_000).exactOptional() })
     .exactOptional(),
+  performance: z.literal(true).exactOptional(),
+});
+
+/**
+ * The upper bounds, in milliseconds, of the buckets a hosted page's load time is counted in
+ * (#167); a load past the last is `+Inf`.
+ */
+export const PERFORMANCE_BUCKETS_MS: readonly number[] = [
+  25, 50, 100, 250, 500, 1_000, 2_500, 5_000, 10_000,
+];
+
+/** The bucket a load time is counted in: the first bound it doesn't exceed, else `+Inf`. */
+export function performanceBucket(loadMs: number): string {
+  const bound = PERFORMANCE_BUCKETS_MS.find((limit) => loadMs <= limit);
+  return bound === undefined ? "+Inf" : String(bound);
+}
+
+/**
+ * A hosted shell's one report of a page view (#167), where the operator asks for it:
+ * `POST /a/{routeId}/_mostra/performance`. It names the version and nothing of the viewer.
+ */
+export interface PerformanceReport {
+  /** The version the view showed. */
+  readonly versionId: string;
+  /** From the shell's page starting to the page saying it is ready, in milliseconds. */
+  readonly loadMs: number;
+  /** How many errors the page raised until then. */
+  readonly errors: number;
+}
+
+/** The schema of a {@link PerformanceReport}. */
+export const PerformanceReport: z.ZodType<PerformanceReport> = z.object({
+  versionId: z.string().regex(/^ver_[0-9A-HJKMNP-TV-Z]{26}$/),
+  loadMs: z.int().min(0).max(600_000),
+  errors: z.int().min(0).max(10_000),
 });
 
 /** The Zod schema of the `FrameTicket` type. */

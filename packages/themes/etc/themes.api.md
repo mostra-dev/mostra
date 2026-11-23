@@ -284,7 +284,7 @@ export interface PagesOptions {
     readonly words?: PageWords;
 }
 
-// @public
+// @public (undocumented)
 export interface PageWords {
     readonly makePages: string;
     readonly runsOn: string;

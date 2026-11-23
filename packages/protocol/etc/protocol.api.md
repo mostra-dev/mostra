@@ -1765,6 +1765,7 @@ export interface HostedChrome {
     readonly madeWith?: {
         readonly href?: string;
     };
+    readonly performance?: true;
     readonly sender?: {
         readonly name: string;
         readonly verifiedBy?: string;
@@ -2590,6 +2591,22 @@ export interface Peer {
     readonly self: boolean;
     readonly verified?: boolean;
 }
+
+// @public
+export const PERFORMANCE_BUCKETS_MS: readonly number[];
+
+// @public
+export function performanceBucket(loadMs: number): string;
+
+// @public
+export interface PerformanceReport {
+    readonly errors: number;
+    readonly loadMs: number;
+    readonly versionId: string;
+}
+
+// @public
+export const PerformanceReport: z.ZodType<PerformanceReport>;
 
 // @public
 export type PlatformDiagnosticCode = (typeof platformDiagnosticCodes)[number];
