@@ -9,6 +9,7 @@
  */
 import {
   type Actor,
+  CHOICE_LABEL_MAX,
   type ControlRequest,
   FIELD_OPTIONS_MAX,
   FIELD_OPTIONS_MAX_BYTES,
@@ -30,6 +31,7 @@ import {
   useState,
   useSyncExternalStore,
 } from "react";
+import { showSurface } from "./review/shell.ts";
 import { MostraError } from "./runtime/errors.ts";
 import { inlineControls } from "./runtime/inline-sink.ts";
 import { MemoryJournal } from "./runtime/journal.ts";
@@ -613,4 +615,41 @@ export function useArtifact(): {
     viewId: view?.viewId ?? "",
     mode,
   };
+}
+
+// ── useReviewSurface ─────────────────────────────────────────────────────────────────────────
+
+/** A review set as the shell's overlay knows it: its layout, candidates and the one shown. */
+export interface ReviewSurfaceSpec {
+  /** The review set's ID, as `useChoice` names it. */
+  readonly id: string;
+  /** How the page lays its candidates out: `gallery`, `focus` or `compare`. */
+  readonly layout: "gallery" | "focus" | "compare";
+  readonly candidates: readonly ChoiceCandidate[];
+  /** The candidate the page shows now, in focus. */
+  readonly current?: string;
+}
+
+/**
+ * Tells the shell's review overlay about a review set the page shows (D23, RV-03), so comments
+ * made on it record its candidate and the overlay can follow the candidate in view. The kit's
+ * `ReviewSet` calls it; a page with its own review set may too. Outside Mostra's shell it does
+ * nothing.
+ */
+export function useReviewSurface(surface: ReviewSurfaceSpec): void {
+  const key = JSON.stringify(surface);
+  useEffect(() => {
+    const spec = JSON.parse(key) as ReviewSurfaceSpec;
+    return showSurface({
+      id: spec.id,
+      layout: spec.layout,
+      candidates: spec.candidates.map((candidate) => ({
+        id: candidate.id,
+        ...(candidate.label !== undefined
+          ? { label: candidate.label.slice(0, CHOICE_LABEL_MAX) }
+          : {}),
+      })),
+      ...(spec.current !== undefined ? { current: spec.current } : {}),
+    });
+  }, [key]);
 }

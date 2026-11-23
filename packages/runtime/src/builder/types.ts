@@ -51,6 +51,11 @@ export interface VersionRegistry {
    * cover every field ID.
    */
   readonly fields?: FieldCoverage;
+  /**
+   * The review agent the version's other HTML pages load, its path in the client build (WP-20):
+   * a served frame that shows one answers the page's review agent from inside.
+   */
+  readonly reviewAgent?: string;
 }
 
 /**

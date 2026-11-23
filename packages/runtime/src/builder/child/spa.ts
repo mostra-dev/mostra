@@ -5,8 +5,10 @@
  * set (D91) or to the artifact's lock layout (D95), so an artifact needs no `package.json` (AU-03).
  * Nothing in the artifact runs.
  */
+
+import { createHash } from "node:crypto";
 import type { Dirent } from "node:fs";
-import { mkdir, readdir, realpath, rm, writeFile } from "node:fs/promises";
+import { mkdir, readdir, readFile, realpath, rm, writeFile } from "node:fs/promises";
 import { join, relative } from "node:path";
 import { stripVTControlCharacters } from "node:util";
 import { createDiagnostic, type Diagnostic } from "@mostra/protocol";
@@ -350,6 +352,14 @@ export async function buildSpa(input: BuildRequest): Promise<BuildResponse> {
   } catch (error) {
     return { ok: false, diagnostics: [diagnose(error, sourceDir)] };
   }
+  // Served frames (WP-20, ARCHITECTURE §8): every other HTML page of the version carries the
+  // review agent, so comments on a frame that shows one anchor in its content.
+  const reviewAgent = runtimeDir
+    ? await injectReviewAgent(
+        join(request.outDir, "client"),
+        join(runtimeDir, "dist", "review-agent.js"),
+      )
+    : undefined;
 
   const server = scan.serverModules.size > 0 || scan.hasLive;
   if (server) {
@@ -391,6 +401,49 @@ export async function buildSpa(input: BuildRequest): Promise<BuildResponse> {
     terminals: Object.keys(request.manifest.terminals ?? {}).sort(),
     demos: Object.keys(request.manifest.demos ?? {}).sort(),
     fields: withPackageUses(scan.fields, hookUses),
+    ...(reviewAgent !== undefined ? { reviewAgent } : {}),
   };
   return { ok: true, registry, server };
+}
+
+/**
+ * Adds the review agent to every HTML page of a client build but its own `index.html` (WP-20):
+ * the agent is copied into `assets/` under a name its content decides, and each page loads it
+ * before its own scripts. Answers the agent's path in the build, or `undefined` when the build
+ * has no other page or the runtime carries no agent.
+ */
+export async function injectReviewAgent(
+  clientDir: string,
+  agentFile: string,
+): Promise<string | undefined> {
+  const pages: string[] = [];
+  const walk = async (dir: string): Promise<void> => {
+    for (const entry of await readdir(dir, { withFileTypes: true })) {
+      const path = join(dir, entry.name);
+      if (entry.isDirectory()) await walk(path);
+      else if (/\.html?$/i.test(entry.name) && path !== join(clientDir, "index.html"))
+        pages.push(path);
+    }
+  };
+  await walk(clientDir);
+  if (pages.length === 0) return undefined;
+  let agent: Buffer;
+  try {
+    agent = await readFile(agentFile);
+  } catch {
+    return undefined;
+  }
+  const name = `assets/mostra-review-agent-${createHash("sha256").update(agent).digest("hex").slice(0, 10)}.js`;
+  await mkdir(join(clientDir, "assets"), { recursive: true });
+  await writeFile(join(clientDir, name), agent);
+  const tag = `<script src="/${name}"></script>`;
+  for (const page of pages) {
+    const html = await readFile(page, "utf8");
+    const head = /<head[^>]*>/i.exec(html);
+    const injected = head
+      ? `${html.slice(0, head.index + head[0].length)}${tag}${html.slice(head.index + head[0].length)}`
+      : `${tag}${html}`;
+    await writeFile(page, injected);
+  }
+  return name;
 }
