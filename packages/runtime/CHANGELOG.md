@@ -1,5 +1,15 @@
 # @mostra/runtime
 
+## 0.19.1
+
+### Patch Changes
+
+- Updated dependencies []:
+  - @mostra/mcp@0.19.1
+  - @mostra/protocol@0.19.1
+  - @mostra/themes@0.19.1
+  - @mostra/plugin-mcp-app@0.19.1
+
 ## 0.19.0
 
 ### Minor Changes
