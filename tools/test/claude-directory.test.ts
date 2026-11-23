@@ -232,6 +232,10 @@ describe("Claude's directory's folder (MT-07)", () => {
         "inbox",
       ]),
     ).toBe("[a](../assets/examples/inbox/actions.ts) [b](assets/examples/inbox.md)");
+    // Only the Skill's own path: another folder's `my-assets/examples/inbox/` is left alone.
+    expect(
+      rewriteExampleLinks("see my-assets/examples/inbox/ and x/assets/examples/inbox/", ["inbox"]),
+    ).toBe("see my-assets/examples/inbox/ and x/assets/examples/inbox.md");
     // The repository's Skill keeps its own field.
     expect(skill.get("SKILL.md")?.toString("utf8")).not.toContain("connector (`artifact_create`");
     // A field YAML would read otherwise is refused at the build.

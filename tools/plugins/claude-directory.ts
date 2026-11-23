@@ -140,7 +140,10 @@ export function rewriteExampleLinks(text: string, names: readonly string[]): str
   let out = text;
   for (const name of names)
     out = out.replace(
-      new RegExp(`${EXAMPLES}/${name.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")}/(?![\\w.-])`, "g"),
+      new RegExp(
+        `(?<![\\w-])${EXAMPLES}/${name.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")}/(?![\\w.-])`,
+        "g",
+      ),
       `${EXAMPLES}/${name}.md`,
     );
   return out;
