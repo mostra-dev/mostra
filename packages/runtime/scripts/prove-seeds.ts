@@ -235,6 +235,14 @@ const SEEDS: readonly Seed[] = [
     check: integration("hosted.test.ts", "crop rendered on the owner"),
   },
   {
+    requirement: "RV-02",
+    name: "a removed hosted artifact's crops stay on disk",
+    file: "src/server/hosted.ts",
+    from: "        if (!keptCrops.has(sha)) {",
+    to: "        if (keptCrops.has(sha)) {",
+    check: integration("operator.test.ts", "removes its comments' crops"),
+  },
+  {
     requirement: "HO-09",
     name: "#167: a shell session's every performance report is counted",
     file: "src/server/hosted-pages.ts",

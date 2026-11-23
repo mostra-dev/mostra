@@ -1447,7 +1447,35 @@ export async function openHostedHome(options: HostedHomeOptions): Promise<Hosted
       const versions = plan.versions;
       const going = new Set(plan.going);
       if (registry.list({}).some((summary) => summary.id === artifactId)) revokeLinks(artifactId);
+      // Its comments' crops show what its viewers answered: they go with it, but for one another
+      // artifact's thread of this home still names (crops are content-addressed).
+      const crops = ledger.read((db) =>
+        db
+          .all<{ crop_blob: string }>(
+            "SELECT DISTINCT crop_blob FROM thread WHERE artifact_id = ? AND crop_blob IS NOT NULL",
+            artifactId,
+          )
+          .map((row) => row.crop_blob),
+      );
       const removed = ledger.removal((db) => purgeArtifact(db, artifactId));
+      const keptCrops = new Set(
+        ledger.read((db) =>
+          db
+            .all<{ crop_blob: string }>(
+              "SELECT DISTINCT crop_blob FROM thread WHERE crop_blob IS NOT NULL",
+            )
+            .map((row) => row.crop_blob),
+        ),
+      );
+      for (const sha of crops) {
+        if (!keptCrops.has(sha)) {
+          await blobs
+            .remove(sha)
+            .catch((error: unknown) =>
+              log.warn("server.remove_crop_failed", { artifactId, error }),
+            );
+        }
+      }
       // A test cuts the removal off here, between its two databases (`remove:after-purge`).
       faults.at("remove:after-purge");
       // Files another version of this home still names stay this home's.

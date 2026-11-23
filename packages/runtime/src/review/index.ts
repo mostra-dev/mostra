@@ -81,6 +81,8 @@ export interface Blobs {
   path(sha256: string): string;
   /** A crop's bytes, checked against its name; `undefined` when missing or altered. */
   read(sha256: string): Promise<Buffer | undefined>;
+  /** Removes a crop no thread names any more (a removed hosted artifact's); none is no error. */
+  remove(sha256: string): Promise<void>;
 }
 
 /** Opens the home's crop store. */
@@ -122,6 +124,9 @@ export function openBlobs(home: string): Blobs {
       } catch {
         return undefined;
       }
+    },
+    async remove(sha256) {
+      await rm(path(sha256), { force: true });
     },
   };
 }

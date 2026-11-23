@@ -9,11 +9,11 @@
  * chrome and expiry hold; and the server handle pauses, suspends, revokes, drains and removes,
  * each acting on one route or home only.
  */
-import { cpSync, readdirSync, readFileSync, writeFileSync } from "node:fs";
+import { cpSync, existsSync, readdirSync, readFileSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 import { fileURLToPath } from "node:url";
 import { Client, StreamableHTTPClientTransport } from "@modelcontextprotocol/client";
-import { MutationId } from "@mostra/protocol";
+import { CommentId, MutationId, ThreadId } from "@mostra/protocol";
 import Database from "better-sqlite3";
 import { afterAll, beforeAll, beforeEach, describe, expect, it } from "vitest";
 import { openPage } from "../action-page.ts";
@@ -41,11 +41,15 @@ import {
   stopServer,
   testConfig,
 } from "../server-support.ts";
-import { eventually, tempDir } from "../support.ts";
+import { connectTo, eventually, initializeParams, tempDir } from "../support.ts";
 
 const REVISION = "2026-10-15";
 const OPERATOR = fileURLToPath(new URL("../fixtures/operator.mjs", import.meta.url));
 const FIXTURES = fileURLToPath(new URL("../fixtures/artifacts", import.meta.url));
+
+/** A 2 × 1 PNG, as a host's `capture` port answers. */
+const CROP_PNG =
+  "iVBORw0KGgoAAAANSUhEUgAAAAIAAAABCAIAAAB7QOjdAAAAEElEQVR4nGNQ2f+fgYGBAQAJ7AJ7ZbB2WAAAAABJRU5ErkJggg==";
 
 describe("operator ports (HO-09)", () => {
   let port: number;
@@ -580,6 +584,57 @@ describe("operator ports (HO-09)", () => {
     expect((await send(port, shellHost, `/a/${routeId}`)).status).toBe(404);
     expect((await send(port, label, "/")).status).toBe(421);
   }, 180_000);
+
+  it("removing a hosted artifact removes its comments' crops, which show what its viewers answered (D182 item 4)", async () => {
+    const { answer: shared } = await share();
+    const url = ok<{ url: string }>(shared).url;
+    const host = await connectTo(owner.daemon.status.socket as string);
+    try {
+      ok(
+        await host.call(
+          "mostra/initialize",
+          initializeParams({ client: { name: "crop-host", version: "1" }, ports: ["capture"] }),
+        ),
+      );
+      const browser = new Browser();
+      const opened = await openLink(browser, url);
+      const api = `${new URL(url).pathname}/_mostra/v/2026-10-15`;
+      const threadId = ThreadId.create();
+      const made = await browser.fetchJson(opened.link.shell, `${api}/review/threads`, {
+        body: {
+          viewId: opened.viewId,
+          threadId,
+          commentId: CommentId.create(),
+          anchor: { rect: { x: 0, y: 0, width: 100, height: 40 } },
+          text: "Remove me with the page.",
+        },
+        csrf: opened.shellCsrf,
+      });
+      expect(made.status, made.body).toBe(200);
+      const call = await host.next(
+        (message) => message.method === "port/capture.screenshot",
+        30_000,
+      );
+      host.sendRaw(
+        JSON.stringify({
+          jsonrpc: "2.0",
+          id: call.id,
+          result: { png: CROP_PNG, width: 2, height: 1 },
+        }),
+      );
+      const blobs = join(data, "homes", await homeOf(), "blobs");
+      await eventually(
+        async () => existsSync(blobs) && readdirSync(blobs).some((name) => name.endsWith(".png")),
+        30_000,
+        "the crop kept by the hosted home",
+      );
+      const removed = await operator.handle("remove", routeOf(url));
+      expect(removed.status, JSON.stringify(removed.json)).toBe(200);
+      expect(readdirSync(blobs).filter((name) => name.endsWith(".png"))).toEqual([]);
+    } finally {
+      host.close();
+    }
+  }, 120_000);
 
   /** The owner's hosted home, from the server's directory. */
   const homeOf = async (): Promise<string> => {
