@@ -39,6 +39,25 @@ each harness's own CLI loading it (D162).
    (D147): Anthropic's pre-submission checklist, OpenAI's submission and desktop-only pages, Grok
    Build's `CONTRIBUTING.md`. A rule that changed goes into `tools/plugins/check.ts` with a seed in
    `tools/test/plugins.test.ts`, and into `docs/design/VERIFIED_FACTS.md`. Submitting is Mirza's.
+6. **Claude's directory's folder** (MT-07). The build writes `claude-directory/` beside the full
+   plugin (`features.claudeDirectory`, `tools/plugins/claude-directory.ts`): the Skill with each
+   example as one Markdown file, the remote MCP server alone, and nothing the directory refuses
+   from an organization that isn't verified. `check` holds it to the directory's own rules
+   (`checkClaudeDirectory` in `check.ts`: each rule names its source and the day it was read, and
+   `tools/test/claude-directory.test.ts` plants a violation of each); everything outside the folder
+   stays byte for byte as without it. Step 2's script installs the folder in Claude Code from disk
+   and fails unless it loads one Skill and the remote server alone, and unless every harness still
+   loads exactly one Skill from the root. Claude Code's own `claude plugin validate` doesn't apply
+   the rules for organizations that aren't verified (it passes the root too), so the portal's
+   **Validate** is the check of record: push the tree to a branch of `mostra-dev/mostra-plugin`
+   (`git push` of a build, never to `main` or a `v*` tag), then Mirza opens
+   `claude.ai/directory/manage`, **Submit new**, **Plugin bundle**, the repository with plugin path
+   `claude-directory` and that branch, and **Validate**, and stops there: nothing is submitted
+   until he chooses to. Record the report's findings in VERIFIED_FACTS. A rule the portal adds
+   goes into `checkClaudeDirectory` with its seed; a release the portal refuses is a finding for
+   the next unit, never a reason to loosen the check.
 
 **Done when** the script reports every installed harness `✓` and none `✗`, the harnesses it
-skipped are named in your report with the reason, and any rule that changed is in the check.
+skipped are named in your report with the reason, any rule that changed is in the check, and,
+before a submission from `claude-directory/`, the portal's validation of it has no blocking
+finding.
