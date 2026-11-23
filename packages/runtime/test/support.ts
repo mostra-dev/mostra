@@ -361,7 +361,9 @@ export class LineClient {
           : { jsonrpc: "2.0", id, method, params },
       ),
     );
-    return this.next((message) => message.id === id, timeoutMs);
+    // Only an answer: a port call from the instance carries an ID of the instance's own count,
+    // which may be the same number, and a method (WP-20's review suite met it).
+    return this.next((message) => message.id === id && message.method === undefined, timeoutMs);
   }
 
   close(): void {

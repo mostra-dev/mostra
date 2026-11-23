@@ -273,3 +273,144 @@ test.describe("review sets (RV-03)", () => {
     }
   });
 });
+
+test.describe("the artifact can't hide or forge the review overlay (RV-04)", () => {
+  test("reaching into the shell, calling its review routes, forged bridge messages and look-alike pins make, hide and resolve nothing", async ({
+    page,
+  }, info) => {
+    test.setTimeout(180_000);
+    const client = await Client.connect(run.socket);
+    try {
+      const own = await publishOwn(client, run.home, info, { fixture: "review" });
+      const url = await linkFor(client, own.artifactId, viewerName(info));
+      await page.setViewportSize({ width: 1280, height: 900 });
+      const frame = await openInShell(page, url);
+      await expect(page.locator("html")).toHaveAttribute("data-shell", "ready");
+      await comment(page, frame.locator("h1"), "The real comment.");
+      const pin = page.locator("[data-mostra-pin]");
+      await expect(pin).toHaveCount(1);
+      const threadId = (await pin.getAttribute("data-mostra-pin")) ?? "";
+      const code = page.frames().find((candidate) => candidate !== page.mainFrame());
+      if (!code) throw new Error("the shell has no frame");
+      const shellOrigin = new URL(page.url()).origin;
+      const attempts = await code.evaluate(
+        async ({ shellOrigin, artifactId, threadId }) => {
+          const outcome: Record<string, string> = {};
+          const base = `${shellOrigin}/a/${artifactId}/_mostra/v/2026-10-15/review/threads`;
+          // 1. Reach into the shell's document to remove the pins and the panel.
+          try {
+            for (const node of window.parent.document.querySelectorAll("[data-mostra-pin]")) {
+              node.remove();
+            }
+            outcome["reach"] = "reached";
+          } catch (error) {
+            outcome["reach"] = (error as Error).name;
+          }
+          // 2. Call the shell's review routes: start a thread, resolve the viewer's.
+          const post = async (path: string, body: unknown): Promise<string> => {
+            try {
+              const response = await fetch(`${base}${path}`, {
+                method: "POST",
+                credentials: "include",
+                headers: { "content-type": "application/json", "x-mostra-csrf": "guess" },
+                body: JSON.stringify(body),
+              });
+              return String(response.status);
+            } catch (error) {
+              return (error as Error).name;
+            }
+          };
+          outcome["start"] = await post("", {
+            viewId: "vw_00000000000000000000000000",
+            threadId: "thr_00000000000000000000000000",
+            commentId: "cmt_00000000000000000000000000",
+            text: "Forged.",
+            anchor: {},
+          });
+          outcome["resolve"] = await post(`/${threadId}/status`, {
+            viewId: "vw_00000000000000000000000000",
+            status: "resolved",
+          });
+          // 3. Forged bridge messages: a hit test from the wrong side, a track the page can't send,
+          // positions that throw the viewer's pin far off the page and name a thread never made.
+          window.parent.postMessage(
+            { jsonrpc: "2.0", id: 7001, method: "mostra/review.hitTest", params: { x: 1, y: 1 } },
+            "*",
+          );
+          window.parent.postMessage(
+            { jsonrpc: "2.0", method: "mostra/review.track", params: { anchors: [] } },
+            "*",
+          );
+          // The page's runtime keeps reporting the true place; a hostile page keeps lying, faster.
+          const forged = {
+            jsonrpc: "2.0",
+            method: "mostra/review.positions",
+            params: {
+              positions: [
+                { id: threadId, rect: { x: 99999, y: -99999, width: 1, height: 1 }, layer: "rect" },
+                {
+                  id: "thr_00000000000000000000000000",
+                  rect: { x: 10, y: 10, width: 9, height: 9 },
+                  layer: "rect",
+                },
+              ],
+            },
+          };
+          window.parent.postMessage(forged, "*");
+          setInterval(() => window.parent.postMessage(forged, "*"), 10);
+          // 4. A look-alike overlay of the page's own: fake pins and a fake resolved panel on top.
+          const fake = document.createElement("div");
+          fake.innerHTML =
+            '<button class="mostra-pin" style="position:fixed;left:40px;top:40px">9</button>' +
+            '<aside style="position:fixed;inset:0;background:white;z-index:2147483647">Resolved: nothing to review</aside>';
+          document.body.append(fake);
+          return outcome;
+        },
+        { shellOrigin, artifactId: own.artifactId, threadId },
+      );
+      expect(attempts["reach"]).toBe("SecurityError");
+      expect(["403", "TypeError"]).toContain(attempts["start"]);
+      expect(["403", "TypeError"]).toContain(attempts["resolve"]);
+      // The shell dropped what the page may not send, and drew no pin for a thread nobody made.
+      await expect(page.locator("html")).toHaveAttribute("data-bridge-rejections", /[1-9]/);
+      await expect(pin).toHaveCount(1);
+      // The viewer's pin is still whole, inside the page's box, wherever the page says it is:
+      // sampled while the page keeps lying.
+      const stage = await page.locator(".mostra-frame").boundingBox();
+      if (!stage) throw new Error("the frame has no box");
+      for (let sample = 0; sample < 10; sample += 1) {
+        const box = await pin.boundingBox();
+        expect(box, "the pin is drawn").not.toBeNull();
+        if (!box) break;
+        expect(box.x).toBeGreaterThanOrEqual(stage.x - 1);
+        expect(box.y).toBeGreaterThanOrEqual(stage.y - 1);
+        expect(box.x + box.width).toBeLessThanOrEqual(stage.x + stage.width + 1);
+        expect(box.y + box.height).toBeLessThanOrEqual(stage.y + stage.height + 1);
+        await page.waitForTimeout(100);
+      }
+      const box = await pin.boundingBox();
+      if (!box) throw new Error("the pin has no box");
+      // At the pin's centre the shell's own pin is on top, whatever the page draws under it.
+      const onTop = await page.evaluate(
+        ({ x, y }) => document.elementFromPoint(x, y)?.getAttribute("data-mostra-pin") ?? "",
+        { x: box.x + box.width / 2, y: box.y + box.height / 2 },
+      );
+      expect(onTop).toBe(threadId);
+      // The panel, the shell's, lists the one real thread, open.
+      const thread = page.locator(`[data-mostra-thread="${threadId}"]`);
+      await expect(page.locator("[data-mostra-thread]")).toHaveCount(1);
+      await expect(thread).toContainText("The real comment.");
+      // The instance holds that thread alone, open: nothing the page tried took effect.
+      const exported = await client.call<{ content: string }>("review/export", {
+        artifact: { artifactId: own.artifactId },
+        format: "json",
+      });
+      const review = JSON.parse(exported.content) as { comments: Comment[] };
+      expect(review.comments.map((one) => [one.threadId, one.status])).toEqual([
+        [threadId, "open"],
+      ]);
+    } finally {
+      client.close();
+    }
+  });
+});

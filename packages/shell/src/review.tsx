@@ -420,7 +420,12 @@ export function ReviewLayer(props: {
             className="mostra-pin"
             data-mostra-pin={thread.id}
             data-focused={review.focused === thread.id ? "" : undefined}
-            style={{ left: at.x + at.width, top: at.y }}
+            // A page reports where its anchors are; a pin stays whole inside the page's box
+            // wherever it says, so a page can move its pins but never take them off the page.
+            style={{
+              left: `clamp(calc(var(--pin) / 2), ${at.x + at.width}px, calc(100% - var(--pin) / 2))`,
+              top: `clamp(calc(var(--pin) / 2), ${at.y}px, calc(100% - var(--pin) / 2))`,
+            }}
             aria-label={REVIEW_WORDS.pinLabel(number, first?.author.name, first?.text ?? "")}
             onClick={() => review.open(thread.id)}
           >
