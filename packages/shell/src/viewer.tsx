@@ -6,6 +6,7 @@
  * (D06, SH-01, SH-02).
  */
 import {
+  type AnchorPosition,
   type AnyBridgeMessage,
   type Bridge,
   type ControlRequest,
@@ -23,8 +24,11 @@ import {
   mostraFrameSessionFailed,
   mostraPage,
   mostraReady,
+  mostraReviewPositions,
+  mostraSurfaces,
   mostraVersionAvailable,
   type OrphanedField,
+  type ReviewSurface,
   type SubmitBlocker,
   type UiInitializeResult,
   uiHostContextChanged,
@@ -96,6 +100,7 @@ import {
   withSnapshot,
   withSubmission,
 } from "./model.ts";
+import { CommentButton, ReviewLayer, ReviewPanel, useReview } from "./review.tsx";
 import { openStream, readSnapshot } from "./stream.ts";
 import {
   BANNER_WORDS,
@@ -243,6 +248,10 @@ interface FrameHandlers {
   onFields(params: FieldsParams): void;
   onControl(request: ControlRequest): boolean;
   onPage(path: string): void;
+  /** Where the page says the tracked comment anchors are (WP-20). */
+  onPositions(positions: readonly AnchorPosition[]): void;
+  /** The review sets the page shows (WP-20). */
+  onSurfaces(sets: readonly ReviewSurface[]): void;
   /** The frame loaded another version than its view's (D98 item 5). */
   onWrongVersion(): void;
   /** A frame greeted the shell (`ui/initialize`), whatever its version: called at once. */
@@ -342,6 +351,12 @@ function Frame(props: {
           handlersRef.current.onFrameSessionFailed(params as { reason: string; message: string });
         }
         if (message === mostraFrameSessionEntered) handlersRef.current.onFrameSessionEntered();
+        if (message === mostraReviewPositions) {
+          handlersRef.current.onPositions((params as { positions: AnchorPosition[] }).positions);
+        }
+        if (message === mostraSurfaces) {
+          handlersRef.current.onSurfaces((params as { sets: ReviewSurface[] }).sets);
+        }
       },
       onRejected: () => {
         rejections += 1;
@@ -576,6 +591,8 @@ export function ViewerPage(props: {
   const onBridge = useCallback((next: Bridge | undefined) => {
     bridge.current = next;
   }, []);
+  const bridgeOf = useCallback(() => bridge.current, []);
+  const refreshReview = useRef<() => Promise<void>>(async () => undefined);
   // A worker-mode frame first loads its bootstrap page (D70), whose load isn't the page's: the
   // page's wait starts once the bootstrap says it entered.
   const [bootstrapping, setBootstrapping] = useState(ticket.mode === "worker");
@@ -680,6 +697,8 @@ export function ViewerPage(props: {
       onSnapshot: (snapshot) => setState((current) => withSnapshot(current, snapshot)),
       onEvents: (events) => {
         setState((current) => withEvents(current, events));
+        // A comment someone made or changed that this page may see (WP-20).
+        if (events.some((event) => event.type.startsWith("review."))) void refreshReview.current();
         // Another tab's submission: the receipt reads it whole.
         if (events.some((event) => event.type === "submission.created")) {
           void readSnapshot(target.apiBase, ticket.viewId).then((snapshot) => {
@@ -874,6 +893,30 @@ export function ViewerPage(props: {
     void setFollow(target.apiBase, session.csrf, next).catch(() => setFollowing(!next));
   };
 
+  // The review overlay (WP-20): its threads, pins and panel, for a link that may review.
+  const reviews = session.scopes.includes("review") && ticket.target !== "verify";
+  const [surfaces, setSurfaces] = useState<readonly ReviewSurface[]>([]);
+  const review = useReview({
+    apiBase: target.apiBase,
+    csrf: session.csrf,
+    viewId: ticket.viewId,
+    page: state.page,
+    bridge: bridgeOf,
+    agent: frameKind === "runtime",
+    enabled: reviews,
+  });
+  useLayoutEffect(() => {
+    refreshReview.current = review.refresh;
+  });
+  const candidateLabels = new Map(
+    surfaces.flatMap((set) =>
+      set.candidates.map((candidate) => [
+        `${set.id}/${candidate.id}`,
+        candidate.label ?? candidate.id,
+      ]),
+    ),
+  );
+
   const handlers: FrameHandlers = {
     onFields: (params) =>
       setState((current) => ({
@@ -893,6 +936,8 @@ export function ViewerPage(props: {
       // Whether it shows depends on the view's ticket only, which no event changes.
       return withControlRequest(latestStateRef.current, request, now).shown;
     },
+    onPositions: (positions) => review.onPositions(positions),
+    onSurfaces: (sets) => setSurfaces(sets),
     onPage: (path) => {
       setState((current) => ({ ...current, page: path }));
       mark("", { shellPage: path });
@@ -1142,6 +1187,7 @@ export function ViewerPage(props: {
             onSignOut={signOutPage}
           />
         )}
+        {reviews && <CommentButton review={review} />}
         <div
           className="mostra-actionbar"
           data-mostra-dock={submitShown || chooses.length > 0 ? "" : undefined}
@@ -1287,15 +1333,26 @@ export function ViewerPage(props: {
         {/* One frame element per view: a switch or a re-entry loads a new browsing context instead
             of navigating the old one, so it adds no entry to the tab's history (Back never takes
             the frame to a spent ticket) and nothing of the old page lingers. */}
-        <Frame
-          key={ticket.viewId}
-          focus={focusFrame}
-          title={session.artifact.title}
-          ticket={ticket}
-          handlers={handlers}
-          onBridge={onBridge}
-          onLoaded={onFrameLoaded}
-        />
+        <div className="mostra-frame-box" data-mostra-commenting={review.mode ? "" : undefined}>
+          <Frame
+            key={ticket.viewId}
+            focus={focusFrame}
+            title={session.artifact.title}
+            ticket={ticket}
+            handlers={handlers}
+            onBridge={onBridge}
+            onLoaded={onFrameLoaded}
+          />
+          {reviews && <ReviewLayer review={review} page={state.page} />}
+        </div>
+        {reviews && review.panel && (
+          <ReviewPanel
+            review={review}
+            apiBase={target.apiBase}
+            candidates={candidateLabels}
+            page={state.page}
+          />
+        )}
         {(problem !== undefined || blocked.length > 0) && (
           <aside
             className="mostra-problem"

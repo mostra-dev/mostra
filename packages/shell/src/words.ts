@@ -234,3 +234,46 @@ export const HOSTED_WORDS = {
   notAccepting: "This page isn't accepting answers right now. What you typed is kept.",
   signInToAnswer: "Sign in to answer this page.",
 } as const;
+
+/**
+ * The review overlay (WP-20, RV-01 to RV-04, CO-06): comments pinned to the page, their threads,
+ * mentions and crops. Drafts for Mirza's review with the package's prose (D149).
+ */
+export const REVIEW_WORDS = {
+  comment: "Comment",
+  pointHint: "Click what to comment on",
+  countLabel: (count: number): string =>
+    count === 1 ? "1 open comment" : `${String(count)} open comments`,
+  title: "Comments",
+  intro: "Pin a comment to anything on the page. Comments are sent with your answers.",
+  closed: "Your answers were submitted, so comments here can be read but not added.",
+  empty: "No comments yet.",
+  wholePage: "Comment on the whole page",
+  thePage: "The whole page",
+  aPoint: "A place on the page",
+  placeholder: "Write a comment. Type @ to mention someone.",
+  replyPlaceholder: "Write a reply",
+  post: "Comment",
+  reply: "Reply",
+  cancel: "Cancel",
+  resolve: "Resolve",
+  reopen: "Reopen",
+  show: "Show on the page",
+  closePanel: "Close comments",
+  you: "You",
+  someone: "Someone",
+  unverified: "name not verified",
+  mention: "People you can mention",
+  resolvedBy: (name: string): string => `Resolved by ${name}`,
+  resolvedCount: (count: number): string =>
+    count === 1 ? "1 resolved comment" : `${String(count)} resolved comments`,
+  pinLabel: (number: number, author: string | undefined, text: string): string =>
+    `Comment ${String(number)}${author ? ` by ${author}` : ""}: ${text.length > 80 ? `${text.slice(0, 79)}…` : text}`,
+  capturing: "Taking a picture of this place…",
+  cropFailed: "No picture of this place could be taken; the comment still says where it is.",
+  cropAlt: (label: string | undefined): string =>
+    label ? `The place this comment points at: ${label}` : "The place this comment points at",
+  otherPage: (page: string): string => `On ${page}`,
+  failed: "The comment couldn't be saved. Try again.",
+  mentionUnknown: "Someone you mentioned can't be mentioned on this page.",
+} as const;
