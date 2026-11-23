@@ -1,7 +1,7 @@
 import { defineConfig } from "tsdown";
 
 export default defineConfig({
-  entry: ["src/index.ts", "src/questionnaire.tsx", "src/layout.tsx"],
+  entry: ["src/index.ts", "src/questionnaire.tsx", "src/layout.tsx", "src/review.tsx"],
   format: "esm",
   platform: "browser",
   target: "es2024",

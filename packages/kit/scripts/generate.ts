@@ -62,6 +62,13 @@ const KIT_ITEMS = [
     description:
       "The page's frame in its theme: the page with its title, its sections and a row of figures.",
   },
+  {
+    name: "mostra-review",
+    module: "review",
+    title: "Review set",
+    description:
+      "Candidates to compare, comment on and choose between: a gallery, one at a time, or two to four side by side with their difference.",
+  },
 ] as const;
 
 /** The packages a file imports, by package name, without React. */

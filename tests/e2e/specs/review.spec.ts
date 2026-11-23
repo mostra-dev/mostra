@@ -8,6 +8,7 @@
  */
 import { existsSync } from "node:fs";
 import { expect, type FrameLocator, type Locator, type Page, test } from "@playwright/test";
+import { PNG } from "pngjs";
 import { linkFor, openInShell, publishOwn, viewerName } from "../support/client.ts";
 import { Client, readRun } from "../support/mostra.ts";
 
@@ -46,10 +47,11 @@ interface Comment {
 
 /** Puts the overlay in comment mode, points at the middle of `target`, and posts `text`. */
 async function comment(page: Page, target: Locator, text: string): Promise<void> {
-  const box = await target.boundingBox();
-  if (!box) throw new Error(`No box for ${text}`);
   await page.locator("[data-mostra-comment-button]").click();
   await expect(page.locator("[data-mostra-review-surface]")).toBeVisible();
+  // The panel opened beside the page, which may have moved: where the target is now.
+  const box = await target.boundingBox();
+  if (!box) throw new Error(`No box for ${text}`);
   await page.mouse.click(box.x + box.width / 2, box.y + box.height / 2);
   const composer = page.locator("[data-mostra-review-new] textarea");
   await expect(composer).toBeVisible();
@@ -150,6 +152,122 @@ test.describe("comments on any content (RV-01, RV-02)", () => {
       });
       expect(results.comments).toHaveLength(5);
       for (const entry of results.comments) expect(existsSync(entry.crop.path)).toBe(true);
+    } finally {
+      client.close();
+    }
+  });
+});
+
+test.describe("review sets (RV-03)", () => {
+  test("gallery, focus, synchronized compare of two to four with a pixel difference, and a trusted Choose that arrives with the comments", async ({
+    page,
+  }, info) => {
+    test.setTimeout(240_000);
+    const client = await Client.connect(run.socket);
+    try {
+      const own = await publishOwn(client, run.home, info, { fixture: "review-set" });
+      const url = await linkFor(client, own.artifactId, viewerName(info));
+      await page.setViewportSize({ width: 1280, height: 900 });
+      const frame = await openInShell(page, url);
+      await expect(page.locator("html")).toHaveAttribute("data-shell", "ready");
+      const sidebar = frame.locator('[data-mostra-review-set="sidebar"]');
+
+      // Compare: two side by side, then a third, then back to two; at most four.
+      await expect(sidebar.locator("[data-mostra-candidate]")).toHaveCount(2);
+      await sidebar.locator('[data-review-candidate="roomy"]').click();
+      await expect(sidebar.locator("[data-mostra-candidate]")).toHaveCount(3);
+      // Synchronized: scrolling one compared candidate scrolls the others to the same place.
+      await sidebar.locator('[data-mostra-candidate="dense"]').evaluate((pane) => {
+        pane.scrollTop = 200;
+        pane.dispatchEvent(new Event("scroll"));
+      });
+      await expect
+        .poll(() =>
+          sidebar.locator('[data-mostra-candidate="roomy"]').evaluate((pane) => pane.scrollTop),
+        )
+        .toBe(200);
+      await sidebar.locator('[data-review-candidate="roomy"]').click();
+      await expect(sidebar.locator("[data-mostra-candidate]")).toHaveCount(2);
+      await sidebar.locator('[data-mostra-candidate="dense"]').evaluate((pane) => {
+        pane.scrollTop = 0;
+        pane.dispatchEvent(new Event("scroll"));
+      });
+
+      // The difference: where Dense and Airy agree is black, where they differ (the accent) isn't.
+      await sidebar.locator("[data-review-difference]").click();
+      const grid = sidebar.locator("[data-review-grid]");
+      await expect(grid).toHaveAttribute("data-difference", "");
+      const gridBox = await grid.boundingBox();
+      const accent = await frame.locator('[data-testid="accent-dense"]').boundingBox();
+      const title = await frame.locator('[data-review-id="sidebar.dense.title"]').boundingBox();
+      if (!gridBox || !accent || !title) throw new Error("No boxes for the difference.");
+      const shot = PNG.sync.read(await grid.screenshot());
+      const scale = shot.width / gridBox.width;
+      const pixel = (x: number, y: number): [number, number, number] => {
+        const at =
+          (Math.round((y - gridBox.y) * scale) * shot.width + Math.round((x - gridBox.x) * scale)) *
+          4;
+        return [shot.data[at] ?? 0, shot.data[at + 1] ?? 0, shot.data[at + 2] ?? 0];
+      };
+      const sum = (rgb: [number, number, number]): number => rgb[0] + rgb[1] + rgb[2];
+      // Identical white ground: black.
+      expect(sum(pixel(title.x + title.width + 40, title.y + title.height / 2))).toBeLessThan(30);
+      // Blue against red: far from black.
+      expect(sum(pixel(accent.x + accent.width / 2, accent.y + accent.height / 2))).toBeGreaterThan(
+        200,
+      );
+      await sidebar.locator("[data-review-difference]").click();
+
+      // Focus: one candidate at a time.
+      const tone = frame.locator('[data-mostra-review-set="tone"]');
+      await expect(tone.locator("[data-mostra-candidate]")).toHaveCount(1);
+      await tone.locator('[data-review-candidate="cool"]').click();
+      await expect(tone.locator('[data-mostra-candidate="cool"]')).toBeVisible();
+      await expect(tone.locator('[data-mostra-candidate="warm"]')).toHaveCount(0);
+      // Gallery: every candidate.
+      await expect(
+        frame.locator('[data-mostra-review-set="icons"] [data-mostra-candidate]'),
+      ).toHaveCount(3);
+
+      // The trusted Choose names the candidate in view, in the shell.
+      // In compare, a click inside a candidate puts it in view.
+      await sidebar.locator('[data-mostra-candidate="airy"] h3').click();
+      const choose = page.locator('[data-mostra-choose="sidebar"]');
+      await expect(choose).toHaveText("Choose Airy");
+      await expect(page.locator("[data-mostra-trusted]")).toHaveAttribute("data-mostra-armed", "");
+      await choose.click();
+      await expect(choose).toHaveText("Chosen: Airy");
+
+      // A comment on a candidate records its set and candidate.
+      await comment(
+        page,
+        sidebar.locator('[data-mostra-candidate="airy"] h3'),
+        "Airy's title is right.",
+      );
+      await expect(page.locator('[data-mostra-crop="captured"]')).toHaveCount(1, {
+        timeout: 120_000,
+      });
+
+      await page.locator("#mostra-submit").click();
+      await expect(page.locator("[data-mostra-status]")).toHaveAttribute(
+        "data-mostra-status",
+        "sent",
+      );
+      const results = await client.call<{
+        choices: { reviewSetId: string; candidateId: string; label?: string }[];
+        comments: Comment[];
+      }>("results/get", { artifact: { artifactId: own.artifactId } });
+      expect(results.choices).toEqual([
+        { reviewSetId: "sidebar", candidateId: "airy", label: "Airy" },
+      ]);
+      expect(results.comments).toHaveLength(1);
+      const anchor = results.comments[0]?.anchor as Anchor & {
+        reviewSetId?: string;
+        candidateId?: string;
+      };
+      expect(anchor.reviewSetId).toBe("sidebar");
+      expect(anchor.candidateId).toBe("airy");
+      expect(anchor.reviewId).toBe("sidebar.airy.title");
     } finally {
       client.close();
     }
