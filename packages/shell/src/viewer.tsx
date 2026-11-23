@@ -14,7 +14,6 @@ import {
   type FieldsParams,
   type FlushResult,
   type FrameTicket,
-  type HostedChrome,
   MCP_APPS_PROTOCOL_VERSION,
   mostraControlsRequest,
   mostraFieldFocus,
@@ -60,6 +59,7 @@ import { currentAppearance, onAppearance } from "./appearance.ts";
 import { bootMark } from "./boot-marks.ts";
 import {
   AppearanceButton,
+  type DeliveryLine,
   FoldButton,
   HostedFooter,
   Interstitial,
@@ -71,7 +71,6 @@ import {
 } from "./chrome.tsx";
 import { frameEntries } from "./entries.ts";
 import {
-  hosted,
   interstitialPassed,
   keepSignOut,
   markSignedOut,
@@ -87,12 +86,11 @@ import {
   applyControlRequests,
   blockers as blockersOf,
   choiceOf,
-  deliveryView,
   type FrameKind,
   initialState,
-  receiptOf,
   showsChoose,
   showsSubmit,
+  submissionStanding,
   submitRevision,
   type ViewState,
   withControlRequest,
@@ -106,11 +104,11 @@ import {
   BANNER_WORDS,
   BLOCKER_WORDS,
   CONTROL_WORDS,
+  DELIVERY_WORDS,
   DEV_WORDS,
   FRAME_WORDS,
   HOSTED_WORDS,
   ORPHAN_WORDS,
-  RECEIPT_WORDS,
   SERVER_WORDS,
   STATUS_WORDS,
   submitProblem,
@@ -452,87 +450,6 @@ function Orphans(props: { readonly orphans: readonly OrphanedField[] }): ReactEl
           </ul>
         </section>
       )}
-    </aside>
-  );
-}
-
-/** The submission receipt (IN-13, D47): Mostra's record and each host's delivery, kept apart. */
-function Receipt(props: {
-  readonly state: ViewState;
-  readonly chrome?: HostedChrome | undefined;
-}): ReactElement | null {
-  const submission = receiptOf(props.state);
-  if (!submission) return null;
-  const time = new Date(submission.at).toLocaleTimeString(undefined, { timeStyle: "medium" });
-  // On a hosted link the respondent learns that the answer was sent, and nothing about its
-  // delivery, which only the owner sees (D165 item 1a, IN-13 for hosted links).
-  if (hosted()) {
-    return (
-      <aside className="mostra-receipt" data-mostra-receipt="sent" aria-live="polite">
-        <h2>{RECEIPT_WORDS.sent}</h2>
-        <ul>
-          <li className="mostra-ok">
-            <time dateTime={submission.at}>{time}</time>
-          </li>
-        </ul>
-        {/* One quiet line, where the server's operator turns it on (D161), as text. */}
-        {props.chrome?.afterSubmit !== undefined && (
-          <p className="mostra-after-submit" data-mostra-after-submit="">
-            {props.chrome.madeWith?.href?.startsWith("https:") ? (
-              <a href={props.chrome.madeWith.href} rel="noopener noreferrer" target="_blank">
-                {props.chrome.afterSubmit}
-              </a>
-            ) : (
-              props.chrome.afterSubmit
-            )}
-          </p>
-        )}
-      </aside>
-    );
-  }
-  const view = deliveryView(submission);
-  const title =
-    view.kind === "delivered"
-      ? RECEIPT_WORDS.delivered
-      : view.kind === "pending"
-        ? RECEIPT_WORDS.pending
-        : view.kind === "undeliverable"
-          ? RECEIPT_WORDS.undeliverable
-          : RECEIPT_WORDS.submitted;
-  return (
-    <aside className="mostra-receipt" data-mostra-receipt={view.kind} aria-live="polite">
-      <h2>{title}</h2>
-      <ul>
-        <li className="mostra-ok">
-          <span>{RECEIPT_WORDS.saved}</span>
-          <time dateTime={submission.at}>{time}</time>
-        </li>
-        {(submission.deliveries ?? [])
-          .filter((delivery) => delivery.owner !== "")
-          .map((delivery) => (
-            <li
-              key={delivery.deliveryId}
-              className={
-                delivery.state === "delivered"
-                  ? "mostra-ok"
-                  : delivery.state === "pending"
-                    ? "mostra-wait"
-                    : "mostra-bad"
-              }
-              data-mostra-delivery={delivery.state}
-            >
-              {delivery.state === "delivered"
-                ? RECEIPT_WORDS.deliveredTo(delivery.owner)
-                : delivery.state === "pending"
-                  ? RECEIPT_WORDS.pendingTo(delivery.owner)
-                  : RECEIPT_WORDS.undeliverableTo(delivery.owner, delivery.reason)}
-            </li>
-          ))}
-      </ul>
-      <p className="mostra-footnote">
-        {RECEIPT_WORDS.footnote(submission.version)}
-        {submission.staleView ? ` ${RECEIPT_WORDS.stale(props.state.latest.number)}` : ""}
-      </p>
     </aside>
   );
 }
@@ -1166,10 +1083,24 @@ export function ViewerPage(props: {
   // "Connecting…" until then, never a "Saved" nobody confirmed (Claude review finding 4), and once
   // the answer is in, sent. A version built before WP-07 reports none, and none is shown.
   const saveState = frameKind === "loading" ? "connecting" : state.save;
-  const statusKind: StatusKind =
-    submitted && state.submission !== undefined ? "sent" : (saveState as StatusKind);
-  const statusWords =
-    statusKind === "sent" && chrome ? RECEIPT_WORDS.sent : STATUS_WORDS[statusKind];
+  // Where the submission stands, in place of a receipt over the page (D175 item 12): while the
+  // draft is what was submitted, the status says Submitted, then each host's delivery (IN-13), or
+  // on a hosted link only that the answer was sent (D165 item 1a).
+  const standing = submissionStanding(state, Boolean(chrome));
+  const statusKind: StatusKind = standing?.kind ?? (saveState as StatusKind);
+  const statusWords = STATUS_WORDS[statusKind];
+  const deliveryLines: DeliveryLine[] = (standing?.deliveries ?? []).map((delivery) => ({
+    key: delivery.deliveryId,
+    state: delivery.state,
+    text:
+      delivery.state === "delivered"
+        ? DELIVERY_WORDS.deliveredTo(delivery.owner)
+        : delivery.state === "pending"
+          ? DELIVERY_WORDS.pendingTo(delivery.owner)
+          : DELIVERY_WORDS.undeliverableTo(delivery.owner, delivery.reason),
+  }));
+  const staleNote =
+    standing?.stale === true ? DELIVERY_WORDS.stale(state.latest.number) : undefined;
   const showsStatus = frameKind !== "legacy";
 
   return (
@@ -1204,7 +1135,13 @@ export function ViewerPage(props: {
           data-mostra-dock={submitShown || chooses.length > 0 ? "" : undefined}
         >
           {showsStatus && (
-            <StatusIndicator kind={statusKind} words={statusWords} save={saveState} />
+            <StatusIndicator
+              kind={statusKind}
+              words={statusWords}
+              save={saveState}
+              deliveries={deliveryLines}
+              {...(staleNote !== undefined ? { stale: staleNote } : {})}
+            />
           )}
           {(submitShown || chooses.length > 0) && (
             <div
@@ -1268,6 +1205,18 @@ export function ViewerPage(props: {
         </div>
       </header>
       <PausedNotice ticket={ticket} />
+      {/* After an answer is sent, one quiet line, where the server's operator turns it on (D161). */}
+      {chrome?.afterSubmit !== undefined && standing?.kind === "sent" && (
+        <div className="mostra-following mostra-after-submit" data-mostra-after-submit="">
+          {chrome.madeWith?.href?.startsWith("https:") ? (
+            <a href={chrome.madeWith.href} rel="noopener noreferrer" target="_blank">
+              {chrome.afterSubmit}
+            </a>
+          ) : (
+            chrome.afterSubmit
+          )}
+        </div>
+      )}
       {chrome && sessionUnstored() && (
         <div className="mostra-banner mostra-warn" data-mostra-storage="unsaved" role="status">
           <div>{HOSTED_WORDS.storageFull}</div>
@@ -1398,7 +1347,6 @@ export function ViewerPage(props: {
             )}
           </aside>
         )}
-        <Receipt state={state} chrome={chrome} />
         <Orphans orphans={orphans} />
       </main>
       {chrome && !folded && (

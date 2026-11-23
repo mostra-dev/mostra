@@ -143,8 +143,8 @@ test.describe("a hosted link (RM-02, §18.4)", () => {
     await expect(again.getByTestId("name")).toHaveValue(answer);
 
     await page.locator("#mostra-submit").click();
-    const receipt = page.locator("[data-mostra-receipt]");
-    await expect(receipt).toHaveAttribute("data-mostra-receipt", "sent");
+    const receipt = page.locator("[data-mostra-submission]");
+    await expect(receipt).toHaveAttribute("data-mostra-submission", "sent");
     await expect(receipt).toContainText("Your answer was sent.");
     await expect(page.locator("[data-mostra-delivery]")).toHaveCount(0);
     await expect(receipt).not.toContainText("Delivered");
@@ -375,8 +375,8 @@ test.describe("a hosted link (RM-02, §18.4)", () => {
     await anonymous.getByTestId("name").fill(someone);
     await saved(page);
     await page.locator("#mostra-submit").click();
-    await expect(page.locator("[data-mostra-receipt]")).toHaveAttribute(
-      "data-mostra-receipt",
+    await expect(page.locator("[data-mostra-submission]")).toHaveAttribute(
+      "data-mostra-submission",
       "sent",
     );
     const waited = await client.call<{ status: string }>("wait", {

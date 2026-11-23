@@ -291,6 +291,12 @@ test.describe("stale views and other tabs", () => {
       await expect(page.locator('[data-mostra-banner="2"]')).toBeVisible({ timeout: 10_000 });
       await page.locator("#mostra-submit").click();
       await expect(page.locator("#mostra-submit")).toHaveText("Submitted");
+      // The status beside Submit tells the viewer what the submission names (D175 item 12).
+      const status = page.locator("[data-mostra-submission]");
+      await status.getByRole("button").click();
+      await expect(status.locator("[data-mostra-stale]")).toHaveText(
+        "A newer version (2) existed when you submitted.",
+      );
       const done = (await results(client, own.artifactId)) as {
         submission: { version: number; staleView: boolean; latestVersion?: number };
       };

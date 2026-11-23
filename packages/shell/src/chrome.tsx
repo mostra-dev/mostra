@@ -25,48 +25,134 @@ import {
   UnfoldIcon,
   VerifiedIcon,
 } from "./icons.tsx";
-import { CHROME_WORDS, HOSTED_WORDS, STATUS_WORDS } from "./words.ts";
+import { CHROME_WORDS, DELIVERY_WORDS, HOSTED_WORDS, STATUS_WORDS } from "./words.ts";
 
 /** What the status beside Submit shows (D171 item 7). */
 export type StatusKind = keyof typeof STATUS_WORDS;
 
+/** One host's delivery of the submission, as the status's details list it (IN-13). */
+export interface DeliveryLine {
+  readonly key: string;
+  /** `delivered`, `pending`, `rejected` or `undeliverable`. */
+  readonly state: string;
+  readonly text: string;
+}
+
+/** The kinds that tell where a submission stands rather than where the draft does. */
+const SUBMISSION_KINDS: ReadonlySet<StatusKind> = new Set([
+  "sent",
+  "submitted",
+  "pending",
+  "delivered",
+  "undeliverable",
+]);
+
+/** The tick of a submission that is in, and the mark of one a host couldn't take. */
+function StatusMark(props: { readonly kind: StatusKind }): ReactElement | null {
+  if (props.kind === "undeliverable") {
+    return (
+      <svg viewBox="0 0 16 16" focusable="false" aria-hidden="true">
+        <path
+          d="M8 4.5v4.2M8 11.2v.3"
+          stroke="currentColor"
+          strokeWidth="2"
+          strokeLinecap="round"
+        />
+      </svg>
+    );
+  }
+  if (props.kind === "pending") return null;
+  if (!SUBMISSION_KINDS.has(props.kind)) return null;
+  return (
+    <svg viewBox="0 0 16 16" focusable="false" aria-hidden="true">
+      <path
+        d="M4.8 8.2l2.1 2.1 4.3-4.6"
+        fill="none"
+        stroke="currentColor"
+        strokeWidth="2"
+        strokeLinecap="round"
+        strokeLinejoin="round"
+      />
+    </svg>
+  );
+}
+
 /**
  * The status: one small shape whose form and colour change together (a dot when saved, a ring
- * while saving, a diamond offline or in conflict, a tick once sent), its words for screen readers
- * and on hover, and on a phone beside it. `save` is the rail's save state for whoever reads
- * `data-mostra-save`; a second, quiet copy (the folded chrome's) carries neither it nor a live
- * region.
+ * while saving, a diamond offline or in conflict, a tick once submitted and delivered, a ring with
+ * a tick while delivery waits, a mark when a host couldn't take it), its words for screen readers
+ * and on hover, and beside it on a phone and once a submission is in. Once one is, it is also the
+ * way to what the receipt used to say (D175 item 12): each host's delivery and a stale view's note,
+ * in a small panel. `save` is the rail's save state for whoever reads `data-mostra-save`; a second,
+ * quiet copy (the folded chrome's) carries neither it nor a live region.
  */
 export function StatusIndicator(props: {
   readonly kind: StatusKind;
   readonly words?: string;
   readonly save?: string;
   readonly quiet?: boolean;
+  /** Each host's delivery, for the details. */
+  readonly deliveries?: readonly DeliveryLine[];
+  /** A stale view's note, for the details. */
+  readonly stale?: string;
 }): ReactElement {
   const words = props.words ?? STATUS_WORDS[props.kind];
+  const detailsId = useId();
+  const [open, setOpen] = useState(false);
+  const submission = SUBMISSION_KINDS.has(props.kind);
+  const details =
+    !props.quiet &&
+    submission &&
+    ((props.deliveries?.length ?? 0) > 0 || props.stale !== undefined);
+  const shape = (
+    <span className={`mostra-dot mostra-dot-${props.kind}`} aria-hidden="true">
+      <StatusMark kind={props.kind} />
+    </span>
+  );
   return (
     <div
       className="mostra-status"
       data-mostra-save={props.save}
       data-mostra-status={props.kind}
+      data-mostra-submission={submission && !props.quiet ? props.kind : undefined}
+      data-open={open ? "" : undefined}
       role={props.quiet ? undefined : "status"}
-      title={words}
+      title={details ? undefined : words}
     >
-      <span className={`mostra-dot mostra-dot-${props.kind}`} aria-hidden="true">
-        {props.kind === "sent" && (
-          <svg viewBox="0 0 16 16" focusable="false" aria-hidden="true">
-            <path
-              d="M4.8 8.2l2.1 2.1 4.3-4.6"
-              fill="none"
-              stroke="currentColor"
-              strokeWidth="2"
-              strokeLinecap="round"
-              strokeLinejoin="round"
-            />
-          </svg>
-        )}
-      </span>
-      <span className="mostra-status-words">{words}</span>
+      {details ? (
+        <button
+          type="button"
+          className="mostra-status-button"
+          aria-expanded={open}
+          aria-controls={detailsId}
+          title={DELIVERY_WORDS.details}
+          onClick={() => setOpen(!open)}
+        >
+          {shape}
+          <span className="mostra-status-words">{words}</span>
+        </button>
+      ) : (
+        <>
+          {shape}
+          <span className="mostra-status-words">{words}</span>
+        </>
+      )}
+      {details && (
+        <div className="mostra-status-details" id={detailsId} hidden={!open}>
+          <ul>
+            {(props.deliveries ?? []).map((line) => (
+              <li key={line.key} data-mostra-delivery={line.state}>
+                {line.text}
+              </li>
+            ))}
+          </ul>
+          {props.stale !== undefined && (
+            <p className="mostra-status-stale" data-mostra-stale="">
+              {props.stale}
+            </p>
+          )}
+        </div>
+      )}
     </div>
   );
 }

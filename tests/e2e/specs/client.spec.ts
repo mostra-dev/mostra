@@ -45,7 +45,7 @@ test.describe("fields and the trusted Submit", () => {
       const again = page.frameLocator("iframe.mostra-frame");
       await expect(again.getByTestId("name")).toHaveValue("Ana");
       await page.locator("#mostra-submit").click();
-      await expect(page.locator("[data-mostra-receipt]")).toBeVisible();
+      await expect(page.locator("[data-mostra-submission]")).toBeVisible();
       await expect(page.locator("#mostra-submit")).toHaveText("Submitted");
       const submitted = (await results(client, own.artifactId)) as {
         submission: { channel: string; viewer: { name?: string } };

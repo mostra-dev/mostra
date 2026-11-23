@@ -11,11 +11,11 @@ from `dist/`, found beside the runtime package or through `MOSTRA_SHELL_DIR`.
 ## Invariants it owns
 
 - **Trusted controls render only here (SH-01, invariant 7).** Anything a person must be able to
-  trust (Submit, Choose, the version banner, the delivery receipt, the review overlay) is shell
+  trust (Submit, Choose, the version banner, where a submission stands, the review overlay) is shell
   DOM, never frame DOM. The frame can only ask for it over the bridge (`mostra/controls.request`),
   and the shell renders only what the view's policy allows (D108).
 - **The shell judges from its own sources.** Its event stream on its own origin
-  (`src/stream.ts`, `/a/<id>/_mostra/v/<rev>/events`) is what the banner, the receipt and the
+  (`src/stream.ts`, `/a/<id>/_mostra/v/<rev>/events`) is what the banner, the status and the
   required-field check read; the frame's reports (`mostra/fields`, `mostra/flush`) add labels,
   validation and conflicts, never decide on their own. A trusted Submit posts to the shell origin
   with the shell session's CSRF token, which no artifact code can read (D40, SH-02).
@@ -94,7 +94,8 @@ from `dist/`, found beside the runtime package or through `MOSTRA_SHELL_DIR`.
 None: the package publishes `dist/` for the runtime bundle. `src/main.tsx` is the entry,
 `src/shell.tsx` the page up to its session (exchange, the choice between two links, errors),
 `src/viewer.tsx` the page around one view (the rail, the trusted zone, the frame and its bridge,
-the banner, the receipt, the "Not carried over" panel), `src/model.ts` the view's state built from
+the banner, the "Not carried over" panel), `src/review.tsx` the review overlay (pins, the comment
+mode, the panel of threads), `src/model.ts` the view's state built from
 the shell's stream, `src/stream.ts` that stream, `src/api.ts` its calls to the gateway (session,
 ticket, submit, choose, follow, carry), `src/links.ts` `ui/open-link`, `src/messages.ts` what the
 page tells a person when it can't show the artifact, `src/hosted.ts` and `src/chrome.tsx` a hosted
@@ -122,5 +123,14 @@ after a change: the gateway serves `dist/`.
   photographed and axe-checked by `tests/e2e/specs/surfaces.spec.ts`; run it after a visual change
   (`MOSTRA_E2E_SCREENS=<dir>` keeps the pictures). WP-20's final pass starts from here. Keep it
   quiet, and never weaken the trusted zone.
+- **Where a submission stands is the status beside Submit (D175 item 12).** No receipt covers the
+  page: once a submission is in, the status says Submitted, then Pending delivery, Delivered or
+  Undeliverable (IN-13), or on a hosted link only that the answer was sent (D165 item 1a), and
+  behind it each host's delivery and a stale view's note (`submissionStanding` in `src/model.ts`,
+  `StatusIndicator` in `src/chrome.tsx`, `data-mostra-submission`). It goes back to the draft's
+  save state once the next round's draft moves on (`epochs`).
+- **The review overlay is the shell's (RV-04).** A page answers where a point is and where its
+  anchors are; it can move a pin within its own box (a pin is clamped there), never make, hide or
+  resolve a thread, and the panel lists threads from the shell's own reads.
 - Only the person folds the chrome (`data-mostra-folded`); the artifact can't, and every page
   opens unfolded. Folded, the status and the way back stay.

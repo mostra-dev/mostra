@@ -264,8 +264,8 @@ test.describe("every surface a person meets (UX-01, D171)", () => {
     await page.keyboard.press(browserName === "webkit" ? "Alt+Shift+Tab" : "Shift+Tab");
     await expect(page.locator("#mostra-submit")).toBeFocused();
     await page.keyboard.press("Enter");
-    await expect(page.locator("[data-mostra-receipt]")).toHaveAttribute(
-      "data-mostra-receipt",
+    await expect(page.locator("[data-mostra-submission]")).toHaveAttribute(
+      "data-mostra-submission",
       "sent",
     );
     await context.close();
@@ -434,8 +434,8 @@ test.describe("every surface a person meets (UX-01, D171)", () => {
           "saved",
         );
         await page.locator("#mostra-submit").click();
-        await expect(page.locator("[data-mostra-receipt]")).toHaveAttribute(
-          "data-mostra-receipt",
+        await expect(page.locator("[data-mostra-submission]")).toHaveAttribute(
+          "data-mostra-submission",
           "sent",
         );
         await shoot(page, "hosted-sent");

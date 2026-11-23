@@ -31,11 +31,29 @@ export const SERVER_WORDS = {
  * screen readers and on hover, and on a phone beside the shape.
  */
 export const STATUS_WORDS: Readonly<
-  Record<"saved" | "saving" | "offline" | "conflict" | "connecting" | "sent", string>
+  Record<
+    | "saved"
+    | "saving"
+    | "offline"
+    | "conflict"
+    | "connecting"
+    | "sent"
+    | "submitted"
+    | "pending"
+    | "delivered"
+    | "undeliverable",
+    string
+  >
 > = {
   ...SAVE_WORDS,
   saved: "Draft saved",
-  sent: "Sent",
+  /** On a hosted link a respondent learns only this, once the hosted home has the answer (D165). */
+  sent: "Your answer was sent.",
+  // Where the submission stands (IN-13, D47): durable in Mostra, then each host's delivery.
+  submitted: "Submitted",
+  pending: "Pending delivery",
+  delivered: "Delivered",
+  undeliverable: "Undeliverable",
 };
 
 /** The chrome's own controls: folding it away, light or dark, the viewer's choices on a phone. */
@@ -109,15 +127,12 @@ export const BLOCKER_WORDS = {
         : "was changed elsewhere: keep yours or take theirs",
 } as const;
 
-/** The submission receipt (IN-13): Mostra's record and each host's delivery, kept apart. */
-export const RECEIPT_WORDS = {
-  /** On a hosted link a respondent sees only this, once the hosted home has the answer (D165). */
-  sent: "Your answer was sent.",
-  submitted: "Submitted",
-  delivered: "Delivered",
-  pending: "Pending delivery",
-  undeliverable: "Undeliverable",
-  saved: "Saved by Mostra",
+/**
+ * What the status beside Submit tells about a submission once asked (IN-13, D175 item 12): each
+ * host's delivery, and a stale view's note. The rest the indicator's own words say.
+ */
+export const DELIVERY_WORDS = {
+  details: "Where your answer stands",
   deliveredTo: (host: string): string => `Delivered to ${host}`,
   pendingTo: (host: string): string => `Pending delivery to ${host}: Mostra will retry.`,
   undeliverableTo: (host: string, reason?: string): string =>
@@ -125,10 +140,6 @@ export const RECEIPT_WORDS = {
     " couldn't take it" +
     (reason !== undefined && reason !== "undeliverable" ? ` (${reason})` : "") +
     ".",
-  footnote: (version: number): string =>
-    "This submission names version " +
-    String(version) +
-    ". Nothing is lost if delivery is delayed.",
   stale: (latest: number): string =>
     `A newer version (${String(latest)}) existed when you submitted.`,
 } as const;
