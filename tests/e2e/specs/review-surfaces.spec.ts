@@ -172,7 +172,13 @@ for (const mode of MODES) {
             messages: [expect.anything(), expect.anything()],
           }),
         ]);
-        // The crop shows the page as the viewer saw it: light or dark.
+        // The crop shows the page as the viewer saw it: light or dark, as the shell showed it (in
+        // Firefox the emulated scheme doesn't reach the shell's page, which stays light).
+        const seen = await page.evaluate(
+          () =>
+            document.documentElement.dataset["appearance"] ??
+            (matchMedia("(prefers-color-scheme: dark)").matches ? "dark" : "light"),
+        );
         const crop = PNG.sync.read(readFileSync(results.comments[0]?.crop.path ?? ""));
         let light = 0;
         for (let index = 0; index < crop.data.length; index += 4) {
@@ -183,7 +189,7 @@ for (const mode of MODES) {
           if (luma > 128) light += 1;
         }
         const share = light / (crop.width * crop.height);
-        if (mode === "dark") expect(share).toBeLessThan(0.5);
+        if (seen === "dark") expect(share).toBeLessThan(0.5);
         else expect(share).toBeGreaterThan(0.5);
         expect(findings).toEqual([]);
       } finally {
