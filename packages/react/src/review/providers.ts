@@ -22,12 +22,16 @@ function seriesOf(element: Element): string | undefined {
 
 /** The category ticks along a chart's x axis: their labels and centres. */
 function ticks(chart: Element): { label: string; x: number }[] {
-  return [...chart.querySelectorAll(".recharts-xAxis .recharts-cartesian-axis-tick")].map(
-    (tick) => {
-      const box = tick.getBoundingClientRect();
-      return { label: (tick.textContent ?? "").trim(), x: box.left + box.width / 2 };
-    },
-  );
+  // Each tick's label is its `-tick-value` text: Recharts 3.10 draws the x axis's labels in a
+  // layer of their own (`recharts-xAxis-tick-labels`), apart from the axis and its tick lines.
+  return [
+    ...chart.querySelectorAll(
+      ".recharts-xAxis-tick-labels .recharts-cartesian-axis-tick-value, .recharts-xAxis .recharts-cartesian-axis-tick-value",
+    ),
+  ].map((tick) => {
+    const box = tick.getBoundingClientRect();
+    return { label: (tick.textContent ?? "").trim(), x: box.left + box.width / 2 };
+  });
 }
 
 /** The tick nearest to a horizontal position. */

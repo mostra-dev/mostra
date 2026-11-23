@@ -248,6 +248,11 @@ interface FrameHandlers {
   onFields(params: FieldsParams): void;
   onControl(request: ControlRequest): boolean;
   onPage(path: string): void;
+  /**
+   * The page rendered (`mostra/ready`): its review agent listens from now on, so the overlay
+   * tracks its anchors only then (WP-20).
+   */
+  onReady(): void;
   /** Where the page says the tracked comment anchors are (WP-20). */
   onPositions(positions: readonly AnchorPosition[]): void;
   /** The review sets the page shows (WP-20). */
@@ -344,7 +349,10 @@ function Frame(props: {
       },
       onNotification: (message, params) => {
         if (message === uiInitialized) mark("initialized");
-        if (message === mostraReady) mark("ready");
+        if (message === mostraReady) {
+          mark("ready");
+          handlersRef.current.onReady();
+        }
         if (message === mostraFields) handlersRef.current.onFields(params as FieldsParams);
         if (message === mostraPage) handlersRef.current.onPage((params as { path: string }).path);
         if (message === mostraFrameSessionFailed) {
@@ -896,13 +904,15 @@ export function ViewerPage(props: {
   // The review overlay (WP-20): its threads, pins and panel, for a link that may review.
   const reviews = session.scopes.includes("review") && ticket.target !== "verify";
   const [surfaces, setSurfaces] = useState<readonly ReviewSurface[]>([]);
+  // The view whose page reported `mostra/ready`: a new view waits for its own.
+  const [pageReady, setPageReady] = useState<string | undefined>();
   const review = useReview({
     apiBase: target.apiBase,
     csrf: session.csrf,
     viewId: ticket.viewId,
     page: state.page,
     bridge: bridgeOf,
-    agent: frameKind === "runtime",
+    agent: frameKind === "runtime" && pageReady === ticket.viewId,
     enabled: reviews,
   });
   useLayoutEffect(() => {
@@ -936,6 +946,7 @@ export function ViewerPage(props: {
       // Whether it shows depends on the view's ticket only, which no event changes.
       return withControlRequest(latestStateRef.current, request, now).shown;
     },
+    onReady: () => setPageReady(ticket.viewId),
     onPositions: (positions) => review.onPositions(positions),
     onSurfaces: (sets) => setSurfaces(sets),
     onPage: (path) => {

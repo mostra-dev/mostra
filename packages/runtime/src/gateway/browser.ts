@@ -646,6 +646,9 @@ export function browserRoutes(options: BrowserRoutesOptions): BrowserRoutes {
           });
         });
         stopWaiting.abort();
+        // A poll its page left (a closed tab, a verify render's context closed) has no reader:
+        // nothing more is read for it, as its gateway may already be closing (WP-20).
+        if (context.request.signal.aborted) return new Response(null, { status: 499 });
         // The link is checked again at the end: nothing read after it died leaves (HY-03).
         if (ended || !live(context)) return revoked();
         return jsonResponse(withEphemeral(result));
