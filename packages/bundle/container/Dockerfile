@@ -1,4 +1,4 @@
-# syntax=docker/dockerfile:1.10
+# syntax=docker/dockerfile:1.29
 # The remote server's container image (ARCHITECTURE §15.11, D165 item 11, WP-30): the release's own
 # Linux runtime bundle (D142: attested, hash-pinned, with its private Node.js), run as a non-root
 # user with one data volume. The build context's `bundles/` holds the release's Linux bundles and
