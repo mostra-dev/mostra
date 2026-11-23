@@ -59,17 +59,17 @@ v1 requirements: 154. v1.1 requirements: 15. Owned exactly once: 169. Neither v1
 | AC-06 | WP-08 | I | Secrets set by name, resolved by home store and by port; grep tests over logs, events, exports, diagnostics and screenshots find no value | validated ([WP-08](../progress/PROGRESS-WP-08.md)) |
 | AC-07 | WP-08 | I, B | load, refresh, watch, stream and push all update useLive; live data never uses HMR channels (no Vite client in versions) | verified ([WP-08](../progress/PROGRESS-WP-08.md)) |
 | AC-08 | WP-19 | B | uPlot live chart holds the WP-19 target rate with the stated point count in CI browsers; frame-drop budget asserted | unverified |
-| RV-01 | WP-20 | B | Comments pin and reload on DOM, canvas, kit charts, served iframe and opaque iframe fixtures (three engines) | unverified |
-| RV-02 | WP-20 | M, B | Stored anchors contain every applicable layer and always a crop; resolution order tested by removing layers | unverified |
-| RV-03 | WP-20 | B | Gallery, focus, compare (2 to 4, synchronized, pixel diff) and choose-one; choice and comments arrive with the submission | unverified |
-| RV-04 | WP-20 | B | Artifact attempts to hide, cover or forge the overlay and its controls fail (browser tests) | unverified |
-| RV-05 | WP-20 | I | `mostra review export` Markdown and JSON goldens with crop paths that exist | unverified |
+| RV-01 | WP-20 | B | Comments pin and reload on DOM, canvas, kit charts, served iframe and opaque iframe fixtures (three engines) | verified ([WP-20](../progress/PROGRESS-WP-20.md)) |
+| RV-02 | WP-20 | M, B | Stored anchors contain every applicable layer and always a crop; resolution order tested by removing layers | verified ([WP-20](../progress/PROGRESS-WP-20.md)) |
+| RV-03 | WP-20 | B | Gallery, focus, compare (2 to 4, synchronized, pixel diff) and choose-one; choice and comments arrive with the submission | verified ([WP-20](../progress/PROGRESS-WP-20.md)) |
+| RV-04 | WP-20 | B | Artifact attempts to hide, cover or forge the overlay and its controls fail (browser tests) | verified ([WP-20](../progress/PROGRESS-WP-20.md)) |
+| RV-05 | WP-20 | I | `mostra review export` Markdown and JSON goldens with crop paths that exist | verified ([WP-20](../progress/PROGRESS-WP-20.md)) |
 | SH-01 | WP-05 | B | Shell and artifact are different origins; trusted controls exist only in the shell DOM (browser assertion) | verified ([WP-05](../progress/PROGRESS-WP-05.md)) |
 | SH-02 | WP-07 | B, C | Artifact requests a label; it cannot click or spoof the control; host shell-only policy denies artifact submit with the code; channel recorded | verified ([WP-07](../progress/PROGRESS-WP-07.md)) |
 | SH-03 | WP-05 | B | Cookie mode in Chromium, Firefox, WebKit and real Safari; leases stable across restart; cross-site fixtures select worker mode | verified ([WP-05](../progress/PROGRESS-WP-05.md)) |
 | SH-04 | WP-05 | M, B | Bridge rejects wrong origin and malformed messages (unit); message names match MCP Apps where shared | verified ([WP-05](../progress/PROGRESS-WP-05.md)) |
-| SH-05 | WP-20 | R | Mirza's review of the final shell design (D68) | unverified |
-| SH-06 | WP-20 | B, R | Mobile layouts in WebKit and Chromium emulation; external: real phone over tailnet; Mirza reviews | unverified |
+| SH-05 | WP-20 | R | Mirza's review of the final shell design (D68) | plausible ([WP-20](../progress/PROGRESS-WP-20.md)) |
+| SH-06 | WP-20 | B, R | Mobile layouts in WebKit and Chromium emulation; external: real phone over tailnet; Mirza reviews | validated ([WP-20](../progress/PROGRESS-WP-20.md)) |
 | HY-01 | WP-05 | M, I (negative tests: bad Host, bad Origin, missing token, CSRF) | All 13 checklist items as automated negative tests (bad Host, bad Origin, missing token, CSRF, CORS, CORP, referrer, revocation 410, rate limit, redaction, GET side effects, header fuzzing, MCP HTTP) | verified ([WP-05](../progress/PROGRESS-WP-05.md)) |
 | HY-02 | WP-05 | I | Default bind is loopback only (socket inspection); wider bind needs the flag | verified ([WP-05](../progress/PROGRESS-WP-05.md)) |
 | HY-03 | WP-05 | M, I | Scoped tokens: a view-and-comment link cannot submit or run an action; expiry, rotation and revocation tests | verified ([WP-05](../progress/PROGRESS-WP-05.md)) |
@@ -88,7 +88,7 @@ v1 requirements: 154. v1.1 requirements: 15. Owned exactly once: 169. Neither v1
 | HO-08 | WP-12 | I, C | Conformance: host-chosen home; authoring directory removed; artifacts, versions and submissions still readable | verified ([WP-12](../progress/PROGRESS-WP-12.md)) |
 | HO-09 | WP-30 | M, C | A fixture operator module: `limits` refuses a share with its diagnostic, and when it times out shares fail closed while submissions proceed; `metering` and `events` arrive at least once with stable IDs across a restart, MCP calls carrying `clientInfo`; `accounts` resolves an identity, sends a first sign-in step and resumes, and authenticates an operator-issued key; `abuse.pushed` reads a pushed version and quarantines it; `routing` serves a supplied hostname and an unknown host gets nothing; the handle pauses, suspends and revokes; with no operator everything works; `accounts.authenticate` admits an operator-issued key on `/host`, `/mcp` and `/files`, so an always-on owner instance links with it; `events.deliver` carries a submission's Results; the handle's `revokeLink`, `drainHome`, `releaseHome` and `restored` act as specified; `policy.link`'s idle expiry is honored | verified ([WP-30](../progress/PROGRESS-WP-30.md)) |
 | HO-10 | WP-13 | M, C | Conformance: a host's external base appears in minted links and passes the Host and Origin checks; without the port, links stay on loopback; a base the host withdraws stops working | verified ([WP-13](../progress/PROGRESS-WP-13.md)) |
-| HO-11 | WP-20 | M, C | Conformance: a host's reviews port receives each thread and choice, and its capture port supplies the crop a comment stores; without them, no mirror and the verify runner's browser | unverified |
+| HO-11 | WP-20 | M, C | Conformance: a host's reviews port receives each thread and choice, and its capture port supplies the crop a comment stores; without them, no mirror and the verify runner's browser | verified ([WP-20](../progress/PROGRESS-WP-20.md)) |
 | KT-01 | WP-19 | M, B | Render test per D26 library wrapper in three engines; license and version re-verified in VERIFIED_FACTS | unverified |
 | KT-02 | WP-01 | M | License audit fails on a seeded non-OSI engine in the core bundle; passes on the real tree | verified ([WP-01](../progress/PROGRESS-WP-01.md)) |
 | KT-03 | WP-18 | B, E | Both base packs type-check and render every component; default base set from EVAL-01 evidence | verified ([WP-18](../progress/PROGRESS-WP-18.md)) |
@@ -140,7 +140,7 @@ v1 requirements: 154. v1.1 requirements: 15. Owned exactly once: 169. Neither v1
 | CO-03 | WP-31 | B | Five simulated viewers in browsers move through states; hook, protocol and CLI agree | verified ([WP-31](../progress/PROGRESS-WP-31.md)) |
 | CO-04 | WP-31 | B | Cursors from three viewers reach each other within the rate; the ledger holds no presence rows; opting out stops sharing | verified ([WP-31](../progress/PROGRESS-WP-31.md)) |
 | CO-05 | WP-31 | B | Two viewers edit a shared field; each sees the other's attribution | verified ([WP-31](../progress/PROGRESS-WP-31.md)) |
-| CO-06 | WP-20 | I | A mention emits one event naming the mentioned viewer; hosts filter it | unverified |
+| CO-06 | WP-20 | I | A mention emits one event naming the mentioned viewer; hosts filter it | verified ([WP-20](../progress/PROGRESS-WP-20.md)) |
 | CO-07 | WP-31 | B | Each policy setting returns exactly what it promises to a viewer's hooks; the default is the one WP-31 records with Mirza | verified ([WP-31](../progress/PROGRESS-WP-31.md)) |
 | AU-07 | WP-03 | M, I | Non-literal manifest gives MOSTRA_MANIFEST_NOT_LITERAL; supervisor-side extraction never executes code (spy); duplicate id claim fails publish | verified ([WP-03](../progress/PROGRESS-WP-03.md)) |
 | AU-08 | WP-07 | M, B | Each hook of INTERFACES §2.3 has unit tests and a browser test; window.storage passes a compatibility suite modeled on Claude's documented API | verified ([WP-07](../progress/PROGRESS-WP-07.md)) |

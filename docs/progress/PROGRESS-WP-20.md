@@ -1,6 +1,6 @@
 # WP-20 progress: Review layer and shell design
 
-**Status:** in progress. Owns RV-01, RV-02, RV-03, RV-04, RV-05, SH-05, SH-06, CO-06 and HO-11
+**Status:** candidate, awaiting Mirza's review (design, words, a real phone). Owns RV-01, RV-02, RV-03, RV-04, RV-05, SH-05, SH-06, CO-06 and HO-11
 ([specification](../design/work-packages/WP-20.md)), with #85, #152, #167, #188, #194 and #218 on
 its milestone.
 
@@ -15,3 +15,105 @@ its milestone.
 | Full baseline | CI's `ci:full` run on this pull request's first commit (a full local `pnpm check` is load-bound on this Mac, as in WP-14 to WP-18) |
 | Predecessors | WP-07 ([PROGRESS-WP-07](PROGRESS-WP-07.md)) and WP-18 ([PROGRESS-WP-18](PROGRESS-WP-18.md)) on `origin/main`; no `RECOVERY-WP-20-*.md`; the `WP-20` milestone holds #85, #152, #167, #188, #194 and #218 |
 | Local toolchain | Node 24.22.1 (`.node-version`), pnpm 12.14.0, macOS 26.2 arm64 |
+
+## Decisions
+
+Mirza delegated every decision of this package at M100 ("I trust you to make the most robust … decision") and was away while it was built, so each is recorded as **D183** (items 1 to 15), worded there. In short:
+
+1. **Who sees a thread.** A page sees the threads it started, wrote in or is mentioned in; the artifact's owner, and every viewer under `team.visibility: "names"`, see all; agents and hosts see all.
+2. **Threads travel with the submission.** A submission's snapshot carries the threads its viewer started or wrote in, as they stand, with each crop's state; results, `review/export` and the submissions port read them from there.
+3. **Mentions** name people the page may know, by their per-artifact key, and raise one host-only `review.mentioned` per person per comment, naming the person's `ref` for hosts; pages never see it, and Mostra notifies nobody (CO-06, D10).
+4. **Crops** are taken after the thread commits, written once: the host's `capture` port first, else the verify runner's browser at the view's version, viewport, answers and light or dark; three attempts, then `failed` with the reason. A hosted home asks the owner instance over the relay (`review/crop`), which keeps a copy. Submit waits up to 20 s for the viewer's pending crops.
+5. **The `reviews` port** mirrors each thread change and choice, best effort and never retried, like draft mirrors (D105).
+6. **Anchors** keep every layer that applies (provider data, `data-review-id`, CSS and text-quote selectors, the rect with viewport, DPR and scroll, the page, the review set and candidate, the frames above it) and resolve in that order; a pin that can't be placed isn't drawn, and its thread stays listed.
+7. **Served frames** carry the review agent, written inline into every page of the version but its entry, so a frame the artifact itself sandboxes anchors semantically too; opaque frames anchor by place and crop. Artifact pages may frame each other (`frame-ancestors 'self' <shell>`, amending D98 item 4).
+8. **Review sets** are the kit's (`@mostra/kit/review`): gallery, focus, compare of two to four with synchronized scrolling and a pixel difference drawn by the browser (`mix-blend-mode: difference`), and the trusted Choose. Candidates that are other versions or artifacts (ROUND-3 §2's `<Candidate artifact version>`) are left for a later package (deviation below).
+9. **#188.** A Choose's label may be up to 256 characters (`CHOICE_LABEL_MAX`); the bar shortens what it shows, and the button's name and title carry it whole. A Submit's label stays at 48.
+10. **The receipt is gone** (D175 item 12): the status beside Submit says Submitted, Delivered, Pending delivery or Undeliverable, opens to each host's line and a stale view's note; on a hosted link it says Sent.
+11. **The server's pages**: Mostra's own name is its wordmark in every theme; an operator's name is set in Jost as a mark; a client's unchecked name reads "An app calling itself …".
+12. to 15. The overlay's place (above the frame, in the shell), #152's re-entry of an unpainted frame, #167's report, and the machinery (module `review`, area `REVIEW`, migration 20, budgets).
+
+## What was built
+
+| Part | Where | What it does |
+|---|---|---|
+| Protocol | `packages/protocol/src/{review,review-threads}.ts`, `bridge.ts`, `methods/review/export.ts`, `methods/port/{capture-screenshot,reviews-mirror}.ts`, `diagnostics/codes/review.ts` | Anchors, threads and their requests; bridge messages `mostra/review.hitTest`, `.track`, `.positions`, `.scrollTo` and `mostra/surfaces`; `review/export`; the `capture` and `reviews` ports; the `REVIEW` area (7 codes) |
+| Ledger and interaction | `packages/runtime/src/ledger/migrations.ts` (20), `src/interaction/{review,markdown}.ts` | `thread` and `comment`, write-once by triggers; threads, replies, resolve, reopen, mentions, visibility, events, snapshots and results |
+| Crops and export | `packages/runtime/src/review/index.ts`, `src/verify/{index,sandbox,runner}.ts`, `packages/verify/src/runner.ts` | The capture queue, the home's `blobs/`, the verify runner's `verify/crop` (a sandbox seeded with the viewer's answers), `review/export` in Markdown and JSON with crop paths |
+| Gateway | `packages/runtime/src/gateway/{browser,index,http}.ts` | `GET/POST …/review/threads`, `…/threads/{id}/comments`, `…/status`, `…/crop`, behind the shell session, its CSRF token, `Origin` and the `review` scope; Submit waits for pending crops |
+| Hosted homes | `packages/runtime/src/server/hosted.ts`, `src/link/author.ts`, `src/instance/index.ts` | Crops rendered on the owner over the relay; crops removed with a removed artifact; #167's report |
+| Page | `packages/react/src/review/` | The review agent (hit tests, anchors, tracking, served frames' nested protocol), built-in providers (chart datum, slide and step, timeline time), `registerAnchorProvider`, `useReviewSurface` |
+| Shell | `packages/shell/src/{review.tsx,viewer.tsx,chrome.tsx,model.ts,words.ts,shell.css}` | Pins, comment mode, composer with mentions, threads with crops, replies, resolve and reopen, the panel and the phone's sheet; the status beside Submit in place of the receipt; the folded bar where the bar was |
+| Kit | `packages/kit/src/review.tsx` | `ReviewSet` and `Candidate` |
+| CLI | `packages/cli/src/commands/review.ts` | `mostra review export [--submission] [--format md|json] [--out <dir>]` |
+| Hosts | `packages/sdk/src/mostra.ts`, `crates/mostra-host/src/{ports,mostra}.rs`, `packages/conformance/src/scenarios/review.ts` | The two ports in the SDK and the Rust crate, both reference hosts, and the scenarios `ports.reviews` and `ports.capture` |
+| Server pages | `packages/themes/src/pages.ts`, `packages/runtime/src/server/pages.ts` | The wordmark and the name as a mark; the consent page's words |
+| Skill | `skills/mostra/references/review.md`, `SKILL.md`, `references/answers.md` | Review sets, comments, anchor providers and `mostra review export` for agents (for Mirza's acceptance, D149) |
+
+## Evidence
+
+Every check runs through the real interface: a real daemon over the host protocol, `mostra` from the workspace build, and Playwright against the real gateway and shell in Chromium, Firefox and WebKit. Each row's seeds (`node packages/runtime/scripts/prove-seeds.ts --name "<name>"`) went red when planted and green when restored.
+
+| ID | State | Check | Command | Result |
+|---|---|---|---|---|
+| RV-01 | verified | Comments pin on native DOM, a canvas, a kit chart's datum, a served frame, a served frame the artifact sandboxes and an opaque frame; six pins, numbered, beside their places; a reload places them again; each arrives with the submission | e2e `review.spec.ts` "pin on DOM, canvas, a kit chart, a served frame and an opaque frame" (Chromium, Firefox, WebKit); seed "a served frame's pages carry no review agent" | passes in three engines; the seed red, then green |
+| RV-02 | verified | Every stored anchor has the layers that apply (review ID, CSS and text-quote selectors, rect with viewport and DPR, the frame, the chart datum) and always a crop, captured by the verify runner (default) or the host's `capture` port, in the viewer's light or dark, its file existing; a hosted page's crop is rendered on the owner; a crop is set once; a removed hosted artifact's crops go; the layers resolve in order, each one taken away leaving the next (provider, review ID, CSS selector with its quote, quote alone, box, none); a plugin's provider is registered by the page | `packages/react` browser `anchors.test.tsx`; `plugins.test.ts` "an anchor provider a plugin carries"; e2e `review.spec.ts` (export's layers), `review-surfaces.spec.ts` (light or dark crop); `review.test.ts` "stores the crop the capture port supplies"; `hosted.test.ts` "a hosted page's comment, its crop rendered on the owner"; `operator.test.ts` "removes its comments' crops"; unit `review-threads.test.ts` (write-once triggers, pending crops); seeds "the review ID is asked before an anchor provider", "the text quote alone is never asked", "a plugin's anchor provider is never registered", "a crop is recorded without its picture", "a crop is always light", "a hosted page's crops are never rendered", "the owner keeps no copy of a hosted page's crop", "a removed hosted artifact's crops stay on disk" | all pass; each seed red, then green |
+| RV-03 | verified | Gallery, focus and compare of two to four candidates, synchronized scrolling, a pixel difference (identical pixels black, differing ones not, read from the screenshot), the trusted Choose naming the candidate in view; the choice and a comment carrying its review set and candidate arrive with the submission; a Choose label past 48 characters is offered and arrives whole (#188) | e2e `review.spec.ts` "gallery, focus, synchronized compare"; `controls.spec.ts` #182 and #188 cases (390 and 320 px); seeds "a compare's candidates scroll on their own", "#188: a Choose label past 48 characters takes the Choose away" | passes in three engines; seeds red, then green |
+| RV-04 | verified | A page reaching into the shell, calling its review routes, sending forged bridge messages, flooding false pin places and drawing look-alike pins and panels makes, hides and resolves nothing: the shell's pin stays on the page and on top, the panel lists the one real thread, `review/export` has it open | e2e `review.spec.ts` "reaching into the shell …" (three engines); seed "a page throws its pin off the page" | passes; the seed red, then green |
+| RV-05 | verified | `mostra review export` writes Markdown and JSON naming every thread, its status, anchor layers and crop path, which exists; `--out` copies each crop beside the export | CLI `contract.test.ts` "results … review export"; `review.test.ts` (Markdown and JSON, `--out`); seed "review export --out names crops it never copied" | passes; the seed red, then green |
+| SH-05 | plausible | The shell's final pass: the review overlay, review sets, the status beside Submit in place of the receipt, the folded bar where the bar was (#218), the server's name as a mark, every state photographed in light and dark at 1280 and 390 px and checked by axe with no sideways scroll | e2e `review-surfaces.spec.ts`, `surfaces.spec.ts` (`MOSTRA_E2E_SCREENS`); pictures in `docs/progress/evidence/wp-20/`; seeds "#218: the folded bar jumps …", "#118 …" (the status) | passes in three engines; Mirza's design review pending (D68) |
+| SH-06 | validated | On a phone's width with touch: comment mode, the composer, the comments sheet standing above the dock and its Submit, a reply, resolve and Submit by tap, the Submit on top at its centre, in Chromium, Firefox and WebKit emulation | e2e `review-surfaces.spec.ts` "390 px wide … by touch"; `controls.spec.ts` (#182 at 390 and 320 px) | passes in three engines; a real phone over the tailnet (external) not yet run: needs Mirza's phone |
+| CO-06 | verified | An `@mention` raises exactly one `review.mentioned` per mentioned person per comment, naming the person (key, name, `ref`) for hosts, which filter it by type; pages never hear it; a key the page may not mention is refused | `review.test.ts` "shows a page only its own threads, and raises one host-only event per mention"; unit `review-threads.test.ts`; seeds "a mention raises no event", "pages hear of mentions" | passes; seeds red, then green |
+| HO-11 | verified | A host's `reviews` port receives each thread, resolve, reopen and choice; its `capture` port supplies the crop a comment stores (the kept crop's SHA-256 the host's); without them nothing is mirrored and the verify runner's browser takes the crop; the SDK, the Rust crate and both reference hosts serve them | conformance `ports.reviews`, `ports.capture` (TypeScript and Rust reference hosts, standalone and broken modes); `review.test.ts`; SDK `sdk.test.ts`; seeds "the host's capture port is never asked", "the reviews port mirrors nothing" | passes; seeds red, then green |
+
+## Issues on the milestone
+
+| Issue | What was done | Test, and its seed |
+|---|---|---|
+| #188 | A Choose's label may be 256 characters; the bar shortens it, its name and title keep it whole, and results carry it | `controls.spec.ts` (#182, #188 cases); seed RV-03 "#188" |
+| #218 | The folded bar stays at the top right on a computer, at the bottom on a phone | `surfaces.spec.ts` (hosted-folded); seed SH-05 "#218" |
+| #152 | A page that comes up with no layout says so in `mostra/ready` (`painted: false`), and the shell enters its frame again, at most twice; found in the traces of the failed runs (a document whose root has no box after a hosted shell's page loads again) | `client.spec.ts` "whose document comes up without a layout is entered again (#152)"; seed SH-05 "#152" |
+| #194, #85 | One cause, read from run 44919847696's trace: the trusted Submit judged required answers from its own stream while it lagged behind the revision the page confirmed, and refused a draft that was saved. It now reads the view's draft at that revision first | `client.spec.ts` "a trusted Submit judges the draft the page confirmed (#194, #85)"; seed IN-13 "#194, #85" |
+| #167 | An operator's `policy.link` may ask for `performance: { report: true }`: the hosted shell sends one report per view (load time, errors), counted as `page.loads` and `page.errors` through `metering`, no cookie, key or address kept | `operator.test.ts` "load time and errors"; `surfaces.spec.ts`; seeds HO-09 "#167" (two) |
+
+## Found while building
+
+- **A frame the artifact sandboxes had no review agent.** It has an opaque origin, so its request for the agent's file carried no session and was refused; the agent is written inline into every page of the version but its entry (D183 item 7).
+- **Crops showed the page light when the viewer saw it dark.** The anchor now records the viewer's light or dark, and the verify runner renders the crop in it.
+- **Hosted pages' crops stayed pending forever**: a hosted home has no browser. The owner instance renders them over the relay (D183 item 4).
+- **A removed hosted artifact left its crops on disk**, which show what its viewers answered; they go with it now, but for one another thread of the home still names.
+- **The phone's comments sheet covered the trusted Submit**, found by the new review surfaces suite; the sheet stands above the dock.
+- **A test helper matched port calls as answers**: `LineClient.call` in `packages/runtime/test/support.ts` now takes only responses, since an instance's port call can share a request's ID.
+- **An import cycle** (`review.ts`, `submissions.ts`, `results.ts`), refused by dependency-cruiser: the Markdown helpers moved to `interaction/markdown.ts`.
+- **Candidates side by side had no names**; each shows its name above it, but in the difference view.
+- **A plugin's anchor providers reached no page**: the manifest took `contributes.anchorProviders`, and nothing loaded them. Every page now registers them before it mounts, from the build's layout (`plugins.test.ts` "an anchor provider a plugin carries": the crop of a comment named in the provider's terms alone is the provider's element; seed "a plugin's anchor provider is never registered").
+
+## What CI found
+
+- **The first full run** (45138224745): the cycle above; seeds whose anchors moved (re-anchored, re-proved); the Rust wire types; expectations of the new ports and `frame-ancestors 'self'`; the comment button's accessible name; the React size budget (the lazily loaded review agent counted with the entry).
+- **The second** (45147376716): the bridge's budget; the receipt's selectors left in the release smoke script and the frozen-revision test; the Skill's anchor-provider sample, now a whole module; a Windows path in `review.test.ts`; the Rust types again; Windows arm64's `windows-conformance` past its 14 minutes, so the kit's other modes run in a group of their own (`conformance-adapters`, `windows-conformance-adapters`, REPO_STANDARDS §6).
+- **The third** (45158488880): the review surfaces suite judged the trusted Submit while it was still arming (its colours fading in); it now waits for it, as a person's click must; the React budget again (69 and 46 kB).
+
+## Deviations
+
+- **Candidates that are other versions or artifacts** (ROUND-3 §2's `<Candidate artifact version>`, shown in sibling frames) aren't built: RV-03's check names surfaces within one artifact, and another artifact's frame needs a capability the page's link doesn't hold. A later package can add them to the same `ReviewSet` additively.
+- **Pixel difference** is drawn by the browser over the live candidates (`mix-blend-mode: difference`), not computed from screenshots: it follows the page as the viewer scrolls and works for any content; the test reads its pixels.
+- **Artifact pages may frame each other** (`frame-ancestors 'self' <shell>`), amending D98 item 4, for served frames (D183 item 7).
+- **Size budgets** raised: `@mostra/protocol` 70 to 76 kB and its bridge 7.5 to 8.5 kB; `@mostra/react` 63 to 69 kB with Zod and 40 to 46 kB without (D183 item 15).
+- **WP-34's planned ledger migration is 21**; 20 is this package's.
+- **D182 was MT-07's** by the time this package merged `main`: this package's decision is D183, its source message M100.
+
+## Untested boundaries
+
+- **A real phone over the tailnet** (SH-06, external): not run; it needs Mirza's phone.
+- **Real Safari**: WebKit only.
+- **A host-supplied shell** answering the review bridge messages: the conformance scenarios run against Mostra's shell.
+- **Anchor providers from a real plugin on npm**: a plugin's providers are proven from the suites' local registry (`plugins.test.ts`); WP-25 packages the chart datum provider as a plugin.
+- **Hundreds of threads on one page**: tested with six pins; tracking is throttled to one report per animation frame and capped at `REVIEW_TRACK_MAX`.
+- **Screen readers**: axe passes on every review state; no VoiceOver pass.
+
+## For Mirza
+
+- **Design review (SH-05, D68):** the pictures in [evidence/wp-20/](evidence/wp-20/): every review state in light at 1280 px and dark at 390 px, review sets, the status beside Submit, the folded bar, and the server's sign-in and consent pages.
+- **Words (D149):** `REVIEW_WORDS` and `DELIVERY_WORDS` in `packages/shell/src/words.ts`, `STATUS_WORDS`' new states, the consent page's "An app calling itself …" (`API_PAGE_WORDS.selfNamed`), the `REVIEW` diagnostics' hints, `mostra review export`'s help, and the Skill's `references/review.md` and its rows in `SKILL.md` and `answers.md`.
+- **A real phone** over the tailnet for SH-06.

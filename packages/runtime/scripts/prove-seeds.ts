@@ -125,6 +125,24 @@ const SEEDS: readonly Seed[] = [
   },
   // ── WP-20: the review layer ────────────────────────────────────────────────────────────
   {
+    requirement: "RV-02",
+    name: "the review ID is asked before an anchor provider",
+    file: "../react/src/review/anchors.ts",
+    from: "  if (anchor.provider) {",
+    to: "  if (anchor.provider && anchor.reviewId === undefined) {",
+    check: ["--project", "browser", "test/browser/anchors.test.tsx"],
+    cwd: "../react",
+  },
+  {
+    requirement: "RV-02",
+    name: "the text quote alone is never asked",
+    file: "../react/src/review/anchors.ts",
+    from: '  if (quote?.type === "TextQuoteSelector") {',
+    to: '  if (quote?.type === "TextQuoteSelector" && css === undefined) {',
+    check: ["--project", "browser", "test/browser/anchors.test.tsx"],
+    cwd: "../react",
+  },
+  {
     requirement: "RV-04",
     name: "a page throws its pin off the page",
     file: "../shell/src/review.tsx",
