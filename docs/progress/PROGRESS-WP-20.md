@@ -85,6 +85,7 @@ Every check runs through the real interface: a real daemon over the host protoco
 - **The phone's comments sheet covered the trusted Submit**, found by the new review surfaces suite; the sheet stands above the dock.
 - **A test helper matched port calls as answers**: `LineClient.call` in `packages/runtime/test/support.ts` now takes only responses, since an instance's port call can share a request's ID.
 - **An import cycle** (`review.ts`, `submissions.ts`, `results.ts`), refused by dependency-cruiser: the Markdown helpers moved to `interaction/markdown.ts`.
+- **The `reviews` port named a crop by a path relative to the home**, which a host can't open; it names it by its path in the home, as results do (`review.test.ts` checks the mirrored path exists).
 - **Candidates side by side had no names**; each shows its name above it, but in the difference view.
 - **A plugin's anchor providers reached no page**: the manifest took `contributes.anchorProviders`, and nothing loaded them. Every page now registers them before it mounts, from the build's layout (`plugins.test.ts` "an anchor provider a plugin carries": the crop of a comment named in the provider's terms alone is the provider's element; seed "a plugin's anchor provider is never registered").
 
@@ -93,6 +94,7 @@ Every check runs through the real interface: a real daemon over the host protoco
 - **The first full run** (45138224745): the cycle above; seeds whose anchors moved (re-anchored, re-proved); the Rust wire types; expectations of the new ports and `frame-ancestors 'self'`; the comment button's accessible name; the React size budget (the lazily loaded review agent counted with the entry).
 - **The second** (45147376716): the bridge's budget; the receipt's selectors left in the release smoke script and the frozen-revision test; the Skill's anchor-provider sample, now a whole module; a Windows path in `review.test.ts`; the Rust types again; Windows arm64's `windows-conformance` past its 14 minutes, so the kit's other modes run in a group of their own (`conformance-adapters`, `windows-conformance-adapters`, REPO_STANDARDS §6).
 - **The third** (45158488880): the review surfaces suite judged the trusted Submit while it was still arming (its colours fading in); it now waits for it, as a person's click must; the React budget again (69 and 46 kB).
+- **The fourth** (45185569251, after merging `main`): every job green but Firefox's review surfaces in dark, on Linux, macOS and Windows: Playwright's emulated dark scheme doesn't reach the shell's page in Firefox (its `prefers-color-scheme` reads light there), so the shell was light and so was the crop. The check now compares the crop with what the shell showed; dark crops are proven in Chromium and WebKit.
 
 ## Deviations
 
@@ -110,6 +112,7 @@ Every check runs through the real interface: a real daemon over the host protoco
 - **A host-supplied shell** answering the review bridge messages: the conformance scenarios run against Mostra's shell.
 - **Anchor providers from a real plugin on npm**: a plugin's providers are proven from the suites' local registry (`plugins.test.ts`); WP-25 packages the chart datum provider as a plugin.
 - **Hundreds of threads on one page**: tested with six pins; tracking is throttled to one report per animation frame and capped at `REVIEW_TRACK_MAX`.
+- **Dark crops in Firefox**: the e2e browser's emulated dark scheme doesn't reach the shell in Firefox, so Firefox's dark runs show and crop the page light; dark crops are proven in Chromium and WebKit.
 - **Screen readers**: axe passes on every review state; no VoiceOver pass.
 
 ## For Mirza
