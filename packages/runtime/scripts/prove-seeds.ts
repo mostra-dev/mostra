@@ -260,6 +260,16 @@ const SEEDS: readonly Seed[] = [
     check: integration("review.test.ts", "stores the crop the capture port supplies"),
   },
   {
+    requirement: "RV-03",
+    name: "a compare's candidates scroll on their own",
+    // The build reads the kit's registry item for the artifact's base (WP-18).
+    file: "../kit/registry/base/components/mostra/review.tsx",
+    from: "            other.scrollTop = pane.scrollTop;",
+    to: "            void other;",
+    check: e2e("gallery, focus, synchronized compare"),
+    e2e: true,
+  },
+  {
     requirement: "HO-09",
     name: "#167: a shell session's every performance report is counted",
     file: "src/server/hosted-pages.ts",
