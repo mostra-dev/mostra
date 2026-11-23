@@ -22,7 +22,8 @@ from `dist/`, found beside the runtime package or through `MOSTRA_SHELL_DIR`.
 - **A submission is made from what the viewer saw (D110, FAILURE_MODEL §4).** Submit flushes the
   frame, waits for the shell's stream to reach the frame's revision, checks blockers, and posts
   exactly the revision the frame confirmed (`submitRevision` in `src/model.ts`), never a newer one
-  only the shell's stream has met. A page with WP-07's runtime (it names its version in
+  only the shell's stream has met. A stream still behind that revision after its wait is read once
+  more (`readSnapshot`) before any required answer is judged missing (#194, #85). A page with WP-07's runtime (it names its version in
   `ui/initialize`) must answer the flush, or nothing is submitted; a version built before WP-07
   answers nothing and shows the shell's draft. On `MOSTRA_SUBMIT_REVISION_MOVED` the viewer checks
   the answers, which the frame already shows from its own stream, and submits again: nothing is

@@ -1016,8 +1016,22 @@ export function ViewerPage(props: {
         setProblem(submitProblem(refused.problem));
         return;
       }
-      if (flushed) await caughtUp(Number(flushed.revision));
-      const current = latestStateRef.current;
+      let current = latestStateRef.current;
+      if (flushed) {
+        await caughtUp(Number(flushed.revision));
+        current = latestStateRef.current;
+        // A stream still behind the revision the page confirmed (the shell's page just loaded, a
+        // poll held back under load) would judge required answers from a draft older than what
+        // the viewer saw, and refuse a Submit nothing blocks (#194, #85): the shell reads its own
+        // source once more, now, before it judges.
+        if (current.revision < Number(flushed.revision)) {
+          const snapshot = await readSnapshot(target.apiBase, ticket.viewId);
+          if (snapshot) {
+            setState((latest) => withSnapshot(latest, snapshot));
+            current = withSnapshot(current, snapshot);
+          }
+        }
+      }
       const found = blockersOf(current, flushed?.blockers ?? []);
       if (found.length > 0) {
         setBlocked(found);

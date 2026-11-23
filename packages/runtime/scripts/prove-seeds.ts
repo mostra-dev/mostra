@@ -201,6 +201,15 @@ const SEEDS: readonly Seed[] = [
     e2e: true,
   },
   {
+    requirement: "IN-13",
+    name: "#194, #85: a Submit judges required answers from the shell's lagging stream",
+    file: "../shell/src/viewer.tsx",
+    from: "        if (current.revision < Number(flushed.revision)) {",
+    to: "        if (current.revision < 0) {",
+    check: e2e("stream lags"),
+    e2e: true,
+  },
+  {
     requirement: "SH-05",
     name: "#152: a frame without a layout is shown as it is",
     file: "../shell/src/viewer.tsx",

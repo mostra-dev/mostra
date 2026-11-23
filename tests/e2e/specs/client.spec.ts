@@ -200,6 +200,43 @@ test.describe("a frame whose load fails (D157, #66)", () => {
     }
   });
 
+  test("a trusted Submit judges the draft the page confirmed, though the shell's stream lags (#194, #85)", async ({
+    page,
+  }, info) => {
+    test.setTimeout(90_000);
+    const client = await Client.connect(run.socket);
+    try {
+      const own = await publishOwn(client, run.home, info);
+      // The shell's own stream and polls answer nothing, as a stream held back under load or
+      // just reopened with its page: only a read of where the view stands now answers.
+      let held = 0;
+      await page.route("**/a/*/_mostra/v/*/events**", async (route) => {
+        if (route.request().url().includes("wait=0")) return route.fallback();
+        held += 1;
+        await new Promise<void>(() => undefined);
+      });
+      await gotoShell(page, await linkFor(client, own.artifactId, viewerName(info)));
+      await expect(page.locator("html")).toHaveAttribute("data-shell", "ready", {
+        timeout: 45_000,
+      });
+      const frame = page.frameLocator("iframe.mostra-frame");
+      const typing = await watchTyping(page, frame);
+      await frame.getByTestId("name").fill("Ana");
+      await typing.typed("name", "Ana");
+      await saved(page);
+      await page.locator("#mostra-submit").click();
+      // The required answer is in the draft the page confirmed: nothing blocks, and it is sent.
+      await expect(page.locator("#mostra-submit")).toHaveText("Submitted", { timeout: 20_000 });
+      await expect(page.locator("[data-mostra-blockers]")).toHaveCount(0);
+      const done = (await results(client, own.artifactId)) as { answers: Record<string, unknown> };
+      expect(done.answers).toMatchObject({ name: "Ana" });
+      expect(held).toBeGreaterThan(0);
+    } finally {
+      await page.unrouteAll({ behavior: "ignoreErrors" });
+      client.close();
+    }
+  });
+
   test("whose document comes up without a layout is entered again, and works (#152)", async ({
     page,
   }, info) => {
