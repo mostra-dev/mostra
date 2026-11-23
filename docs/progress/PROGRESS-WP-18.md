@@ -1,6 +1,6 @@
 # WP-18 progress: Kit I, design system, tokens and forms
 
-**Status:** accepted by Mirza on 2026-11-21 (M95: "You absolutely have my acceptance"), after the Opus review and its fixes; he accepted the final screens at M94. Owns KT-03, KT-04, KT-05, KT-08 and KT-10 ([specification](../design/work-packages/WP-18.md)), with #158 and #159 on its milestone.
+**Status:** accepted by Mirza on 2026-11-21 (M95: "You absolutely have my acceptance"), after the Opus review and its fixes; he accepted the final screens at M94. Merged to `main` through the merge queue as `e346700c` (#215) and released as Mostra 0.19.0 (#236), `@mostra/kit` among its packages for the first time. Owns KT-03, KT-04, KT-05, KT-08 and KT-10 ([specification](../design/work-packages/WP-18.md)), with #158 and #159 on its milestone.
 
 ## Baseline
 
@@ -113,6 +113,9 @@ One independent review of `git diff origin/main...wp/18-kit` under D172 item 0: 
 - **The pull request's run after that** (45041614614): every leg green, but Windows arm64's second Chromium part was cancelled at the job's 25-minute limit seconds after its suite passed (1073 s): that part took 23 to 24 minutes in the green runs before (20 to 22 on `main` before WP-18's kit suite), against 17 for the first. Emulated Chromium on arm64 now runs in three parts (`tools/check/matrix.ts`, REPO_STANDARDS §6), in the merge queue and full runs as before.
 - **The fifth queue run** (45049930258): every job green, macOS Chromium's e2e and Windows arm64's three Chromium parts included, but the release rehearsal's darwin-x64 bundle: its runner couldn't connect to nodejs.org for the bundle's Node.js in three attempts over about 40 s (a connect timeout each time; nodejs.org answered from here minutes later). Filed as #235, with a proposal (the pinned archives kept in the Actions cache by their digest, and a longer download budget); the pull request went back into the queue.
 - **The sixth queue run** (45054944675): two findings. The linux-x64 bundle's upload to GitHub's artifact store timed out (`Failed to CreateArtifact: … ETIMEDOUT`, GitHub's status page reporting nothing), a transient of the platform's. And MT-05's `idle-marks.test.ts` failed on macOS ("expected 7 to be greater than 7"): it read the home's marks after the submission it then waited to see written, so under load the 10 s tick could write the move first, and the move went unseen. The test now reads the marks before the submission; with the tick made to land first (an 11 s wait after the submission), the old order fails exactly as CI did ("expected 8 to be greater than 8") and the new one passes.
+- **The seventh queue run** (45059078076) passed every job, and #215 merged into `main` as `e346700c` on 2026-11-22.
+- **`main`'s full run after the merge** (45065400520, by hand) passed every test, but GitHub cancelled `e2e (macos, webkit)` at the job's 25-minute limit (the suite's own step took 23 minutes; the same suite on macOS WebKit took 8.6 to 25.1 minutes in four runs that day). #237 gives macOS e2e legs 35 minutes, the others keeping 25, and makes the kit generator's test remove its 3 MB copies from the temporary directory; it merged as `e8c7402b`.
+- **The version pull request's queue runs** (#236): the first (45083262639) met three unrelated time-outs on one slow Linux runner (filed as #239 and #240, and recorded on #227); the second (45084862897) passed every job on every leg, the release rehearsal included, and #236 merged as `493e110b`.
 
 ## Deviations
 
@@ -145,4 +148,23 @@ One independent review of `git diff origin/main...wp/18-kit` under D172 item 0: 
 | #226 | Closed by #215 | A remote server's ports are held until it starts |
 | #219 | Open, WP-19 | Raw shadcn items by URL keep their placeholders; in WP-19's specification |
 | #220 | Open, no milestone | A worker's command line read through PowerShell once waited 40 s on Windows arm64; no package here touches it (D155 item 7) |
-| #152, #194 | Open, WP-20 | Their occurrences in this package's runs recorded on each |
+| #152 | Open, WP-20 | Investigated in this package (M96): the hosted frame's document loses its layout, or a click is lost, after the sign-in returns under load; Chromium's own, not Mostra's code; the findings and WP-20's next step on the issue |
+| #194 | Open, WP-20 | Its occurrences in this package's runs recorded on it |
+| #227 | Open, no milestone | Filed: two property tests (`gc.test.ts` VR-06, `interaction.test.ts` IN-01) time out in the pre-push hook on a loaded machine |
+| #229 | Open, no milestone | Filed: MC-02's inline page once didn't show its blocker within 5 s on Windows arm64's emulated Chromium |
+| #235 | Open, no milestone | Filed: the release rehearsal's Node.js download from nodejs.org timed out on one runner; a proposal to keep the pinned archives in the Actions cache |
+| #239 | Open, no milestone | Filed: telemetry's twelve-process install-ID test asks every process to win the store's lock within its 2 s budget; on a slow Linux runner about half gave up, by design, with the one ID kept by all |
+| #240 | Open, no milestone | Filed: the MCP package's `commit.test.ts` all-or-nothing case ran past Vitest's 5 s default on the same runner |
+| #242 | Open, WP-19 | Filed from the release check: a questionnaire's title inside a `Page`, and a lone `Button`'s width; in WP-19's specification |
+
+## Commits and publication
+
+- **Range:** `d9d8467..e346700c` on `main`: the branch `wp/18-kit` (63 commits on its own line, the last `17a37596`: 60 signed-off commits and three merges of `main`, `51eefd94`, `ba3d11fd` and `b9fd96e7`) and the merge commit `e346700c` (#215); then #237 (`e8c7402b`), the version pull request #236 (`493e110b`) and this closeout.
+- **CI:** #215's last full run on its final commit (45059052515) and its queue run 45059078076 green on every leg; #237 green; #236's queue run 45084862897 green on every leg.
+- **Publication:** Mostra 0.19.0 by the `Release` workflow (run 45089533080 on `493e110b`, all 24 jobs green, published 2026-11-23T00:59Z): the immutable GitHub release `v0.19.0` with the six bundles, their records, `SHA256SUMS` and attestations (13 assets); every package of the release group on npm at 0.19.0 with SLSA provenance, `@mostra/kit` for the first time (`latest` 0.19.0) through the trusted publisher Mirza set up on 2026-11-21 (`tools/release/npm-setup.sh @mostra/kit`); the `mostra-host` crate 0.19.0; the plugin repository's `v0.19.0`; the server image `ghcr.io/mostra-dev/mostra-server:0.19.0` and `latest`. The docs site doesn't exist yet (WP-26), so nothing deploys.
+- **The release from outside** (2026-11-23, this Mac, a scratch home, the CLI as npm serves it: `npx -y @mostra/cli@0.19.0`): `mostra new` scaffolds a page on `@mostra/kit/layout` with `kit: { theme: "studio" }`; `mostra theme list` names Studio (the default) and Arcata; `mostra add button mostra-questionnaire` copies the kit's parts from the warm set; a page of a `Card` resolved without copying, the copied `Button` and a `Questionnaire` verifies (`pass`, the verdict's theme `studio`) and with `--theme arcata` (`pass`, `requested`), each screenshot in its theme; `mostra publish` gives version 1 (`ver_147WB159X032JP3QC1QAR1SWBM`); `mostra theme show --artifact` names the stack and its faces. Seen there: a questionnaire's title inside a `Page` competes with the page's, and a lone `Button` in a `Page` spans its width, filed as #242 for WP-19.
+- **Remaining dirty paths:** none in the repository. Outside it: the session's notes and scripts in `~/.jcode/scratch/wp18-keep/` (about 0.5 MB). The prototypes, review pages, scratch homes and test leftovers were removed to free disk space (Mirza's request). Mostra HQ was not written to (D127).
+
+## Next
+
+WP-19, Kit II: data, diagrams, code, math, maps and 3D (`docs/design/work-packages/WP-19.md`), in a fresh session from `docs/design/work-packages/PROMPT.md` with `WORK PACKAGE: WP-19`. It builds each wrapper as WP-18 built the kit's parts (its specification's WP-18 items), with #219 and #242 on its milestone.

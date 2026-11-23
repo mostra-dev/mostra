@@ -1,5 +1,20 @@
 # @mostra/shell
 
+## 0.19.0
+
+### Minor Changes
+
+- [#215](https://github.com/mostra-dev/mostra/pull/215) [`837f993`](https://github.com/mostra-dev/mostra/commit/837f99365ce1c2de2c05095841a68d4942116982) Thanks [@dev-mirzabicer](https://github.com/dev-mirzabicer)! - A field may name its options (`useField(id, initial, { options: [{ value, label, recommended }] })`), and results name each answer by the label the viewer saw and say whether they took the recommended one (WP-18). The shell tells a page the person's light or dark, and a host's look (`HomeConfig.look`) reaches only a page whose stack names `"host"`, in the shell and inline in an MCP Apps host alike; the MCP App exporter keeps the page's theme. A field's options count toward its draft's 16 MiB and take at most 64 KiB (`FIELD_OPTIONS_MAX_BYTES`); a page with more saves the answer without them and says so on its console.
+
+### Patch Changes
+
+- [#201](https://github.com/mostra-dev/mostra/pull/201) [`3ee3dc4`](https://github.com/mostra-dev/mostra/commit/3ee3dc4bcd61998803f6ea19b8827a1b88f4f680) Thanks [@dev-mirzabicer](https://github.com/dev-mirzabicer)! - The shell and the client runtime mark each step of their start in the browser's performance timeline (`mostra:shell:*` and `mostra:client:*`: the session asked for and read, the frame ticket, `ui/initialize` sent and answered, the journal opened, each state of the shell), so a page that stalls while it starts shows in a browser's tools which step it stalled after ([#95](https://github.com/mostra-dev/mostra/issues/95), [#39](https://github.com/mostra-dev/mostra/issues/39)). Nothing is shown or sent.
+
+- [#209](https://github.com/mostra-dev/mostra/pull/209) [`536a230`](https://github.com/mostra-dev/mostra/commit/536a230f3b2136dac5f06e85a225cd02a1d63ce3) Thanks [@dev-mirzabicer](https://github.com/dev-mirzabicer)! - A respondent who opens their personal link in a browser that already has the artifact open from another link, such as the share's own link, now sees whose each link is ([#184](https://github.com/mostra-dev/mostra/issues/184)). The choice between the two links described each only by what it allows, so a personal link and the share's link read the same, "Keep the link I have" was the first choice, and keeping it answered as an unnamed visitor whose roster entry stayed "not opened". Each link now says "A personal link, for <name>" or "A shared link", by display name only (never the host's ref or an email), and when the opened link is a personal one and the open one isn't, "Use the personal link" comes first. The owner's `share/start` and the hosted `roster/add` also refuse to hand out a respondent link that is the share's own, another respondent's, or acts as nobody, naming the respondent and never a secret; a respondent's kept link must act as them; and the owner logs the respondents' token IDs (`share.respondents`) when a hosted share names them.
+- Updated dependencies [[`837f993`](https://github.com/mostra-dev/mostra/commit/837f99365ce1c2de2c05095841a68d4942116982), [`837f993`](https://github.com/mostra-dev/mostra/commit/837f99365ce1c2de2c05095841a68d4942116982), [`837f993`](https://github.com/mostra-dev/mostra/commit/837f99365ce1c2de2c05095841a68d4942116982)]:
+  - @mostra/protocol@0.19.0
+  - @mostra/themes@0.19.0
+
 ## 0.18.0
 
 ### Minor Changes

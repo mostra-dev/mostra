@@ -1,5 +1,17 @@
 # @mostra/react
 
+## 0.19.0
+
+### Minor Changes
+
+- [#215](https://github.com/mostra-dev/mostra/pull/215) [`837f993`](https://github.com/mostra-dev/mostra/commit/837f99365ce1c2de2c05095841a68d4942116982) Thanks [@dev-mirzabicer](https://github.com/dev-mirzabicer)! - A field may name its options (`useField(id, initial, { options: [{ value, label, recommended }] })`), and results name each answer by the label the viewer saw and say whether they took the recommended one (WP-18). The shell tells a page the person's light or dark, and a host's look (`HomeConfig.look`) reaches only a page whose stack names `"host"`, in the shell and inline in an MCP Apps host alike; the MCP App exporter keeps the page's theme. A field's options count toward its draft's 16 MiB and take at most 64 KiB (`FIELD_OPTIONS_MAX_BYTES`); a page with more saves the answer without them and says so on its console.
+
+### Patch Changes
+
+- [#201](https://github.com/mostra-dev/mostra/pull/201) [`3ee3dc4`](https://github.com/mostra-dev/mostra/commit/3ee3dc4bcd61998803f6ea19b8827a1b88f4f680) Thanks [@dev-mirzabicer](https://github.com/dev-mirzabicer)! - The shell and the client runtime mark each step of their start in the browser's performance timeline (`mostra:shell:*` and `mostra:client:*`: the session asked for and read, the frame ticket, `ui/initialize` sent and answered, the journal opened, each state of the shell), so a page that stalls while it starts shows in a browser's tools which step it stalled after ([#95](https://github.com/mostra-dev/mostra/issues/95), [#39](https://github.com/mostra-dev/mostra/issues/39)). Nothing is shown or sent.
+- Updated dependencies [[`837f993`](https://github.com/mostra-dev/mostra/commit/837f99365ce1c2de2c05095841a68d4942116982), [`837f993`](https://github.com/mostra-dev/mostra/commit/837f99365ce1c2de2c05095841a68d4942116982)]:
+  - @mostra/protocol@0.19.0
+
 ## 0.18.0
 
 ### Patch Changes

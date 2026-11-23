@@ -1,5 +1,18 @@
 # @mostra/cli
 
+## 0.19.0
+
+### Minor Changes
+
+- [#215](https://github.com/mostra-dev/mostra/pull/215) [`837f993`](https://github.com/mostra-dev/mostra/commit/837f99365ce1c2de2c05095841a68d4942116982) Thanks [@dev-mirzabicer](https://github.com/dev-mirzabicer)! - Writing with the kit (WP-18, D181). `mostra theme list` and `mostra theme show` (host methods `theme/list` and `theme/show`) show the themes a page can wear and what each sets; `mostra verify --theme <stack>` tries another look for one run, and the verdict names the theme a page was built in. Verify's lint names churned APIs with their fix (`MOSTRA_LINT_API_CHANGED`: `framer-motion`, `react-router-dom`, `reactflow`, TanStack Table 8, Zod 3's string formats, Mermaid's deprecated calls, Tailwind 3's classes and directives, shadcn's old `cn` helper), the other base's idiom (`MOSTRA_KIT_WRONG_BASE`, from the type check's TS2322) and Tailwind CSS that Tailwind never reads (`MOSTRA_KIT_CSS_UNPROCESSED`); `mostra verify --fix` writes those fixes and verifies again. `mostra new` writes the theme into the manifest. Verify no longer calls a radio already holding its value unbound ([#158](https://github.com/mostra-dev/mostra/issues/158)). `mostra add <name>` asks the instance which bare names are the kit's items (`pack/kit`), so a command naming only npm packages reaches `deps/add` with its result as before; a home's default stack (`HomeConfig.look.theme`) names built-in themes and `"host"` only, and `mostra dev` and `theme/show` build the stack publish builds. Verify names an unbound editable element again.
+
+### Patch Changes
+
+- Updated dependencies [[`bded22e`](https://github.com/mostra-dev/mostra/commit/bded22e24edaa22b8658cb452c06f33c0e71ccbb), [`837f993`](https://github.com/mostra-dev/mostra/commit/837f99365ce1c2de2c05095841a68d4942116982), [`837f993`](https://github.com/mostra-dev/mostra/commit/837f99365ce1c2de2c05095841a68d4942116982)]:
+  - @mostra/sdk@0.19.0
+  - @mostra/protocol@0.19.0
+  - @mostra/mcp@0.19.0
+
 ## 0.18.0
 
 ### Patch Changes

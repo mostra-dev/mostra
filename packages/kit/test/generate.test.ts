@@ -4,11 +4,11 @@
  * can't make a part quietly ignore the theme (Opus review of WP-18, finding 11).
  */
 import { spawnSync } from "node:child_process";
-import { cpSync, mkdtempSync, readFileSync, writeFileSync } from "node:fs";
+import { cpSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { fileURLToPath } from "node:url";
-import { describe, expect, it } from "vitest";
+import { afterEach, describe, expect, it } from "vitest";
 
 const KIT = fileURLToPath(new URL("../", import.meta.url));
 
@@ -19,9 +19,16 @@ function run(root: string): { readonly status: number | null; readonly output: s
   return { status: result.status, output: `${result.stdout}${result.stderr}` };
 }
 
+/** The copies made by this file's tests, removed after each (each copy is about 3 MB). */
+const copies: string[] = [];
+afterEach(() => {
+  for (const root of copies.splice(0)) rmSync(root, { recursive: true, force: true });
+});
+
 /** A copy of the kit's generator and its inputs, its `studio.ts` changed by `edit`. */
 function copyWith(edit: (studio: string) => string): string {
   const root = mkdtempSync(join(tmpdir(), "mostra-kit-generate-"));
+  copies.push(root);
   for (const dir of ["scripts", "src", "upstream", "parts", "css", "registry", "package.json"]) {
     cpSync(join(KIT, dir), join(root, dir), { recursive: true });
   }
