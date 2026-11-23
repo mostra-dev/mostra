@@ -237,6 +237,312 @@ impl<'de> ::serde::Deserialize<'de> for AddedPackageVersion {
             })
     }
 }
+///A rectangle in CSS pixels.
+#[derive(::serde::Deserialize, ::serde::Serialize, Clone, Debug)]
+pub struct AnchorRect {
+    pub height: f64,
+    pub width: f64,
+    pub x: f64,
+    pub y: f64,
+}
+///A W3C Web Annotation selector: CSS, a text quote, or a media fragment.
+#[derive(::serde::Deserialize, ::serde::Serialize, Clone, Debug)]
+#[serde(tag = "type")]
+pub enum AnchorSelector {
+    CssSelector { value: AnchorSelectorValue },
+    TextQuoteSelector {
+        exact: AnchorSelectorExact,
+        #[serde(skip_serializing_if = "::std::option::Option::is_none")]
+        prefix: ::std::option::Option<AnchorSelectorPrefix>,
+        #[serde(skip_serializing_if = "::std::option::Option::is_none")]
+        suffix: ::std::option::Option<AnchorSelectorSuffix>,
+    },
+    FragmentSelector {
+        #[serde(rename = "conformsTo")]
+        conforms_to: AnchorSelectorConformsTo,
+        value: AnchorSelectorValue,
+    },
+    /// A value a newer Mostra sends that this release doesn't know; it
+    /// serializes back unchanged.
+    #[serde(untagged)]
+    Unknown(::serde_json::Value),
+}
+///`AnchorSelectorConformsTo`
+#[derive(::serde::Serialize, Clone, Debug, Eq, Hash, Ord, PartialEq, PartialOrd)]
+#[serde(transparent)]
+pub struct AnchorSelectorConformsTo(::std::string::String);
+impl ::std::ops::Deref for AnchorSelectorConformsTo {
+    type Target = ::std::string::String;
+    fn deref(&self) -> &::std::string::String {
+        &self.0
+    }
+}
+impl ::std::convert::From<AnchorSelectorConformsTo> for ::std::string::String {
+    fn from(value: AnchorSelectorConformsTo) -> Self {
+        value.0
+    }
+}
+impl ::std::str::FromStr for AnchorSelectorConformsTo {
+    type Err = self::error::ConversionError;
+    fn from_str(
+        value: &str,
+    ) -> ::std::result::Result<Self, self::error::ConversionError> {
+        if value.chars().count() > 256usize {
+            return Err("longer than 256 characters".into());
+        }
+        Ok(Self(value.to_string()))
+    }
+}
+impl ::std::convert::TryFrom<&str> for AnchorSelectorConformsTo {
+    type Error = self::error::ConversionError;
+    fn try_from(
+        value: &str,
+    ) -> ::std::result::Result<Self, self::error::ConversionError> {
+        value.parse()
+    }
+}
+impl ::std::convert::TryFrom<::std::string::String> for AnchorSelectorConformsTo {
+    type Error = self::error::ConversionError;
+    fn try_from(
+        value: ::std::string::String,
+    ) -> ::std::result::Result<Self, self::error::ConversionError> {
+        value.parse()
+    }
+}
+impl<'de> ::serde::Deserialize<'de> for AnchorSelectorConformsTo {
+    fn deserialize<D>(deserializer: D) -> ::std::result::Result<Self, D::Error>
+    where
+        D: ::serde::Deserializer<'de>,
+    {
+        ::std::string::String::deserialize(deserializer)?
+            .parse()
+            .map_err(|e: self::error::ConversionError| {
+                <D::Error as ::serde::de::Error>::custom(e.to_string())
+            })
+    }
+}
+///`AnchorSelectorExact`
+#[derive(::serde::Serialize, Clone, Debug, Eq, Hash, Ord, PartialEq, PartialOrd)]
+#[serde(transparent)]
+pub struct AnchorSelectorExact(::std::string::String);
+impl ::std::ops::Deref for AnchorSelectorExact {
+    type Target = ::std::string::String;
+    fn deref(&self) -> &::std::string::String {
+        &self.0
+    }
+}
+impl ::std::convert::From<AnchorSelectorExact> for ::std::string::String {
+    fn from(value: AnchorSelectorExact) -> Self {
+        value.0
+    }
+}
+impl ::std::str::FromStr for AnchorSelectorExact {
+    type Err = self::error::ConversionError;
+    fn from_str(
+        value: &str,
+    ) -> ::std::result::Result<Self, self::error::ConversionError> {
+        if value.chars().count() > 2048usize {
+            return Err("longer than 2048 characters".into());
+        }
+        if value.chars().count() < 1usize {
+            return Err("shorter than 1 characters".into());
+        }
+        Ok(Self(value.to_string()))
+    }
+}
+impl ::std::convert::TryFrom<&str> for AnchorSelectorExact {
+    type Error = self::error::ConversionError;
+    fn try_from(
+        value: &str,
+    ) -> ::std::result::Result<Self, self::error::ConversionError> {
+        value.parse()
+    }
+}
+impl ::std::convert::TryFrom<::std::string::String> for AnchorSelectorExact {
+    type Error = self::error::ConversionError;
+    fn try_from(
+        value: ::std::string::String,
+    ) -> ::std::result::Result<Self, self::error::ConversionError> {
+        value.parse()
+    }
+}
+impl<'de> ::serde::Deserialize<'de> for AnchorSelectorExact {
+    fn deserialize<D>(deserializer: D) -> ::std::result::Result<Self, D::Error>
+    where
+        D: ::serde::Deserializer<'de>,
+    {
+        ::std::string::String::deserialize(deserializer)?
+            .parse()
+            .map_err(|e: self::error::ConversionError| {
+                <D::Error as ::serde::de::Error>::custom(e.to_string())
+            })
+    }
+}
+///`AnchorSelectorPrefix`
+#[derive(::serde::Serialize, Clone, Debug, Eq, Hash, Ord, PartialEq, PartialOrd)]
+#[serde(transparent)]
+pub struct AnchorSelectorPrefix(::std::string::String);
+impl ::std::ops::Deref for AnchorSelectorPrefix {
+    type Target = ::std::string::String;
+    fn deref(&self) -> &::std::string::String {
+        &self.0
+    }
+}
+impl ::std::convert::From<AnchorSelectorPrefix> for ::std::string::String {
+    fn from(value: AnchorSelectorPrefix) -> Self {
+        value.0
+    }
+}
+impl ::std::str::FromStr for AnchorSelectorPrefix {
+    type Err = self::error::ConversionError;
+    fn from_str(
+        value: &str,
+    ) -> ::std::result::Result<Self, self::error::ConversionError> {
+        if value.chars().count() > 2048usize {
+            return Err("longer than 2048 characters".into());
+        }
+        Ok(Self(value.to_string()))
+    }
+}
+impl ::std::convert::TryFrom<&str> for AnchorSelectorPrefix {
+    type Error = self::error::ConversionError;
+    fn try_from(
+        value: &str,
+    ) -> ::std::result::Result<Self, self::error::ConversionError> {
+        value.parse()
+    }
+}
+impl ::std::convert::TryFrom<::std::string::String> for AnchorSelectorPrefix {
+    type Error = self::error::ConversionError;
+    fn try_from(
+        value: ::std::string::String,
+    ) -> ::std::result::Result<Self, self::error::ConversionError> {
+        value.parse()
+    }
+}
+impl<'de> ::serde::Deserialize<'de> for AnchorSelectorPrefix {
+    fn deserialize<D>(deserializer: D) -> ::std::result::Result<Self, D::Error>
+    where
+        D: ::serde::Deserializer<'de>,
+    {
+        ::std::string::String::deserialize(deserializer)?
+            .parse()
+            .map_err(|e: self::error::ConversionError| {
+                <D::Error as ::serde::de::Error>::custom(e.to_string())
+            })
+    }
+}
+///`AnchorSelectorSuffix`
+#[derive(::serde::Serialize, Clone, Debug, Eq, Hash, Ord, PartialEq, PartialOrd)]
+#[serde(transparent)]
+pub struct AnchorSelectorSuffix(::std::string::String);
+impl ::std::ops::Deref for AnchorSelectorSuffix {
+    type Target = ::std::string::String;
+    fn deref(&self) -> &::std::string::String {
+        &self.0
+    }
+}
+impl ::std::convert::From<AnchorSelectorSuffix> for ::std::string::String {
+    fn from(value: AnchorSelectorSuffix) -> Self {
+        value.0
+    }
+}
+impl ::std::str::FromStr for AnchorSelectorSuffix {
+    type Err = self::error::ConversionError;
+    fn from_str(
+        value: &str,
+    ) -> ::std::result::Result<Self, self::error::ConversionError> {
+        if value.chars().count() > 2048usize {
+            return Err("longer than 2048 characters".into());
+        }
+        Ok(Self(value.to_string()))
+    }
+}
+impl ::std::convert::TryFrom<&str> for AnchorSelectorSuffix {
+    type Error = self::error::ConversionError;
+    fn try_from(
+        value: &str,
+    ) -> ::std::result::Result<Self, self::error::ConversionError> {
+        value.parse()
+    }
+}
+impl ::std::convert::TryFrom<::std::string::String> for AnchorSelectorSuffix {
+    type Error = self::error::ConversionError;
+    fn try_from(
+        value: ::std::string::String,
+    ) -> ::std::result::Result<Self, self::error::ConversionError> {
+        value.parse()
+    }
+}
+impl<'de> ::serde::Deserialize<'de> for AnchorSelectorSuffix {
+    fn deserialize<D>(deserializer: D) -> ::std::result::Result<Self, D::Error>
+    where
+        D: ::serde::Deserializer<'de>,
+    {
+        ::std::string::String::deserialize(deserializer)?
+            .parse()
+            .map_err(|e: self::error::ConversionError| {
+                <D::Error as ::serde::de::Error>::custom(e.to_string())
+            })
+    }
+}
+///`AnchorSelectorValue`
+#[derive(::serde::Serialize, Clone, Debug, Eq, Hash, Ord, PartialEq, PartialOrd)]
+#[serde(transparent)]
+pub struct AnchorSelectorValue(::std::string::String);
+impl ::std::ops::Deref for AnchorSelectorValue {
+    type Target = ::std::string::String;
+    fn deref(&self) -> &::std::string::String {
+        &self.0
+    }
+}
+impl ::std::convert::From<AnchorSelectorValue> for ::std::string::String {
+    fn from(value: AnchorSelectorValue) -> Self {
+        value.0
+    }
+}
+impl ::std::str::FromStr for AnchorSelectorValue {
+    type Err = self::error::ConversionError;
+    fn from_str(
+        value: &str,
+    ) -> ::std::result::Result<Self, self::error::ConversionError> {
+        if value.chars().count() > 2048usize {
+            return Err("longer than 2048 characters".into());
+        }
+        if value.chars().count() < 1usize {
+            return Err("shorter than 1 characters".into());
+        }
+        Ok(Self(value.to_string()))
+    }
+}
+impl ::std::convert::TryFrom<&str> for AnchorSelectorValue {
+    type Error = self::error::ConversionError;
+    fn try_from(
+        value: &str,
+    ) -> ::std::result::Result<Self, self::error::ConversionError> {
+        value.parse()
+    }
+}
+impl ::std::convert::TryFrom<::std::string::String> for AnchorSelectorValue {
+    type Error = self::error::ConversionError;
+    fn try_from(
+        value: ::std::string::String,
+    ) -> ::std::result::Result<Self, self::error::ConversionError> {
+        value.parse()
+    }
+}
+impl<'de> ::serde::Deserialize<'de> for AnchorSelectorValue {
+    fn deserialize<D>(deserializer: D) -> ::std::result::Result<Self, D::Error>
+    where
+        D: ::serde::Deserializer<'de>,
+    {
+        ::std::string::String::deserialize(deserializer)?
+            .parse()
+            .map_err(|e: self::error::ConversionError| {
+                <D::Error as ::serde::de::Error>::custom(e.to_string())
+            })
+    }
+}
 ///`AppOpenParams`
 #[derive(::serde::Deserialize, ::serde::Serialize, Clone, Debug)]
 pub struct AppOpenParams {
@@ -4629,6 +4935,21 @@ impl<'de> ::serde::Deserialize<'de> for CapabilityScope {
                 <D::Error as ::serde::de::Error>::custom(e.to_string())
             })
     }
+}
+///A comment thread's place for a host to photograph: its view and its anchor.
+#[derive(::serde::Deserialize, ::serde::Serialize, Clone, Debug)]
+pub struct CaptureRequest {
+    pub anchor: ReviewAnchor,
+    #[serde(rename = "artifactId")]
+    pub artifact_id: ArtifactId,
+    #[serde(rename = "threadId")]
+    pub thread_id: ThreadId,
+    #[serde(rename = "versionId")]
+    pub version_id: VersionId,
+    #[serde(rename = "viewId")]
+    pub view_id: ViewId,
+    #[serde(rename = "viewerId")]
+    pub viewer_id: ViewerId,
 }
 ///The viewer's answers a version doesn't carry over.
 #[derive(::serde::Deserialize, ::serde::Serialize, Clone, Debug)]
@@ -13662,6 +13983,72 @@ for PortAddressingExternalBaseResult {
         Self(value)
     }
 }
+///A comment thread's crop as a base64 PNG, with its size in pixels.
+#[derive(::serde::Deserialize, ::serde::Serialize, Clone, Debug)]
+pub struct PortCaptureScreenshotResult {
+    pub height: ::std::num::NonZeroU64,
+    pub png: PortCaptureScreenshotResultPng,
+    pub width: ::std::num::NonZeroU64,
+}
+///`PortCaptureScreenshotResultPng`
+#[derive(::serde::Serialize, Clone, Debug, Eq, Hash, Ord, PartialEq, PartialOrd)]
+#[serde(transparent)]
+pub struct PortCaptureScreenshotResultPng(::std::string::String);
+impl ::std::ops::Deref for PortCaptureScreenshotResultPng {
+    type Target = ::std::string::String;
+    fn deref(&self) -> &::std::string::String {
+        &self.0
+    }
+}
+impl ::std::convert::From<PortCaptureScreenshotResultPng> for ::std::string::String {
+    fn from(value: PortCaptureScreenshotResultPng) -> Self {
+        value.0
+    }
+}
+impl ::std::str::FromStr for PortCaptureScreenshotResultPng {
+    type Err = self::error::ConversionError;
+    fn from_str(
+        value: &str,
+    ) -> ::std::result::Result<Self, self::error::ConversionError> {
+        if value.chars().count() > 8388608usize {
+            return Err("longer than 8388608 characters".into());
+        }
+        static PATTERN: ::std::sync::LazyLock<::regress::Regex> = ::std::sync::LazyLock::new(||
+        { ::regress::Regex::new("^[A-Za-z0-9+/]*={0,2}$").unwrap() });
+        if PATTERN.find(value).is_none() {
+            return Err("doesn't match pattern \"^[A-Za-z0-9+/]*={0,2}$\"".into());
+        }
+        Ok(Self(value.to_string()))
+    }
+}
+impl ::std::convert::TryFrom<&str> for PortCaptureScreenshotResultPng {
+    type Error = self::error::ConversionError;
+    fn try_from(
+        value: &str,
+    ) -> ::std::result::Result<Self, self::error::ConversionError> {
+        value.parse()
+    }
+}
+impl ::std::convert::TryFrom<::std::string::String> for PortCaptureScreenshotResultPng {
+    type Error = self::error::ConversionError;
+    fn try_from(
+        value: ::std::string::String,
+    ) -> ::std::result::Result<Self, self::error::ConversionError> {
+        value.parse()
+    }
+}
+impl<'de> ::serde::Deserialize<'de> for PortCaptureScreenshotResultPng {
+    fn deserialize<D>(deserializer: D) -> ::std::result::Result<Self, D::Error>
+    where
+        D: ::serde::Deserializer<'de>,
+    {
+        ::std::string::String::deserialize(deserializer)?
+            .parse()
+            .map_err(|e: self::error::ConversionError| {
+                <D::Error as ::serde::de::Error>::custom(e.to_string())
+            })
+    }
+}
 ///A browser opening a link without a viewer: the artifact, how the request arrived and its headers (no cookies, no Mostra headers).
 #[derive(::serde::Deserialize, ::serde::Serialize, Clone, Debug)]
 pub struct PortIdentityResolveParams {
@@ -17629,6 +18016,11 @@ pub struct ResultComment {
     pub status: ResultCommentStatus,
     #[serde(rename = "threadId")]
     pub thread_id: ::std::string::String,
+    #[serde(
+        rename = "versionId",
+        skip_serializing_if = "::std::option::Option::is_none"
+    )]
+    pub version_id: ::std::option::Option<::std::string::String>,
 }
 ///`ResultCommentAnchor`
 #[derive(::serde::Deserialize, ::serde::Serialize, Clone, Debug, Default)]
@@ -17638,12 +18030,27 @@ pub struct ResultCommentAnchor {
         skip_serializing_if = "::std::option::Option::is_none"
     )]
     pub candidate_id: ::std::option::Option<::std::string::String>,
+    #[serde(default, skip_serializing_if = "::std::vec::Vec::is_empty")]
+    pub frames: ::std::vec::Vec<ResultCommentAnchorFramesItem>,
+    #[serde(skip_serializing_if = "::std::option::Option::is_none")]
+    pub label: ::std::option::Option<::std::string::String>,
     #[serde(skip_serializing_if = "::std::option::Option::is_none")]
     pub page: ::std::option::Option<::std::string::String>,
+    #[serde(skip_serializing_if = "::std::option::Option::is_none")]
+    pub point: ::std::option::Option<ResultCommentAnchorPoint>,
+    #[serde(skip_serializing_if = "::std::option::Option::is_none")]
+    pub provider: ::std::option::Option<ResultCommentAnchorProvider>,
     #[serde(skip_serializing_if = "::std::option::Option::is_none")]
     pub rect: ::std::option::Option<ResultCommentAnchorRect>,
     #[serde(rename = "reviewId", skip_serializing_if = "::std::option::Option::is_none")]
     pub review_id: ::std::option::Option<::std::string::String>,
+    #[serde(
+        rename = "reviewSetId",
+        skip_serializing_if = "::std::option::Option::is_none"
+    )]
+    pub review_set_id: ::std::option::Option<::std::string::String>,
+    #[serde(skip_serializing_if = "::std::option::Option::is_none")]
+    pub scroll: ::std::option::Option<ResultCommentAnchorScroll>,
     #[serde(default, skip_serializing_if = "::std::vec::Vec::is_empty")]
     pub selectors: ::std::vec::Vec<::serde_json::Value>,
     #[serde(skip_serializing_if = "::std::option::Option::is_none")]
@@ -17655,11 +18062,38 @@ pub struct ResultCommentAnchor {
     #[serde(skip_serializing_if = "::std::option::Option::is_none")]
     pub viewport: ::std::option::Option<ResultCommentAnchorViewport>,
 }
+///`ResultCommentAnchorFramesItem`
+#[derive(::serde::Deserialize, ::serde::Serialize, Clone, Debug)]
+pub struct ResultCommentAnchorFramesItem {
+    pub selector: ::std::string::String,
+    pub served: bool,
+}
+///`ResultCommentAnchorPoint`
+#[derive(::serde::Deserialize, ::serde::Serialize, Clone, Debug)]
+pub struct ResultCommentAnchorPoint {
+    pub x: f64,
+    pub y: f64,
+}
+///`ResultCommentAnchorProvider`
+#[derive(::serde::Deserialize, ::serde::Serialize, Clone, Debug)]
+pub struct ResultCommentAnchorProvider {
+    pub data: ::serde_json::Map<::std::string::String, ::serde_json::Value>,
+    pub id: ::std::string::String,
+    pub kind: ::std::string::String,
+    #[serde(skip_serializing_if = "::std::option::Option::is_none")]
+    pub label: ::std::option::Option<::std::string::String>,
+}
 ///`ResultCommentAnchorRect`
 #[derive(::serde::Deserialize, ::serde::Serialize, Clone, Debug)]
 pub struct ResultCommentAnchorRect {
     pub height: f64,
     pub width: f64,
+    pub x: f64,
+    pub y: f64,
+}
+///`ResultCommentAnchorScroll`
+#[derive(::serde::Deserialize, ::serde::Serialize, Clone, Debug)]
+pub struct ResultCommentAnchorScroll {
     pub x: f64,
     pub y: f64,
 }
@@ -17689,13 +18123,61 @@ pub struct ResultCommentAnchorViewport {
 pub struct ResultCommentCrop {
     pub height: i64,
     pub path: ::std::string::String,
+    #[serde(skip_serializing_if = "::std::option::Option::is_none")]
+    pub reason: ::std::option::Option<::std::string::String>,
+    #[serde(skip_serializing_if = "::std::option::Option::is_none")]
+    pub state: ::std::option::Option<ResultCommentCropState>,
     pub width: i64,
+}
+///`ResultCommentCropState`
+#[derive(
+    ::serde::Deserialize,
+    ::serde::Serialize,
+    Clone,
+    Debug,
+    Eq,
+    Hash,
+    Ord,
+    PartialEq,
+    PartialOrd
+)]
+pub enum ResultCommentCropState {
+    #[serde(rename = "captured")]
+    Captured,
+    #[serde(rename = "pending")]
+    Pending,
+    #[serde(rename = "failed")]
+    Failed,
+    /// A value a newer Mostra sends that this release doesn't know; it
+    /// serializes back unchanged.
+    #[serde(untagged)]
+    Unknown(::std::string::String),
+}
+impl ::std::convert::TryFrom<&str> for ResultCommentCropState {
+    type Error = self::error::ConversionError;
+    fn try_from(
+        value: &str,
+    ) -> ::std::result::Result<Self, self::error::ConversionError> {
+        value.parse()
+    }
+}
+impl ::std::convert::TryFrom<::std::string::String> for ResultCommentCropState {
+    type Error = self::error::ConversionError;
+    fn try_from(
+        value: ::std::string::String,
+    ) -> ::std::result::Result<Self, self::error::ConversionError> {
+        value.parse()
+    }
 }
 ///`ResultCommentMessagesItem`
 #[derive(::serde::Deserialize, ::serde::Serialize, Clone, Debug)]
 pub struct ResultCommentMessagesItem {
     pub at: ResultCommentMessagesItemAt,
     pub author: Viewer,
+    #[serde(skip_serializing_if = "::std::option::Option::is_none")]
+    pub id: ::std::option::Option<::std::string::String>,
+    #[serde(default, skip_serializing_if = "::std::vec::Vec::is_empty")]
+    pub mentions: ::std::vec::Vec<Viewer>,
     pub text: ::std::string::String,
 }
 ///`ResultCommentMessagesItemAt`
@@ -18418,6 +18900,1784 @@ impl<'de> ::serde::Deserialize<'de> for ResultsSubmissionDigest {
                 <D::Error as ::serde::de::Error>::custom(e.to_string())
             })
     }
+}
+///Where a comment points: provider data, data-review-id, W3C selectors, coordinates with viewport, page and candidate.
+#[derive(::serde::Deserialize, ::serde::Serialize, Clone, Debug, Default)]
+pub struct ReviewAnchor {
+    #[serde(
+        rename = "candidateId",
+        skip_serializing_if = "::std::option::Option::is_none"
+    )]
+    pub candidate_id: ::std::option::Option<ReviewAnchorCandidateId>,
+    #[serde(default, skip_serializing_if = "::std::vec::Vec::is_empty")]
+    pub frames: ::std::vec::Vec<ReviewAnchorFramesItem>,
+    #[serde(skip_serializing_if = "::std::option::Option::is_none")]
+    pub label: ::std::option::Option<ReviewAnchorLabel>,
+    #[serde(skip_serializing_if = "::std::option::Option::is_none")]
+    pub page: ::std::option::Option<ReviewAnchorPage>,
+    #[serde(skip_serializing_if = "::std::option::Option::is_none")]
+    pub point: ::std::option::Option<ReviewAnchorPoint>,
+    #[serde(skip_serializing_if = "::std::option::Option::is_none")]
+    pub provider: ::std::option::Option<ReviewAnchorProvider>,
+    #[serde(skip_serializing_if = "::std::option::Option::is_none")]
+    pub rect: ::std::option::Option<AnchorRect>,
+    #[serde(rename = "reviewId", skip_serializing_if = "::std::option::Option::is_none")]
+    pub review_id: ::std::option::Option<ReviewAnchorReviewId>,
+    #[serde(
+        rename = "reviewSetId",
+        skip_serializing_if = "::std::option::Option::is_none"
+    )]
+    pub review_set_id: ::std::option::Option<ReviewAnchorReviewSetId>,
+    #[serde(skip_serializing_if = "::std::option::Option::is_none")]
+    pub scroll: ::std::option::Option<ReviewAnchorScroll>,
+    #[serde(default, skip_serializing_if = "::std::vec::Vec::is_empty")]
+    pub selectors: ::std::vec::Vec<AnchorSelector>,
+    #[serde(skip_serializing_if = "::std::option::Option::is_none")]
+    pub slide: ::std::option::Option<ReviewAnchorSlide>,
+    #[serde(skip_serializing_if = "::std::option::Option::is_none")]
+    pub time: ::std::option::Option<f64>,
+    #[serde(skip_serializing_if = "::std::option::Option::is_none")]
+    pub viewport: ::std::option::Option<ReviewAnchorViewport>,
+}
+///`ReviewAnchorCandidateId`
+#[derive(::serde::Serialize, Clone, Debug, Eq, Hash, Ord, PartialEq, PartialOrd)]
+#[serde(transparent)]
+pub struct ReviewAnchorCandidateId(::std::string::String);
+impl ::std::ops::Deref for ReviewAnchorCandidateId {
+    type Target = ::std::string::String;
+    fn deref(&self) -> &::std::string::String {
+        &self.0
+    }
+}
+impl ::std::convert::From<ReviewAnchorCandidateId> for ::std::string::String {
+    fn from(value: ReviewAnchorCandidateId) -> Self {
+        value.0
+    }
+}
+impl ::std::str::FromStr for ReviewAnchorCandidateId {
+    type Err = self::error::ConversionError;
+    fn from_str(
+        value: &str,
+    ) -> ::std::result::Result<Self, self::error::ConversionError> {
+        if value.chars().count() > 256usize {
+            return Err("longer than 256 characters".into());
+        }
+        if value.chars().count() < 1usize {
+            return Err("shorter than 1 characters".into());
+        }
+        Ok(Self(value.to_string()))
+    }
+}
+impl ::std::convert::TryFrom<&str> for ReviewAnchorCandidateId {
+    type Error = self::error::ConversionError;
+    fn try_from(
+        value: &str,
+    ) -> ::std::result::Result<Self, self::error::ConversionError> {
+        value.parse()
+    }
+}
+impl ::std::convert::TryFrom<::std::string::String> for ReviewAnchorCandidateId {
+    type Error = self::error::ConversionError;
+    fn try_from(
+        value: ::std::string::String,
+    ) -> ::std::result::Result<Self, self::error::ConversionError> {
+        value.parse()
+    }
+}
+impl<'de> ::serde::Deserialize<'de> for ReviewAnchorCandidateId {
+    fn deserialize<D>(deserializer: D) -> ::std::result::Result<Self, D::Error>
+    where
+        D: ::serde::Deserializer<'de>,
+    {
+        ::std::string::String::deserialize(deserializer)?
+            .parse()
+            .map_err(|e: self::error::ConversionError| {
+                <D::Error as ::serde::de::Error>::custom(e.to_string())
+            })
+    }
+}
+///`ReviewAnchorFramesItem`
+#[derive(::serde::Deserialize, ::serde::Serialize, Clone, Debug)]
+pub struct ReviewAnchorFramesItem {
+    pub selector: ReviewAnchorFramesItemSelector,
+    pub served: bool,
+}
+///`ReviewAnchorFramesItemSelector`
+#[derive(::serde::Serialize, Clone, Debug, Eq, Hash, Ord, PartialEq, PartialOrd)]
+#[serde(transparent)]
+pub struct ReviewAnchorFramesItemSelector(::std::string::String);
+impl ::std::ops::Deref for ReviewAnchorFramesItemSelector {
+    type Target = ::std::string::String;
+    fn deref(&self) -> &::std::string::String {
+        &self.0
+    }
+}
+impl ::std::convert::From<ReviewAnchorFramesItemSelector> for ::std::string::String {
+    fn from(value: ReviewAnchorFramesItemSelector) -> Self {
+        value.0
+    }
+}
+impl ::std::str::FromStr for ReviewAnchorFramesItemSelector {
+    type Err = self::error::ConversionError;
+    fn from_str(
+        value: &str,
+    ) -> ::std::result::Result<Self, self::error::ConversionError> {
+        if value.chars().count() > 2048usize {
+            return Err("longer than 2048 characters".into());
+        }
+        if value.chars().count() < 1usize {
+            return Err("shorter than 1 characters".into());
+        }
+        Ok(Self(value.to_string()))
+    }
+}
+impl ::std::convert::TryFrom<&str> for ReviewAnchorFramesItemSelector {
+    type Error = self::error::ConversionError;
+    fn try_from(
+        value: &str,
+    ) -> ::std::result::Result<Self, self::error::ConversionError> {
+        value.parse()
+    }
+}
+impl ::std::convert::TryFrom<::std::string::String> for ReviewAnchorFramesItemSelector {
+    type Error = self::error::ConversionError;
+    fn try_from(
+        value: ::std::string::String,
+    ) -> ::std::result::Result<Self, self::error::ConversionError> {
+        value.parse()
+    }
+}
+impl<'de> ::serde::Deserialize<'de> for ReviewAnchorFramesItemSelector {
+    fn deserialize<D>(deserializer: D) -> ::std::result::Result<Self, D::Error>
+    where
+        D: ::serde::Deserializer<'de>,
+    {
+        ::std::string::String::deserialize(deserializer)?
+            .parse()
+            .map_err(|e: self::error::ConversionError| {
+                <D::Error as ::serde::de::Error>::custom(e.to_string())
+            })
+    }
+}
+///`ReviewAnchorLabel`
+#[derive(::serde::Serialize, Clone, Debug, Eq, Hash, Ord, PartialEq, PartialOrd)]
+#[serde(transparent)]
+pub struct ReviewAnchorLabel(::std::string::String);
+impl ::std::ops::Deref for ReviewAnchorLabel {
+    type Target = ::std::string::String;
+    fn deref(&self) -> &::std::string::String {
+        &self.0
+    }
+}
+impl ::std::convert::From<ReviewAnchorLabel> for ::std::string::String {
+    fn from(value: ReviewAnchorLabel) -> Self {
+        value.0
+    }
+}
+impl ::std::str::FromStr for ReviewAnchorLabel {
+    type Err = self::error::ConversionError;
+    fn from_str(
+        value: &str,
+    ) -> ::std::result::Result<Self, self::error::ConversionError> {
+        if value.chars().count() > 256usize {
+            return Err("longer than 256 characters".into());
+        }
+        Ok(Self(value.to_string()))
+    }
+}
+impl ::std::convert::TryFrom<&str> for ReviewAnchorLabel {
+    type Error = self::error::ConversionError;
+    fn try_from(
+        value: &str,
+    ) -> ::std::result::Result<Self, self::error::ConversionError> {
+        value.parse()
+    }
+}
+impl ::std::convert::TryFrom<::std::string::String> for ReviewAnchorLabel {
+    type Error = self::error::ConversionError;
+    fn try_from(
+        value: ::std::string::String,
+    ) -> ::std::result::Result<Self, self::error::ConversionError> {
+        value.parse()
+    }
+}
+impl<'de> ::serde::Deserialize<'de> for ReviewAnchorLabel {
+    fn deserialize<D>(deserializer: D) -> ::std::result::Result<Self, D::Error>
+    where
+        D: ::serde::Deserializer<'de>,
+    {
+        ::std::string::String::deserialize(deserializer)?
+            .parse()
+            .map_err(|e: self::error::ConversionError| {
+                <D::Error as ::serde::de::Error>::custom(e.to_string())
+            })
+    }
+}
+///`ReviewAnchorPage`
+#[derive(::serde::Serialize, Clone, Debug, Eq, Hash, Ord, PartialEq, PartialOrd)]
+#[serde(transparent)]
+pub struct ReviewAnchorPage(::std::string::String);
+impl ::std::ops::Deref for ReviewAnchorPage {
+    type Target = ::std::string::String;
+    fn deref(&self) -> &::std::string::String {
+        &self.0
+    }
+}
+impl ::std::convert::From<ReviewAnchorPage> for ::std::string::String {
+    fn from(value: ReviewAnchorPage) -> Self {
+        value.0
+    }
+}
+impl ::std::str::FromStr for ReviewAnchorPage {
+    type Err = self::error::ConversionError;
+    fn from_str(
+        value: &str,
+    ) -> ::std::result::Result<Self, self::error::ConversionError> {
+        if value.chars().count() > 2048usize {
+            return Err("longer than 2048 characters".into());
+        }
+        if value.chars().count() < 1usize {
+            return Err("shorter than 1 characters".into());
+        }
+        Ok(Self(value.to_string()))
+    }
+}
+impl ::std::convert::TryFrom<&str> for ReviewAnchorPage {
+    type Error = self::error::ConversionError;
+    fn try_from(
+        value: &str,
+    ) -> ::std::result::Result<Self, self::error::ConversionError> {
+        value.parse()
+    }
+}
+impl ::std::convert::TryFrom<::std::string::String> for ReviewAnchorPage {
+    type Error = self::error::ConversionError;
+    fn try_from(
+        value: ::std::string::String,
+    ) -> ::std::result::Result<Self, self::error::ConversionError> {
+        value.parse()
+    }
+}
+impl<'de> ::serde::Deserialize<'de> for ReviewAnchorPage {
+    fn deserialize<D>(deserializer: D) -> ::std::result::Result<Self, D::Error>
+    where
+        D: ::serde::Deserializer<'de>,
+    {
+        ::std::string::String::deserialize(deserializer)?
+            .parse()
+            .map_err(|e: self::error::ConversionError| {
+                <D::Error as ::serde::de::Error>::custom(e.to_string())
+            })
+    }
+}
+///`ReviewAnchorPoint`
+#[derive(::serde::Deserialize, ::serde::Serialize, Clone, Debug)]
+pub struct ReviewAnchorPoint {
+    pub x: f64,
+    pub y: f64,
+}
+///`ReviewAnchorProvider`
+#[derive(::serde::Deserialize, ::serde::Serialize, Clone, Debug)]
+pub struct ReviewAnchorProvider {
+    pub data: ::serde_json::Map<::std::string::String, ::serde_json::Value>,
+    pub id: ReviewAnchorProviderId,
+    pub kind: ReviewAnchorProviderKind,
+    #[serde(skip_serializing_if = "::std::option::Option::is_none")]
+    pub label: ::std::option::Option<ReviewAnchorProviderLabel>,
+}
+///`ReviewAnchorProviderId`
+#[derive(::serde::Serialize, Clone, Debug, Eq, Hash, Ord, PartialEq, PartialOrd)]
+#[serde(transparent)]
+pub struct ReviewAnchorProviderId(::std::string::String);
+impl ::std::ops::Deref for ReviewAnchorProviderId {
+    type Target = ::std::string::String;
+    fn deref(&self) -> &::std::string::String {
+        &self.0
+    }
+}
+impl ::std::convert::From<ReviewAnchorProviderId> for ::std::string::String {
+    fn from(value: ReviewAnchorProviderId) -> Self {
+        value.0
+    }
+}
+impl ::std::str::FromStr for ReviewAnchorProviderId {
+    type Err = self::error::ConversionError;
+    fn from_str(
+        value: &str,
+    ) -> ::std::result::Result<Self, self::error::ConversionError> {
+        static PATTERN: ::std::sync::LazyLock<::regress::Regex> = ::std::sync::LazyLock::new(||
+        { ::regress::Regex::new("^[a-z0-9][a-z0-9._-]{0,63}$").unwrap() });
+        if PATTERN.find(value).is_none() {
+            return Err("doesn't match pattern \"^[a-z0-9][a-z0-9._-]{0,63}$\"".into());
+        }
+        Ok(Self(value.to_string()))
+    }
+}
+impl ::std::convert::TryFrom<&str> for ReviewAnchorProviderId {
+    type Error = self::error::ConversionError;
+    fn try_from(
+        value: &str,
+    ) -> ::std::result::Result<Self, self::error::ConversionError> {
+        value.parse()
+    }
+}
+impl ::std::convert::TryFrom<::std::string::String> for ReviewAnchorProviderId {
+    type Error = self::error::ConversionError;
+    fn try_from(
+        value: ::std::string::String,
+    ) -> ::std::result::Result<Self, self::error::ConversionError> {
+        value.parse()
+    }
+}
+impl<'de> ::serde::Deserialize<'de> for ReviewAnchorProviderId {
+    fn deserialize<D>(deserializer: D) -> ::std::result::Result<Self, D::Error>
+    where
+        D: ::serde::Deserializer<'de>,
+    {
+        ::std::string::String::deserialize(deserializer)?
+            .parse()
+            .map_err(|e: self::error::ConversionError| {
+                <D::Error as ::serde::de::Error>::custom(e.to_string())
+            })
+    }
+}
+///`ReviewAnchorProviderKind`
+#[derive(::serde::Serialize, Clone, Debug, Eq, Hash, Ord, PartialEq, PartialOrd)]
+#[serde(transparent)]
+pub struct ReviewAnchorProviderKind(::std::string::String);
+impl ::std::ops::Deref for ReviewAnchorProviderKind {
+    type Target = ::std::string::String;
+    fn deref(&self) -> &::std::string::String {
+        &self.0
+    }
+}
+impl ::std::convert::From<ReviewAnchorProviderKind> for ::std::string::String {
+    fn from(value: ReviewAnchorProviderKind) -> Self {
+        value.0
+    }
+}
+impl ::std::str::FromStr for ReviewAnchorProviderKind {
+    type Err = self::error::ConversionError;
+    fn from_str(
+        value: &str,
+    ) -> ::std::result::Result<Self, self::error::ConversionError> {
+        static PATTERN: ::std::sync::LazyLock<::regress::Regex> = ::std::sync::LazyLock::new(||
+        { ::regress::Regex::new("^[a-z0-9][a-z0-9._-]{0,63}$").unwrap() });
+        if PATTERN.find(value).is_none() {
+            return Err("doesn't match pattern \"^[a-z0-9][a-z0-9._-]{0,63}$\"".into());
+        }
+        Ok(Self(value.to_string()))
+    }
+}
+impl ::std::convert::TryFrom<&str> for ReviewAnchorProviderKind {
+    type Error = self::error::ConversionError;
+    fn try_from(
+        value: &str,
+    ) -> ::std::result::Result<Self, self::error::ConversionError> {
+        value.parse()
+    }
+}
+impl ::std::convert::TryFrom<::std::string::String> for ReviewAnchorProviderKind {
+    type Error = self::error::ConversionError;
+    fn try_from(
+        value: ::std::string::String,
+    ) -> ::std::result::Result<Self, self::error::ConversionError> {
+        value.parse()
+    }
+}
+impl<'de> ::serde::Deserialize<'de> for ReviewAnchorProviderKind {
+    fn deserialize<D>(deserializer: D) -> ::std::result::Result<Self, D::Error>
+    where
+        D: ::serde::Deserializer<'de>,
+    {
+        ::std::string::String::deserialize(deserializer)?
+            .parse()
+            .map_err(|e: self::error::ConversionError| {
+                <D::Error as ::serde::de::Error>::custom(e.to_string())
+            })
+    }
+}
+///`ReviewAnchorProviderLabel`
+#[derive(::serde::Serialize, Clone, Debug, Eq, Hash, Ord, PartialEq, PartialOrd)]
+#[serde(transparent)]
+pub struct ReviewAnchorProviderLabel(::std::string::String);
+impl ::std::ops::Deref for ReviewAnchorProviderLabel {
+    type Target = ::std::string::String;
+    fn deref(&self) -> &::std::string::String {
+        &self.0
+    }
+}
+impl ::std::convert::From<ReviewAnchorProviderLabel> for ::std::string::String {
+    fn from(value: ReviewAnchorProviderLabel) -> Self {
+        value.0
+    }
+}
+impl ::std::str::FromStr for ReviewAnchorProviderLabel {
+    type Err = self::error::ConversionError;
+    fn from_str(
+        value: &str,
+    ) -> ::std::result::Result<Self, self::error::ConversionError> {
+        if value.chars().count() > 256usize {
+            return Err("longer than 256 characters".into());
+        }
+        Ok(Self(value.to_string()))
+    }
+}
+impl ::std::convert::TryFrom<&str> for ReviewAnchorProviderLabel {
+    type Error = self::error::ConversionError;
+    fn try_from(
+        value: &str,
+    ) -> ::std::result::Result<Self, self::error::ConversionError> {
+        value.parse()
+    }
+}
+impl ::std::convert::TryFrom<::std::string::String> for ReviewAnchorProviderLabel {
+    type Error = self::error::ConversionError;
+    fn try_from(
+        value: ::std::string::String,
+    ) -> ::std::result::Result<Self, self::error::ConversionError> {
+        value.parse()
+    }
+}
+impl<'de> ::serde::Deserialize<'de> for ReviewAnchorProviderLabel {
+    fn deserialize<D>(deserializer: D) -> ::std::result::Result<Self, D::Error>
+    where
+        D: ::serde::Deserializer<'de>,
+    {
+        ::std::string::String::deserialize(deserializer)?
+            .parse()
+            .map_err(|e: self::error::ConversionError| {
+                <D::Error as ::serde::de::Error>::custom(e.to_string())
+            })
+    }
+}
+///`ReviewAnchorReviewId`
+#[derive(::serde::Serialize, Clone, Debug, Eq, Hash, Ord, PartialEq, PartialOrd)]
+#[serde(transparent)]
+pub struct ReviewAnchorReviewId(::std::string::String);
+impl ::std::ops::Deref for ReviewAnchorReviewId {
+    type Target = ::std::string::String;
+    fn deref(&self) -> &::std::string::String {
+        &self.0
+    }
+}
+impl ::std::convert::From<ReviewAnchorReviewId> for ::std::string::String {
+    fn from(value: ReviewAnchorReviewId) -> Self {
+        value.0
+    }
+}
+impl ::std::str::FromStr for ReviewAnchorReviewId {
+    type Err = self::error::ConversionError;
+    fn from_str(
+        value: &str,
+    ) -> ::std::result::Result<Self, self::error::ConversionError> {
+        if value.chars().count() > 256usize {
+            return Err("longer than 256 characters".into());
+        }
+        if value.chars().count() < 1usize {
+            return Err("shorter than 1 characters".into());
+        }
+        Ok(Self(value.to_string()))
+    }
+}
+impl ::std::convert::TryFrom<&str> for ReviewAnchorReviewId {
+    type Error = self::error::ConversionError;
+    fn try_from(
+        value: &str,
+    ) -> ::std::result::Result<Self, self::error::ConversionError> {
+        value.parse()
+    }
+}
+impl ::std::convert::TryFrom<::std::string::String> for ReviewAnchorReviewId {
+    type Error = self::error::ConversionError;
+    fn try_from(
+        value: ::std::string::String,
+    ) -> ::std::result::Result<Self, self::error::ConversionError> {
+        value.parse()
+    }
+}
+impl<'de> ::serde::Deserialize<'de> for ReviewAnchorReviewId {
+    fn deserialize<D>(deserializer: D) -> ::std::result::Result<Self, D::Error>
+    where
+        D: ::serde::Deserializer<'de>,
+    {
+        ::std::string::String::deserialize(deserializer)?
+            .parse()
+            .map_err(|e: self::error::ConversionError| {
+                <D::Error as ::serde::de::Error>::custom(e.to_string())
+            })
+    }
+}
+///`ReviewAnchorReviewSetId`
+#[derive(::serde::Serialize, Clone, Debug, Eq, Hash, Ord, PartialEq, PartialOrd)]
+#[serde(transparent)]
+pub struct ReviewAnchorReviewSetId(::std::string::String);
+impl ::std::ops::Deref for ReviewAnchorReviewSetId {
+    type Target = ::std::string::String;
+    fn deref(&self) -> &::std::string::String {
+        &self.0
+    }
+}
+impl ::std::convert::From<ReviewAnchorReviewSetId> for ::std::string::String {
+    fn from(value: ReviewAnchorReviewSetId) -> Self {
+        value.0
+    }
+}
+impl ::std::str::FromStr for ReviewAnchorReviewSetId {
+    type Err = self::error::ConversionError;
+    fn from_str(
+        value: &str,
+    ) -> ::std::result::Result<Self, self::error::ConversionError> {
+        static PATTERN: ::std::sync::LazyLock<::regress::Regex> = ::std::sync::LazyLock::new(||
+        { ::regress::Regex::new("^[A-Za-z0-9_-]{1,64}$").unwrap() });
+        if PATTERN.find(value).is_none() {
+            return Err("doesn't match pattern \"^[A-Za-z0-9_-]{1,64}$\"".into());
+        }
+        Ok(Self(value.to_string()))
+    }
+}
+impl ::std::convert::TryFrom<&str> for ReviewAnchorReviewSetId {
+    type Error = self::error::ConversionError;
+    fn try_from(
+        value: &str,
+    ) -> ::std::result::Result<Self, self::error::ConversionError> {
+        value.parse()
+    }
+}
+impl ::std::convert::TryFrom<::std::string::String> for ReviewAnchorReviewSetId {
+    type Error = self::error::ConversionError;
+    fn try_from(
+        value: ::std::string::String,
+    ) -> ::std::result::Result<Self, self::error::ConversionError> {
+        value.parse()
+    }
+}
+impl<'de> ::serde::Deserialize<'de> for ReviewAnchorReviewSetId {
+    fn deserialize<D>(deserializer: D) -> ::std::result::Result<Self, D::Error>
+    where
+        D: ::serde::Deserializer<'de>,
+    {
+        ::std::string::String::deserialize(deserializer)?
+            .parse()
+            .map_err(|e: self::error::ConversionError| {
+                <D::Error as ::serde::de::Error>::custom(e.to_string())
+            })
+    }
+}
+///`ReviewAnchorScroll`
+#[derive(::serde::Deserialize, ::serde::Serialize, Clone, Debug)]
+pub struct ReviewAnchorScroll {
+    pub x: f64,
+    pub y: f64,
+}
+///`ReviewAnchorSlide`
+#[derive(::serde::Deserialize, ::serde::Serialize, Clone, Debug)]
+pub struct ReviewAnchorSlide {
+    pub index: i64,
+    pub step: i64,
+}
+///`ReviewAnchorViewport`
+#[derive(::serde::Deserialize, ::serde::Serialize, Clone, Debug)]
+pub struct ReviewAnchorViewport {
+    pub dpr: f64,
+    pub height: f64,
+    pub width: f64,
+}
+///A comment thread or a review-set choice mirrored to a host; never a submission.
+#[derive(::serde::Deserialize, ::serde::Serialize, Clone, Debug)]
+#[serde(tag = "kind")]
+pub enum ReviewEnvelope {
+    #[serde(rename = "thread")]
+    Thread {
+        #[serde(rename = "artifactId")]
+        artifact_id: ArtifactId,
+        thread: ResultComment,
+        #[serde(rename = "viewerId")]
+        viewer_id: ViewerId,
+    },
+    #[serde(rename = "choice")]
+    Choice {
+        #[serde(rename = "artifactId")]
+        artifact_id: ArtifactId,
+        #[serde(
+            rename = "candidateId",
+            skip_serializing_if = "::std::option::Option::is_none"
+        )]
+        candidate_id: ::std::option::Option<::std::string::String>,
+        #[serde(skip_serializing_if = "::std::option::Option::is_none")]
+        label: ::std::option::Option<::std::string::String>,
+        #[serde(rename = "reviewSetId")]
+        review_set_id: ::std::string::String,
+        #[serde(rename = "viewerId")]
+        viewer_id: ViewerId,
+    },
+    /// A value a newer Mostra sends that this release doesn't know; it
+    /// serializes back unchanged.
+    #[serde(untagged)]
+    Unknown(::serde_json::Value),
+}
+///An artifact's review for agents: its choices and comment threads with every anchor layer and crop path.
+#[derive(::serde::Deserialize, ::serde::Serialize, Clone, Debug)]
+pub struct ReviewExport {
+    pub artifact: ReviewExportArtifact,
+    pub choices: ::std::vec::Vec<ReviewExportChoicesItem>,
+    pub comments: ::std::vec::Vec<ResultComment>,
+    #[serde(skip_serializing_if = "::std::option::Option::is_none")]
+    pub submission: ::std::option::Option<ReviewExportSubmission>,
+}
+///`ReviewExportArtifact`
+#[derive(::serde::Deserialize, ::serde::Serialize, Clone, Debug)]
+pub struct ReviewExportArtifact {
+    pub id: ArtifactId,
+    pub title: ::std::string::String,
+}
+///`ReviewExportChoicesItem`
+#[derive(::serde::Deserialize, ::serde::Serialize, Clone, Debug)]
+pub struct ReviewExportChoicesItem {
+    #[serde(rename = "candidateId")]
+    pub candidate_id: ::std::string::String,
+    #[serde(skip_serializing_if = "::std::option::Option::is_none")]
+    pub label: ::std::option::Option<::std::string::String>,
+    #[serde(rename = "reviewSetId")]
+    pub review_set_id: ::std::string::String,
+    #[serde(skip_serializing_if = "::std::option::Option::is_none")]
+    pub viewer: ::std::option::Option<Viewer>,
+}
+///`ReviewExportParams`
+#[derive(::serde::Deserialize, ::serde::Serialize, Clone, Debug)]
+pub struct ReviewExportParams {
+    pub artifact: ArtifactRef,
+    #[serde(skip_serializing_if = "::std::option::Option::is_none")]
+    pub format: ::std::option::Option<ReviewExportParamsFormat>,
+    #[serde(skip_serializing_if = "::std::option::Option::is_none")]
+    pub out: ::std::option::Option<ReviewExportParamsOut>,
+    #[serde(skip_serializing_if = "::std::option::Option::is_none")]
+    pub submission: ::std::option::Option<SubmissionId>,
+}
+///`ReviewExportParamsFormat`
+#[derive(
+    ::serde::Deserialize,
+    ::serde::Serialize,
+    Clone,
+    Debug,
+    Eq,
+    Hash,
+    Ord,
+    PartialEq,
+    PartialOrd
+)]
+pub enum ReviewExportParamsFormat {
+    #[serde(rename = "md")]
+    Md,
+    #[serde(rename = "json")]
+    Json,
+    /// A value a newer Mostra sends that this release doesn't know; it
+    /// serializes back unchanged.
+    #[serde(untagged)]
+    Unknown(::std::string::String),
+}
+impl ::std::convert::TryFrom<&str> for ReviewExportParamsFormat {
+    type Error = self::error::ConversionError;
+    fn try_from(
+        value: &str,
+    ) -> ::std::result::Result<Self, self::error::ConversionError> {
+        value.parse()
+    }
+}
+impl ::std::convert::TryFrom<::std::string::String> for ReviewExportParamsFormat {
+    type Error = self::error::ConversionError;
+    fn try_from(
+        value: ::std::string::String,
+    ) -> ::std::result::Result<Self, self::error::ConversionError> {
+        value.parse()
+    }
+}
+///`ReviewExportParamsOut`
+#[derive(::serde::Serialize, Clone, Debug, Eq, Hash, Ord, PartialEq, PartialOrd)]
+#[serde(transparent)]
+pub struct ReviewExportParamsOut(::std::string::String);
+impl ::std::ops::Deref for ReviewExportParamsOut {
+    type Target = ::std::string::String;
+    fn deref(&self) -> &::std::string::String {
+        &self.0
+    }
+}
+impl ::std::convert::From<ReviewExportParamsOut> for ::std::string::String {
+    fn from(value: ReviewExportParamsOut) -> Self {
+        value.0
+    }
+}
+impl ::std::str::FromStr for ReviewExportParamsOut {
+    type Err = self::error::ConversionError;
+    fn from_str(
+        value: &str,
+    ) -> ::std::result::Result<Self, self::error::ConversionError> {
+        static PATTERN: ::std::sync::LazyLock<::regress::Regex> = ::std::sync::LazyLock::new(||
+        { ::regress::Regex::new("^(?:\\/|[A-Za-z]:[\\\\/]|\\\\\\\\[^\\\\])").unwrap() });
+        if PATTERN.find(value).is_none() {
+            return Err(
+                "doesn't match pattern \"^(?:\\/|[A-Za-z]:[\\\\/]|\\\\\\\\[^\\\\])\""
+                    .into(),
+            );
+        }
+        Ok(Self(value.to_string()))
+    }
+}
+impl ::std::convert::TryFrom<&str> for ReviewExportParamsOut {
+    type Error = self::error::ConversionError;
+    fn try_from(
+        value: &str,
+    ) -> ::std::result::Result<Self, self::error::ConversionError> {
+        value.parse()
+    }
+}
+impl ::std::convert::TryFrom<::std::string::String> for ReviewExportParamsOut {
+    type Error = self::error::ConversionError;
+    fn try_from(
+        value: ::std::string::String,
+    ) -> ::std::result::Result<Self, self::error::ConversionError> {
+        value.parse()
+    }
+}
+impl<'de> ::serde::Deserialize<'de> for ReviewExportParamsOut {
+    fn deserialize<D>(deserializer: D) -> ::std::result::Result<Self, D::Error>
+    where
+        D: ::serde::Deserializer<'de>,
+    {
+        ::std::string::String::deserialize(deserializer)?
+            .parse()
+            .map_err(|e: self::error::ConversionError| {
+                <D::Error as ::serde::de::Error>::custom(e.to_string())
+            })
+    }
+}
+///`ReviewExportResult`
+#[derive(::serde::Deserialize, ::serde::Serialize, Clone, Debug)]
+pub struct ReviewExportResult {
+    #[serde(skip_serializing_if = "::std::option::Option::is_none")]
+    pub content: ::std::option::Option<::std::string::String>,
+    pub crops: i64,
+    pub format: ReviewExportResultFormat,
+    #[serde(skip_serializing_if = "::std::option::Option::is_none")]
+    pub path: ::std::option::Option<::std::string::String>,
+    pub threads: i64,
+}
+///`ReviewExportResultFormat`
+#[derive(
+    ::serde::Deserialize,
+    ::serde::Serialize,
+    Clone,
+    Debug,
+    Eq,
+    Hash,
+    Ord,
+    PartialEq,
+    PartialOrd
+)]
+pub enum ReviewExportResultFormat {
+    #[serde(rename = "md")]
+    Md,
+    #[serde(rename = "json")]
+    Json,
+    /// A value a newer Mostra sends that this release doesn't know; it
+    /// serializes back unchanged.
+    #[serde(untagged)]
+    Unknown(::std::string::String),
+}
+impl ::std::convert::TryFrom<&str> for ReviewExportResultFormat {
+    type Error = self::error::ConversionError;
+    fn try_from(
+        value: &str,
+    ) -> ::std::result::Result<Self, self::error::ConversionError> {
+        value.parse()
+    }
+}
+impl ::std::convert::TryFrom<::std::string::String> for ReviewExportResultFormat {
+    type Error = self::error::ConversionError;
+    fn try_from(
+        value: ::std::string::String,
+    ) -> ::std::result::Result<Self, self::error::ConversionError> {
+        value.parse()
+    }
+}
+///`ReviewExportSubmission`
+#[derive(::serde::Deserialize, ::serde::Serialize, Clone, Debug)]
+pub struct ReviewExportSubmission {
+    pub at: ReviewExportSubmissionAt,
+    pub id: SubmissionId,
+    pub version: ::std::num::NonZeroU64,
+    pub viewer: Viewer,
+}
+///`ReviewExportSubmissionAt`
+#[derive(::serde::Serialize, Clone, Debug, Eq, Hash, Ord, PartialEq, PartialOrd)]
+#[serde(transparent)]
+pub struct ReviewExportSubmissionAt(::std::string::String);
+impl ::std::ops::Deref for ReviewExportSubmissionAt {
+    type Target = ::std::string::String;
+    fn deref(&self) -> &::std::string::String {
+        &self.0
+    }
+}
+impl ::std::convert::From<ReviewExportSubmissionAt> for ::std::string::String {
+    fn from(value: ReviewExportSubmissionAt) -> Self {
+        value.0
+    }
+}
+impl ::std::str::FromStr for ReviewExportSubmissionAt {
+    type Err = self::error::ConversionError;
+    fn from_str(
+        value: &str,
+    ) -> ::std::result::Result<Self, self::error::ConversionError> {
+        static PATTERN: ::std::sync::LazyLock<::regress::Regex> = ::std::sync::LazyLock::new(||
+        {
+            ::regress::Regex::new(
+                    "^(?:(?:\\d\\d[2468][048]|\\d\\d[13579][26]|\\d\\d0[48]|[02468][048]00|[13579][26]00)-02-29|\\d{4}-(?:(?:0[13578]|1[02])-(?:0[1-9]|[12]\\d|3[01])|(?:0[469]|11)-(?:0[1-9]|[12]\\d|30)|(?:02)-(?:0[1-9]|1\\d|2[0-8])))T(?:(?:[01]\\d|2[0-3]):[0-5]\\d:[0-5]\\d(?:\\.\\d+)?(?:Z))$",
+                )
+                .unwrap()
+        });
+        if PATTERN.find(value).is_none() {
+            return Err(
+                "doesn't match pattern \"^(?:(?:\\d\\d[2468][048]|\\d\\d[13579][26]|\\d\\d0[48]|[02468][048]00|[13579][26]00)-02-29|\\d{4}-(?:(?:0[13578]|1[02])-(?:0[1-9]|[12]\\d|3[01])|(?:0[469]|11)-(?:0[1-9]|[12]\\d|30)|(?:02)-(?:0[1-9]|1\\d|2[0-8])))T(?:(?:[01]\\d|2[0-3]):[0-5]\\d:[0-5]\\d(?:\\.\\d+)?(?:Z))$\""
+                    .into(),
+            );
+        }
+        Ok(Self(value.to_string()))
+    }
+}
+impl ::std::convert::TryFrom<&str> for ReviewExportSubmissionAt {
+    type Error = self::error::ConversionError;
+    fn try_from(
+        value: &str,
+    ) -> ::std::result::Result<Self, self::error::ConversionError> {
+        value.parse()
+    }
+}
+impl ::std::convert::TryFrom<::std::string::String> for ReviewExportSubmissionAt {
+    type Error = self::error::ConversionError;
+    fn try_from(
+        value: ::std::string::String,
+    ) -> ::std::result::Result<Self, self::error::ConversionError> {
+        value.parse()
+    }
+}
+impl<'de> ::serde::Deserialize<'de> for ReviewExportSubmissionAt {
+    fn deserialize<D>(deserializer: D) -> ::std::result::Result<Self, D::Error>
+    where
+        D: ::serde::Deserializer<'de>,
+    {
+        ::std::string::String::deserialize(deserializer)?
+            .parse()
+            .map_err(|e: self::error::ConversionError| {
+                <D::Error as ::serde::de::Error>::custom(e.to_string())
+            })
+    }
+}
+///A person as a page may know them: their key on the artifact and display name.
+#[derive(::serde::Deserialize, ::serde::Serialize, Clone, Debug)]
+pub struct ReviewPerson {
+    pub key: ReviewPersonKey,
+    pub kind: ReviewPersonKind,
+    #[serde(skip_serializing_if = "::std::option::Option::is_none")]
+    pub name: ::std::option::Option<ReviewPersonName>,
+    #[serde(rename = "self")]
+    pub self_: bool,
+    #[serde(skip_serializing_if = "::std::option::Option::is_none")]
+    pub verified: ::std::option::Option<bool>,
+}
+///`ReviewPersonKey`
+#[derive(::serde::Serialize, Clone, Debug, Eq, Hash, Ord, PartialEq, PartialOrd)]
+#[serde(transparent)]
+pub struct ReviewPersonKey(::std::string::String);
+impl ::std::ops::Deref for ReviewPersonKey {
+    type Target = ::std::string::String;
+    fn deref(&self) -> &::std::string::String {
+        &self.0
+    }
+}
+impl ::std::convert::From<ReviewPersonKey> for ::std::string::String {
+    fn from(value: ReviewPersonKey) -> Self {
+        value.0
+    }
+}
+impl ::std::str::FromStr for ReviewPersonKey {
+    type Err = self::error::ConversionError;
+    fn from_str(
+        value: &str,
+    ) -> ::std::result::Result<Self, self::error::ConversionError> {
+        if value.chars().count() > 64usize {
+            return Err("longer than 64 characters".into());
+        }
+        if value.chars().count() < 1usize {
+            return Err("shorter than 1 characters".into());
+        }
+        Ok(Self(value.to_string()))
+    }
+}
+impl ::std::convert::TryFrom<&str> for ReviewPersonKey {
+    type Error = self::error::ConversionError;
+    fn try_from(
+        value: &str,
+    ) -> ::std::result::Result<Self, self::error::ConversionError> {
+        value.parse()
+    }
+}
+impl ::std::convert::TryFrom<::std::string::String> for ReviewPersonKey {
+    type Error = self::error::ConversionError;
+    fn try_from(
+        value: ::std::string::String,
+    ) -> ::std::result::Result<Self, self::error::ConversionError> {
+        value.parse()
+    }
+}
+impl<'de> ::serde::Deserialize<'de> for ReviewPersonKey {
+    fn deserialize<D>(deserializer: D) -> ::std::result::Result<Self, D::Error>
+    where
+        D: ::serde::Deserializer<'de>,
+    {
+        ::std::string::String::deserialize(deserializer)?
+            .parse()
+            .map_err(|e: self::error::ConversionError| {
+                <D::Error as ::serde::de::Error>::custom(e.to_string())
+            })
+    }
+}
+///`ReviewPersonKind`
+#[derive(
+    ::serde::Deserialize,
+    ::serde::Serialize,
+    Clone,
+    Debug,
+    Eq,
+    Hash,
+    Ord,
+    PartialEq,
+    PartialOrd
+)]
+pub enum ReviewPersonKind {
+    #[serde(rename = "local")]
+    Local,
+    #[serde(rename = "tailnet")]
+    Tailnet,
+    #[serde(rename = "token")]
+    Token,
+    #[serde(rename = "host")]
+    Host,
+    #[serde(rename = "account")]
+    Account,
+    #[serde(rename = "anonymous")]
+    Anonymous,
+    /// A value a newer Mostra sends that this release doesn't know; it
+    /// serializes back unchanged.
+    #[serde(untagged)]
+    Unknown(::std::string::String),
+}
+impl ::std::convert::TryFrom<&str> for ReviewPersonKind {
+    type Error = self::error::ConversionError;
+    fn try_from(
+        value: &str,
+    ) -> ::std::result::Result<Self, self::error::ConversionError> {
+        value.parse()
+    }
+}
+impl ::std::convert::TryFrom<::std::string::String> for ReviewPersonKind {
+    type Error = self::error::ConversionError;
+    fn try_from(
+        value: ::std::string::String,
+    ) -> ::std::result::Result<Self, self::error::ConversionError> {
+        value.parse()
+    }
+}
+///`ReviewPersonName`
+#[derive(::serde::Serialize, Clone, Debug, Eq, Hash, Ord, PartialEq, PartialOrd)]
+#[serde(transparent)]
+pub struct ReviewPersonName(::std::string::String);
+impl ::std::ops::Deref for ReviewPersonName {
+    type Target = ::std::string::String;
+    fn deref(&self) -> &::std::string::String {
+        &self.0
+    }
+}
+impl ::std::convert::From<ReviewPersonName> for ::std::string::String {
+    fn from(value: ReviewPersonName) -> Self {
+        value.0
+    }
+}
+impl ::std::str::FromStr for ReviewPersonName {
+    type Err = self::error::ConversionError;
+    fn from_str(
+        value: &str,
+    ) -> ::std::result::Result<Self, self::error::ConversionError> {
+        if value.chars().count() > 256usize {
+            return Err("longer than 256 characters".into());
+        }
+        Ok(Self(value.to_string()))
+    }
+}
+impl ::std::convert::TryFrom<&str> for ReviewPersonName {
+    type Error = self::error::ConversionError;
+    fn try_from(
+        value: &str,
+    ) -> ::std::result::Result<Self, self::error::ConversionError> {
+        value.parse()
+    }
+}
+impl ::std::convert::TryFrom<::std::string::String> for ReviewPersonName {
+    type Error = self::error::ConversionError;
+    fn try_from(
+        value: ::std::string::String,
+    ) -> ::std::result::Result<Self, self::error::ConversionError> {
+        value.parse()
+    }
+}
+impl<'de> ::serde::Deserialize<'de> for ReviewPersonName {
+    fn deserialize<D>(deserializer: D) -> ::std::result::Result<Self, D::Error>
+    where
+        D: ::serde::Deserializer<'de>,
+    {
+        ::std::string::String::deserialize(deserializer)?
+            .parse()
+            .map_err(|e: self::error::ConversionError| {
+                <D::Error as ::serde::de::Error>::custom(e.to_string())
+            })
+    }
+}
+///A reply to a comment thread, under a client-made comment ID.
+#[derive(::serde::Deserialize, ::serde::Serialize, Clone, Debug)]
+pub struct ReviewReplyRequest {
+    #[serde(rename = "commentId")]
+    pub comment_id: CommentId,
+    #[serde(default, skip_serializing_if = "::std::vec::Vec::is_empty")]
+    pub mentions: ::std::vec::Vec<ReviewReplyRequestMentionsItem>,
+    pub text: ReviewReplyRequestText,
+    #[serde(rename = "viewId")]
+    pub view_id: ViewId,
+}
+///`ReviewReplyRequestMentionsItem`
+#[derive(::serde::Deserialize, ::serde::Serialize, Clone, Debug)]
+pub struct ReviewReplyRequestMentionsItem {
+    pub key: ReviewReplyRequestMentionsItemKey,
+}
+///`ReviewReplyRequestMentionsItemKey`
+#[derive(::serde::Serialize, Clone, Debug, Eq, Hash, Ord, PartialEq, PartialOrd)]
+#[serde(transparent)]
+pub struct ReviewReplyRequestMentionsItemKey(::std::string::String);
+impl ::std::ops::Deref for ReviewReplyRequestMentionsItemKey {
+    type Target = ::std::string::String;
+    fn deref(&self) -> &::std::string::String {
+        &self.0
+    }
+}
+impl ::std::convert::From<ReviewReplyRequestMentionsItemKey> for ::std::string::String {
+    fn from(value: ReviewReplyRequestMentionsItemKey) -> Self {
+        value.0
+    }
+}
+impl ::std::str::FromStr for ReviewReplyRequestMentionsItemKey {
+    type Err = self::error::ConversionError;
+    fn from_str(
+        value: &str,
+    ) -> ::std::result::Result<Self, self::error::ConversionError> {
+        if value.chars().count() > 64usize {
+            return Err("longer than 64 characters".into());
+        }
+        if value.chars().count() < 1usize {
+            return Err("shorter than 1 characters".into());
+        }
+        Ok(Self(value.to_string()))
+    }
+}
+impl ::std::convert::TryFrom<&str> for ReviewReplyRequestMentionsItemKey {
+    type Error = self::error::ConversionError;
+    fn try_from(
+        value: &str,
+    ) -> ::std::result::Result<Self, self::error::ConversionError> {
+        value.parse()
+    }
+}
+impl ::std::convert::TryFrom<::std::string::String>
+for ReviewReplyRequestMentionsItemKey {
+    type Error = self::error::ConversionError;
+    fn try_from(
+        value: ::std::string::String,
+    ) -> ::std::result::Result<Self, self::error::ConversionError> {
+        value.parse()
+    }
+}
+impl<'de> ::serde::Deserialize<'de> for ReviewReplyRequestMentionsItemKey {
+    fn deserialize<D>(deserializer: D) -> ::std::result::Result<Self, D::Error>
+    where
+        D: ::serde::Deserializer<'de>,
+    {
+        ::std::string::String::deserialize(deserializer)?
+            .parse()
+            .map_err(|e: self::error::ConversionError| {
+                <D::Error as ::serde::de::Error>::custom(e.to_string())
+            })
+    }
+}
+///`ReviewReplyRequestText`
+#[derive(::serde::Serialize, Clone, Debug, Eq, Hash, Ord, PartialEq, PartialOrd)]
+#[serde(transparent)]
+pub struct ReviewReplyRequestText(::std::string::String);
+impl ::std::ops::Deref for ReviewReplyRequestText {
+    type Target = ::std::string::String;
+    fn deref(&self) -> &::std::string::String {
+        &self.0
+    }
+}
+impl ::std::convert::From<ReviewReplyRequestText> for ::std::string::String {
+    fn from(value: ReviewReplyRequestText) -> Self {
+        value.0
+    }
+}
+impl ::std::str::FromStr for ReviewReplyRequestText {
+    type Err = self::error::ConversionError;
+    fn from_str(
+        value: &str,
+    ) -> ::std::result::Result<Self, self::error::ConversionError> {
+        if value.chars().count() > 10000usize {
+            return Err("longer than 10000 characters".into());
+        }
+        if value.chars().count() < 1usize {
+            return Err("shorter than 1 characters".into());
+        }
+        Ok(Self(value.to_string()))
+    }
+}
+impl ::std::convert::TryFrom<&str> for ReviewReplyRequestText {
+    type Error = self::error::ConversionError;
+    fn try_from(
+        value: &str,
+    ) -> ::std::result::Result<Self, self::error::ConversionError> {
+        value.parse()
+    }
+}
+impl ::std::convert::TryFrom<::std::string::String> for ReviewReplyRequestText {
+    type Error = self::error::ConversionError;
+    fn try_from(
+        value: ::std::string::String,
+    ) -> ::std::result::Result<Self, self::error::ConversionError> {
+        value.parse()
+    }
+}
+impl<'de> ::serde::Deserialize<'de> for ReviewReplyRequestText {
+    fn deserialize<D>(deserializer: D) -> ::std::result::Result<Self, D::Error>
+    where
+        D: ::serde::Deserializer<'de>,
+    {
+        ::std::string::String::deserialize(deserializer)?
+            .parse()
+            .map_err(|e: self::error::ConversionError| {
+                <D::Error as ::serde::de::Error>::custom(e.to_string())
+            })
+    }
+}
+///Resolves or reopens a comment thread.
+#[derive(::serde::Deserialize, ::serde::Serialize, Clone, Debug)]
+pub struct ReviewStatusRequest {
+    pub status: ReviewStatusRequestStatus,
+    #[serde(rename = "viewId")]
+    pub view_id: ViewId,
+}
+///`ReviewStatusRequestStatus`
+#[derive(
+    ::serde::Deserialize,
+    ::serde::Serialize,
+    Clone,
+    Debug,
+    Eq,
+    Hash,
+    Ord,
+    PartialEq,
+    PartialOrd
+)]
+pub enum ReviewStatusRequestStatus {
+    #[serde(rename = "open")]
+    Open,
+    #[serde(rename = "resolved")]
+    Resolved,
+    /// A value a newer Mostra sends that this release doesn't know; it
+    /// serializes back unchanged.
+    #[serde(untagged)]
+    Unknown(::std::string::String),
+}
+impl ::std::convert::TryFrom<&str> for ReviewStatusRequestStatus {
+    type Error = self::error::ConversionError;
+    fn try_from(
+        value: &str,
+    ) -> ::std::result::Result<Self, self::error::ConversionError> {
+        value.parse()
+    }
+}
+impl ::std::convert::TryFrom<::std::string::String> for ReviewStatusRequestStatus {
+    type Error = self::error::ConversionError;
+    fn try_from(
+        value: ::std::string::String,
+    ) -> ::std::result::Result<Self, self::error::ConversionError> {
+        value.parse()
+    }
+}
+///A comment thread as a page sees it: anchor, messages, status and crop state.
+#[derive(::serde::Deserialize, ::serde::Serialize, Clone, Debug)]
+pub struct ReviewThread {
+    pub anchor: ReviewAnchor,
+    #[serde(rename = "createdAt")]
+    pub created_at: ReviewThreadCreatedAt,
+    pub crop: ReviewThreadCrop,
+    pub id: ThreadId,
+    pub messages: ::std::vec::Vec<ReviewThreadMessagesItem>,
+    #[serde(skip_serializing_if = "::std::option::Option::is_none")]
+    pub resolved: ::std::option::Option<ReviewThreadResolved>,
+    pub status: ReviewThreadStatus,
+    pub version: ::std::num::NonZeroU64,
+    #[serde(rename = "versionId")]
+    pub version_id: VersionId,
+}
+///`ReviewThreadCreatedAt`
+#[derive(::serde::Serialize, Clone, Debug, Eq, Hash, Ord, PartialEq, PartialOrd)]
+#[serde(transparent)]
+pub struct ReviewThreadCreatedAt(::std::string::String);
+impl ::std::ops::Deref for ReviewThreadCreatedAt {
+    type Target = ::std::string::String;
+    fn deref(&self) -> &::std::string::String {
+        &self.0
+    }
+}
+impl ::std::convert::From<ReviewThreadCreatedAt> for ::std::string::String {
+    fn from(value: ReviewThreadCreatedAt) -> Self {
+        value.0
+    }
+}
+impl ::std::str::FromStr for ReviewThreadCreatedAt {
+    type Err = self::error::ConversionError;
+    fn from_str(
+        value: &str,
+    ) -> ::std::result::Result<Self, self::error::ConversionError> {
+        static PATTERN: ::std::sync::LazyLock<::regress::Regex> = ::std::sync::LazyLock::new(||
+        {
+            ::regress::Regex::new(
+                    "^(?:(?:\\d\\d[2468][048]|\\d\\d[13579][26]|\\d\\d0[48]|[02468][048]00|[13579][26]00)-02-29|\\d{4}-(?:(?:0[13578]|1[02])-(?:0[1-9]|[12]\\d|3[01])|(?:0[469]|11)-(?:0[1-9]|[12]\\d|30)|(?:02)-(?:0[1-9]|1\\d|2[0-8])))T(?:(?:[01]\\d|2[0-3]):[0-5]\\d:[0-5]\\d(?:\\.\\d+)?(?:Z))$",
+                )
+                .unwrap()
+        });
+        if PATTERN.find(value).is_none() {
+            return Err(
+                "doesn't match pattern \"^(?:(?:\\d\\d[2468][048]|\\d\\d[13579][26]|\\d\\d0[48]|[02468][048]00|[13579][26]00)-02-29|\\d{4}-(?:(?:0[13578]|1[02])-(?:0[1-9]|[12]\\d|3[01])|(?:0[469]|11)-(?:0[1-9]|[12]\\d|30)|(?:02)-(?:0[1-9]|1\\d|2[0-8])))T(?:(?:[01]\\d|2[0-3]):[0-5]\\d:[0-5]\\d(?:\\.\\d+)?(?:Z))$\""
+                    .into(),
+            );
+        }
+        Ok(Self(value.to_string()))
+    }
+}
+impl ::std::convert::TryFrom<&str> for ReviewThreadCreatedAt {
+    type Error = self::error::ConversionError;
+    fn try_from(
+        value: &str,
+    ) -> ::std::result::Result<Self, self::error::ConversionError> {
+        value.parse()
+    }
+}
+impl ::std::convert::TryFrom<::std::string::String> for ReviewThreadCreatedAt {
+    type Error = self::error::ConversionError;
+    fn try_from(
+        value: ::std::string::String,
+    ) -> ::std::result::Result<Self, self::error::ConversionError> {
+        value.parse()
+    }
+}
+impl<'de> ::serde::Deserialize<'de> for ReviewThreadCreatedAt {
+    fn deserialize<D>(deserializer: D) -> ::std::result::Result<Self, D::Error>
+    where
+        D: ::serde::Deserializer<'de>,
+    {
+        ::std::string::String::deserialize(deserializer)?
+            .parse()
+            .map_err(|e: self::error::ConversionError| {
+                <D::Error as ::serde::de::Error>::custom(e.to_string())
+            })
+    }
+}
+///`ReviewThreadCrop`
+#[derive(::serde::Deserialize, ::serde::Serialize, Clone, Debug)]
+pub struct ReviewThreadCrop {
+    #[serde(skip_serializing_if = "::std::option::Option::is_none")]
+    pub height: ::std::option::Option<::std::num::NonZeroU64>,
+    #[serde(skip_serializing_if = "::std::option::Option::is_none")]
+    pub reason: ::std::option::Option<ReviewThreadCropReason>,
+    pub state: ReviewThreadCropState,
+    #[serde(skip_serializing_if = "::std::option::Option::is_none")]
+    pub width: ::std::option::Option<::std::num::NonZeroU64>,
+}
+///`ReviewThreadCropReason`
+#[derive(::serde::Serialize, Clone, Debug, Eq, Hash, Ord, PartialEq, PartialOrd)]
+#[serde(transparent)]
+pub struct ReviewThreadCropReason(::std::string::String);
+impl ::std::ops::Deref for ReviewThreadCropReason {
+    type Target = ::std::string::String;
+    fn deref(&self) -> &::std::string::String {
+        &self.0
+    }
+}
+impl ::std::convert::From<ReviewThreadCropReason> for ::std::string::String {
+    fn from(value: ReviewThreadCropReason) -> Self {
+        value.0
+    }
+}
+impl ::std::str::FromStr for ReviewThreadCropReason {
+    type Err = self::error::ConversionError;
+    fn from_str(
+        value: &str,
+    ) -> ::std::result::Result<Self, self::error::ConversionError> {
+        if value.chars().count() > 1024usize {
+            return Err("longer than 1024 characters".into());
+        }
+        Ok(Self(value.to_string()))
+    }
+}
+impl ::std::convert::TryFrom<&str> for ReviewThreadCropReason {
+    type Error = self::error::ConversionError;
+    fn try_from(
+        value: &str,
+    ) -> ::std::result::Result<Self, self::error::ConversionError> {
+        value.parse()
+    }
+}
+impl ::std::convert::TryFrom<::std::string::String> for ReviewThreadCropReason {
+    type Error = self::error::ConversionError;
+    fn try_from(
+        value: ::std::string::String,
+    ) -> ::std::result::Result<Self, self::error::ConversionError> {
+        value.parse()
+    }
+}
+impl<'de> ::serde::Deserialize<'de> for ReviewThreadCropReason {
+    fn deserialize<D>(deserializer: D) -> ::std::result::Result<Self, D::Error>
+    where
+        D: ::serde::Deserializer<'de>,
+    {
+        ::std::string::String::deserialize(deserializer)?
+            .parse()
+            .map_err(|e: self::error::ConversionError| {
+                <D::Error as ::serde::de::Error>::custom(e.to_string())
+            })
+    }
+}
+///`ReviewThreadCropState`
+#[derive(
+    ::serde::Deserialize,
+    ::serde::Serialize,
+    Clone,
+    Debug,
+    Eq,
+    Hash,
+    Ord,
+    PartialEq,
+    PartialOrd
+)]
+pub enum ReviewThreadCropState {
+    #[serde(rename = "pending")]
+    Pending,
+    #[serde(rename = "captured")]
+    Captured,
+    #[serde(rename = "failed")]
+    Failed,
+    /// A value a newer Mostra sends that this release doesn't know; it
+    /// serializes back unchanged.
+    #[serde(untagged)]
+    Unknown(::std::string::String),
+}
+impl ::std::convert::TryFrom<&str> for ReviewThreadCropState {
+    type Error = self::error::ConversionError;
+    fn try_from(
+        value: &str,
+    ) -> ::std::result::Result<Self, self::error::ConversionError> {
+        value.parse()
+    }
+}
+impl ::std::convert::TryFrom<::std::string::String> for ReviewThreadCropState {
+    type Error = self::error::ConversionError;
+    fn try_from(
+        value: ::std::string::String,
+    ) -> ::std::result::Result<Self, self::error::ConversionError> {
+        value.parse()
+    }
+}
+///`ReviewThreadMessagesItem`
+#[derive(::serde::Deserialize, ::serde::Serialize, Clone, Debug)]
+pub struct ReviewThreadMessagesItem {
+    pub at: ReviewThreadMessagesItemAt,
+    pub author: ReviewPerson,
+    pub id: CommentId,
+    #[serde(default, skip_serializing_if = "::std::vec::Vec::is_empty")]
+    pub mentions: ::std::vec::Vec<ReviewPerson>,
+    pub text: ReviewThreadMessagesItemText,
+}
+///`ReviewThreadMessagesItemAt`
+#[derive(::serde::Serialize, Clone, Debug, Eq, Hash, Ord, PartialEq, PartialOrd)]
+#[serde(transparent)]
+pub struct ReviewThreadMessagesItemAt(::std::string::String);
+impl ::std::ops::Deref for ReviewThreadMessagesItemAt {
+    type Target = ::std::string::String;
+    fn deref(&self) -> &::std::string::String {
+        &self.0
+    }
+}
+impl ::std::convert::From<ReviewThreadMessagesItemAt> for ::std::string::String {
+    fn from(value: ReviewThreadMessagesItemAt) -> Self {
+        value.0
+    }
+}
+impl ::std::str::FromStr for ReviewThreadMessagesItemAt {
+    type Err = self::error::ConversionError;
+    fn from_str(
+        value: &str,
+    ) -> ::std::result::Result<Self, self::error::ConversionError> {
+        static PATTERN: ::std::sync::LazyLock<::regress::Regex> = ::std::sync::LazyLock::new(||
+        {
+            ::regress::Regex::new(
+                    "^(?:(?:\\d\\d[2468][048]|\\d\\d[13579][26]|\\d\\d0[48]|[02468][048]00|[13579][26]00)-02-29|\\d{4}-(?:(?:0[13578]|1[02])-(?:0[1-9]|[12]\\d|3[01])|(?:0[469]|11)-(?:0[1-9]|[12]\\d|30)|(?:02)-(?:0[1-9]|1\\d|2[0-8])))T(?:(?:[01]\\d|2[0-3]):[0-5]\\d:[0-5]\\d(?:\\.\\d+)?(?:Z))$",
+                )
+                .unwrap()
+        });
+        if PATTERN.find(value).is_none() {
+            return Err(
+                "doesn't match pattern \"^(?:(?:\\d\\d[2468][048]|\\d\\d[13579][26]|\\d\\d0[48]|[02468][048]00|[13579][26]00)-02-29|\\d{4}-(?:(?:0[13578]|1[02])-(?:0[1-9]|[12]\\d|3[01])|(?:0[469]|11)-(?:0[1-9]|[12]\\d|30)|(?:02)-(?:0[1-9]|1\\d|2[0-8])))T(?:(?:[01]\\d|2[0-3]):[0-5]\\d:[0-5]\\d(?:\\.\\d+)?(?:Z))$\""
+                    .into(),
+            );
+        }
+        Ok(Self(value.to_string()))
+    }
+}
+impl ::std::convert::TryFrom<&str> for ReviewThreadMessagesItemAt {
+    type Error = self::error::ConversionError;
+    fn try_from(
+        value: &str,
+    ) -> ::std::result::Result<Self, self::error::ConversionError> {
+        value.parse()
+    }
+}
+impl ::std::convert::TryFrom<::std::string::String> for ReviewThreadMessagesItemAt {
+    type Error = self::error::ConversionError;
+    fn try_from(
+        value: ::std::string::String,
+    ) -> ::std::result::Result<Self, self::error::ConversionError> {
+        value.parse()
+    }
+}
+impl<'de> ::serde::Deserialize<'de> for ReviewThreadMessagesItemAt {
+    fn deserialize<D>(deserializer: D) -> ::std::result::Result<Self, D::Error>
+    where
+        D: ::serde::Deserializer<'de>,
+    {
+        ::std::string::String::deserialize(deserializer)?
+            .parse()
+            .map_err(|e: self::error::ConversionError| {
+                <D::Error as ::serde::de::Error>::custom(e.to_string())
+            })
+    }
+}
+///`ReviewThreadMessagesItemText`
+#[derive(::serde::Serialize, Clone, Debug, Eq, Hash, Ord, PartialEq, PartialOrd)]
+#[serde(transparent)]
+pub struct ReviewThreadMessagesItemText(::std::string::String);
+impl ::std::ops::Deref for ReviewThreadMessagesItemText {
+    type Target = ::std::string::String;
+    fn deref(&self) -> &::std::string::String {
+        &self.0
+    }
+}
+impl ::std::convert::From<ReviewThreadMessagesItemText> for ::std::string::String {
+    fn from(value: ReviewThreadMessagesItemText) -> Self {
+        value.0
+    }
+}
+impl ::std::str::FromStr for ReviewThreadMessagesItemText {
+    type Err = self::error::ConversionError;
+    fn from_str(
+        value: &str,
+    ) -> ::std::result::Result<Self, self::error::ConversionError> {
+        if value.chars().count() > 10000usize {
+            return Err("longer than 10000 characters".into());
+        }
+        Ok(Self(value.to_string()))
+    }
+}
+impl ::std::convert::TryFrom<&str> for ReviewThreadMessagesItemText {
+    type Error = self::error::ConversionError;
+    fn try_from(
+        value: &str,
+    ) -> ::std::result::Result<Self, self::error::ConversionError> {
+        value.parse()
+    }
+}
+impl ::std::convert::TryFrom<::std::string::String> for ReviewThreadMessagesItemText {
+    type Error = self::error::ConversionError;
+    fn try_from(
+        value: ::std::string::String,
+    ) -> ::std::result::Result<Self, self::error::ConversionError> {
+        value.parse()
+    }
+}
+impl<'de> ::serde::Deserialize<'de> for ReviewThreadMessagesItemText {
+    fn deserialize<D>(deserializer: D) -> ::std::result::Result<Self, D::Error>
+    where
+        D: ::serde::Deserializer<'de>,
+    {
+        ::std::string::String::deserialize(deserializer)?
+            .parse()
+            .map_err(|e: self::error::ConversionError| {
+                <D::Error as ::serde::de::Error>::custom(e.to_string())
+            })
+    }
+}
+///A new comment thread: the view, client-made IDs, its anchor and first comment.
+#[derive(::serde::Deserialize, ::serde::Serialize, Clone, Debug)]
+pub struct ReviewThreadRequest {
+    pub anchor: ReviewAnchor,
+    #[serde(rename = "commentId")]
+    pub comment_id: CommentId,
+    #[serde(default, skip_serializing_if = "::std::vec::Vec::is_empty")]
+    pub mentions: ::std::vec::Vec<ReviewThreadRequestMentionsItem>,
+    pub text: ReviewThreadRequestText,
+    #[serde(rename = "threadId")]
+    pub thread_id: ThreadId,
+    #[serde(rename = "viewId")]
+    pub view_id: ViewId,
+}
+///`ReviewThreadRequestMentionsItem`
+#[derive(::serde::Deserialize, ::serde::Serialize, Clone, Debug)]
+pub struct ReviewThreadRequestMentionsItem {
+    pub key: ReviewThreadRequestMentionsItemKey,
+}
+///`ReviewThreadRequestMentionsItemKey`
+#[derive(::serde::Serialize, Clone, Debug, Eq, Hash, Ord, PartialEq, PartialOrd)]
+#[serde(transparent)]
+pub struct ReviewThreadRequestMentionsItemKey(::std::string::String);
+impl ::std::ops::Deref for ReviewThreadRequestMentionsItemKey {
+    type Target = ::std::string::String;
+    fn deref(&self) -> &::std::string::String {
+        &self.0
+    }
+}
+impl ::std::convert::From<ReviewThreadRequestMentionsItemKey> for ::std::string::String {
+    fn from(value: ReviewThreadRequestMentionsItemKey) -> Self {
+        value.0
+    }
+}
+impl ::std::str::FromStr for ReviewThreadRequestMentionsItemKey {
+    type Err = self::error::ConversionError;
+    fn from_str(
+        value: &str,
+    ) -> ::std::result::Result<Self, self::error::ConversionError> {
+        if value.chars().count() > 64usize {
+            return Err("longer than 64 characters".into());
+        }
+        if value.chars().count() < 1usize {
+            return Err("shorter than 1 characters".into());
+        }
+        Ok(Self(value.to_string()))
+    }
+}
+impl ::std::convert::TryFrom<&str> for ReviewThreadRequestMentionsItemKey {
+    type Error = self::error::ConversionError;
+    fn try_from(
+        value: &str,
+    ) -> ::std::result::Result<Self, self::error::ConversionError> {
+        value.parse()
+    }
+}
+impl ::std::convert::TryFrom<::std::string::String>
+for ReviewThreadRequestMentionsItemKey {
+    type Error = self::error::ConversionError;
+    fn try_from(
+        value: ::std::string::String,
+    ) -> ::std::result::Result<Self, self::error::ConversionError> {
+        value.parse()
+    }
+}
+impl<'de> ::serde::Deserialize<'de> for ReviewThreadRequestMentionsItemKey {
+    fn deserialize<D>(deserializer: D) -> ::std::result::Result<Self, D::Error>
+    where
+        D: ::serde::Deserializer<'de>,
+    {
+        ::std::string::String::deserialize(deserializer)?
+            .parse()
+            .map_err(|e: self::error::ConversionError| {
+                <D::Error as ::serde::de::Error>::custom(e.to_string())
+            })
+    }
+}
+///`ReviewThreadRequestText`
+#[derive(::serde::Serialize, Clone, Debug, Eq, Hash, Ord, PartialEq, PartialOrd)]
+#[serde(transparent)]
+pub struct ReviewThreadRequestText(::std::string::String);
+impl ::std::ops::Deref for ReviewThreadRequestText {
+    type Target = ::std::string::String;
+    fn deref(&self) -> &::std::string::String {
+        &self.0
+    }
+}
+impl ::std::convert::From<ReviewThreadRequestText> for ::std::string::String {
+    fn from(value: ReviewThreadRequestText) -> Self {
+        value.0
+    }
+}
+impl ::std::str::FromStr for ReviewThreadRequestText {
+    type Err = self::error::ConversionError;
+    fn from_str(
+        value: &str,
+    ) -> ::std::result::Result<Self, self::error::ConversionError> {
+        if value.chars().count() > 10000usize {
+            return Err("longer than 10000 characters".into());
+        }
+        if value.chars().count() < 1usize {
+            return Err("shorter than 1 characters".into());
+        }
+        Ok(Self(value.to_string()))
+    }
+}
+impl ::std::convert::TryFrom<&str> for ReviewThreadRequestText {
+    type Error = self::error::ConversionError;
+    fn try_from(
+        value: &str,
+    ) -> ::std::result::Result<Self, self::error::ConversionError> {
+        value.parse()
+    }
+}
+impl ::std::convert::TryFrom<::std::string::String> for ReviewThreadRequestText {
+    type Error = self::error::ConversionError;
+    fn try_from(
+        value: ::std::string::String,
+    ) -> ::std::result::Result<Self, self::error::ConversionError> {
+        value.parse()
+    }
+}
+impl<'de> ::serde::Deserialize<'de> for ReviewThreadRequestText {
+    fn deserialize<D>(deserializer: D) -> ::std::result::Result<Self, D::Error>
+    where
+        D: ::serde::Deserializer<'de>,
+    {
+        ::std::string::String::deserialize(deserializer)?
+            .parse()
+            .map_err(|e: self::error::ConversionError| {
+                <D::Error as ::serde::de::Error>::custom(e.to_string())
+            })
+    }
+}
+///`ReviewThreadResolved`
+#[derive(::serde::Deserialize, ::serde::Serialize, Clone, Debug)]
+pub struct ReviewThreadResolved {
+    pub at: ReviewThreadResolvedAt,
+    pub by: ReviewPerson,
+}
+///`ReviewThreadResolvedAt`
+#[derive(::serde::Serialize, Clone, Debug, Eq, Hash, Ord, PartialEq, PartialOrd)]
+#[serde(transparent)]
+pub struct ReviewThreadResolvedAt(::std::string::String);
+impl ::std::ops::Deref for ReviewThreadResolvedAt {
+    type Target = ::std::string::String;
+    fn deref(&self) -> &::std::string::String {
+        &self.0
+    }
+}
+impl ::std::convert::From<ReviewThreadResolvedAt> for ::std::string::String {
+    fn from(value: ReviewThreadResolvedAt) -> Self {
+        value.0
+    }
+}
+impl ::std::str::FromStr for ReviewThreadResolvedAt {
+    type Err = self::error::ConversionError;
+    fn from_str(
+        value: &str,
+    ) -> ::std::result::Result<Self, self::error::ConversionError> {
+        static PATTERN: ::std::sync::LazyLock<::regress::Regex> = ::std::sync::LazyLock::new(||
+        {
+            ::regress::Regex::new(
+                    "^(?:(?:\\d\\d[2468][048]|\\d\\d[13579][26]|\\d\\d0[48]|[02468][048]00|[13579][26]00)-02-29|\\d{4}-(?:(?:0[13578]|1[02])-(?:0[1-9]|[12]\\d|3[01])|(?:0[469]|11)-(?:0[1-9]|[12]\\d|30)|(?:02)-(?:0[1-9]|1\\d|2[0-8])))T(?:(?:[01]\\d|2[0-3]):[0-5]\\d:[0-5]\\d(?:\\.\\d+)?(?:Z))$",
+                )
+                .unwrap()
+        });
+        if PATTERN.find(value).is_none() {
+            return Err(
+                "doesn't match pattern \"^(?:(?:\\d\\d[2468][048]|\\d\\d[13579][26]|\\d\\d0[48]|[02468][048]00|[13579][26]00)-02-29|\\d{4}-(?:(?:0[13578]|1[02])-(?:0[1-9]|[12]\\d|3[01])|(?:0[469]|11)-(?:0[1-9]|[12]\\d|30)|(?:02)-(?:0[1-9]|1\\d|2[0-8])))T(?:(?:[01]\\d|2[0-3]):[0-5]\\d:[0-5]\\d(?:\\.\\d+)?(?:Z))$\""
+                    .into(),
+            );
+        }
+        Ok(Self(value.to_string()))
+    }
+}
+impl ::std::convert::TryFrom<&str> for ReviewThreadResolvedAt {
+    type Error = self::error::ConversionError;
+    fn try_from(
+        value: &str,
+    ) -> ::std::result::Result<Self, self::error::ConversionError> {
+        value.parse()
+    }
+}
+impl ::std::convert::TryFrom<::std::string::String> for ReviewThreadResolvedAt {
+    type Error = self::error::ConversionError;
+    fn try_from(
+        value: ::std::string::String,
+    ) -> ::std::result::Result<Self, self::error::ConversionError> {
+        value.parse()
+    }
+}
+impl<'de> ::serde::Deserialize<'de> for ReviewThreadResolvedAt {
+    fn deserialize<D>(deserializer: D) -> ::std::result::Result<Self, D::Error>
+    where
+        D: ::serde::Deserializer<'de>,
+    {
+        ::std::string::String::deserialize(deserializer)?
+            .parse()
+            .map_err(|e: self::error::ConversionError| {
+                <D::Error as ::serde::de::Error>::custom(e.to_string())
+            })
+    }
+}
+///`ReviewThreadStatus`
+#[derive(
+    ::serde::Deserialize,
+    ::serde::Serialize,
+    Clone,
+    Debug,
+    Eq,
+    Hash,
+    Ord,
+    PartialEq,
+    PartialOrd
+)]
+pub enum ReviewThreadStatus {
+    #[serde(rename = "open")]
+    Open,
+    #[serde(rename = "resolved")]
+    Resolved,
+    /// A value a newer Mostra sends that this release doesn't know; it
+    /// serializes back unchanged.
+    #[serde(untagged)]
+    Unknown(::std::string::String),
+}
+impl ::std::convert::TryFrom<&str> for ReviewThreadStatus {
+    type Error = self::error::ConversionError;
+    fn try_from(
+        value: &str,
+    ) -> ::std::result::Result<Self, self::error::ConversionError> {
+        value.parse()
+    }
+}
+impl ::std::convert::TryFrom<::std::string::String> for ReviewThreadStatus {
+    type Error = self::error::ConversionError;
+    fn try_from(
+        value: ::std::string::String,
+    ) -> ::std::result::Result<Self, self::error::ConversionError> {
+        value.parse()
+    }
+}
+///The threads a page may see, the people it may mention, and whether it may write.
+#[derive(::serde::Deserialize, ::serde::Serialize, Clone, Debug)]
+pub struct ReviewThreads {
+    pub people: ::std::vec::Vec<ReviewPerson>,
+    pub threads: ::std::vec::Vec<ReviewThread>,
+    pub writable: bool,
 }
 ///Protocol revision: a calendar date in YYYY-MM-DD form.
 #[derive(::serde::Serialize, Clone, Debug, Eq, Hash, Ord, PartialEq, PartialOrd)]
@@ -26393,6 +28653,38 @@ impl ::std::str::FromStr for RespondentStatus {
         )
     }
 }
+impl ResultCommentCropState {
+    /// The value as it travels on the wire.
+    #[must_use]
+    pub fn as_str(&self) -> &str {
+        match self {
+            Self::Captured => "captured",
+            Self::Pending => "pending",
+            Self::Failed => "failed",
+            Self::Unknown(value) => value.as_str(),
+        }
+    }
+}
+impl ::std::fmt::Display for ResultCommentCropState {
+    fn fmt(&self, f: &mut ::std::fmt::Formatter<'_>) -> ::std::fmt::Result {
+        f.write_str(self.as_str())
+    }
+}
+impl ::std::str::FromStr for ResultCommentCropState {
+    type Err = self::error::ConversionError;
+    fn from_str(
+        value: &str,
+    ) -> ::std::result::Result<Self, self::error::ConversionError> {
+        Ok(
+            match value {
+                "captured" => Self::Captured,
+                "pending" => Self::Pending,
+                "failed" => Self::Failed,
+                other => Self::Unknown(other.to_string()),
+            },
+        )
+    }
+}
 impl ResultCommentStatus {
     /// The value as it travels on the wire.
     #[must_use]
@@ -26572,6 +28864,196 @@ impl ::std::str::FromStr for ResultsSubmissionDelivery {
                 "delivered" => Self::Delivered,
                 "rejected" => Self::Rejected,
                 "undeliverable" => Self::Undeliverable,
+                other => Self::Unknown(other.to_string()),
+            },
+        )
+    }
+}
+impl ReviewExportParamsFormat {
+    /// The value as it travels on the wire.
+    #[must_use]
+    pub fn as_str(&self) -> &str {
+        match self {
+            Self::Md => "md",
+            Self::Json => "json",
+            Self::Unknown(value) => value.as_str(),
+        }
+    }
+}
+impl ::std::fmt::Display for ReviewExportParamsFormat {
+    fn fmt(&self, f: &mut ::std::fmt::Formatter<'_>) -> ::std::fmt::Result {
+        f.write_str(self.as_str())
+    }
+}
+impl ::std::str::FromStr for ReviewExportParamsFormat {
+    type Err = self::error::ConversionError;
+    fn from_str(
+        value: &str,
+    ) -> ::std::result::Result<Self, self::error::ConversionError> {
+        Ok(
+            match value {
+                "md" => Self::Md,
+                "json" => Self::Json,
+                other => Self::Unknown(other.to_string()),
+            },
+        )
+    }
+}
+impl ReviewExportResultFormat {
+    /// The value as it travels on the wire.
+    #[must_use]
+    pub fn as_str(&self) -> &str {
+        match self {
+            Self::Md => "md",
+            Self::Json => "json",
+            Self::Unknown(value) => value.as_str(),
+        }
+    }
+}
+impl ::std::fmt::Display for ReviewExportResultFormat {
+    fn fmt(&self, f: &mut ::std::fmt::Formatter<'_>) -> ::std::fmt::Result {
+        f.write_str(self.as_str())
+    }
+}
+impl ::std::str::FromStr for ReviewExportResultFormat {
+    type Err = self::error::ConversionError;
+    fn from_str(
+        value: &str,
+    ) -> ::std::result::Result<Self, self::error::ConversionError> {
+        Ok(
+            match value {
+                "md" => Self::Md,
+                "json" => Self::Json,
+                other => Self::Unknown(other.to_string()),
+            },
+        )
+    }
+}
+impl ReviewPersonKind {
+    /// The value as it travels on the wire.
+    #[must_use]
+    pub fn as_str(&self) -> &str {
+        match self {
+            Self::Local => "local",
+            Self::Tailnet => "tailnet",
+            Self::Token => "token",
+            Self::Host => "host",
+            Self::Account => "account",
+            Self::Anonymous => "anonymous",
+            Self::Unknown(value) => value.as_str(),
+        }
+    }
+}
+impl ::std::fmt::Display for ReviewPersonKind {
+    fn fmt(&self, f: &mut ::std::fmt::Formatter<'_>) -> ::std::fmt::Result {
+        f.write_str(self.as_str())
+    }
+}
+impl ::std::str::FromStr for ReviewPersonKind {
+    type Err = self::error::ConversionError;
+    fn from_str(
+        value: &str,
+    ) -> ::std::result::Result<Self, self::error::ConversionError> {
+        Ok(
+            match value {
+                "local" => Self::Local,
+                "tailnet" => Self::Tailnet,
+                "token" => Self::Token,
+                "host" => Self::Host,
+                "account" => Self::Account,
+                "anonymous" => Self::Anonymous,
+                other => Self::Unknown(other.to_string()),
+            },
+        )
+    }
+}
+impl ReviewStatusRequestStatus {
+    /// The value as it travels on the wire.
+    #[must_use]
+    pub fn as_str(&self) -> &str {
+        match self {
+            Self::Open => "open",
+            Self::Resolved => "resolved",
+            Self::Unknown(value) => value.as_str(),
+        }
+    }
+}
+impl ::std::fmt::Display for ReviewStatusRequestStatus {
+    fn fmt(&self, f: &mut ::std::fmt::Formatter<'_>) -> ::std::fmt::Result {
+        f.write_str(self.as_str())
+    }
+}
+impl ::std::str::FromStr for ReviewStatusRequestStatus {
+    type Err = self::error::ConversionError;
+    fn from_str(
+        value: &str,
+    ) -> ::std::result::Result<Self, self::error::ConversionError> {
+        Ok(
+            match value {
+                "open" => Self::Open,
+                "resolved" => Self::Resolved,
+                other => Self::Unknown(other.to_string()),
+            },
+        )
+    }
+}
+impl ReviewThreadCropState {
+    /// The value as it travels on the wire.
+    #[must_use]
+    pub fn as_str(&self) -> &str {
+        match self {
+            Self::Pending => "pending",
+            Self::Captured => "captured",
+            Self::Failed => "failed",
+            Self::Unknown(value) => value.as_str(),
+        }
+    }
+}
+impl ::std::fmt::Display for ReviewThreadCropState {
+    fn fmt(&self, f: &mut ::std::fmt::Formatter<'_>) -> ::std::fmt::Result {
+        f.write_str(self.as_str())
+    }
+}
+impl ::std::str::FromStr for ReviewThreadCropState {
+    type Err = self::error::ConversionError;
+    fn from_str(
+        value: &str,
+    ) -> ::std::result::Result<Self, self::error::ConversionError> {
+        Ok(
+            match value {
+                "pending" => Self::Pending,
+                "captured" => Self::Captured,
+                "failed" => Self::Failed,
+                other => Self::Unknown(other.to_string()),
+            },
+        )
+    }
+}
+impl ReviewThreadStatus {
+    /// The value as it travels on the wire.
+    #[must_use]
+    pub fn as_str(&self) -> &str {
+        match self {
+            Self::Open => "open",
+            Self::Resolved => "resolved",
+            Self::Unknown(value) => value.as_str(),
+        }
+    }
+}
+impl ::std::fmt::Display for ReviewThreadStatus {
+    fn fmt(&self, f: &mut ::std::fmt::Formatter<'_>) -> ::std::fmt::Result {
+        f.write_str(self.as_str())
+    }
+}
+impl ::std::str::FromStr for ReviewThreadStatus {
+    type Err = self::error::ConversionError;
+    fn from_str(
+        value: &str,
+    ) -> ::std::result::Result<Self, self::error::ConversionError> {
+        Ok(
+            match value {
+                "open" => Self::Open,
+                "resolved" => Self::Resolved,
                 other => Self::Unknown(other.to_string()),
             },
         )

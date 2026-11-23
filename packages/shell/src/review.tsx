@@ -386,7 +386,6 @@ export function ReviewLayer(props: {
       data-mostra-review-layer={review.mode ? "commenting" : "pins"}
     >
       {review.mode && (
-        // biome-ignore lint/a11y/noStaticElementInteractions: a surface for pointing; the keyboard way is the panel's.
         <div
           className="mostra-review-surface"
           data-mostra-review-surface=""
@@ -839,12 +838,17 @@ export function CommentButton(props: { readonly review: Review }): ReactElement 
   const { review } = props;
   const count = review.state.threads.filter((thread) => thread.status === "open").length;
   const on = review.mode || review.panel;
+  const words = review.mode ? REVIEW_WORDS.pointHint : REVIEW_WORDS.comment;
+  // On a phone only the icon and the count show: the name is the label, for every reader.
+  const name = count > 0 ? `${words}, ${REVIEW_WORDS.countLabel(count)}` : words;
   return (
     <button
       type="button"
       className="mostra-pill mostra-comment-button"
       data-mostra-comment-button={review.mode ? "commenting" : on ? "open" : "closed"}
       aria-pressed={on}
+      aria-label={name}
+      title={name}
       onClick={() => {
         if (review.mode) {
           review.setMode(false);
@@ -856,16 +860,13 @@ export function CommentButton(props: { readonly review: Review }): ReactElement 
       }}
     >
       <CommentIcon />
-      <span className="mostra-button-text">
-        {review.mode ? REVIEW_WORDS.pointHint : REVIEW_WORDS.comment}
+      <span className="mostra-button-text" aria-hidden="true">
+        {words}
       </span>
       {count > 0 && (
-        <>
-          <span className="mostra-count" aria-hidden="true">
-            {count}
-          </span>
-          <span className="mostra-sr">{REVIEW_WORDS.countLabel(count)}</span>
-        </>
+        <span className="mostra-count" aria-hidden="true">
+          {count}
+        </span>
       )}
     </button>
   );

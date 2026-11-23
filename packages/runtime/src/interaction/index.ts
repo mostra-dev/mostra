@@ -179,8 +179,6 @@ export {
   type CropOutcome,
   type CropPaths,
   commentMarkdown,
-  cropRect,
-  relativeCrop,
   type ThreadChange,
 } from "./review.ts";
 export { peerKey } from "./roster.ts";
@@ -1152,10 +1150,14 @@ export function createInteraction(options: InteractionOptions): Interaction {
           people: [...mentionable(db, review).values()].map((id) =>
             personFor(db, page.artifactId, id, self),
           ),
-          writable: reviewWritable(db, {
-            ...review,
-            ...(page.scopes ? { scopes: page.scopes } : {}),
-          }),
+          writable: reviewWritable(
+            db,
+            {
+              ...review,
+              ...(page.scopes ? { scopes: page.scopes } : {}),
+            },
+            assertDraftOpen,
+          ),
         };
       });
     },
@@ -1164,7 +1166,7 @@ export function createInteraction(options: InteractionOptions): Interaction {
       const outcome = asPage(() =>
         ledger.write((db) => {
           const review = reviewPageOf(db, page);
-          const made = createThread(db, review, request);
+          const made = createThread(db, review, request, assertDraftOpen);
           return { ...made, thread: threadForPage(db, review, made.row) };
         }),
       );
@@ -1176,7 +1178,7 @@ export function createInteraction(options: InteractionOptions): Interaction {
       const outcome = asPage(() =>
         ledger.write((db) => {
           const review = reviewPageOf(db, page);
-          const made = reply(db, review, threadId, request);
+          const made = reply(db, review, threadId, request, assertDraftOpen);
           return { ...made, thread: threadForPage(db, review, made.row) };
         }),
       );
@@ -1188,7 +1190,7 @@ export function createInteraction(options: InteractionOptions): Interaction {
       const outcome = asPage(() =>
         ledger.write((db) => {
           const review = reviewPageOf(db, page);
-          const made = setStatus(db, review, threadId, request);
+          const made = setStatus(db, review, threadId, request, assertDraftOpen);
           return { ...made, thread: threadForPage(db, review, made.row) };
         }),
       );

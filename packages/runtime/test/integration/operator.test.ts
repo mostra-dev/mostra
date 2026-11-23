@@ -390,7 +390,7 @@ describe("operator ports (HO-09)", () => {
       new RegExp(`^[0-9a-hjkmnp-tv-z]{26}\\.pages\\.acme\\.localhost:${port}$`),
     );
     expect(opened.page.header("content-security-policy")).toContain(
-      `frame-ancestors http://${outside}`,
+      `frame-ancestors 'self' http://${outside}`,
     );
     // The operator's domain serves only the routes of the home it was given for, and a host it
     // answers for is bound to that home forever.

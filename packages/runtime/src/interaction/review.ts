@@ -10,7 +10,6 @@
  */
 import {
   type Actor,
-  type AnchorRect,
   type AnchorSelector,
   type CapabilityScope,
   CommentId,
@@ -29,9 +28,8 @@ import {
 } from "@mostra/protocol";
 import type { LedgerDb } from "../ledger/index.ts";
 import { appendEvent } from "./events.ts";
-import { code, quoted } from "./results.ts";
+import { code, quoted } from "./markdown.ts";
 import { peerKey, teamVisibility } from "./roster.ts";
-import { assertDraftOpen } from "./submissions.ts";
 import { viewer, viewFor } from "./viewers.ts";
 
 /** The most threads one viewer keeps on one artifact. */
@@ -83,6 +81,12 @@ export interface ReviewPage {
   /** Whether the viewer is the artifact's owner, who sees every thread (CO-07). */
   readonly owner: boolean;
 }
+
+/**
+ * Refuses a write to a draft a submission closed (`MOSTRA_SUBMIT_ALREADY`): the interaction core's
+ * `assertDraftOpen`, handed in so this module needs nothing of submissions'.
+ */
+export type DraftGuard = (db: LedgerDb, artifactId: string, viewerId: string) => void;
 
 function refused(code: KnownDiagnosticCode, message: string): RpcError {
   return new RpcError(createDiagnostic(code, { message }));
@@ -324,6 +328,7 @@ export function createThread(
     readonly text: string;
     readonly mentions?: readonly { readonly key: string }[];
   },
+  open: DraftGuard,
 ): { readonly row: ThreadRow; readonly created: boolean } {
   const existing = db.get<ThreadRow>("SELECT * FROM thread WHERE id = ?", input.threadId);
   if (existing) {
@@ -344,7 +349,7 @@ export function createThread(
     );
   }
   const view = viewFor(db, input.viewId, page.artifactId, page.viewerId, page.tokenId);
-  assertDraftOpen(db, page.artifactId, page.viewerId);
+  open(db, page.artifactId, page.viewerId);
   const anchorJson = JSON.stringify(input.anchor);
   if (anchorJson.length > ANCHOR_JSON_MAX) {
     throw refused(
@@ -419,6 +424,7 @@ export function reply(
     readonly text: string;
     readonly mentions?: readonly { readonly key: string }[];
   },
+  open: DraftGuard,
 ): { readonly row: ThreadRow; readonly created: boolean } {
   const row = threadRow(db, page.artifactId, threadId);
   if (!visible(db, page, row, seesEveryone(db, page))) {
@@ -442,7 +448,7 @@ export function reply(
     );
   }
   viewFor(db, input.viewId, page.artifactId, page.viewerId, page.tokenId);
-  assertDraftOpen(db, page.artifactId, page.viewerId);
+  open(db, page.artifactId, page.viewerId);
   const count =
     db.get<{ n: number }>("SELECT COUNT(*) AS n FROM comment WHERE thread_id = ?", threadId)?.n ??
     0;
@@ -479,6 +485,7 @@ export function setStatus(
   page: ReviewPage,
   threadId: string,
   input: { readonly viewId: string; readonly status: "open" | "resolved" },
+  open: DraftGuard,
 ): { readonly row: ThreadRow; readonly changed: boolean } {
   const row = threadRow(db, page.artifactId, threadId);
   if (!visible(db, page, row, seesEveryone(db, page))) {
@@ -489,7 +496,7 @@ export function setStatus(
   }
   if (row.status === input.status) return { row, changed: false };
   viewFor(db, input.viewId, page.artifactId, page.viewerId, page.tokenId);
-  assertDraftOpen(db, page.artifactId, page.viewerId);
+  open(db, page.artifactId, page.viewerId);
   const at = new Date().toISOString();
   db.run(
     "UPDATE thread SET status = ?, status_at = ?, status_by = ? WHERE id = ?",
@@ -685,24 +692,6 @@ export function artifactComments(
     .map((row) => resultComment(snapshotThread(db, row), crops));
 }
 
-/** The crop's rectangle in the page: the anchor's box with a margin, inside the document. */
-export function cropRect(anchor: ReviewAnchor): AnchorRect | undefined {
-  const rect = anchor.rect;
-  if (!rect) return undefined;
-  const margin = 24;
-  const width = Math.min(Math.max(rect.width + margin * 2, 240), 1280);
-  const height = Math.min(Math.max(rect.height + margin * 2, 140), 900);
-  const x = Math.max(0, rect.x + rect.width / 2 - width / 2);
-  const y = Math.max(0, rect.y + rect.height / 2 - height / 2);
-  return { x, y, width, height };
-}
-
-/** New IDs, for hosts and tests. */
-export const newThreadIds = (): { threadId: string; commentId: string } => ({
-  threadId: ThreadId.create(),
-  commentId: CommentId.create(),
-});
-
 /** Where a crop's file is for a reader: relative to the home by default (`blobs/<sha256>.png`). */
 export type CropPaths = (sha256: string) => string;
 
@@ -871,10 +860,11 @@ export function pendingCropsOf(db: LedgerDb, artifactId: string, viewerId: strin
 export function reviewWritable(
   db: LedgerDb,
   page: ReviewPage & { readonly scopes?: readonly CapabilityScope[] },
+  open: DraftGuard,
 ): boolean {
   if (page.scopes !== undefined && !scopeAllows(page.scopes, "review")) return false;
   try {
-    assertDraftOpen(db, page.artifactId, page.viewerId);
+    open(db, page.artifactId, page.viewerId);
     return true;
   } catch {
     return false;
