@@ -270,6 +270,15 @@ const SEEDS: readonly Seed[] = [
     e2e: true,
   },
   {
+    requirement: "RV-02",
+    name: "a crop is always light",
+    file: "../verify/src/runner.ts",
+    from: '    colorScheme: request.anchor.appearance ?? "light",',
+    to: '    colorScheme: "light",',
+    check: e2e("review, dark, 1280 px wide"),
+    e2e: true,
+  },
+  {
     requirement: "HO-09",
     name: "#167: a shell session's every performance report is counted",
     file: "src/server/hosted-pages.ts",

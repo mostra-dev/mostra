@@ -320,6 +320,9 @@ async function capturePage(
     viewport: { width: request.viewport.width, height: request.viewport.height },
     deviceScaleFactor: 1,
     reducedMotion: "reduce",
+    // Light or dark as the viewer saw it: the shell follows the device's setting, and tells the
+    // page (D181 item 9).
+    colorScheme: request.anchor.appearance ?? "light",
   });
   created.context = context;
   try {

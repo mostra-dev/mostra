@@ -7998,6 +7998,13 @@
             "dpr"
           ]
         },
+        "appearance": {
+          "type": "string",
+          "enum": [
+            "light",
+            "dark"
+          ]
+        },
         "scroll": {
           "type": "object",
           "properties": {

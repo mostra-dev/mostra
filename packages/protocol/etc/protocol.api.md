@@ -3687,6 +3687,7 @@ export const REVIEW_TRACK_MAX = 2e3;
 
 // @public
 export interface ReviewAnchor {
+    readonly appearance?: "light" | "dark";
     readonly candidateId?: string;
     readonly frames?: readonly {
         readonly selector: string;

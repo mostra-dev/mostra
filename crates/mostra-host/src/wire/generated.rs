@@ -18908,6 +18908,8 @@ impl<'de> ::serde::Deserialize<'de> for ResultsSubmissionDigest {
 ///Where a comment points: provider data, data-review-id, W3C selectors, coordinates with viewport, page and candidate.
 #[derive(::serde::Deserialize, ::serde::Serialize, Clone, Debug, Default)]
 pub struct ReviewAnchor {
+    #[serde(skip_serializing_if = "::std::option::Option::is_none")]
+    pub appearance: ::std::option::Option<ReviewAnchorAppearance>,
     #[serde(
         rename = "candidateId",
         skip_serializing_if = "::std::option::Option::is_none"
@@ -18942,6 +18944,44 @@ pub struct ReviewAnchor {
     pub time: ::std::option::Option<f64>,
     #[serde(skip_serializing_if = "::std::option::Option::is_none")]
     pub viewport: ::std::option::Option<ReviewAnchorViewport>,
+}
+///`ReviewAnchorAppearance`
+#[derive(
+    ::serde::Deserialize,
+    ::serde::Serialize,
+    Clone,
+    Debug,
+    Eq,
+    Hash,
+    Ord,
+    PartialEq,
+    PartialOrd
+)]
+pub enum ReviewAnchorAppearance {
+    #[serde(rename = "light")]
+    Light,
+    #[serde(rename = "dark")]
+    Dark,
+    /// A value a newer Mostra sends that this release doesn't know; it
+    /// serializes back unchanged.
+    #[serde(untagged)]
+    Unknown(::std::string::String),
+}
+impl ::std::convert::TryFrom<&str> for ReviewAnchorAppearance {
+    type Error = self::error::ConversionError;
+    fn try_from(
+        value: &str,
+    ) -> ::std::result::Result<Self, self::error::ConversionError> {
+        value.parse()
+    }
+}
+impl ::std::convert::TryFrom<::std::string::String> for ReviewAnchorAppearance {
+    type Error = self::error::ConversionError;
+    fn try_from(
+        value: ::std::string::String,
+    ) -> ::std::result::Result<Self, self::error::ConversionError> {
+        value.parse()
+    }
 }
 ///`ReviewAnchorCandidateId`
 #[derive(::serde::Serialize, Clone, Debug, Eq, Hash, Ord, PartialEq, PartialOrd)]
@@ -28870,6 +28910,36 @@ impl ::std::str::FromStr for ResultsSubmissionDelivery {
                 "delivered" => Self::Delivered,
                 "rejected" => Self::Rejected,
                 "undeliverable" => Self::Undeliverable,
+                other => Self::Unknown(other.to_string()),
+            },
+        )
+    }
+}
+impl ReviewAnchorAppearance {
+    /// The value as it travels on the wire.
+    #[must_use]
+    pub fn as_str(&self) -> &str {
+        match self {
+            Self::Light => "light",
+            Self::Dark => "dark",
+            Self::Unknown(value) => value.as_str(),
+        }
+    }
+}
+impl ::std::fmt::Display for ReviewAnchorAppearance {
+    fn fmt(&self, f: &mut ::std::fmt::Formatter<'_>) -> ::std::fmt::Result {
+        f.write_str(self.as_str())
+    }
+}
+impl ::std::str::FromStr for ReviewAnchorAppearance {
+    type Err = self::error::ConversionError;
+    fn from_str(
+        value: &str,
+    ) -> ::std::result::Result<Self, self::error::ConversionError> {
+        Ok(
+            match value {
+                "light" => Self::Light,
+                "dark" => Self::Dark,
                 other => Self::Unknown(other.to_string()),
             },
         )

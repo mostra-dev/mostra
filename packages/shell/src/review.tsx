@@ -39,6 +39,7 @@ import {
   ShellError,
   setThreadStatus,
 } from "./api.ts";
+import { currentAppearance } from "./appearance.ts";
 import { CloseIcon, CommentIcon } from "./icons.tsx";
 import { REVIEW_WORDS, submitProblem } from "./words.ts";
 
@@ -228,10 +229,12 @@ export function useReview(options: ReviewOptions): Review {
           viewId: latest.current.viewId,
           threadId: ThreadId.create(),
           commentId: CommentId.create(),
-          anchor:
-            page !== undefined && draft.anchor.page === undefined
-              ? { ...draft.anchor, page }
-              : draft.anchor,
+          // The crop shows the page as the viewer saw it, light or dark.
+          anchor: {
+            ...draft.anchor,
+            ...(page !== undefined && draft.anchor.page === undefined ? { page } : {}),
+            appearance: currentAppearance(),
+          },
           text,
           ...(mentions.length > 0 ? { mentions } : {}),
         });

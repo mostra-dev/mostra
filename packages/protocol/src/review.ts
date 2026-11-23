@@ -99,6 +99,8 @@ export interface ReviewAnchor {
   readonly point?: { readonly x: number; readonly y: number };
   /** The frame's viewport when the comment was made. */
   readonly viewport?: { readonly width: number; readonly height: number; readonly dpr: number };
+  /** Whether the viewer saw the page light or dark, so its crop shows it as they saw it. */
+  readonly appearance?: "light" | "dark";
   /** How far the page was scrolled then. */
   readonly scroll?: { readonly x: number; readonly y: number };
   /** The page of a `pages/` artifact (D57). */
@@ -140,6 +142,7 @@ export const ReviewAnchor: z.ZodType<ReviewAnchor> = z
     viewport: z
       .object({ width: Size, height: Size, dpr: z.number().min(0.1).max(16) })
       .exactOptional(),
+    appearance: z.enum(["light", "dark"]).exactOptional(),
     scroll: z.object({ x: Finite, y: Finite }).exactOptional(),
     page: z.string().min(1).max(2048).exactOptional(),
     reviewSetId: z.string().regex(REVIEW_SET_ID_PATTERN).exactOptional(),

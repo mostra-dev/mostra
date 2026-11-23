@@ -7,10 +7,11 @@
  * With `MOSTRA_E2E_SCREENS` set, each state is photographed into that directory, for Mirza's
  * review of the design (D68).
  */
-import { mkdirSync } from "node:fs";
+import { mkdirSync, readFileSync } from "node:fs";
 import { join } from "node:path";
 import { type Browser, expect, type Locator, test } from "@playwright/test";
 import axe from "axe-core";
+import { PNG } from "pngjs";
 import { linkFor, openInShell, publishOwn, viewerName } from "../support/client.ts";
 import { Client, readRun } from "../support/mostra.ts";
 
@@ -171,6 +172,19 @@ for (const mode of MODES) {
             messages: [expect.anything(), expect.anything()],
           }),
         ]);
+        // The crop shows the page as the viewer saw it: light or dark.
+        const crop = PNG.sync.read(readFileSync(results.comments[0]?.crop.path ?? ""));
+        let light = 0;
+        for (let index = 0; index < crop.data.length; index += 4) {
+          const luma =
+            0.2126 * (crop.data[index] ?? 0) +
+            0.7152 * (crop.data[index + 1] ?? 0) +
+            0.0722 * (crop.data[index + 2] ?? 0);
+          if (luma > 128) light += 1;
+        }
+        const share = light / (crop.width * crop.height);
+        if (mode === "dark") expect(share).toBeLessThan(0.5);
+        else expect(share).toBeGreaterThan(0.5);
         expect(findings).toEqual([]);
       } finally {
         client.close();
