@@ -22,7 +22,6 @@ import {
   CLAUDE_PLUGIN,
   CODEX_MARKETPLACE,
   DIRECTORY_MCP,
-  DIRECTORY_PLUGIN,
   GEMINI_EXTENSION,
 } from "./manifests.ts";
 
@@ -571,7 +570,8 @@ function parseJson(bytes: Buffer | undefined): Record<string, unknown> | undefin
 
 /** Closed shapes, compiled once. */
 const shapes = new Ajv2020({ allErrors: true, strict: false });
-const directoryPlugin = shapes.compile(DIRECTORY_PLUGIN);
+// The folder carries the root's manifest: the same closed shape (MT-07, M98).
+const directoryPlugin = shapes.compile(CLAUDE_PLUGIN);
 const directoryMcp = shapes.compile(DIRECTORY_MCP);
 const directoryMarketplace = shapes.compile(CLAUDE_MARKETPLACE);
 

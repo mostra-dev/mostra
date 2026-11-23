@@ -186,14 +186,6 @@ export const CODEX_MARKETPLACE = {
 } as const;
 
 /**
- * The directory folder's `.claude-plugin/plugin.json` (MT-07): the root's own manifest, the same
- * closed shape (the listing fields Claude Code's manifest reference documents, read 2026-11-22).
- * The directory's report on the root's 0.18.0 named `documentationUrl`, `supportUrl` and
- * `privacyPolicyUrl` as fields it reads for the listing, "no action needed" (VERIFIED_FACTS, MT-07).
- */
-export const DIRECTORY_PLUGIN = CLAUDE_PLUGIN;
-
-/**
  * The directory folder's `.mcp.json`: remote servers only, each by HTTPS URL. "MCP servers that
  * Claude Code connects to at a public URL can stay"; a local (stdio) one is taken only from a
  * verified organization (the directory's report on 0.18.0, VERIFIED_FACTS, MT-07).
