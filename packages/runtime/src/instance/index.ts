@@ -126,6 +126,7 @@ import {
 import { openRegistry } from "../registry/index.ts";
 import {
   type Capture,
+  type CaptureJob,
   CROP_WAIT_MS,
   captureWith,
   createCropper,
@@ -559,8 +560,15 @@ async function assemble(home: OwnedHome, options: StartInstanceOptions): Promise
   // The review layer (WP-20): crops captured after each thread commits, by the host's `capture`
   // port or by the verify runner's browser (HO-11), kept in the home's `blobs/`.
   const cropsScratch = join(home.path, "cache", "crops");
-  const defaultCapture: Capture = async (job) => {
-    const answers = interaction.viewerAnswers(job.artifactId, job.viewerId);
+  /** Renders a crop of this home's version from the answers given, by the verify runner. */
+  const renderCrop = async (job: {
+    readonly artifactId: string;
+    readonly versionId: string;
+    readonly threadId: string;
+    readonly anchor: CaptureJob["anchor"];
+    readonly draft: Readonly<Record<string, unknown>>;
+    readonly state: Readonly<Record<string, unknown>>;
+  }): Promise<{ readonly png: Uint8Array; readonly width: number; readonly height: number }> => {
     await mkdir(cropsScratch, { recursive: true, mode: 0o700 });
     const out = join(cropsScratch, `${job.threadId}-${Date.now()}.png`);
     try {
@@ -573,54 +581,51 @@ async function assemble(home: OwnedHome, options: StartInstanceOptions): Promise
           height: Math.round(Math.min(Math.max(job.anchor.viewport?.height ?? 800, 320), 2560)),
         },
         anchor: job.anchor,
-        draft: answers.draft,
-        state: answers.state,
+        draft: job.draft,
+        state: job.state,
         out,
       });
-      return {
-        png: await readFile(cropped.path),
-        width: cropped.width,
-        height: cropped.height,
-        source: "default",
-      };
+      return { png: await readFile(cropped.path), width: cropped.width, height: cropped.height };
     } finally {
       await rm(out, { force: true }).catch(() => undefined);
     }
   };
+  const defaultCapture: Capture = async (job) => ({
+    ...(await renderCrop({ ...job, ...interaction.viewerAnswers(job.artifactId, job.viewerId) })),
+    source: "default",
+  });
+  /** The host's `capture` port, when one is registered (HO-11). */
+  const hostCapture = (): Capture | undefined => {
+    const registrant = server.registrants("capture").at(-1);
+    if (!registrant) return undefined;
+    return async (job) => {
+      const answer = await server.callSession(
+        registrant.session,
+        portCaptureScreenshotMethod.method,
+        {
+          artifactId: job.artifactId,
+          versionId: job.versionId,
+          viewId: job.viewId,
+          viewerId: job.viewerId,
+          threadId: job.threadId,
+          anchor: job.anchor,
+        } as unknown as JsonRpcParams,
+        PORT_TIMEOUT_MS,
+      );
+      const parsed = portCaptureScreenshotMethod.result.safeParse(answer);
+      if (!parsed.success) throw new Error("the host's capture answer isn't a crop");
+      return {
+        png: Buffer.from(parsed.data.png, "base64"),
+        width: parsed.data.width,
+        height: parsed.data.height,
+        source: "host",
+      };
+    };
+  };
   const cropper = createCropper({
     log,
     blobs,
-    capture: captureWith({
-      log,
-      fallback: defaultCapture,
-      host: () => {
-        const registrant = server.registrants("capture").at(-1);
-        if (!registrant) return undefined;
-        return async (job) => {
-          const answer = await server.callSession(
-            registrant.session,
-            portCaptureScreenshotMethod.method,
-            {
-              artifactId: job.artifactId,
-              versionId: job.versionId,
-              viewId: job.viewId,
-              viewerId: job.viewerId,
-              threadId: job.threadId,
-              anchor: job.anchor,
-            } as unknown as JsonRpcParams,
-            PORT_TIMEOUT_MS,
-          );
-          const parsed = portCaptureScreenshotMethod.result.safeParse(answer);
-          if (!parsed.success) throw new Error("the host's capture answer isn't a crop");
-          return {
-            png: Buffer.from(parsed.data.png, "base64"),
-            width: parsed.data.width,
-            height: parsed.data.height,
-            source: "host",
-          };
-        };
-      },
-    }),
+    capture: captureWith({ log, fallback: defaultCapture, host: hostCapture }),
     pending: () => interaction.pendingCrops(),
     record: (threadId, outcome) => interaction.setCrop(threadId, outcome),
     // Tests shorten the pauses between a crop's attempts.
@@ -940,6 +945,26 @@ async function assemble(home: OwnedHome, options: StartInstanceOptions): Promise
     runtimeVersion: runtimeVersion(),
     protocol: () => server,
     hostedOn: (artifactId) => link.hostedServers(artifactId),
+    // A hosted page's comment's crop (D182 item 4): rendered here, where the version is, and kept
+    // in this home's blobs too, so the submission's results, imported here, name a crop that exists.
+    crop: async (request) => {
+      const detail = registry.get(canonicalRef({ artifactId: request.artifactId }));
+      if (detail.versions.every((version) => version.id !== request.versionId)) {
+        throw new Error("This home has no such version of the artifact.");
+      }
+      // The owner's host's `capture` port first, as for this home's own comments, else its
+      // verify runner, from the answers the hosted home sent.
+      const cropped = await captureWith({
+        log,
+        fallback: async (job) => ({
+          ...(await renderCrop({ ...job, draft: request.draft, state: request.state })),
+          source: "default",
+        }),
+        host: hostCapture,
+      })(request);
+      await blobs.put(cropped.png);
+      return cropped;
+    },
     // A relayed verify's stages go back to the server that asked (#157), best effort.
     progress: (to, params) =>
       void link.forward(to, relayAuthorProgressMethod, params).catch(() => undefined),

@@ -7,9 +7,16 @@
  * the owner instance receives the submission through its outbox, its `wait` returns and its
  * `results` hold the answer with where it came from.
  */
-import { mkdirSync, readFileSync, writeFileSync } from "node:fs";
-import { join } from "node:path";
-import { ArtifactId, deserializeAll, type Frame, MutationId } from "@mostra/protocol";
+import { mkdirSync, readFileSync, realpathSync, writeFileSync } from "node:fs";
+import { join, relative } from "node:path";
+import {
+  ArtifactId,
+  CommentId,
+  deserializeAll,
+  type Frame,
+  MutationId,
+  ThreadId,
+} from "@mostra/protocol";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
 import { openPage } from "../action-page.ts";
 import { Browser, openLink, seen } from "../browser-client.ts";
@@ -26,6 +33,9 @@ import {
 import { connectTo, eventually, initializeParams, tempDir } from "../support.ts";
 
 const REVISION = "2026-10-15";
+/** A 2 × 1 PNG, as a host's `capture` port answers. */
+const HOSTED_CROP_PNG =
+  "iVBORw0KGgoAAAANSUhEUgAAAAIAAAABCAIAAAB7QOjdAAAAEElEQVR4nGNQ2f+fgYGBAQAJ7AJ7ZbB2WAAAAABJRU5ErkJggg==";
 
 describe("hosted pages (§18.4)", () => {
   let port: number;
@@ -128,6 +138,109 @@ describe("hosted pages (§18.4)", () => {
     expect(
       types.filter((type) => type.startsWith("submission.") && type !== "submission.created"),
     ).toEqual([]);
+  }, 120_000);
+
+  it("takes a hosted page's comment, its crop rendered on the owner, and hands both to the owner (D182 item 4)", async () => {
+    const receipt = await owner.publish("single-tsx", "page.tsx");
+    const share = ok<{ url: string }>(
+      await owner.client.call("share/start", {
+        artifact: { artifactId: receipt.artifactId },
+        via: "remote",
+      }),
+    );
+    // The owner's host supplies crops (HO-11): the owner asks it for the hosted page's too.
+    const host = await connectTo(owner.daemon.status.socket as string);
+    try {
+      ok(
+        await host.call(
+          "mostra/initialize",
+          initializeParams({ client: { name: "crop-host", version: "1" }, ports: ["capture"] }),
+        ),
+      );
+      const browser = new Browser();
+      const opened = await openLink(browser, share.url);
+      const api = `${new URL(share.url).pathname}/_mostra/v/${REVISION}`;
+      const threadId = ThreadId.create();
+      const made = await browser.fetchJson(opened.link.shell, `${api}/review/threads`, {
+        body: {
+          viewId: opened.viewId,
+          threadId,
+          commentId: CommentId.create(),
+          anchor: {
+            reviewId: "title",
+            rect: { x: 10, y: 20, width: 300, height: 40 },
+            viewport: { width: 1280, height: 800, dpr: 1 },
+          },
+          text: "Say which sidebar this is.",
+        },
+        csrf: opened.shellCsrf,
+      });
+      expect(made.status, made.body).toBe(200);
+      // The hosted home has no browser: its owner renders the crop, here through its host's port,
+      // with the hosted view and viewer named.
+      const call = await host.next(
+        (message) =>
+          message.method === "port/capture.screenshot" &&
+          (message as { params?: { threadId?: string } }).params?.threadId === threadId,
+        30_000,
+      );
+      const params = (call as { params: { viewId: string; viewerId: string; artifactId: string } })
+        .params;
+      expect(params.artifactId).toBe(receipt.artifactId);
+      expect(params.viewId).toBe(opened.viewId);
+      host.sendRaw(
+        JSON.stringify({
+          jsonrpc: "2.0",
+          id: call.id,
+          result: { png: HOSTED_CROP_PNG, width: 2, height: 1 },
+        }),
+      );
+      await eventually(async () => {
+        const threads = await browser.fetchJson(
+          opened.link.shell,
+          `${api}/review/threads?view=${opened.viewId}`,
+        );
+        return (
+          threads.json<{ threads: { id: string; crop: { state: string } }[] }>().threads[0]?.crop
+            .state === "captured"
+        );
+      }, 30_000);
+      const crop = await browser.fetchJson(
+        opened.link.shell,
+        `${api}/review/threads/${threadId}/crop`,
+      );
+      expect(crop.status).toBe(200);
+      expect(crop.header("content-type")).toBe("image/png");
+
+      // Submitted: the owner's results name the crop in the owner's own home, where it is.
+      const submitted = await browser.fetchJson(opened.link.shell, `${api}/submit`, {
+        body: { viewId: opened.viewId, expectedRevision: "0" },
+        csrf: opened.shellCsrf,
+      });
+      expect(submitted.status, submitted.body).toBe(200);
+      const waited = ok<{ status: string }>(
+        await owner.client.call(
+          "wait",
+          { artifact: { artifactId: receipt.artifactId }, until: "submitted", timeoutMs: 20_000 },
+          30_000,
+        ),
+      );
+      expect(waited.status).toBe("satisfied");
+      const results = ok<{
+        comments: { threadId: string; crop: { path: string; state?: string } }[];
+      }>(await owner.client.call("results/get", { artifact: { artifactId: receipt.artifactId } }));
+      expect(results.comments).toEqual([
+        expect.objectContaining({ threadId, crop: expect.objectContaining({ state: "captured" }) }),
+      ]);
+      const path = results.comments[0]?.crop.path ?? "";
+      // In the owner's own home: the hosted server's files are never a path an agent could open.
+      expect(relative(realpathSync(owner.home.home), realpathSync(path)).startsWith("..")).toBe(
+        false,
+      );
+      expect(readFileSync(path).toString("base64")).toBe(HOSTED_CROP_PNG);
+    } finally {
+      host.close();
+    }
   }, 120_000);
 
   it("refuses a session sent for another route, and a cookie stands for nothing", async () => {

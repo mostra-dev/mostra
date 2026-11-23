@@ -5887,7 +5887,8 @@
             "workspace/read",
             "workspace/apply",
             "workspace/fingerprint",
-            "verify/screenshot"
+            "verify/screenshot",
+            "review/crop"
           ]
         },
         "params": {}

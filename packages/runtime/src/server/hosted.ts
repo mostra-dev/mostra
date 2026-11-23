@@ -28,8 +28,10 @@ import {
   hostedPushMethod,
   hostedSubmissionMethod,
   type InstanceInfo,
+  type JsonRpcParams,
   type PausedBy,
   performanceBucket,
+  portRelayAuthorMethod,
   type RelayAuthorProgressParams,
   RouteId,
   RpcError,
@@ -63,6 +65,7 @@ import {
 } from "../protocol-server/index.ts";
 import { canonicalRef, listingDigest, versionIdFor } from "../publish/index.ts";
 import { openRegistry, type Registry } from "../registry/index.ts";
+import { CROP_WAIT_MS, createCropper, openBlobs } from "../review/index.ts";
 import { type AppPages, createAppPages } from "./app-pages.ts";
 import type { Authorization } from "./auth.ts";
 import type { ClientAddresses, RateLimiter } from "./clients.ts";
@@ -101,6 +104,9 @@ function safeListingPath(path: string): boolean {
     .split("/")
     .every((part) => part !== "" && part !== "." && part !== ".." && !UNSAFE_PART.test(part));
 }
+
+/** How long an owner instance has to render a hosted comment's crop: verify's start and a render. */
+const RELAYED_CROP_MS = 90_000;
 
 export function randomLabel(): string {
   const bytes = randomBytes(26);
@@ -519,8 +525,73 @@ export async function openHostedHome(options: HostedHomeOptions): Promise<Hosted
       );
     },
   };
+  // A hosted page's comments (WP-20, D182 item 4): this home holds no build and runs no browser,
+  // so each crop is rendered on the artifact's owner instance, from the answers the comment's viewer
+  // gave here, while the owner is connected; while it is away, a crop waits, never failing for it.
+  const blobs = openBlobs(options.dir);
+  const ownerSession = (artifactId: string): number | undefined => {
+    const link = ownerLinkOf(artifactId);
+    if (link === undefined) return undefined;
+    return protocol
+      .registrants("relay")
+      .filter((entry) => entry.owner === link)
+      .at(-1)?.session;
+  };
+  const cropper = createCropper({
+    log,
+    blobs,
+    capture: async (job) => {
+      const session = ownerSession(job.artifactId);
+      if (session === undefined) throw new Error("the artifact's owner instance is away");
+      const answer = (await protocol.callSession(
+        session,
+        portRelayAuthorMethod.method,
+        {
+          method: "review/crop",
+          params: {
+            artifactId: job.artifactId,
+            versionId: job.versionId,
+            threadId: job.threadId,
+            viewId: job.viewId,
+            viewerId: job.viewerId,
+            anchor: job.anchor,
+            ...interaction.viewerAnswers(job.artifactId, job.viewerId),
+          },
+        } as unknown as JsonRpcParams,
+        RELAYED_CROP_MS,
+      )) as { png?: unknown; width?: unknown; height?: unknown } | null;
+      if (
+        typeof answer?.png !== "string" ||
+        typeof answer.width !== "number" ||
+        typeof answer.height !== "number"
+      ) {
+        throw new Error("the owner instance gave no crop");
+      }
+      return {
+        png: Buffer.from(answer.png, "base64"),
+        width: answer.width,
+        height: answer.height,
+        source: "default",
+      };
+    },
+    away: (job) => ownerSession(job.artifactId) === undefined,
+    pending: () => interaction.pendingCrops(),
+    record: (threadId, outcome) => interaction.setCrop(threadId, outcome),
+  });
+  interaction.onThread((_job, change) => {
+    if (change === "created") cropper.kick();
+  });
   const pages = options.services?.pages?.();
   const gateway: Gateway = createGateway({
+    crops: blobs.read,
+    // Submit waits for the viewer's crops only while the owner can take them.
+    beforeSubmit: async (page) => {
+      if (ownerSession(page.artifactId) === undefined) return;
+      await cropper.settled(
+        interaction.pendingCropsOf(page.artifactId, page.viewerId),
+        CROP_WAIT_MS,
+      );
+    },
     ...(pages ? { pages } : {}),
     ledger,
     log,
@@ -1197,6 +1268,8 @@ export async function openHostedHome(options: HostedHomeOptions): Promise<Hosted
     onInitialized: (session) => {
       interaction.connected(session);
       relay.connected(session);
+      // An owner back: the crops that waited for it are taken now.
+      cropper.kick();
     },
     onClosed: (session) => {
       interaction.disconnected(session);
@@ -1448,6 +1521,7 @@ export async function openHostedHome(options: HostedHomeOptions): Promise<Hosted
     serve,
     async stop() {
       feed?.stop();
+      await cropper.stop();
       relay.stop();
       live.stop();
       interaction.stop();

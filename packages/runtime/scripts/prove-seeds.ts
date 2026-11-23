@@ -219,6 +219,22 @@ const SEEDS: readonly Seed[] = [
     e2e: true,
   },
   {
+    requirement: "RV-02",
+    name: "a hosted page's crops are never rendered",
+    file: "src/server/hosted.ts",
+    from: "    away: (job) => ownerSession(job.artifactId) === undefined,",
+    to: "    away: () => true,",
+    check: integration("hosted.test.ts", "crop rendered on the owner"),
+  },
+  {
+    requirement: "RV-05",
+    name: "the owner keeps no copy of a hosted page's crop",
+    file: "src/instance/index.ts",
+    from: "      await blobs.put(cropped.png);",
+    to: "      void blobs;",
+    check: integration("hosted.test.ts", "crop rendered on the owner"),
+  },
+  {
     requirement: "HO-09",
     name: "#167: a shell session's every performance report is counted",
     file: "src/server/hosted-pages.ts",
