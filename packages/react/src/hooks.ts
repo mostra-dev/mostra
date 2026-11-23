@@ -625,6 +625,7 @@ export interface ReviewSurfaceSpec {
   readonly id: string;
   /** How the page lays its candidates out: `gallery`, `focus` or `compare`. */
   readonly layout: "gallery" | "focus" | "compare";
+  /** Its candidates, in order, with their labels. */
   readonly candidates: readonly ChoiceCandidate[];
   /** The candidate the page shows now, in focus. */
   readonly current?: string;

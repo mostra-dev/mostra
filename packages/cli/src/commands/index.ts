@@ -51,6 +51,7 @@ import {
   pluginValidateCommand,
 } from "./plugins.ts";
 import { loginCommand, logoutCommand, pauseCommand, resumeCommand } from "./remote.ts";
+import { reviewExportCommand } from "./review.ts";
 import { shareCommand, shareListCommand, shareStopCommand } from "./sharing.ts";
 import { rosterAddCommand, rosterGetCommand, rosterRemoveCommand } from "./team.ts";
 import { themeListCommand, themeShowCommand } from "./themes.ts";
@@ -75,6 +76,7 @@ export const COMMANDS: readonly CommandDef[] = [
   rosterRemoveCommand,
   waitCommand,
   resultsCommand,
+  reviewExportCommand,
   stateGetCommand,
   stateSetCommand,
   statePatchCommand,

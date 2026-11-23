@@ -8,6 +8,6 @@
 export const KIT_BASES: readonly ["base", "radix"];
 
 // @public
-export const KIT_MODULES: readonly ["questionnaire", "layout"];
+export const KIT_MODULES: readonly ["questionnaire", "layout", "review"];
 
 ```

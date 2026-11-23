@@ -25,9 +25,13 @@ export const ANCHOR_PROVIDER_DATA_MAX: number = 16 * 1024;
 
 /** A rectangle in CSS pixels. */
 export interface AnchorRect {
+  /** Its left edge. */
   readonly x: number;
+  /** Its top edge. */
   readonly y: number;
+  /** Its width. */
   readonly width: number;
+  /** Its height. */
   readonly height: number;
 }
 
@@ -101,6 +105,7 @@ export interface ReviewAnchor {
   readonly page?: string;
   /** The review set and candidate the target is in (ROUND-3 §2). */
   readonly reviewSetId?: string;
+  /** The candidate of that review set it is on. */
   readonly candidateId?: string;
   /** An anchor provider's layer: what a chart's datum, a slide or a timeline adds (D172 item 2). */
   readonly provider?: {

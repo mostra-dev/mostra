@@ -4,7 +4,7 @@
 
 Every command takes `--json`, which prints one envelope on stdout: `{ "ok": true, "result", "instance", "warnings" }` or `{ "ok": false, "error", "warnings" }`. Streaming commands print one envelope per line, the last one carrying `result` or `error`. Logs and progress go to stderr. Without a terminal, or with `--json`, no command asks a question.
 
-Commands: `add`, `daemon`, `dev`, `docs`, `doctor`, `export`, `gc`, `host`, `list`, `login`, `logout`, `mcp`, `new`, `open`, `pause`, `plugin`, `publish`, `push`, `results`, `resume`, `roster`, `run`, `secret`, `share`, `state`, `status`, `telemetry`, `theme`, `verify`, `wait`.
+Commands: `add`, `daemon`, `dev`, `docs`, `doctor`, `export`, `gc`, `host`, `list`, `login`, `logout`, `mcp`, `new`, `open`, `pause`, `plugin`, `publish`, `push`, `results`, `resume`, `review`, `roster`, `run`, `secret`, `share`, `state`, `status`, `telemetry`, `theme`, `verify`, `wait`.
 
 ## mostra new
 
@@ -611,6 +611,42 @@ Exit codes:
 
 Example:
   mostra results ./sidebar-review
+```
+
+## mostra review export
+
+```text
+Print an artifact's review: its choices and comment threads, each with where it points and the path of its crop.
+
+Usage:
+  mostra review export <artifact> [flags]
+
+Arguments:
+  <artifact>                   The artifact: its source path or its ID.
+
+Flags:
+  --submission <id>            The review a submission carried instead of the threads as they stand now.
+  --format <format>            Markdown or JSON. Default: Markdown, or JSON with --json. (md, json)
+  --out <dir>                  Write review.md or review.json into this directory, with each crop in crops/.
+
+Global flags:
+  --json                       Print one JSON envelope on stdout (NDJSON for streams).
+  --home <dir>                 Use this Mostra home instead of MOSTRA_HOME or the default.
+  --cwd <dir>                  Resolve relative paths from this directory.
+  --timeout <d>                Give up on the instance after this long (exit 4), such as 30s or 5m.
+  --help                       Show this command's help; with --json, its definition.
+
+Output: ReviewExportResult (mostra docs cli)
+
+Exit codes:
+  0  success
+  1  artifact failure (verify failed, publish refused, the artifact's state refused the request)
+  2  usage error
+  3  environment error (no runtime, browser or socket; the home; an unsupported platform)
+  4  timeout (--timeout passed)
+
+Example:
+  mostra review export ./sidebar-review --out ./review
 ```
 
 ## mostra state get

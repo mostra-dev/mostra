@@ -15,13 +15,18 @@ import type { AnchorLayer, AnchorRect, AnchorSelector, ReviewAnchor } from "@mos
 
 /** An anchor provider, as the contract defines it (`@mostra/contract-anchor-provider`). */
 export interface PageAnchorProvider {
+  /** The provider's ID, unique on the page. */
   readonly id: string;
+  /** The anchor kind it writes and reads, recorded with every anchor: `chart-datum`. */
   readonly kind: string;
+  /** Whether it can anchor at what the viewer pointed at; without it, `serialize` decides. */
   matches?(input: { target: Element; point?: { x: number; y: number } }, context: unknown): boolean;
+  /** The anchor for what the viewer pointed at, or `undefined` when it has none. */
   serialize(
     input: { target: Element; point?: { x: number; y: number }; selection?: Range },
     context: unknown,
   ): { anchor: Record<string, unknown>; label?: string } | undefined;
+  /** Where an anchor it made is inside `root` now, or `undefined` when it is gone. */
   resolve(
     input: { anchor: Record<string, unknown>; root: Element },
     context: unknown,

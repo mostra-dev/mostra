@@ -563,6 +563,7 @@ export const mostraReviewTrack: BridgeMessage<
 
 /** Where one tracked anchor is now. */
 export interface AnchorPosition {
+  /** The tracked anchor's ID: its thread's. */
   readonly id: string;
   /** Its box in the frame's viewport; absent when no layer found it on this page. */
   readonly rect?: AnchorRect;
@@ -612,8 +613,11 @@ export const mostraReviewScrollTo: BridgeMessage<
 
 /** A review set the page shows (ROUND-3 §2). */
 export interface ReviewSurface {
+  /** The review set's ID, as `useChoice` names it. */
   readonly id: string;
+  /** How the page lays its candidates out. */
   readonly layout: "gallery" | "focus" | "compare" | (string & {});
+  /** Its candidates, in order, with their labels. */
   readonly candidates: readonly { readonly id: string; readonly label?: string }[];
   /** The candidate shown now, in focus. */
   readonly current?: string;

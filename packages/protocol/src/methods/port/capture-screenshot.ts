@@ -8,7 +8,9 @@ import { wireRegistry } from "../../wire-registry.ts";
 export interface CaptureRequest {
   /** The artifact, its version and the view the comment was made in. */
   readonly artifactId: string;
+  /** The version the view shows, which the crop renders. */
   readonly versionId: string;
+  /** The view the comment was made in. */
   readonly viewId: string;
   /** Whose view it was: the crop shows the page with this viewer's answers. */
   readonly viewerId: string;
@@ -40,7 +42,9 @@ export const CAPTURE_PNG_BASE64_MAX: number = 8 * 1024 * 1024;
 export interface PortCaptureScreenshotResult {
   /** The PNG's bytes, base64. */
   readonly png: string;
+  /** The image's width, in pixels. */
   readonly width: number;
+  /** The image's height, in pixels. */
   readonly height: number;
 }
 

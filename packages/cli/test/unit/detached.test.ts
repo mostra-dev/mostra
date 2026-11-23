@@ -94,6 +94,7 @@ describe("what the CLI's detached processes get", () => {
       "MOSTRA_TEST_BROWSER_REVISION_NEXT",
       "MOSTRA_TEST_BUILD_TIMEOUT_MS",
       "MOSTRA_TEST_CLOCK_OFFSET_MS",
+      "MOSTRA_TEST_CROP_PAUSE_MS",
       "MOSTRA_TEST_FAULTS",
       "MOSTRA_TEST_FLUSH_INTERVAL_MS",
       "MOSTRA_TEST_GATE",

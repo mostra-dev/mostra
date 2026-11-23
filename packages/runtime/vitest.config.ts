@@ -145,6 +145,8 @@ export const INTEGRATION_GROUPS: Record<string, { include: string[]; exclude: st
       "test/integration/browser-revisions.test.ts",
       "test/integration/scale.test.ts",
       "test/integration/team.test.ts",
+      // WP-20: comments through the shell's routes and the review ports.
+      "test/integration/review.test.ts",
     ],
     exclude: [],
   },

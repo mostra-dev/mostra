@@ -508,8 +508,11 @@ export interface CropRenderRequest {
 
 /** `verify/crop`'s answer; internal to Mostra (WP-20). */
 export interface CropRenderResult {
+  /** Where the crop was written. */
   readonly path: string;
+  /** Its width, in pixels. */
   readonly width: number;
+  /** Its height, in pixels. */
   readonly height: number;
   /** The anchor's layer that found the place, or `rect` for the anchor's own box. */
   readonly layer: AnchorLayer;

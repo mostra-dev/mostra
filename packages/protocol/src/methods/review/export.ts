@@ -14,7 +14,7 @@ export interface ReviewExportParams {
    * the artifact as it stands now, every viewer's, and each viewer's choices.
    */
   readonly submission?: string;
-  /** `md` (the default): Markdown for agents to read; `json`: the {@link ReviewExport} structure. */
+  /** `md` (the default): Markdown for agents to read; `json`: the `ReviewExport` structure. */
   readonly format?: "md" | "json";
   /**
    * A directory to write into: `review.md` or `review.json`, and each captured crop as
@@ -79,9 +79,11 @@ export const ReviewExport: z.ZodType<ReviewExport> = z
 
 /** The result of `review/export`. */
 export interface ReviewExportResult {
+  /** The format written. */
   readonly format: "md" | "json";
   /** How many threads and how many crops the export holds. */
   readonly threads: number;
+  /** How many of them have a captured crop. */
   readonly crops: number;
   /** The document written, with `out`. */
   readonly path?: string;

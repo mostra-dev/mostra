@@ -14,10 +14,15 @@ import { wireRegistry } from "./wire-registry.ts";
  * name, never a `ref`, an email or a viewer ID; `self` for the page's own viewer.
  */
 export interface ReviewPerson {
+  /** Their key on this artifact (`vk_…`), the same a page sees in `useRespondents`. */
   readonly key: string;
+  /** Their display name, when they have one. */
   readonly name?: string;
+  /** Their kind of viewer. */
   readonly kind: ViewerKind;
+  /** Whether a sign-in provider verified the name. */
   readonly verified?: boolean;
+  /** Whether it is the page's own viewer. */
   readonly self: boolean;
 }
 
@@ -43,9 +48,13 @@ export const CropState: z.ZodType<CropState> = z.enum(["pending", "captured", "f
 
 /** One comment of a thread, as a page sees it. */
 export interface ReviewMessage {
+  /** The comment's ID (`cmt_…`). */
   readonly id: string;
+  /** When it was written. */
   readonly at: string;
+  /** Who wrote it, as the page may know them. */
   readonly author: ReviewPerson;
+  /** What they wrote, as text. */
   readonly text: string;
   /** The people it mentions (CO-06), as the page may know them. */
   readonly mentions?: readonly ReviewPerson[];
@@ -53,13 +62,19 @@ export interface ReviewMessage {
 
 /** A comment thread as a page sees it (D47: replies, resolve and reopen, each message's author). */
 export interface ReviewThread {
+  /** The thread's ID (`thr_…`). */
   readonly id: string;
   /** The version and view it was made in. */
   readonly versionId: string;
+  /** The number of the version it was made on. */
   readonly version: number;
+  /** Open, or resolved. */
   readonly status: "open" | "resolved";
+  /** Where it points, in every layer that applies. */
   readonly anchor: ReviewAnchor;
+  /** When it was started. */
   readonly createdAt: string;
+  /** Its comments, oldest first. */
   readonly messages: readonly ReviewMessage[];
   /** Who resolved it, and when, while resolved. */
   readonly resolved?: { readonly at: string; readonly by: ReviewPerson };
@@ -105,6 +120,7 @@ export const ReviewThread: z.ZodType<ReviewThread> = z
 
 /** `GET /a/{artifactId}/_mostra/v/{rev}/review/threads?view=…`: the threads a page may see. */
 export interface ReviewThreads {
+  /** The threads the page may see, oldest first. */
   readonly threads: readonly ReviewThread[];
   /** People this page may mention (CO-06). */
   readonly people: readonly ReviewPerson[];
@@ -131,12 +147,17 @@ const Mentions = z
 
 /** `POST …/review/threads`: a new thread with its first comment, under a fresh client-made ID. */
 export interface ReviewThreadRequest {
+  /** The page's view. */
   readonly viewId: string;
   /** A fresh `thr_` ID; a retry repeats it and gets the same thread. */
   readonly threadId: string;
+  /** The first comment's ID, made by the shell. */
   readonly commentId: string;
+  /** Where the thread points. */
   readonly anchor: ReviewAnchor;
+  /** The first comment's text. */
   readonly text: string;
+  /** The people it mentions, by their keys. */
   readonly mentions?: readonly { readonly key: string }[];
 }
 
@@ -157,9 +178,13 @@ export const ReviewThreadRequest: z.ZodType<ReviewThreadRequest> = z
 
 /** `POST …/review/threads/{threadId}/comments`: a reply. */
 export interface ReviewReplyRequest {
+  /** The page's view. */
   readonly viewId: string;
+  /** The reply's ID, made by the shell. */
   readonly commentId: string;
+  /** The reply's text. */
   readonly text: string;
+  /** The people it mentions, by their keys. */
   readonly mentions?: readonly { readonly key: string }[];
 }
 
@@ -178,7 +203,9 @@ export const ReviewReplyRequest: z.ZodType<ReviewReplyRequest> = z
 
 /** `POST …/review/threads/{threadId}/status`: resolve or reopen. */
 export interface ReviewStatusRequest {
+  /** The page's view. */
   readonly viewId: string;
+  /** `resolved`, or `open` to reopen it. */
   readonly status: "open" | "resolved";
 }
 
