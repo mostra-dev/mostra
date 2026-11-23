@@ -21,12 +21,14 @@ import { join } from "node:path";
 import {
   type ArtifactManifest,
   ariaSummary,
+  type CropRenderResult,
   createDiagnostic,
   type Diagnostic,
   estimateImageTokens,
   type ProbedField,
   type RenderRequest,
   type RenderResult,
+  type ReviewAnchor,
   RpcError,
   type ScreenshotPolicy,
   type VerdictAria,
@@ -186,6 +188,13 @@ export interface Verifier {
   cached(prepared: PreparedSource): VerifyOutcome | undefined;
   /** Verify's build of a version, when the cache still holds it complete. */
   builtVersion(versionId: string): string | undefined;
+  /**
+   * Photographs the place a comment's anchor names in a version (WP-20, the `capture` port's
+   * default, ARCHITECTURE §8): the version rendered in a sandbox whose viewer holds the commenting
+   * viewer's answers, at the view's viewport, the place outlined. Nothing reaches the home's
+   * ledger, and nothing is delivered.
+   */
+  crop(request: CropJobRequest): Promise<CropRenderResult>;
   /** `cache/verify/`: the verdicts, and each verdict's screenshots, ARIA snapshots and diffs. */
   readonly cacheDir: string;
   /**
@@ -195,6 +204,24 @@ export interface Verifier {
    */
   collect(dryRun: boolean): Promise<{ readonly count: number; readonly bytes: number }>;
 }
+
+/** What {@link Verifier.crop} photographs. */
+export interface CropJobRequest {
+  readonly artifactId: string;
+  readonly versionId: string;
+  /** The version's directory in the home. */
+  readonly versionDir: string;
+  readonly viewport: { readonly width: number; readonly height: number };
+  readonly anchor: ReviewAnchor;
+  /** The viewer's draft fields and the artifact state, as values. */
+  readonly draft: Readonly<Record<string, unknown>>;
+  readonly state: Readonly<Record<string, unknown>>;
+  /** Where the PNG is written. */
+  readonly out: string;
+}
+
+/** How long one crop may take, the sandbox's start included. */
+export const CROP_TIMEOUT_MS = 60_000;
 
 /** The source's page never got ready: the browser stages after its first render can't run. */
 class NotReady extends Error {}
@@ -871,6 +898,26 @@ export function createVerifier(options: VerifierOptions): Verifier {
       return { verdict: parsed.data, built: entry.built };
     },
     builtVersion: completeBuild,
+    async crop(request) {
+      const deadline = Date.now() + CROP_TIMEOUT_MS;
+      const sandbox = await startSandbox(options.sandbox, {
+        artifactId: request.artifactId,
+        versions: [sandboxVersion(request.versionId, request.versionDir)],
+        seed: { draft: request.draft, state: request.state },
+      });
+      try {
+        return await options.runner.crop({
+          url: sandbox.link(request.versionId),
+          viewport: request.viewport,
+          clockMs: Math.floor(Date.now() / 1000) * 1000,
+          anchor: request.anchor,
+          out: request.out,
+          deadline,
+        });
+      } finally {
+        await sandbox.close();
+      }
+    },
     collect: (dryRun) =>
       collectVerifyCaches(home, {
         dryRun,

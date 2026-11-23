@@ -16,6 +16,9 @@ import {
   PresenceRequest,
   type Refusal,
   RespondentsRequest,
+  ReviewReplyRequest,
+  ReviewStatusRequest,
+  ReviewThreadRequest,
   RpcError,
   refusal,
   ShellSubmitRequest,
@@ -73,7 +76,16 @@ const STATUS: Readonly<Record<string, number>> = {
   MOSTRA_SUBMIT_PAUSED: 423,
   // A page posting presence faster than its rate (D168).
   MOSTRA_TEAM_PRESENCE_RATE_LIMITED: 429,
+  // The review layer's refusals (WP-20).
+  MOSTRA_REVIEW_THREAD_NOT_FOUND: 404,
+  MOSTRA_REVIEW_MENTION_UNKNOWN: 400,
+  MOSTRA_REVIEW_ID_REUSED: 409,
+  MOSTRA_REVIEW_ANCHOR_TOO_LARGE: 413,
+  MOSTRA_REVIEW_TOO_MANY: 409,
 };
+
+/** The largest review request: a comment's text, its mentions and an anchor of 32 KiB. */
+const REVIEW_BODY_MAX: number = 128 * 1024;
 
 /** Options for {@link browserRoutes}. */
 export interface BrowserRoutesOptions {
@@ -108,6 +120,13 @@ export interface BrowserRoutesOptions {
     page: PageIdentity,
     context: RouteContext,
   ) => Promise<(Refusal & { readonly retryAfter?: number }) | undefined>;
+  /** A crop's bytes by its SHA-256, checked; absent where the home keeps none (WP-20). */
+  readonly crops?: (sha256: string) => Promise<Uint8Array | undefined>;
+  /**
+   * Before a submit, from the frame or the shell (WP-20): waits, bounded, for the crops of the
+   * threads the submission will carry, so it carries them captured (D182 item 2).
+   */
+  readonly beforeSubmit?: (page: PageIdentity) => Promise<void>;
   /** Tells a host with a `trustedControls` port that a trusted control was used (D108). */
   readonly activated: (event: {
     readonly artifactId: string;
@@ -224,6 +243,16 @@ export interface BrowserRoutes {
   readonly choose: Handler;
   /** "Always follow this artifact" (D63), on the shell origin. */
   readonly follow: Handler;
+  /** The threads a page may see (WP-20), on the shell origin. */
+  readonly reviewThreads: Handler;
+  /** Starts a comment thread (WP-20). */
+  readonly createThread: Handler;
+  /** Replies to a thread (WP-20). */
+  readonly replyThread: Handler;
+  /** Resolves or reopens a thread (WP-20). */
+  readonly threadStatus: Handler;
+  /** A thread's crop, as a PNG (WP-20). */
+  readonly threadCrop: Handler;
   /** The viewer's answers a version doesn't carry over (D42, D109), on the shell origin. */
   readonly carry: Handler;
 }
@@ -323,6 +352,7 @@ export function browserRoutes(options: BrowserRoutesOptions): BrowserRoutes {
     if (request instanceof Response) return request;
     const admitted = await admit(context, request);
     if (admitted) return admitted;
+    await options.beforeSubmit?.(pageOf(context));
     try {
       return jsonResponse(
         interaction.submit(pageOf(context), {
@@ -636,6 +666,7 @@ export function browserRoutes(options: BrowserRoutesOptions): BrowserRoutes {
     const admitted = await admit(context, request);
     if (admitted) return admitted;
     const page = pageOf(context);
+    await options.beforeSubmit?.(page);
     let submission: SubmissionSummary & { readonly duplicate?: true };
     try {
       submission = interaction.submit(page, {
@@ -686,6 +717,87 @@ export function browserRoutes(options: BrowserRoutesOptions): BrowserRoutes {
     } catch (error) {
       return failure(error);
     }
+  };
+
+  // ── Review (WP-20): comment threads on the shell origin, behind the shell's session, its exact
+  // Origin, its CSRF token and the `review` scope (D97, D98). The frame can't reach them (RV-04).
+
+  const threadIdOf = (context: RouteContext): string => context.params["threadId"] ?? "";
+
+  const reviewThreads = async (context: RouteContext): Promise<Response> => {
+    const refused = knownRevision(context);
+    if (refused) return refused;
+    const view = new URL(context.request.url).searchParams.get("view");
+    if (view === null || !ViewId.is(view))
+      return malformed("Threads are read for the page's `view`.");
+    try {
+      return jsonResponse(interaction.reviewThreads(pageOf(context), view));
+    } catch (error) {
+      return failure(error);
+    }
+  };
+
+  const createThread = async (context: RouteContext): Promise<Response> => {
+    const refused = knownRevision(context);
+    if (refused) return refused;
+    const request = await body(context, ReviewThreadRequest, REVIEW_BODY_MAX);
+    if (request instanceof Response) return request;
+    try {
+      return jsonResponse(interaction.createThread(pageOf(context), request));
+    } catch (error) {
+      return failure(error);
+    }
+  };
+
+  const replyThread = async (context: RouteContext): Promise<Response> => {
+    const refused = knownRevision(context);
+    if (refused) return refused;
+    const request = await body(context, ReviewReplyRequest, REVIEW_BODY_MAX);
+    if (request instanceof Response) return request;
+    try {
+      return jsonResponse(interaction.replyThread(pageOf(context), threadIdOf(context), request));
+    } catch (error) {
+      return failure(error);
+    }
+  };
+
+  const threadStatus = async (context: RouteContext): Promise<Response> => {
+    const refused = knownRevision(context);
+    if (refused) return refused;
+    const request = await body(context, ReviewStatusRequest);
+    if (request instanceof Response) return request;
+    try {
+      return jsonResponse(
+        interaction.setThreadStatus(pageOf(context), threadIdOf(context), request),
+      );
+    } catch (error) {
+      return failure(error);
+    }
+  };
+
+  /** A thread's crop, as a PNG of the shell's own origin, for the thread's card (RV-02). */
+  const threadCrop = async (context: RouteContext): Promise<Response> => {
+    const refused = knownRevision(context);
+    if (refused) return refused;
+    const found = interaction.threadCrop(pageOf(context), threadIdOf(context));
+    const bytes = found ? await options.crops?.(found.blob) : undefined;
+    if (!bytes) {
+      return answer(
+        createDiagnostic("MOSTRA_REVIEW_CROP_MISSING", {
+          message: "This thread has no crop this page may see yet.",
+        }),
+        404,
+      );
+    }
+    return new Response(new Uint8Array(bytes), {
+      status: 200,
+      headers: {
+        ...BASE_HEADERS,
+        "content-type": "image/png",
+        // A crop never changes once set (DATA_MODEL §3), so a page may keep it.
+        "cache-control": "private, max-age=31536000, immutable",
+      },
+    });
   };
 
   const follow = async (context: RouteContext): Promise<Response> => {
@@ -797,6 +909,11 @@ export function browserRoutes(options: BrowserRoutesOptions): BrowserRoutes {
     shellSubmit,
     choose,
     follow,
+    reviewThreads,
+    createThread,
+    replyThread,
+    threadStatus,
+    threadCrop,
     carry,
   };
 }

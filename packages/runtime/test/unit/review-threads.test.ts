@@ -70,7 +70,7 @@ function setup(options: { manifest?: Record<string, unknown>; policy?: unknown }
   const page = (view: { viewerId: string }, scopes?: string[]): PageIdentity => ({
     artifactId,
     viewerId: view.viewerId,
-    ...(scopes ? { scopes: scopes as PageIdentity["scopes"] } : {}),
+    ...(scopes ? { scopes: scopes as unknown as NonNullable<PageIdentity["scopes"]> } : {}),
   });
   return { ledger, hosts, artifactId, versionId, interaction, owner, person, page };
 }

@@ -18,11 +18,13 @@ import {
   type FieldScope,
   type FieldState,
   isFieldId,
+  MutationId,
   type MutationResult,
   RpcError,
 } from "@mostra/protocol";
-import type { LedgerDb } from "../ledger/index.ts";
+import type { Ledger, LedgerDb } from "../ledger/index.ts";
 import { appendEvent } from "./events.ts";
+import { localViewerId } from "./viewers.ts";
 
 /** The largest field value, as UTF-8 JSON (DATA_MODEL §5). */
 export const FIELD_VALUE_MAX_BYTES: number = 1024 * 1024;
@@ -412,4 +414,43 @@ export function applyMutation(db: LedgerDb, input: MutationInput): MutationOutco
     now,
   );
   return { result, changed, replayed: false };
+}
+
+/**
+ * Writes a viewer's answers into a sandbox's scratch ledger before any page loads (WP-20): the
+ * draft of the scratch ledger's local viewer, whom every sandbox link acts as, and the artifact
+ * state. Nothing here reaches the home's own ledger.
+ */
+export function seedAnswers(
+  ledger: Ledger,
+  artifactId: string,
+  seed: {
+    readonly draft?: Readonly<Record<string, unknown>>;
+    readonly state?: Readonly<Record<string, unknown>>;
+  },
+): void {
+  ledger.write((db) => {
+    const actor = { kind: "mostra" as const };
+    const ops = (fields: Readonly<Record<string, unknown>>) =>
+      Object.entries(fields).map(([id, value]) => ({ id, value: value as FieldOp["value"] }));
+    if (seed.draft && Object.keys(seed.draft).length > 0) {
+      applyMutation(db, {
+        artifactId,
+        scope: "viewer",
+        viewerId: localViewerId(db),
+        mutationId: MutationId.create(),
+        ops: ops(seed.draft),
+        actor,
+      });
+    }
+    if (seed.state && Object.keys(seed.state).length > 0) {
+      applyMutation(db, {
+        artifactId,
+        scope: "artifact",
+        mutationId: MutationId.create(),
+        ops: ops(seed.state),
+        actor,
+      });
+    }
+  });
 }

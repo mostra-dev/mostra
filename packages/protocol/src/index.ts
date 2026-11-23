@@ -945,6 +945,8 @@ export {
   ariaSummary,
   type CompareRequest,
   type CompareResult,
+  type CropRenderRequest,
+  type CropRenderResult,
   DEFAULT_VIEWPORTS,
   estimateImageTokens,
   type ProbedField,

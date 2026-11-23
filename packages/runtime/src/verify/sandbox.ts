@@ -31,7 +31,7 @@ import {
 } from "../builder/index.ts";
 import { noFaults } from "../faults.ts";
 import { Capabilities, createGateway, type DevUpstream } from "../gateway/index.ts";
-import { createEphemeralBus, createInteraction } from "../interaction/index.ts";
+import { createEphemeralBus, createInteraction, seedAnswers } from "../interaction/index.ts";
 import { openLedger } from "../ledger/index.ts";
 import { createLive } from "../live/index.ts";
 import type { Environment, Log, Redactor } from "../log.ts";
@@ -167,6 +167,14 @@ export async function startSandbox(
     readonly dev?: { readonly upstream: () => DevUpstream | undefined };
     /** The shell's port, instead of a short-lived one Mostra picks (`mostra dev --port`). */
     readonly shellPort?: number;
+    /**
+     * Answers the sandbox's viewer starts with (WP-20): a comment's crop shows the page as its
+     * viewer saw it, their draft's fields and the artifact state, written before any page loads.
+     */
+    readonly seed?: {
+      readonly draft?: Readonly<Record<string, unknown>>;
+      readonly state?: Readonly<Record<string, unknown>>;
+    };
   },
 ): Promise<Sandbox> {
   const { log } = options;
@@ -254,6 +262,7 @@ export async function startSandbox(
       coverage: (versionId) => coverageMatcher(readFieldCoverage(dirOf(versionId))),
     });
     stops.push(() => interaction.stop());
+    if (input.seed) seedAnswers(ledger, input.artifactId, input.seed);
     const bus = createEphemeralBus();
     stops.push(() => bus.close());
 

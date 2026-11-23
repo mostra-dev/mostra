@@ -1376,7 +1376,10 @@ describe("no path delivers a draft as a submission (IN-06)", () => {
     expect(link).toMatch(/method === portSubmissionsDeliverMethod\.method/);
     const outbox = readFileSync(join(root, "interaction/outbox.ts"), "utf8");
     // The envelope's results come from the immutable submission row, never a document.
-    expect(outbox).toMatch(/kind: "submission",[\s\S]*results: buildResults\(db, submission\)/);
+    // (WP-20 passes where the home keeps crops, which names files, never draft content.)
+    expect(outbox).toMatch(
+      /kind: "submission",[\s\S]*results: buildResults\(db, submission, this\.#options\.crops\)/,
+    );
     expect(outbox).toMatch(/SELECT \* FROM submission WHERE id = \?/);
     // Drafts leave only through the drafts port, labelled as drafts.
     expect(outbox).toMatch(/kind: "draft"/);

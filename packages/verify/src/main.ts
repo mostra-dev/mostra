@@ -7,6 +7,7 @@
  */
 import {
   type CompareRequest,
+  type CropRenderRequest,
   createDiagnostic,
   type RenderRequest,
   RpcError,
@@ -73,6 +74,9 @@ const peer = new RpcPeer({
     };
     if (method === VERIFY_RUNNER_METHODS.render) {
       return told(() => runner.render(params as unknown as RenderRequest));
+    }
+    if (method === VERIFY_RUNNER_METHODS.crop) {
+      return told(() => runner.crop(params as unknown as CropRenderRequest));
     }
     if (method === VERIFY_RUNNER_METHODS.compare) {
       return told(() => runner.compare(params as unknown as CompareRequest));

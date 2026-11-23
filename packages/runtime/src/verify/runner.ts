@@ -11,6 +11,8 @@ import {
   BUNDLE_NAME,
   type CompareRequest,
   type CompareResult,
+  type CropRenderRequest,
+  type CropRenderResult,
   createDiagnostic,
   type RenderRequest,
   type RenderResult,
@@ -76,6 +78,8 @@ export interface RunnerClient {
   render(request: RenderRequest): Promise<RenderResult>;
   /** Compares two screenshots, bounded by `deadline` like a render. */
   compare(request: CompareRequest, deadline: number): Promise<CompareResult>;
+  /** Photographs the place a review anchor names, bounded by its `deadline` (WP-20). */
+  crop(request: CropRenderRequest): Promise<CropRenderResult>;
   /** Stops the runner child, if one runs. */
   close(): Promise<void>;
 }
@@ -246,6 +250,8 @@ export function createRunnerClient(options: {
       ask(VERIFY_RUNNER_METHODS.render, request, request.deadline) as Promise<RenderResult>,
     compare: (request, deadline) =>
       ask(VERIFY_RUNNER_METHODS.compare, request, deadline) as Promise<CompareResult>,
+    crop: (request) =>
+      ask(VERIFY_RUNNER_METHODS.crop, request, request.deadline) as Promise<CropRenderResult>,
     async close() {
       const running = child;
       child = undefined;

@@ -25,6 +25,7 @@ import type { Log } from "../log.ts";
 import { appendEvent } from "./events.ts";
 import { documentFor, liveFields } from "./fields.ts";
 import { buildResults } from "./results.ts";
+import type { CropPaths } from "./review.ts";
 import { BUILT_IN_OWNER, type SubmissionRow } from "./submissions.ts";
 
 /** How long a host has to answer one port call (FAILURE_MODEL §9). */
@@ -64,6 +65,8 @@ export interface OutboxOptions {
   readonly now?: () => number;
   /** How long a host has to answer a port call; default {@link PORT_CALL_TIMEOUT_MS}. */
   readonly portTimeoutMs?: number;
+  /** Where a crop's file is, for the results a delivery carries (WP-20). */
+  readonly crops?: CropPaths;
   /**
    * Whether envelopes carry the stored snapshot: a hosted home's do, so its owner instance keeps
    * the same submission (D165 item 1).
@@ -267,7 +270,7 @@ export class Outbox {
         submissionId: submission.id,
         artifactId: submission.artifact_id,
         attempt,
-        results: buildResults(db, submission),
+        results: buildResults(db, submission, this.#options.crops),
         ...(this.#options.snapshots
           ? { snapshot: submission.snapshot_json, cursor: String(submission.position) as Cursor }
           : {}),

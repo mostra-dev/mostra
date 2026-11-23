@@ -89,6 +89,7 @@ import {
   pendingCropsOf,
   personFor,
   type ReviewPage,
+  relativeCrop,
   reply,
   reviewWritable,
   setCrop,
@@ -161,6 +162,7 @@ import { waitFor } from "./wait.ts";
 
 export { createEphemeralBus, type EphemeralBus } from "./ephemeral.ts";
 export { appendEvent, compactEvents, redactEvents } from "./events.ts";
+export { seedAnswers } from "./fields.ts";
 export {
   followEvents,
   forgetHostedOrder,
@@ -245,6 +247,11 @@ export interface InteractionOptions {
    * on a hosted home the account that owns it.
    */
   readonly isOwner?: (viewer: { readonly kind: string; readonly ref: string }) => boolean;
+  /**
+   * Where a crop's file is, for results (WP-20): the home's absolute path, so an agent reads it;
+   * `blobs/<sha256>.png` relative to the home without one.
+   */
+  readonly crops?: CropPaths;
 }
 
 /** The delivery events only the owner, its agent and hosts see on a hosted home (D165 item 1a). */
@@ -397,6 +404,21 @@ export interface Interaction {
   onThread(listener: (job: CropJob, change: ThreadChange) => void): () => void;
   /** Every thread of an artifact as results carry them, for `review export` (RV-05). */
   artifactComments(artifactId: string, crops: CropPaths): ResultComment[];
+  /**
+   * A viewer's answers now, as values: their draft's fields and the artifact state, which a
+   * comment's crop shows the page with (ARCHITECTURE §8).
+   */
+  viewerAnswers(
+    artifactId: string,
+    viewerId: string,
+  ): { readonly draft: Record<string, unknown>; readonly state: Record<string, unknown> };
+  /** Every viewer's choices of the artifact's review sets now, for `review export` (RV-05). */
+  artifactChoices(artifactId: string): {
+    readonly reviewSetId: string;
+    readonly candidateId: string;
+    readonly label?: string;
+    readonly viewer: Viewer;
+  }[];
   /** Whether the viewer follows the artifact's new versions (D63). */
   following(page: PageIdentity): boolean;
   /** Sets the viewer's "Always follow this artifact" (D63, LL-03). */
@@ -742,6 +764,7 @@ export function createInteraction(options: InteractionOptions): Interaction {
     }
   };
   const { ledger, log, hosts } = options;
+  const cropPaths: CropPaths = options.crops ?? relativeCrop;
   const outbox = new Outbox({
     ledger,
     log,
@@ -750,6 +773,7 @@ export function createInteraction(options: InteractionOptions): Interaction {
     faults: options.faults,
     ...(options.portTimeoutMs !== undefined ? { portTimeoutMs: options.portTimeoutMs } : {}),
     ...(options.deliverSnapshots ? { snapshots: true } : {}),
+    crops: cropPaths,
   });
   const subscriptions = new Subscriptions({
     ledger,
@@ -983,7 +1007,7 @@ export function createInteraction(options: InteractionOptions): Interaction {
           "SELECT * FROM submission WHERE id = ?",
           submissionId,
         );
-        return submission ? buildResults(db, submission) : undefined;
+        return submission ? buildResults(db, submission, cropPaths) : undefined;
       });
     },
     envelopeFor(submissionId, owner) {
@@ -1004,7 +1028,7 @@ export function createInteraction(options: InteractionOptions): Interaction {
           submissionId: submission.id,
           artifactId: submission.artifact_id,
           attempt: Math.max(1, delivery.attempts),
-          results: buildResults(db, submission),
+          results: buildResults(db, submission, cropPaths),
           snapshot: submission.snapshot_json,
           cursor: String(submission.position) as Cursor,
         };
@@ -1200,6 +1224,40 @@ export function createInteraction(options: InteractionOptions): Interaction {
     artifactComments(artifactId, crops) {
       return ledger.read((db) => artifactComments(db, artifactId, crops));
     },
+    viewerAnswers(artifactId, viewerId) {
+      return ledger.read((db) => {
+        const values = (viewer: string | null): Record<string, unknown> =>
+          Object.fromEntries(
+            Object.entries(liveFields(db, documentFor(db, artifactId, viewer)?.id)).map(
+              ([id, field]) => [id, field.value],
+            ),
+          );
+        return { draft: values(viewerId), state: values(null) };
+      });
+    },
+    artifactChoices(artifactId) {
+      return ledger.read((db) => {
+        const choices: ReturnType<Interaction["artifactChoices"]> = [];
+        for (const document of db.all<{ id: number; viewer_id: string }>(
+          "SELECT id, viewer_id FROM document WHERE artifact_id = ? AND scope = 'viewer' ORDER BY viewer_id",
+          artifactId,
+        )) {
+          const fields = liveFields(db, document.id);
+          for (const id of Object.keys(fields).sort()) {
+            const match = CHOICE.exec(id);
+            const field = fields[id];
+            if (!match || typeof field?.value !== "string") continue;
+            choices.push({
+              reviewSetId: match[1] as string,
+              candidateId: field.value,
+              ...(field.label !== undefined ? { label: field.label } : {}),
+              viewer: viewer(db, document.viewer_id),
+            });
+          }
+        }
+        return choices;
+      });
+    },
     following(page) {
       return ledger.read(
         (db) =>
@@ -1391,7 +1449,7 @@ export function createInteraction(options: InteractionOptions): Interaction {
         const artifactId = options.artifacts.resolve(params.artifact);
         return ledger.read((db) => {
           const row = submissionFor(db, artifactId, params.submission);
-          const results = buildResults(db, row);
+          const results = buildResults(db, row, cropPaths);
           if (params.format !== "md") return results;
           return {
             submissionId: row.id,
@@ -1413,7 +1471,7 @@ export function createInteraction(options: InteractionOptions): Interaction {
           const page = rows.slice(0, limit);
           return {
             results: page.map((row) => {
-              const results = buildResults(db, row);
+              const results = buildResults(db, row, cropPaths);
               return params.format === "md"
                 ? {
                     submissionId: row.id,
@@ -1625,7 +1683,7 @@ export function createInteraction(options: InteractionOptions): Interaction {
               "SELECT * FROM submission WHERE position > ? ORDER BY position",
               position,
             )
-            .map((row) => ({ position: row.position, results: buildResults(db, row) })),
+            .map((row) => ({ position: row.position, results: buildResults(db, row, cropPaths) })),
         );
         for (const { position: at, results } of made) {
           position = at;
