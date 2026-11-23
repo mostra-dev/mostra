@@ -58,7 +58,7 @@ Mentions (`@Grace`) reach hosts as `review.mentioned` events, which a host can r
 
 ## Anchoring your own content
 
-A chart drawn with the kit's chart part already anchors comments to its series and data point. For content of your own whose places the page can name better than a box (a map's region, a table's cell range), register an anchor provider:
+A chart drawn with the kit's chart part already anchors comments to its series and data point. For content of your own whose places the page can name better than a box (a map's region, a table's cell range, a seat), register an anchor provider once, at the top of a module:
 
 ```tsx
 import { registerAnchorProvider } from "@mostra/react";
@@ -76,4 +76,16 @@ registerAnchorProvider({
     return element ? { element } : undefined;
   },
 });
+
+function SeatMap() {
+  return (
+    <div className="grid grid-cols-4 gap-2">
+      {["A1", "A2", "A3", "A4"].map((seat) => (
+        <button key={seat} type="button" data-seat={seat} className="rounded border p-2">
+          {seat}
+        </button>
+      ))}
+    </div>
+  );
+}
 ```

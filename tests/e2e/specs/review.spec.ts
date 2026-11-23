@@ -143,10 +143,7 @@ test.describe("comments on any content (RV-01, RV-02)", () => {
 
       // Submitted, the comments arrive with the answers (RV-03's comment half).
       await page.locator("#mostra-submit").click();
-      await expect(page.locator("[data-mostra-status]")).toHaveAttribute(
-        "data-mostra-status",
-        "sent",
-      );
+      await expect(page.locator("[data-mostra-submission]")).toBeVisible();
       const results = await client.call<{ comments: Comment[] }>("results/get", {
         artifact: { artifactId: own.artifactId },
       });
@@ -249,10 +246,7 @@ test.describe("review sets (RV-03)", () => {
       });
 
       await page.locator("#mostra-submit").click();
-      await expect(page.locator("[data-mostra-status]")).toHaveAttribute(
-        "data-mostra-status",
-        "sent",
-      );
+      await expect(page.locator("[data-mostra-submission]")).toBeVisible();
       const results = await client.call<{
         choices: { reviewSetId: string; candidateId: string; label?: string }[];
         comments: Comment[];

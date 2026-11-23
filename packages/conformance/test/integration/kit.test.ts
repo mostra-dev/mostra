@@ -33,6 +33,8 @@ describe("the conformance kit (HO-05)", () => {
       "identity",
       "trustedControls",
       "addressing",
+      "reviews",
+      "capture",
       "secrets",
     ]);
   });

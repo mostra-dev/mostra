@@ -227,7 +227,7 @@ describe("review: ports, routes, mentions and export (HO-11, CO-06, RV-05)", () 
       }),
     );
     expect(written.path).toBe(join(out, "review.md"));
-    expect(readFileSync(written.path, "utf8")).toContain(`crops/${threadId}.png`);
+    expect(readFileSync(written.path, "utf8")).toContain(join(out, "crops", `${threadId}.png`));
     expect(existsSync(join(out, "crops", `${threadId}.png`))).toBe(true);
   }, 120_000);
 

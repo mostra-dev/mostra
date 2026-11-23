@@ -33,7 +33,7 @@ try {
   await frame.getByTestId("note").fill(answer, { timeout: 60_000 });
   await page.locator('[data-mostra-save="saved"]').waitFor({ state: "attached", timeout: 30_000 });
   await page.locator("#mostra-submit").click();
-  await page.locator("[data-mostra-receipt]").waitFor({ state: "visible", timeout: 30_000 });
+  await page.locator("[data-mostra-submission]").waitFor({ state: "visible", timeout: 30_000 });
   await page.waitForFunction(
     () => document.querySelector("#mostra-submit")?.textContent?.trim() === "Submitted",
     undefined,

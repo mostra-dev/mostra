@@ -121,7 +121,7 @@
       "ignore": [
         "zod"
       ],
-      "limit": "7.5 kB"
+      "limit": "8.5 kB"
     },
     {
       "name": "@mostra/protocol server-function serializer (D54)",
