@@ -57,3 +57,4 @@ MT-07 owns no requirement (D152): one row per item of its scope and per check th
 ## CI
 
 - **Run 45082272489** (the baseline and the copy's fix): every job but `e2e (linux, chromium)`, where MT-06's hosted sign-out case (`hosted.spec.ts:241`) ran to its 240 s limit: after `page.goBack()` the frame's field was in its DOM but `fill` never found it actionable for 234 s. That is #152's first signature (a hosted frame whose elements have no boxes after the shell's page is loaded again), on Linux and after a history navigation; recorded on #152 with the run, job and trace. MT-07 changes only `tools/`.
+- **Run 45088893549** on `fe4c4c71` (the unit's code, my review's fixes and the docs): green, 41 jobs passed and 8 skipped (Linux, macOS and Windows x64 legs as a pull request runs them; the merge queue adds Windows arm64 and the rest).
