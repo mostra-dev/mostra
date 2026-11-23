@@ -6,7 +6,8 @@
  * crop (captured by the daemon's verify runner); the pins come back after a reload; and the
  * comments arrive with the submission, crops by paths that exist.
  */
-import { existsSync } from "node:fs";
+import { existsSync, mkdirSync } from "node:fs";
+import { join } from "node:path";
 import { expect, type FrameLocator, type Locator, type Page, test } from "@playwright/test";
 import { PNG } from "pngjs";
 import { linkFor, openInShell, publishOwn, viewerName } from "../support/client.ts";
@@ -185,11 +186,20 @@ test.describe("review sets (RV-03)", () => {
       const frame = await openInShell(page, url);
       await expect(page.locator("html")).toHaveAttribute("data-shell", "ready");
       const sidebar = frame.locator('[data-mostra-review-set="sidebar"]');
+      // Pictures for the design review, when asked for (MOSTRA_E2E_SCREENS, as surfaces.spec.ts).
+      const screens = process.env["MOSTRA_E2E_SCREENS"];
+      const shoot = async (name: string): Promise<void> => {
+        if (!screens) return;
+        const dir = join(screens, info.project.name, "light-1280");
+        mkdirSync(dir, { recursive: true });
+        await page.screenshot({ path: join(dir, `review-set-${name}.png`) });
+      };
 
       // Compare: two side by side, then a third, then back to two; at most four.
       await expect(sidebar.locator("[data-mostra-candidate]")).toHaveCount(2);
       await sidebar.locator('[data-review-candidate="roomy"]').click();
       await expect(sidebar.locator("[data-mostra-candidate]")).toHaveCount(3);
+      await shoot("compare-three");
       // Synchronized: scrolling one compared candidate scrolls the others to the same place.
       await sidebar.locator('[data-mostra-candidate="dense"]').evaluate((pane) => {
         pane.scrollTop = 200;
@@ -211,6 +221,7 @@ test.describe("review sets (RV-03)", () => {
       await sidebar.locator("[data-review-difference]").click();
       const grid = sidebar.locator("[data-review-grid]");
       await expect(grid).toHaveAttribute("data-difference", "");
+      await shoot("difference");
       const gridBox = await grid.boundingBox();
       const accent = await frame.locator('[data-testid="accent-dense"]').boundingBox();
       const title = await frame.locator('[data-review-id="sidebar.dense.title"]').boundingBox();
@@ -251,6 +262,7 @@ test.describe("review sets (RV-03)", () => {
       await expect(page.locator("[data-mostra-trusted]")).toHaveAttribute("data-mostra-armed", "");
       await choose.click();
       await expect(choose).toHaveText("Chosen: Airy");
+      await shoot("chosen");
 
       // A comment on a candidate records its set and candidate.
       await comment(

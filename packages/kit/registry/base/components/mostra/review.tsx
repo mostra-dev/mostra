@@ -34,6 +34,8 @@ interface SetContext {
   readonly chosen?: string;
   /** Makes a candidate the one in view: a click inside it, or the focus moving into it. */
   readonly look: (candidate: string) => void;
+  /** Whether each candidate shows its name above it: side by side, never stacked for the difference. */
+  readonly captions: boolean;
 }
 
 const ReviewSetContext = React.createContext<SetContext | null>(null);
@@ -84,6 +86,17 @@ export function Candidate({
       }}
       {...props}
     >
+      {set.captions && (
+        // The candidate's name, which its section already gives assistive technology.
+        <div
+          aria-hidden="true"
+          data-slot="review-candidate-label"
+          className="sticky top-0 z-10 flex items-center gap-2 border-b border-border bg-card px-3 py-1.5 text-xs font-medium text-muted-foreground"
+        >
+          {label ?? id}
+          {chosen && <span className="size-2 rounded-full bg-(--answer)" />}
+        </div>
+      )}
       {children}
     </section>
   );
@@ -167,16 +180,17 @@ export function ReviewSet({
     choose ? { candidates, ...(current !== undefined ? { current } : {}) } : undefined,
   );
   useReviewSurface({ id, layout, candidates, ...(current !== undefined ? { current } : {}) });
+  const differing = layout === "compare" && difference && compared.length === 2;
   const value: SetContext = {
     layout,
     shown,
+    captions: layout !== "focus" && !differing,
     ...(current !== undefined ? { current } : {}),
     ...(choice.choice !== undefined ? { chosen: choice.choice } : {}),
     look: setLooked,
   };
   const labelOf = (candidate: string): string =>
     candidates.find((entry) => entry.id === candidate)?.label ?? candidate;
-  const differing = layout === "compare" && difference && compared.length === 2;
 
   // Compared candidates scroll together: one scrolled moves the others to the same place.
   const grid = React.useRef<HTMLDivElement>(null);
