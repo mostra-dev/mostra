@@ -478,7 +478,7 @@ export function MadeWith(props: { readonly chrome: HostedChrome }): ReactElement
     <>
       <MostraMark />
       <span className="mostra-sr">{HOSTED_WORDS.madeWithPrefix}</span>
-      <b>Mostra</b>
+      <b className="mostra-footer-words">Mostra</b>
       <span className="mostra-made-line">{HOSTED_WORDS.madeWith}</span>
     </>
   );
@@ -545,13 +545,15 @@ export function HostedFooter(props: {
         type="button"
         className="mostra-footer-item mostra-footer-link"
         data-mostra-report=""
+        title={HOSTED_WORDS.reportTitle}
         onClick={() => {
           setOutcome(undefined);
           setOpen(true);
         }}
       >
         <FlagIcon />
-        {HOSTED_WORDS.report}
+        {/* On a phone the flag stands alone, its word kept for screen readers. */}
+        <span className="mostra-footer-words">{HOSTED_WORDS.report}</span>
       </button>
       <span role="status" className="mostra-footer-item" data-mostra-report-outcome={outcome}>
         {outcome === "sent"

@@ -450,6 +450,19 @@ test.describe("every surface a person meets (UX-01, D171)", () => {
           "sent",
         );
         await shoot(page, "hosted-sent");
+        // The footer is one row at any width (Mirza's review of WP-20): its items never wrap
+        // under each other, and Report keeps its name where only its flag shows.
+        const footer = page.locator("[data-mostra-footer]");
+        const items = await footer
+          .locator("[data-mostra-passwords], [data-mostra-report], .mostra-footer-end")
+          .evaluateAll((nodes) =>
+            nodes.map((node) => {
+              const box = node.getBoundingClientRect();
+              return box.top + box.height / 2;
+            }),
+          );
+        expect(Math.max(...items) - Math.min(...items)).toBeLessThan(8);
+        await expect(page.getByRole("button", { name: "Report" })).toBeVisible();
 
         // Linking a machine, signed in: approved and refused.
         const code = async (): Promise<string> => {
