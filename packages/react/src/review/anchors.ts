@@ -599,15 +599,13 @@ export function describeSelection(doc: Document): ReviewAnchor | undefined {
 }
 
 /**
- * Where selected words are now (the anchor's `selection`): inside the element its review ID or CSS
- * selector names, where it still holds them (`selector`), else anywhere in the page (`text`).
+ * The range of selected words an anchor names (its `selection`): inside the element its CSS
+ * selector names, where it still holds them, else anywhere in the page. `inScope` says which.
  */
-function resolveSelection(
+export function selectionRange(
   doc: Document,
   anchor: ReviewAnchor,
-):
-  | { readonly element?: Element; readonly rect: AnchorRect; readonly layer: AnchorLayer }
-  | undefined {
+): { readonly range: Range; readonly inScope: boolean } | undefined {
   const quote = anchor.selectors?.find((selector) => selector.type === "TextQuoteSelector");
   if (quote?.type !== "TextQuoteSelector") return undefined;
   const css = anchor.selectors?.find((selector) => selector.type === "CssSelector");
@@ -622,12 +620,26 @@ function resolveSelection(
   const body = doc.body ?? doc.documentElement;
   const inScope = scope ? findTextRange(scope, quote) : undefined;
   const range = inScope ?? findTextRange(body, quote);
-  if (!range) return undefined;
-  const container = range.commonAncestorContainer;
+  return range ? { range, inScope: inScope !== undefined } : undefined;
+}
+
+/**
+ * Where selected words are now (the anchor's `selection`): inside the element its review ID or CSS
+ * selector names, where it still holds them (`selector`), else anywhere in the page (`text`).
+ */
+function resolveSelection(
+  doc: Document,
+  anchor: ReviewAnchor,
+):
+  | { readonly element?: Element; readonly rect: AnchorRect; readonly layer: AnchorLayer }
+  | undefined {
+  const found = selectionRange(doc, anchor);
+  if (!found) return undefined;
+  const container = found.range.commonAncestorContainer;
   const element = container instanceof Element ? container : container.parentElement;
   return {
     ...(element ? { element } : {}),
-    rect: rangeRect(range),
-    layer: inScope ? "selector" : "text",
+    rect: rangeRect(found.range),
+    layer: found.inScope ? "selector" : "text",
   };
 }

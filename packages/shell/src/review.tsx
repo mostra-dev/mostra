@@ -13,6 +13,7 @@ import {
   type Bridge,
   CommentId,
   mostraReviewHitTest,
+  mostraReviewScroll,
   mostraReviewScrollTo,
   mostraReviewTrack,
   type ReviewAnchor,
@@ -24,6 +25,7 @@ import {
   type FormEvent,
   type PointerEvent,
   type ReactElement,
+  type RefObject,
   useCallback,
   useEffect,
   useId,
@@ -106,9 +108,21 @@ export interface Review {
   /** Whether a click on the page makes a comment. */
   readonly mode: boolean;
   setMode(on: boolean): void;
-  /** Whether the panel of threads is open. */
+  /** Whether the panel of threads shows (opened whole, or peeking). */
   readonly panel: boolean;
   setPanel(open: boolean): void;
+  /**
+   * Whether the panel only peeks (Mirza's review of WP-20): on a phone, its head, the comment
+   * being written and "Comment on the whole page", the threads one tap away (`expand`). It comes
+   * with comment mode, and goes with it unless the viewer opened it whole.
+   */
+  readonly peek: boolean;
+  /** Opens the peeking panel whole. */
+  expand(): void;
+  /** Leaves comment mode, drops the comment being written, and closes a peeking panel. */
+  leave(): void;
+  /** Scrolls the page under a point of the frame while comment mode covers it. */
+  scroll(x: number, y: number, dx: number, dy: number): void;
   /** The thread the viewer is looking at. */
   readonly focused: string | undefined;
   setFocused(threadId: string | undefined): void;
@@ -153,10 +167,30 @@ export function useReview(options: ReviewOptions): Review {
     writable: true,
     positions: new Map(),
   });
-  const [mode, setMode] = useState(false);
-  const [panel, setPanel] = useState(false);
+  const [mode, setModeState] = useState(false);
+  // The panel: closed, peeking (with comment mode) or open whole.
+  const [sheet, setSheet] = useState<"closed" | "peek" | "open">("closed");
+  const panel = sheet !== "closed";
+  const setPanel = useCallback((open: boolean) => setSheet(open ? "open" : "closed"), []);
+  const expand = useCallback(() => setSheet("open"), []);
+  // Comment mode brings the panel peeking, never over the page whole.
+  const setMode = useCallback((on: boolean) => {
+    setModeState(on);
+    if (on) setSheet((current) => (current === "closed" ? "peek" : current));
+  }, []);
   const [focused, setFocused] = useState<string | undefined>();
-  const [draft, setDraft] = useState<Draft | undefined>();
+  const [draft, setDraftState] = useState<Draft | undefined>();
+  // A comment being written always shows: the panel at least peeks (Mirza's review: a closed
+  // panel hid the composer of the place just picked).
+  const setDraft = useCallback((next: Draft | undefined) => {
+    setDraftState(next);
+    if (next) setSheet((current) => (current === "closed" ? "peek" : current));
+  }, []);
+  const leave = useCallback(() => {
+    setModeState(false);
+    setDraftState(undefined);
+    setSheet((current) => (current === "peek" ? "closed" : current));
+  }, []);
   const [problem, setProblem] = useState<string | undefined>();
   const latest = useRef(options);
   const attempts = useRef(new Attempts());
@@ -258,8 +292,8 @@ export function useReview(options: ReviewOptions): Review {
           ...(mentions.length > 0 ? { mentions } : {}),
         });
         attempts.current.done("new");
-        setDraft(undefined);
-        setMode(false);
+        setDraftState(undefined);
+        setModeState(false);
         setProblem(undefined);
         await refresh();
         return true;
@@ -330,8 +364,8 @@ export function useReview(options: ReviewOptions): Review {
         label: REVIEW_WORDS.thePage,
       },
     });
-    setMode(false);
-  }, []);
+    setModeState(false);
+  }, [setDraft]);
 
   // The words the viewer selected on the page (Mirza's review): the shell offers a comment on them.
   const [selection, setSelection] = useState<AnchorRect | undefined>();
@@ -347,17 +381,26 @@ export function useReview(options: ReviewOptions): Review {
       );
       if (!answer.anchor || !answer.rect) return;
       setDraft({ anchor: answer.anchor, box: answer.rect });
-      setMode(false);
-      setPanel(true);
+      setModeState(false);
       setSelection(undefined);
     } catch {
       // A page that can't describe its selection offers nothing; the comment mode still works.
+    }
+  }, [setDraft]);
+
+  const scroll = useCallback((x: number, y: number, dx: number, dy: number) => {
+    const bridge = latest.current.bridge();
+    if (!bridge || !latest.current.agent) return;
+    try {
+      bridge.notify(mostraReviewScroll, { x, y, dx, dy });
+    } catch {
+      // A page that went away scrolls nothing.
     }
   }, []);
 
   const open = useCallback(
     (threadId: string) => {
-      setPanel(true);
+      setSheet("open");
       setFocused(threadId);
       const thread = state.threads.find((entry) => entry.id === threadId);
       const bridge = latest.current.bridge();
@@ -390,6 +433,10 @@ export function useReview(options: ReviewOptions): Review {
     setStatus,
     open,
     wholePage,
+    peek: sheet === "peek",
+    expand,
+    leave,
+    scroll,
     selection,
     onSelection,
     commentOnSelection,
@@ -419,6 +466,103 @@ function numbers(threads: readonly ReviewThread[]): Map<string, number> {
   );
 }
 
+/** How far a finger moves before a touch scrolls instead of picking a place. */
+const PAN_SLOP = 8;
+/** How much of a flick's speed is kept each frame as the page coasts after the finger lifts. */
+const COAST_DECAY = 0.94;
+
+/**
+ * Lets the viewer scroll the page under comment mode's surface (Mirza's review of WP-20): a wheel
+ * scrolls what is under the pointer, and on a touch screen a drag scrolls and a flick coasts, so
+ * only a tap picks a place. The surface stays the shell's: the page only scrolls, as asked.
+ */
+function useScrollThrough(
+  surface: RefObject<HTMLDivElement | null>,
+  review: Review,
+  active: boolean,
+): RefObject<{ moved: boolean }> {
+  const state = useRef({ moved: false });
+  const reviewRef = useRef(review);
+  useLayoutEffect(() => {
+    reviewRef.current = review;
+  });
+  useEffect(() => {
+    const element = surface.current;
+    if (!active || !element) return;
+    const at = (event: { clientX: number; clientY: number }) => {
+      const box = element.getBoundingClientRect();
+      return { x: event.clientX - box.left, y: event.clientY - box.top };
+    };
+    const wheel = (event: WheelEvent): void => {
+      event.preventDefault();
+      const scale = event.deltaMode === 1 ? 16 : event.deltaMode === 2 ? element.clientHeight : 1;
+      const point = at(event);
+      reviewRef.current.scroll(point.x, point.y, event.deltaX * scale, event.deltaY * scale);
+    };
+    let pointer: number | undefined;
+    let last = { x: 0, y: 0, t: 0 };
+    let start = { x: 0, y: 0 };
+    let speed = { x: 0, y: 0 };
+    let coasting = 0;
+    const down = (event: globalThis.PointerEvent): void => {
+      cancelAnimationFrame(coasting);
+      state.current.moved = false;
+      if (event.pointerType === "mouse") return;
+      pointer = event.pointerId;
+      start = { x: event.clientX, y: event.clientY };
+      last = { x: event.clientX, y: event.clientY, t: event.timeStamp };
+      speed = { x: 0, y: 0 };
+    };
+    const move = (event: globalThis.PointerEvent): void => {
+      if (event.pointerId !== pointer) return;
+      const dx = last.x - event.clientX;
+      const dy = last.y - event.clientY;
+      if (
+        !state.current.moved &&
+        Math.hypot(event.clientX - start.x, event.clientY - start.y) < PAN_SLOP
+      ) {
+        return;
+      }
+      state.current.moved = true;
+      const dt = Math.max(1, event.timeStamp - last.t);
+      speed = { x: (dx / dt) * 0.6 + speed.x * 0.4, y: (dy / dt) * 0.6 + speed.y * 0.4 };
+      last = { x: event.clientX, y: event.clientY, t: event.timeStamp };
+      const point = at(event);
+      reviewRef.current.scroll(point.x, point.y, dx, dy);
+    };
+    const up = (event: globalThis.PointerEvent): void => {
+      if (event.pointerId !== pointer) return;
+      pointer = undefined;
+      if (!state.current.moved) return;
+      const point = at(event);
+      let previous = performance.now();
+      const coast = (now: number): void => {
+        const dt = Math.min(48, now - previous);
+        previous = now;
+        speed = { x: speed.x * COAST_DECAY, y: speed.y * COAST_DECAY };
+        if (Math.hypot(speed.x, speed.y) < 0.02) return;
+        reviewRef.current.scroll(point.x, point.y, speed.x * dt, speed.y * dt);
+        coasting = requestAnimationFrame(coast);
+      };
+      coasting = requestAnimationFrame(coast);
+    };
+    element.addEventListener("wheel", wheel, { passive: false });
+    element.addEventListener("pointerdown", down);
+    element.addEventListener("pointermove", move);
+    element.addEventListener("pointerup", up);
+    element.addEventListener("pointercancel", up);
+    return () => {
+      cancelAnimationFrame(coasting);
+      element.removeEventListener("wheel", wheel);
+      element.removeEventListener("pointerdown", down);
+      element.removeEventListener("pointermove", move);
+      element.removeEventListener("pointerup", up);
+      element.removeEventListener("pointercancel", up);
+    };
+  }, [surface, active]);
+  return state;
+}
+
 /**
  * The layer over the frame: the pins, and in comment mode the surface that takes the viewer's
  * point (the frame gets no pointer events meanwhile, so nothing of the page is clicked) and the
@@ -435,17 +579,30 @@ export function ReviewLayer(props: {
   const pending = useRef<{ x: number; y: number } | undefined>(undefined);
   const pins = numbers(review.state.threads);
   // Escape leaves the comment mode, wherever the focus is.
-  const { mode, setMode, setDraft } = review;
+  const { mode, leave } = review;
   useEffect(() => {
     if (!mode) return;
-    const leave = (event: globalThis.KeyboardEvent): void => {
-      if (event.key !== "Escape") return;
-      setMode(false);
-      setDraft(undefined);
+    const onKey = (event: globalThis.KeyboardEvent): void => {
+      if (event.key === "Escape") leave();
     };
-    document.addEventListener("keydown", leave);
-    return () => document.removeEventListener("keydown", leave);
-  }, [mode, setMode, setDraft]);
+    document.addEventListener("keydown", onKey);
+    return () => document.removeEventListener("keydown", onKey);
+  }, [mode, leave]);
+  // The layer's size: a pin whose place the page scrolled out of it isn't drawn (Mirza's review).
+  const layer = useRef<HTMLDivElement>(null);
+  const [size, setSize] = useState<{ width: number; height: number } | undefined>();
+  useEffect(() => {
+    const element = layer.current;
+    if (!element) return;
+    const measure = (): void =>
+      setSize({ width: element.clientWidth, height: element.clientHeight });
+    measure();
+    const observer = new ResizeObserver(measure);
+    observer.observe(element);
+    return () => observer.disconnect();
+  }, []);
+  const surface = useRef<HTMLDivElement>(null);
+  const pan = useScrollThrough(surface, review, mode);
   const point = (event: PointerEvent<HTMLDivElement>) => {
     const box = event.currentTarget.getBoundingClientRect();
     return { x: event.clientX - box.left, y: event.clientY - box.top };
@@ -465,11 +622,13 @@ export function ReviewLayer(props: {
   };
   return (
     <div
+      ref={layer}
       className="mostra-review-layer"
       data-mostra-review-layer={review.mode ? "commenting" : "pins"}
     >
       {review.mode && (
         <div
+          ref={surface}
           className="mostra-review-surface"
           data-mostra-review-surface=""
           onPointerMove={(event) => {
@@ -477,6 +636,8 @@ export function ReviewLayer(props: {
           }}
           onPointerLeave={() => setHover(undefined)}
           onPointerUp={(event) => {
+            // A finger that dragged scrolled the page (useScrollThrough): only a tap comments.
+            if (pan.current.moved) return;
             const at = point(event);
             void review.hit(at.x, at.y).then((found) => {
               if (found) review.setDraft(found);
@@ -487,14 +648,7 @@ export function ReviewLayer(props: {
       {review.mode && !review.draft && (
         <div className="mostra-review-hint" data-mostra-review-hint="" role="status">
           <span>{touchScreen() ? REVIEW_WORDS.pointHintTouch : REVIEW_WORDS.pointHint}</span>
-          <button
-            type="button"
-            className="mostra-link"
-            onClick={() => {
-              review.setMode(false);
-              review.setDraft(undefined);
-            }}
-          >
+          <button type="button" className="mostra-link" onClick={() => review.leave()}>
             {REVIEW_WORDS.stopCommenting}
           </button>
         </div>
@@ -531,6 +685,15 @@ export function ReviewLayer(props: {
         const number = pins.get(thread.id);
         const at = review.state.positions.get(thread.id)?.rect;
         if (number === undefined || !at || !onPage(thread, props.page)) return null;
+        // Scrolled out of the page's box, a pin isn't drawn: it never sticks to an edge. The panel
+        // still lists the thread, and the comment button counts it, whatever a page reports.
+        const where = pinPoint(thread.anchor, at);
+        if (
+          size !== undefined &&
+          (where.y < 0 || where.y > size.height || where.x < 0 || where.x > size.width)
+        ) {
+          return null;
+        }
         const first = thread.messages[0];
         return (
           <button
@@ -868,7 +1031,12 @@ export function ReviewPanel(props: {
         thread.anchor.candidateId)
       : undefined;
   return (
-    <aside className="mostra-review-panel" aria-labelledby={titleId} data-mostra-review-panel="">
+    <aside
+      className="mostra-review-panel"
+      aria-labelledby={titleId}
+      data-mostra-review-panel=""
+      data-peek={review.peek ? "" : undefined}
+    >
       <header className="mostra-review-panel-head">
         <h2 id={titleId}>{REVIEW_WORDS.title}</h2>
         <button
@@ -918,6 +1086,16 @@ export function ReviewPanel(props: {
           onClick={review.wholePage}
         >
           {REVIEW_WORDS.wholePage}
+        </button>
+      )}
+      {review.peek && open.length + resolved.length > 0 && (
+        <button
+          type="button"
+          className="mostra-link mostra-review-expand"
+          data-mostra-review-expand=""
+          onClick={review.expand}
+        >
+          {REVIEW_WORDS.showComments(open.length + resolved.length)}
         </button>
       )}
       <div className="mostra-threads">
@@ -982,12 +1160,11 @@ export function CommentButton(props: { readonly review: Review }): ReactElement 
       title={name}
       onClick={() => {
         if (review.mode) {
-          review.setMode(false);
-          review.setDraft(undefined);
+          review.leave();
           return;
         }
-        review.setPanel(true);
         if (review.state.writable) review.setMode(true);
+        else review.setPanel(true);
       }}
     >
       <CommentIcon />

@@ -259,6 +259,9 @@ export const REVIEW_WORDS = {
   stopCommenting: "Cancel",
   /** Beside words the viewer selected on the page. */
   commentSelection: "Comment",
+  /** On a phone, the peeking panel's way to its threads (Mirza's review). */
+  showComments: (count: number): string =>
+    count === 1 ? "Show the comment" : `Show the ${String(count)} comments`,
   countLabel: (count: number): string =>
     count === 1 ? "1 open comment" : `${String(count)} open comments`,
   title: "Comments",

@@ -123,6 +123,13 @@ for (const mode of MODES) {
         await shoot("composer");
         await press(page.locator("[data-mostra-review-new] [data-mostra-review-post]"));
         const thread = page.locator("[data-mostra-thread]", { hasText: "which sidebar" });
+        if (phone) {
+          // On a phone the panel only peeks after a post, its threads one tap away (Mirza's
+          // review): the page stays in sight.
+          await expect(page.locator("[data-mostra-review-new]")).toHaveCount(0);
+          await shoot("peek");
+          await press(page.locator("[data-mostra-review-expand]"));
+        }
         await expect(thread).toBeVisible();
         await expect(thread.locator('[data-mostra-crop="captured"]')).toBeVisible({
           timeout: 60_000,

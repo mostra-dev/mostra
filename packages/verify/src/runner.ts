@@ -359,7 +359,11 @@ async function capturePage(
         { probeName: VERIFY_PROBE, anchor: request.anchor as unknown as Record<string, unknown> },
       )
       .catch(() => undefined)) as
-      | { rect?: { x: number; y: number; width: number; height: number }; layer?: AnchorLayer }
+      | {
+          rect?: { x: number; y: number; width: number; height: number };
+          layer?: AnchorLayer;
+          highlighted?: boolean;
+        }
       | undefined;
     let rect = placed?.rect;
     let layer: AnchorLayer = placed?.layer ?? "rect";
@@ -406,12 +410,16 @@ async function capturePage(
     };
     const shot = await page.screenshot({ clip, animations: "disabled", caret: "hide" });
     const image = PNG.sync.read(shot);
-    outline(image, {
-      x: Math.round(rect.x - clip.x),
-      y: Math.round(rect.y - clip.y),
-      width: Math.round(rect.width),
-      height: Math.round(rect.height),
-    });
+    // Selected words carry the page's own highlight, as the viewer saw their selection: a box
+    // would cover whole lines the words only begin or end in (Mirza's review of WP-20).
+    if (placed?.highlighted !== true) {
+      outline(image, {
+        x: Math.round(rect.x - clip.x),
+        y: Math.round(rect.y - clip.y),
+        width: Math.round(rect.width),
+        height: Math.round(rect.height),
+      });
+    }
     const png = PNG.sync.write(image);
     await writeFile(request.out, png);
     return { path: request.out, width: image.width, height: image.height, layer };

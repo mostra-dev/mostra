@@ -1189,7 +1189,8 @@ body {
   inset: 0;
   pointer-events: auto;
   cursor: crosshair;
-  touch-action: manipulation;
+  /* The shell scrolls the page for a drag here, and a tap picks a place (useScrollThrough). */
+  touch-action: none;
   /* A hint of the mode: the page is behind glass while a comment is being placed. */
   background: rgb(35 64 200 / 0.03);
   box-shadow: inset 0 0 0 2px var(--primary);
@@ -1502,6 +1503,24 @@ body {
   }
   .mostra-pin {
     --pin: 30px;
+  }
+  /* Peeking with comment mode (Mirza's review): its head, the comment being written and "Comment
+     on the whole page", never the threads over the page; one tap shows them. */
+  .mostra-review-panel[data-peek] .mostra-review-panel-intro,
+  .mostra-review-panel[data-peek] .mostra-review-empty,
+  .mostra-review-panel[data-peek] .mostra-threads,
+  .mostra-review-panel[data-peek] .mostra-resolved {
+    display: none;
+  }
+}
+/* The way to the threads shows only where a peeking panel hides them: on a phone. */
+.mostra-review-expand {
+  display: none;
+}
+@media (max-width: 720px) {
+  .mostra-review-panel[data-peek] .mostra-review-expand {
+    display: block;
+    text-align: start;
   }
 }
 @media (prefers-reduced-motion: reduce) {

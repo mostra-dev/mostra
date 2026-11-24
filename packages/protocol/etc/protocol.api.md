@@ -2424,6 +2424,14 @@ export const mostraReviewPositions: BridgeMessage<{
 }, undefined>;
 
 // @public
+export const mostraReviewScroll: BridgeMessage<{
+    readonly x: number;
+    readonly y: number;
+    readonly dx: number;
+    readonly dy: number;
+}, undefined>;
+
+// @public
 export const mostraReviewScrollTo: BridgeMessage<{
     readonly anchor: ReviewAnchor;
 }, {

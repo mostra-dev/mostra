@@ -9,6 +9,7 @@ import {
   type Bridge,
   mostraReviewHitTest,
   mostraReviewPositions,
+  mostraReviewScroll,
   mostraReviewScrollTo,
   mostraReviewSelection,
   mostraReviewTrack,
@@ -102,6 +103,11 @@ export function wireReview(bridge: Bridge): void {
       return undefined;
     },
     notification: (message, params) => {
+      if (message === mostraReviewScroll) {
+        const { x, y, dx, dy } = params as { x: number; y: number; dx: number; dy: number };
+        void loadAgent().then(({ scrollAt }) => scrollAt(document, x, y, dx, dy));
+        return;
+      }
       if (message !== mostraReviewTrack) return;
       const anchors = (params as { anchors: { id: string; anchor: ReviewAnchor }[] }).anchors;
       generation += 1;

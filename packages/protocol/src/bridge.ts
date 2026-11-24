@@ -622,6 +622,28 @@ export const mostraReviewSelection: BridgeMessage<{ readonly rect?: AnchorRect }
   result: z.undefined(),
 };
 
+/**
+ * `mostra/review.scroll`: the viewer scrolls while the shell's comment mode covers the page (a
+ * wheel, or a finger's drag on a touch screen): the page scrolls what is under `x`, `y` by `dx`,
+ * `dy` CSS pixels, the nearest scrollable element or else the document (WP-20, after Mirza's
+ * review). A page that ignores it doesn't scroll in comment mode.
+ */
+export const mostraReviewScroll: BridgeMessage<
+  { readonly x: number; readonly y: number; readonly dx: number; readonly dy: number },
+  undefined
+> = {
+  method: "mostra/review.scroll",
+  from: "shell",
+  kind: "notification",
+  params: z.looseObject({
+    x: z.number().finite(),
+    y: z.number().finite(),
+    dx: z.number().finite().min(-100_000).max(100_000),
+    dy: z.number().finite().min(-100_000).max(100_000),
+  }),
+  result: z.undefined(),
+};
+
 /** `mostra/review.scrollTo`: the viewer opened a thread; the page scrolls its anchor into view. */
 export const mostraReviewScrollTo: BridgeMessage<
   { readonly anchor: ReviewAnchor },
@@ -704,6 +726,7 @@ export const BRIDGE_MESSAGES: readonly AnyBridgeMessage[] = [
   mostraReviewScrollTo,
   mostraSurfaces,
   mostraReviewSelection,
+  mostraReviewScroll,
 ] as readonly AnyBridgeMessage[];
 
 /** The window events arrive on (`window` itself). */

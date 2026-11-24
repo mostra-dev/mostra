@@ -62,9 +62,11 @@ export function installVerifyProbe(store: Store): void {
   const pending = (): number => store.server.pending();
   // `anchor`: a comment's place, scrolled into view, for its crop (WP-20, the capture port's
   // default): its box in the viewport and the layer that found it.
+  // Selected words are marked as a selection is, not boxed: `highlighted` tells the runner.
   const anchor = async (target: ReviewAnchor) => {
-    const { scrollTo } = await import("../review/agent.ts");
-    return scrollTo(document, target);
+    const { highlightSelection, scrollTo } = await import("../review/agent.ts");
+    const placed = await scrollTo(document, target);
+    return { ...placed, highlighted: highlightSelection(document, target) };
   };
   Object.defineProperty(globalThis, VERIFY_PROBE, {
     value: { fields, pending, anchor },

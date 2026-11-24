@@ -12,7 +12,7 @@
  * its coordinates, its frame's selector and the crop.
  */
 import type { AnchorLayer, AnchorRect, ReviewAnchor } from "@mostra/protocol";
-import { cssPath, describe, describeSelection, resolveAnchor } from "./anchors.ts";
+import { cssPath, describe, describeSelection, resolveAnchor, selectionRange } from "./anchors.ts";
 import { anchorProviders } from "./registry.ts";
 
 /** The nested review protocol's message key: `{ [NESTED]: "hitTest" | "resolve" | "answer", id, … }`. */
@@ -416,4 +416,67 @@ export function watchSelections(doc: Document, tell: (rect?: AnchorRect) => void
   view?.addEventListener("scroll", () => (shown ? later() : undefined), { passive: true });
   view?.addEventListener("resize", () => (shown ? later() : undefined), { passive: true });
   later();
+}
+
+/** The highlight a crop of selected words draws, as the browser marks a selection. */
+const CROP_HIGHLIGHT = "mostra-crop";
+
+/**
+ * Marks the words a selection anchor names the way a selection looks, for its crop (WP-20, after
+ * Mirza's review): exactly those words, part of a line too, where a box would cover whole lines.
+ * `false` when the words aren't found or the browser has no CSS Custom Highlight API.
+ */
+export function highlightSelection(doc: Document, anchor: ReviewAnchor): boolean {
+  const view = doc.defaultView as
+    | (Window & {
+        readonly CSS?: { readonly highlights?: Map<string, unknown> };
+        readonly Highlight?: new (...ranges: Range[]) => unknown;
+      })
+    | null;
+  const highlights = view?.CSS?.highlights;
+  const Highlight = view?.Highlight;
+  const found = anchor.selection ? selectionRange(doc, anchor) : undefined;
+  if (!found || !highlights || !Highlight) return false;
+  highlights.set(CROP_HIGHLIGHT, new Highlight(found.range));
+  const style = doc.createElement("style");
+  style.textContent = `::highlight(${CROP_HIGHLIGHT}) { background-color: rgb(35 64 200 / 0.3); }`;
+  (doc.head ?? doc.documentElement).append(style);
+  return true;
+}
+
+/** Whether `element` scrolls along `axis` and has room left to scroll by `delta`. */
+function scrolls(element: Element, axis: "x" | "y", delta: number): boolean {
+  const style = getComputedStyle(element);
+  const overflow = axis === "y" ? style.overflowY : style.overflowX;
+  if (overflow !== "auto" && overflow !== "scroll") return false;
+  const position = axis === "y" ? element.scrollTop : element.scrollLeft;
+  const room =
+    axis === "y"
+      ? element.scrollHeight - element.clientHeight
+      : element.scrollWidth - element.clientWidth;
+  return delta < 0 ? position > 0 : position < room - 1;
+}
+
+/**
+ * Scrolls what is at a point of the viewport by `dx`, `dy` (`mostra/review.scroll`): the nearest
+ * element that scrolls that way and has room, else the document, as a wheel would.
+ */
+export function scrollAt(doc: Document, x: number, y: number, dx: number, dy: number): void {
+  const view = doc.defaultView;
+  if (!view) return;
+  let element: Element | null = doc.elementFromPoint(x, y);
+  let left = dx;
+  let top = dy;
+  while (element && element !== doc.documentElement && element !== doc.body) {
+    const byY = top !== 0 && scrolls(element, "y", top);
+    const byX = left !== 0 && scrolls(element, "x", left);
+    if (byY || byX) {
+      element.scrollBy({ left: byX ? left : 0, top: byY ? top : 0, behavior: "instant" });
+      if (byY) top = 0;
+      if (byX) left = 0;
+      if (top === 0 && left === 0) return;
+    }
+    element = element.parentElement;
+  }
+  view.scrollBy({ left, top, behavior: "instant" });
 }

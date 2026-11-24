@@ -69,7 +69,7 @@ v1 requirements: 154. v1.1 requirements: 15. Owned exactly once: 169. Neither v1
 | SH-03 | WP-05 | B | Cookie mode in Chromium, Firefox, WebKit and real Safari; leases stable across restart; cross-site fixtures select worker mode | verified ([WP-05](../progress/PROGRESS-WP-05.md)) |
 | SH-04 | WP-05 | M, B | Bridge rejects wrong origin and malformed messages (unit); message names match MCP Apps where shared | verified ([WP-05](../progress/PROGRESS-WP-05.md)) |
 | SH-05 | WP-20 | R | Mirza's review of the final shell design (D68) | plausible ([WP-20](../progress/PROGRESS-WP-20.md)) |
-| SH-06 | WP-20 | B, R | Mobile layouts in WebKit and Chromium emulation; external: real phone over tailnet; Mirza reviews | validated ([WP-20](../progress/PROGRESS-WP-20.md)) |
+| SH-06 | WP-20 | B, R | Mobile layouts in WebKit and Chromium emulation; external: real phone over tailnet; Mirza reviews | verified ([WP-20](../progress/PROGRESS-WP-20.md)) |
 | HY-01 | WP-05 | M, I (negative tests: bad Host, bad Origin, missing token, CSRF) | All 13 checklist items as automated negative tests (bad Host, bad Origin, missing token, CSRF, CORS, CORP, referrer, revocation 410, rate limit, redaction, GET side effects, header fuzzing, MCP HTTP) | verified ([WP-05](../progress/PROGRESS-WP-05.md)) |
 | HY-02 | WP-05 | I | Default bind is loopback only (socket inspection); wider bind needs the flag | verified ([WP-05](../progress/PROGRESS-WP-05.md)) |
 | HY-03 | WP-05 | M, I | Scoped tokens: a view-and-comment link cannot submit or run an action; expiry, rotation and revocation tests | verified ([WP-05](../progress/PROGRESS-WP-05.md)) |
