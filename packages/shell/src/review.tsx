@@ -9,6 +9,7 @@
  */
 import {
   type AnchorPosition,
+  type AnchorRect,
   type Bridge,
   CommentId,
   mostraReviewHitTest,
@@ -122,6 +123,12 @@ export interface Review {
   onPositions(positions: readonly AnchorPosition[]): void;
   /** What is at a point of the frame. */
   hit(x: number, y: number): Promise<Draft | undefined>;
+  /** Where the words the viewer selected on the page are, in the frame's viewport, if any. */
+  readonly selection: AnchorRect | undefined;
+  /** The page says where its selection is now, or that it ended. */
+  onSelection(rect: AnchorRect | undefined): void;
+  /** Starts a comment on the words the viewer selected. */
+  commentOnSelection(): Promise<void>;
   /** Posts the draft's first comment. */
   post(text: string, mentions: readonly { key: string }[]): Promise<boolean>;
   /** Replies to a thread. */
@@ -131,6 +138,11 @@ export interface Review {
   open(threadId: string): void;
   /** Starts a comment on the whole page. */
   wholePage(): void;
+}
+
+/** Whether the viewer points with a finger: the hint says "tap", else "click". */
+function touchScreen(): boolean {
+  return globalThis.matchMedia?.("(pointer: coarse)").matches === true;
 }
 
 /** Makes the overlay's controller for one view. */
@@ -321,6 +333,28 @@ export function useReview(options: ReviewOptions): Review {
     setMode(false);
   }, []);
 
+  // The words the viewer selected on the page (Mirza's review): the shell offers a comment on them.
+  const [selection, setSelection] = useState<AnchorRect | undefined>();
+  const onSelection = useCallback((rect: AnchorRect | undefined) => setSelection(rect), []);
+  const commentOnSelection = useCallback(async (): Promise<void> => {
+    const bridge = latest.current.bridge();
+    if (!bridge || !latest.current.agent) return;
+    try {
+      const answer = await bridge.call(
+        mostraReviewHitTest,
+        { x: 0, y: 0, selection: true },
+        { timeoutMs: 2_000 },
+      );
+      if (!answer.anchor || !answer.rect) return;
+      setDraft({ anchor: answer.anchor, box: answer.rect });
+      setMode(false);
+      setPanel(true);
+      setSelection(undefined);
+    } catch {
+      // A page that can't describe its selection offers nothing; the comment mode still works.
+    }
+  }, []);
+
   const open = useCallback(
     (threadId: string) => {
       setPanel(true);
@@ -356,6 +390,9 @@ export function useReview(options: ReviewOptions): Review {
     setStatus,
     open,
     wholePage,
+    selection,
+    onSelection,
+    commentOnSelection,
   };
 }
 
@@ -446,6 +483,42 @@ export function ReviewLayer(props: {
             });
           }}
         />
+      )}
+      {review.mode && !review.draft && (
+        <div className="mostra-review-hint" data-mostra-review-hint="" role="status">
+          <span>{touchScreen() ? REVIEW_WORDS.pointHintTouch : REVIEW_WORDS.pointHint}</span>
+          <button
+            type="button"
+            className="mostra-link"
+            onClick={() => {
+              review.setMode(false);
+              review.setDraft(undefined);
+            }}
+          >
+            {REVIEW_WORDS.stopCommenting}
+          </button>
+        </div>
+      )}
+      {review.selection && !review.mode && !review.draft && review.state.writable && (
+        <button
+          type="button"
+          className="mostra-pill mostra-selection-comment"
+          data-mostra-selection-comment=""
+          // Above the words, or under them near the top of the page; always whole inside the page,
+          // wherever the page says its selection is.
+          style={{
+            left: `clamp(56px, ${Math.round(review.selection.x + review.selection.width / 2)}px, calc(100% - 56px))`,
+            top: `clamp(4px, ${Math.round(
+              review.selection.y >= 48
+                ? review.selection.y - 44
+                : review.selection.y + review.selection.height + 8,
+            )}px, calc(100% - 44px))`,
+          }}
+          onClick={() => void review.commentOnSelection()}
+        >
+          <CommentIcon />
+          <span>{REVIEW_WORDS.commentSelection}</span>
+        </button>
       )}
       {review.mode && hover && !review.draft && (
         <div
@@ -896,7 +969,7 @@ export function CommentButton(props: { readonly review: Review }): ReactElement 
   const { review } = props;
   const count = review.state.threads.filter((thread) => thread.status === "open").length;
   const on = review.mode || review.panel;
-  const words = review.mode ? REVIEW_WORDS.pointHint : REVIEW_WORDS.comment;
+  const words = review.mode ? REVIEW_WORDS.stopCommenting : REVIEW_WORDS.comment;
   // Its name is its words and, for screen readers, what the count counts; on a phone the words are
   // hidden from sight only, so the name stays the same for every reader.
   const name = count > 0 ? `${words}, ${REVIEW_WORDS.countLabel(count)}` : words;

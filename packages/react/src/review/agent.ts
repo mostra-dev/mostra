@@ -12,7 +12,7 @@
  * its coordinates, its frame's selector and the crop.
  */
 import type { AnchorLayer, AnchorRect, ReviewAnchor } from "@mostra/protocol";
-import { cssPath, describe, resolveAnchor } from "./anchors.ts";
+import { cssPath, describe, describeSelection, resolveAnchor } from "./anchors.ts";
 import { anchorProviders } from "./registry.ts";
 
 /** The nested review protocol's message key: `{ [NESTED]: "hitTest" | "resolve" | "answer", id, … }`. */
@@ -132,6 +132,20 @@ function placeOf(view: Window): Pick<ReviewAnchor, "viewport" | "scroll"> {
       dpr: view.devicePixelRatio || 1,
     },
     scroll: { x: view.scrollX, y: view.scrollY },
+  };
+}
+
+/**
+ * The words the viewer selected, as a hit: their anchor, and their box in the document's viewport
+ * (WP-20, after Mirza's review). Empty when nothing is selected.
+ */
+export function selectionHit(doc: Document): Hit {
+  const view = doc.defaultView;
+  const anchor = describeSelection(doc);
+  if (!anchor?.rect || !view) return {};
+  return {
+    anchor,
+    rect: { ...anchor.rect, x: anchor.rect.x - view.scrollX, y: anchor.rect.y - view.scrollY },
   };
 }
 

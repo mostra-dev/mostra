@@ -368,6 +368,11 @@ export function resolveAnchor(
   providers: readonly PageAnchorProvider[],
 ): { readonly element?: Element; readonly rect?: AnchorRect; readonly layer: AnchorLayer } {
   const root = doc.body ?? doc.documentElement;
+  // Selected words are found again as those words (WP-20, after Mirza's review).
+  if (anchor.selection) {
+    const found = resolveSelection(doc, anchor);
+    if (found) return found;
+  }
   if (anchor.provider) {
     const provider = providers.find((entry) => entry.id === anchor.provider?.id);
     if (provider) {
@@ -436,4 +441,193 @@ export function resolveAnchor(
     };
   }
   return { layer: "none" };
+}
+
+// ── Selected words (WP-20, after Mirza's review) ─────────────────────────────────────────────
+
+/** The longest quote of selected words an anchor keeps (the anchor's text limit). */
+const SELECTION_MAX = 2048;
+
+/** Folds runs of whitespace to one space, as the page's text is compared. */
+function fold(text: string): string {
+  return text.replace(/\s+/g, " ");
+}
+
+/** A root's text with its whitespace folded, and where each of its characters is in the DOM. */
+interface FoldedText {
+  readonly text: string;
+  readonly at: readonly { readonly node: Text; readonly offset: number }[];
+}
+
+/** The text a viewer reads under `root`, folded, character by character (no script or style). */
+function foldedText(root: Node): FoldedText {
+  const doc = root.ownerDocument ?? (root as Document);
+  const walker = doc.createTreeWalker(root, NodeFilter.SHOW_TEXT);
+  let text = "";
+  const at: { node: Text; offset: number }[] = [];
+  for (let node = walker.nextNode(); node; node = walker.nextNode()) {
+    const parent = node.parentElement?.localName;
+    if (parent === "script" || parent === "style" || parent === "noscript") continue;
+    const data = (node as Text).data;
+    for (let offset = 0; offset < data.length; offset += 1) {
+      const char = data[offset] as string;
+      if (/\s/.test(char)) {
+        if (text === "" || text.endsWith(" ")) continue;
+        text += " ";
+      } else {
+        text += char;
+      }
+      at.push({ node: node as Text, offset });
+    }
+  }
+  return { text, at };
+}
+
+/** A range's box in the document's coordinates. */
+function rangeRect(range: Range): AnchorRect {
+  const view = range.startContainer.ownerDocument?.defaultView;
+  const box = range.getBoundingClientRect();
+  return {
+    x: box.left + (view?.scrollX ?? 0),
+    y: box.top + (view?.scrollY ?? 0),
+    width: box.width,
+    height: box.height,
+  };
+}
+
+/**
+ * The quoted words inside `root`, as a range: where its context (prefix, suffix) matches, else the
+ * first place they stand; `undefined` when `root` no longer holds them.
+ */
+function findTextRange(
+  root: Node,
+  quote: AnchorSelector & { type: "TextQuoteSelector" },
+): Range | undefined {
+  const exact = fold(quote.exact).trim();
+  if (exact === "") return undefined;
+  const folded = foldedText(root);
+  const prefix = quote.prefix === undefined ? undefined : fold(quote.prefix).trim();
+  const suffix = quote.suffix === undefined ? undefined : fold(quote.suffix).trim();
+  // Each place the words stand, scored by how much of their context matches there (the words
+  // before them ending like the prefix, those after starting like the suffix): the best wins, the
+  // first of equals, so an edit around the words still finds them where they were.
+  let best = -1;
+  let bestScore = -1;
+  for (let at = folded.text.indexOf(exact); at >= 0; at = folded.text.indexOf(exact, at + 1)) {
+    const before = folded.text.slice(0, at).trimEnd();
+    const after = folded.text.slice(at + exact.length).trimStart();
+    let score = 0;
+    if (prefix) {
+      while (score < prefix.length && before.at(-1 - score) === prefix.at(-1 - score)) score += 1;
+    }
+    if (suffix) {
+      let matched = 0;
+      while (matched < suffix.length && after[matched] === suffix[matched]) matched += 1;
+      score += matched;
+    }
+    if (score > bestScore) {
+      best = at;
+      bestScore = score;
+    }
+  }
+  const at = best;
+  if (at < 0) return undefined;
+  const start = folded.at[at];
+  const end = folded.at[at + exact.length - 1];
+  const doc = root.ownerDocument ?? (root as Document);
+  if (!start || !end) return undefined;
+  const range = doc.createRange();
+  range.setStart(start.node, start.offset);
+  range.setEnd(end.node, end.offset + 1);
+  return range;
+}
+
+/**
+ * The words the viewer selected on the page, in every layer that applies: the element they are in
+ * (its review ID, CSS selector, review set and candidate), the words themselves as a text quote
+ * with their context, and their box. `undefined` without a selection of words.
+ */
+export function describeSelection(doc: Document): ReviewAnchor | undefined {
+  const selection = doc.getSelection();
+  if (!selection || selection.isCollapsed || selection.rangeCount === 0) return undefined;
+  const range = selection.getRangeAt(0);
+  const container = range.commonAncestorContainer;
+  const element = container instanceof Element ? container : container.parentElement;
+  const body = doc.body ?? doc.documentElement;
+  if (!element || !body.contains(element)) return undefined;
+  // The selected words as the page's folded text holds them, the same text a quote is found in
+  // again, with their context: the first character in the selection and the first after it.
+  const folded = foldedText(body);
+  const firstWhere = (holds: (index: number) => boolean): number => {
+    let low = 0;
+    let high = folded.at.length;
+    while (low < high) {
+      const middle = (low + high) >> 1;
+      if (holds(middle)) high = middle;
+      else low = middle + 1;
+    }
+    return low;
+  };
+  // Where a character starts (`0`) or ends (`1`) against the selection: before it, in it, after.
+  const place = (index: number, edge: 0 | 1): number => {
+    const at = folded.at[index] as { readonly node: Text; readonly offset: number };
+    return range.comparePoint(at.node, at.offset + edge);
+  };
+  const start = firstWhere((index) => place(index, 0) >= 0);
+  const end = firstWhere((index) => place(index, 1) > 0);
+  const exact = folded.text.slice(start, end).trim().slice(0, SELECTION_MAX);
+  if (exact === "") return undefined;
+  const prefix = folded.text.slice(0, start).trimEnd().slice(-CONTEXT_MAX).trimStart();
+  const suffix = folded.text.slice(end).trimStart().slice(0, CONTEXT_MAX).trimEnd();
+  const { provider: _provider, point: _point, ...around } = describe(element, undefined, []);
+  const short = exact.length > 60 ? `${exact.slice(0, 59)}…` : exact;
+  return {
+    ...around,
+    selectors: [
+      { type: "CssSelector", value: cssPath(element).slice(0, 2048) },
+      {
+        type: "TextQuoteSelector",
+        exact,
+        ...(prefix !== "" ? { prefix } : {}),
+        ...(suffix !== "" ? { suffix } : {}),
+      },
+    ],
+    rect: rangeRect(range),
+    label: `"${short}"`,
+    selection: true,
+  };
+}
+
+/**
+ * Where selected words are now (the anchor's `selection`): inside the element its review ID or CSS
+ * selector names, where it still holds them (`selector`), else anywhere in the page (`text`).
+ */
+function resolveSelection(
+  doc: Document,
+  anchor: ReviewAnchor,
+):
+  | { readonly element?: Element; readonly rect: AnchorRect; readonly layer: AnchorLayer }
+  | undefined {
+  const quote = anchor.selectors?.find((selector) => selector.type === "TextQuoteSelector");
+  if (quote?.type !== "TextQuoteSelector") return undefined;
+  const css = anchor.selectors?.find((selector) => selector.type === "CssSelector");
+  let scope: Element | null = null;
+  if (css?.type === "CssSelector") {
+    try {
+      scope = doc.querySelector(css.value);
+    } catch {
+      scope = null;
+    }
+  }
+  const body = doc.body ?? doc.documentElement;
+  const inScope = scope ? findTextRange(scope, quote) : undefined;
+  const range = inScope ?? findTextRange(body, quote);
+  if (!range) return undefined;
+  const container = range.commonAncestorContainer;
+  const element = container instanceof Element ? container : container.parentElement;
+  return {
+    ...(element ? { element } : {}),
+    rect: rangeRect(range),
+    layer: inScope ? "selector" : "text",
+  };
 }

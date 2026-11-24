@@ -820,6 +820,7 @@ export function resultComment(
     ...(thread.messagesOmitted !== undefined ? { messagesOmitted: thread.messagesOmitted } : {}),
     anchor: {
       ...pick("reviewId"),
+      ...pick("selection"),
       ...pick("selectors"),
       ...pick("rect"),
       ...pick("viewport"),
@@ -868,8 +869,10 @@ function whereParts(anchor: ResultComment["anchor"]): string[] {
   }
   for (const selector of (anchor.selectors ?? []) as AnchorSelector[]) {
     if (selector.type === "CssSelector") parts.push(`CSS ${code(selector.value)}`);
-    else if (selector.type === "TextQuoteSelector") parts.push(`text ${quoted(selector.exact)}`);
-    else parts.push(`fragment ${code(selector.value)}`);
+    else if (selector.type === "TextQuoteSelector") {
+      // Words the viewer selected are the place itself; otherwise the quote checks an element.
+      parts.push(`${anchor.selection ? "the selected words" : "text"} ${quoted(selector.exact)}`);
+    } else parts.push(`fragment ${code(selector.value)}`);
   }
   if (anchor.rect !== undefined) {
     const { x, y, width, height } = anchor.rect;

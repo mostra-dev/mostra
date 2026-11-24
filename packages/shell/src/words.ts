@@ -252,11 +252,18 @@ export const HOSTED_WORDS = {
  */
 export const REVIEW_WORDS = {
   comment: "Comment",
-  pointHint: "Click what to comment on",
+  /** In comment mode, on a computer and on a touch screen (Mirza's review: say what to do). */
+  pointHint: "Click what you want to comment on.",
+  pointHintTouch: "Tap what you want to comment on.",
+  /** The comment button while commenting: leaves the mode. */
+  stopCommenting: "Cancel",
+  /** Beside words the viewer selected on the page. */
+  commentSelection: "Comment",
   countLabel: (count: number): string =>
     count === 1 ? "1 open comment" : `${String(count)} open comments`,
   title: "Comments",
-  intro: "Pin a comment to anything on the page. Comments are sent with your answers.",
+  intro:
+    "Pin a comment to anything on the page, or select words on it and comment on them. Comments are sent with your answers.",
   closed: "Your answers were submitted, so comments here can be read but not added.",
   empty: "No comments yet.",
   wholePage: "Comment on the whole page",

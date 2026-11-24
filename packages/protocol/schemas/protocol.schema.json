@@ -7277,6 +7277,10 @@
             "reviewId": {
               "type": "string"
             },
+            "selection": {
+              "type": "boolean",
+              "const": true
+            },
             "selectors": {
               "readOnly": true,
               "type": "array",
@@ -8125,6 +8129,10 @@
         "time": {
           "type": "number",
           "minimum": 0
+        },
+        "selection": {
+          "type": "boolean",
+          "const": true
         }
       },
       "description": "Where a comment points: provider data, data-review-id, W3C selectors, coordinates with viewport, page and candidate."

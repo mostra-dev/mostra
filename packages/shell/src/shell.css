@@ -1094,6 +1094,64 @@ body {
   overflow: hidden;
   z-index: 5;
 }
+/* What to do in comment mode, at the top of the page (Mirza's review): "Click (or tap) what you
+   want to comment on", and a way out. Above the surface, so its button takes a click. */
+.mostra-review-hint {
+  position: absolute;
+  inset-block-start: 10px;
+  inset-inline-start: 50%;
+  transform: translateX(-50%);
+  z-index: 2;
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  max-inline-size: calc(100% - 20px);
+  padding: 8px 8px 8px 14px;
+  border-radius: 999px;
+  background: var(--foreground);
+  color: var(--background);
+  font: 550 0.8125rem / 1.3 var(--font-sans);
+  box-shadow: var(--shadow-soft);
+  pointer-events: auto;
+}
+.mostra-review-hint .mostra-link {
+  color: inherit;
+  white-space: nowrap;
+  padding: 4px 8px;
+}
+/* Beside words the viewer selected on the page: comment on them (Mirza's review). Whole inside
+   the page wherever the page says its selection is (the inline clamp). */
+.mostra-selection-comment {
+  position: absolute;
+  z-index: 2;
+  transform: translateX(-50%);
+  pointer-events: auto;
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  min-block-size: 36px;
+  padding-inline: 12px 14px;
+  background: var(--foreground);
+  color: var(--background);
+  border-color: transparent;
+  box-shadow: var(--shadow-soft);
+  animation: mostra-selection-in 160ms var(--ease-out);
+}
+.mostra-selection-comment svg {
+  inline-size: 16px;
+  block-size: 16px;
+}
+@keyframes mostra-selection-in {
+  from {
+    opacity: 0;
+    translate: 0 4px;
+  }
+}
+@media (prefers-reduced-motion: reduce) {
+  .mostra-selection-comment {
+    animation: none;
+  }
+}
 .mostra-review-surface {
   position: absolute;
   inset: 0;

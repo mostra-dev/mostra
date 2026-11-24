@@ -7,6 +7,7 @@
  */
 import {
   type AnchorPosition,
+  type AnchorRect,
   type AnyBridgeMessage,
   type Bridge,
   type ControlRequest,
@@ -24,6 +25,7 @@ import {
   mostraPage,
   mostraReady,
   mostraReviewPositions,
+  mostraReviewSelection,
   mostraSurfaces,
   mostraVersionAvailable,
   type OrphanedField,
@@ -264,6 +266,8 @@ interface FrameHandlers {
   onPositions(positions: readonly AnchorPosition[]): void;
   /** The review sets the page shows (WP-20). */
   onSurfaces(sets: readonly ReviewSurface[]): void;
+  /** Where the words the viewer selected on the page are, or that the selection ended. */
+  onSelection(rect: AnchorRect | undefined): void;
   /** The frame loaded another version than its view's (D98 item 5). */
   onWrongVersion(): void;
   /** A frame greeted the shell (`ui/initialize`), whatever its version: called at once. */
@@ -372,6 +376,9 @@ function Frame(props: {
         if (message === mostraFrameSessionEntered) handlersRef.current.onFrameSessionEntered();
         if (message === mostraReviewPositions) {
           handlersRef.current.onPositions((params as { positions: AnchorPosition[] }).positions);
+        }
+        if (message === mostraReviewSelection) {
+          handlersRef.current.onSelection((params as { rect?: AnchorRect }).rect);
         }
         if (message === mostraSurfaces) {
           handlersRef.current.onSurfaces((params as { sets: ReviewSurface[] }).sets);
@@ -921,6 +928,7 @@ export function ViewerPage(props: {
     },
     onPositions: (positions) => review.onPositions(positions),
     onSurfaces: (sets) => setSurfaces(sets),
+    onSelection: (rect) => review.onSelection(rect),
     onPage: (path) => {
       setState((current) => ({ ...current, page: path }));
       mark("", { shellPage: path });

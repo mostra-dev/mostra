@@ -85,6 +85,7 @@ export {
   mostraReviewHitTest,
   mostraReviewPositions,
   mostraReviewScrollTo,
+  mostraReviewSelection,
   mostraReviewTrack,
   mostraSurfaces,
   mostraVersionAvailable,

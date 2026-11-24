@@ -527,13 +527,22 @@ export interface ReviewHit {
  * the point's coordinates alone.
  */
 export const mostraReviewHitTest: BridgeMessage<
-  { readonly x: number; readonly y: number },
+  {
+    readonly x: number;
+    readonly y: number;
+    /** Describe the words the viewer selected, not what is at the point (`selection: true`). */
+    readonly selection?: true;
+  },
   ReviewHit
 > = {
   method: "mostra/review.hitTest",
   from: "shell",
   kind: "request",
-  params: z.looseObject({ x: z.number().min(0).max(1e6), y: z.number().min(0).max(1e6) }),
+  params: z.looseObject({
+    x: z.number().min(0).max(1e6),
+    y: z.number().min(0).max(1e6),
+    selection: z.literal(true).exactOptional(),
+  }),
   result: z.looseObject({ anchor: ReviewAnchor.exactOptional(), rect: AnchorRect.exactOptional() }),
 };
 
@@ -596,6 +605,20 @@ export const mostraReviewPositions: BridgeMessage<
       .max(REVIEW_TRACK_MAX)
       .readonly(),
   }),
+  result: z.undefined(),
+};
+
+/**
+ * `mostra/review.selection`: the viewer selected words on the page, or the selection ended (no
+ * `rect`). The shell offers to comment on them beside the selection, in its own overlay; what the
+ * page reports only places that offer, and the comment's anchor comes from `mostra/review.hitTest`
+ * with `selection: true` (WP-20, after Mirza's review).
+ */
+export const mostraReviewSelection: BridgeMessage<{ readonly rect?: AnchorRect }, undefined> = {
+  method: "mostra/review.selection",
+  from: "artifact",
+  kind: "notification",
+  params: z.looseObject({ rect: AnchorRect.exactOptional() }),
   result: z.undefined(),
 };
 
@@ -680,6 +703,7 @@ export const BRIDGE_MESSAGES: readonly AnyBridgeMessage[] = [
   mostraReviewPositions,
   mostraReviewScrollTo,
   mostraSurfaces,
+  mostraReviewSelection,
 ] as readonly AnyBridgeMessage[];
 
 /** The window events arrive on (`window` itself). */

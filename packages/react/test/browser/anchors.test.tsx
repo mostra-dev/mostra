@@ -6,7 +6,11 @@
  */
 import type { ReviewAnchor } from "@mostra/protocol";
 import { afterEach, describe, expect, it } from "vitest";
-import { describe as describeAnchor, resolveAnchor } from "../../src/review/anchors.ts";
+import {
+  describe as describeAnchor,
+  describeSelection,
+  resolveAnchor,
+} from "../../src/review/anchors.ts";
 import { BUILT_IN_PROVIDERS } from "../../src/review/providers.ts";
 
 afterEach(() => {
@@ -92,5 +96,57 @@ describe("an anchor's layers (RV-02)", () => {
     // 6. Nothing left: no place, and the thread stays listed by the shell.
     const { rect: _rect, ...bare } = { ...anchor, selectors: [] };
     expect(resolveAnchor(document, { ...bare, reviewId: "gone" }, []).layer).toBe("none");
+  });
+});
+
+/** Selects the words `words` inside `element`'s first text. */
+function select(element: Element, words: string): void {
+  const node = element.firstChild as Text;
+  const start = node.data.indexOf(words);
+  const range = document.createRange();
+  range.setStart(node, start);
+  range.setEnd(node, start + words.length);
+  const selection = document.getSelection() as Selection;
+  selection.removeAllRanges();
+  selection.addRange(range);
+}
+
+describe("selected words (WP-20, after Mirza's review)", () => {
+  it("anchor as the words themselves, found again as those words, inside their element or anywhere", () => {
+    const target = page();
+    select(target, "keeps its pins");
+    const anchor = describeSelection(document) as ReviewAnchor;
+    expect(anchor.selection).toBe(true);
+    expect(anchor.reviewId).toBe("plan");
+    const quote = anchor.selectors?.find((selector) => selector.type === "TextQuoteSelector");
+    expect(quote).toMatchObject({
+      exact: "keeps its pins",
+      prefix: expect.stringContaining("sidebar"),
+    });
+    // The box is the words', narrower than their paragraph.
+    const paragraph = target.getBoundingClientRect();
+    expect(anchor.rect?.width).toBeLessThan(paragraph.width);
+    expect(anchor.rect?.width).toBeGreaterThan(0);
+    // Found again as those words: their own box, before the review ID's section.
+    const again = resolveAnchor(document, anchor, BUILT_IN_PROVIDERS);
+    expect(again.layer).toBe("selector");
+    expect(Math.round(again.rect?.width ?? 0)).toBe(Math.round(anchor.rect?.width ?? -1));
+    // Words moved to another element, whitespace changed: still found, as text in the page.
+    document.body.innerHTML = `<main><p>Our   sidebar
+      keeps its pins above the fold, the plan says.</p></main>`;
+    const moved = resolveAnchor(document, anchor, BUILT_IN_PROVIDERS);
+    expect(moved.layer).toBe("text");
+    expect(moved.rect?.width).toBeGreaterThan(0);
+    // The words in two places: the one whose context matches.
+    document.body.innerHTML = `<main><p id="a">Other keeps its pins too.</p>
+      <p id="b">The sidebar keeps its pins above the fold.</p></main>`;
+    const twice = resolveAnchor(document, anchor, BUILT_IN_PROVIDERS);
+    expect(twice.element?.closest("p")?.id).toBe("b");
+  });
+
+  it("describe nothing without a selection", () => {
+    page();
+    document.getSelection()?.removeAllRanges();
+    expect(describeSelection(document)).toBeUndefined();
   });
 });

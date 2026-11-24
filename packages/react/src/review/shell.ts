@@ -6,10 +6,12 @@
  * when the shell first asks, so a page nobody reviews carries none of it.
  */
 import {
+  type AnchorRect,
   type Bridge,
   mostraReviewHitTest,
   mostraReviewPositions,
   mostraReviewScrollTo,
+  mostraReviewSelection,
   mostraReviewTrack,
   mostraSurfaces,
   type ReviewAnchor,
@@ -55,18 +57,73 @@ export function showSurface(surface: ReviewSurface): () => void {
   };
 }
 
+/** How long a selection holds still before the shell is told of it. */
+const SELECTION_SETTLE_MS = 150;
+
+/**
+ * Tells the shell where the words the viewer selects are, and when the selection ends, so the shell
+ * offers to comment on them beside it (WP-20, after Mirza's review). Words typed into a field are
+ * the viewer's own answer, not the page's, and offer nothing.
+ */
+function reportSelections(bridge: Bridge): void {
+  let timer: ReturnType<typeof setTimeout> | undefined;
+  let shown = false;
+  const tell = (rect?: AnchorRect): void => {
+    try {
+      bridge.notify(mostraReviewSelection, rect ? { rect } : {});
+    } catch (error) {
+      console.error("Mostra: the selection couldn't be reported to the shell.", error);
+    }
+  };
+  const check = (): void => {
+    timer = undefined;
+    const selection = document.getSelection();
+    const active = document.activeElement;
+    const typing =
+      active instanceof HTMLInputElement ||
+      active instanceof HTMLTextAreaElement ||
+      (active instanceof HTMLElement && active.isContentEditable);
+    const range =
+      selection && !selection.isCollapsed && selection.rangeCount > 0 && !typing
+        ? selection.getRangeAt(0)
+        : undefined;
+    const box = range && range.toString().trim() !== "" ? range.getBoundingClientRect() : undefined;
+    if (box && box.width + box.height > 0) {
+      shown = true;
+      tell({
+        x: Math.round(box.left),
+        y: Math.round(box.top),
+        width: Math.round(box.width),
+        height: Math.round(box.height),
+      });
+    } else if (shown) {
+      shown = false;
+      tell();
+    }
+  };
+  const later = (): void => {
+    if (timer !== undefined) clearTimeout(timer);
+    timer = setTimeout(check, SELECTION_SETTLE_MS);
+  };
+  document.addEventListener("selectionchange", later);
+  // A selection moves with the page under it.
+  window.addEventListener("scroll", () => (shown ? later() : undefined), { passive: true });
+  window.addEventListener("resize", () => (shown ? later() : undefined), { passive: true });
+}
+
 /** Answers the shell's review messages on this page's bridge. */
 export function wireReview(bridge: Bridge): void {
   surfaceBridge = bridge;
+  reportSelections(bridge);
   if (surfaces.size > 0) reportSurfaces();
   let stopTracking: (() => void) | undefined;
   let generation = 0;
   listenShell({
     request: async (message, params) => {
       if (message === mostraReviewHitTest) {
-        const { x, y } = params as { x: number; y: number };
-        const { hitTest } = await loadAgent();
-        return hitTest(document, x, y);
+        const { x, y, selection } = params as { x: number; y: number; selection?: true };
+        const { hitTest, selectionHit } = await loadAgent();
+        return selection ? selectionHit(document) : hitTest(document, x, y);
       }
       if (message === mostraReviewScrollTo) {
         const { anchor } = params as { anchor: ReviewAnchor };

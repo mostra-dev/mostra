@@ -614,6 +614,8 @@ export interface ResultComment {
   /** Every layer of the anchor that applies (D23). */
   readonly anchor: {
     readonly reviewId?: string;
+    /** The place is words the viewer selected, which the text quote holds (WP-20). */
+    readonly selection?: true;
     /** W3C Web Annotation selectors. */
     readonly selectors?: readonly unknown[];
     readonly rect?: Rect;
@@ -778,6 +780,7 @@ export const ResultComment: z.ZodType<ResultComment> = z
     messagesOmitted: z.int().min(1).exactOptional(),
     anchor: z.object({
       reviewId: z.string().exactOptional(),
+      selection: z.literal(true).exactOptional(),
       selectors: z.array(z.unknown()).readonly().exactOptional(),
       rect: RectSchema.exactOptional(),
       viewport: z

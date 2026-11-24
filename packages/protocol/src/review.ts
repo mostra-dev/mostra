@@ -128,6 +128,12 @@ export interface ReviewAnchor {
   readonly slide?: { readonly index: number; readonly step: number };
   /** A time, in seconds (timelines and video, WP-21). */
   readonly time?: number;
+  /**
+   * The place is words the viewer selected (WP-20, after Mirza's review): the text quote holds them
+   * exactly, the CSS selector names the element they are in, and the box is theirs. It is found
+   * again as those words, inside that element where it still holds them, else in the page.
+   */
+  readonly selection?: true;
 }
 
 const ID = z.string().min(1).max(256);
@@ -163,6 +169,7 @@ export const ReviewAnchor: z.ZodType<ReviewAnchor> = z
     label: z.string().max(256).exactOptional(),
     slide: z.object({ index: z.int().min(0), step: z.int().min(0) }).exactOptional(),
     time: z.number().min(0).exactOptional(),
+    selection: z.literal(true).exactOptional(),
   })
   .register(wireRegistry, {
     id: "ReviewAnchor",
