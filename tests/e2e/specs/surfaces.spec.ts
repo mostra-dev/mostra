@@ -38,6 +38,8 @@ const OPERATOR = join(
 );
 const AXE: string = axe.source;
 const SCREENS = process.env["MOSTRA_E2E_SCREENS"];
+/** How long a check waits for a page of another origin to arrive (#152's class of slow loads). */
+const NAVIGATION_MS = 20_000;
 const MODES = ["light", "dark"] as const;
 /** A person per run, each signing in for the first time (consent is asked once per account). */
 const PEOPLE = ["Grace Hopper", "Katherine Johnson", "Dorothy Vaughan", "Mary Jackson"];
@@ -243,13 +245,19 @@ test.describe("every surface a person meets (UX-01, D171)", () => {
     };
     await tabTo("[data-mostra-sign-in]");
     await page.keyboard.press("Enter");
-    await expect(page.getByRole("link", { name: "Continue with Development" })).toBeVisible();
+    // Each page of the API origin is a navigation to another origin, which on a cold server in
+    // emulated Chromium (Windows arm64) took 5.6 s: past the 5 s a check waits by default.
+    await expect(page.getByRole("link", { name: "Continue with Development" })).toBeVisible({
+      timeout: NAVIGATION_MS,
+    });
     await tabTo('a[href^="/signin/dev/start"]');
     await page.keyboard.press("Enter");
     await tabTo("input[name=name]");
     await page.keyboard.type("Mary Golda Ross");
     await page.keyboard.press("Enter");
-    await expect(page.getByText("Continue as Mary Golda Ross to answer")).toBeVisible();
+    await expect(page.getByText("Continue as Mary Golda Ross to answer")).toBeVisible({
+      timeout: NAVIGATION_MS,
+    });
     await tabTo('button[value="approve"]');
     await page.keyboard.press("Enter");
     await page.waitForURL((url) => url.pathname.startsWith("/a/"));
@@ -426,7 +434,11 @@ test.describe("every surface a person meets (UX-01, D171)", () => {
         if (phone) await page.locator("[data-mostra-sign-in]").click();
         await expect(page.getByRole("link", { name: "Continue with Development" })).toBeVisible();
         await shoot(page, "api-signin");
-        await page.getByRole("link", { name: "Continue with Development" }).click();
+        // The click loads another page: the picture waits for it, not for the page it leaves.
+        await Promise.all([
+          page.waitForEvent("load"),
+          page.getByRole("link", { name: "Continue with Development" }).click(),
+        ]);
         await shoot(page, "api-dev-name");
         await page.locator("input[name=name]").fill(who);
         await page.getByRole("button", { name: "Continue" }).click();
@@ -479,7 +491,11 @@ test.describe("every surface a person meets (UX-01, D171)", () => {
         await expect(page.getByText("The machine is linked to your account.")).toBeVisible();
         await shoot(page, "api-device-approved");
         await gotoShell(page, `${api}/device?user_code=${await code()}`);
-        await page.getByRole("button", { name: "Refuse" }).click();
+        // The click loads another page: the picture waits for it, not for the page it leaves.
+        await Promise.all([
+          page.waitForEvent("load"),
+          page.getByRole("button", { name: "Refuse" }).click(),
+        ]);
         await shoot(page, "api-device-refused");
 
         // A chat app's consent: a registered client, then one that returns to this computer.
@@ -538,7 +554,11 @@ test.describe("every surface a person meets (UX-01, D171)", () => {
         await shoot(device, "api-device");
         await device.locator("input[name=user_code]").fill("WXYZ-2345");
         await device.locator("input[name=name]").fill("Ada Lovelace");
-        await device.getByRole("button", { name: "Approve this machine" }).click();
+        // The click loads another page: the picture waits for it, not for the page it leaves.
+        await Promise.all([
+          device.waitForEvent("load"),
+          device.getByRole("button", { name: "Approve this machine" }).click(),
+        ]);
         await shoot(device, "api-device-error");
 
         // The pages a link can end on.
