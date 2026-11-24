@@ -85,6 +85,7 @@ import {
   createThread,
   cropJob,
   mentionable,
+  type PendingCropsQuery,
   pendingCrops,
   pendingCropsOf,
   personFor,
@@ -393,7 +394,7 @@ export interface Interaction {
   /** A thread's captured crop, when the page may see the thread and it has one. */
   threadCrop(page: PageIdentity, threadId: string): { readonly blob: string } | undefined;
   /** The threads whose crops are still to be captured, oldest first. */
-  pendingCrops(): readonly CropJob[];
+  pendingCrops(which?: PendingCropsQuery): readonly CropJob[];
   /** The pending crops of the threads a viewer's submission would carry. */
   pendingCropsOf(artifactId: string, viewerId: string): readonly string[];
   /** Records a thread's crop or why it couldn't be captured, once (RV-02). */
@@ -1209,8 +1210,8 @@ export function createInteraction(options: InteractionOptions): Interaction {
           : undefined;
       });
     },
-    pendingCrops() {
-      return ledger.read((db) => pendingCrops(db).map(cropJob));
+    pendingCrops(which) {
+      return ledger.read((db) => pendingCrops(db, which).map(cropJob));
     },
     pendingCropsOf(artifactId, viewerId) {
       return ledger.read((db) => pendingCropsOf(db, artifactId, viewerId));

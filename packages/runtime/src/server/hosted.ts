@@ -575,7 +575,7 @@ export async function openHostedHome(options: HostedHomeOptions): Promise<Hosted
       };
     },
     away: (job) => ownerSession(job.artifactId) === undefined,
-    pending: () => interaction.pendingCrops(),
+    pending: (which) => interaction.pendingCrops(which),
     record: (threadId, outcome) => interaction.setCrop(threadId, outcome),
   });
   interaction.onThread((_job, change) => {

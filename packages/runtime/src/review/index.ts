@@ -136,8 +136,14 @@ export interface CropperOptions {
   readonly log: Log;
   readonly blobs: Blobs;
   readonly capture: Capture;
-  /** The threads whose crops are pending, oldest first. */
-  readonly pending: () => readonly CaptureJob[];
+  /**
+   * Pending crops: a page of them in the order of their threads' IDs after `after`, or the ones of
+   * `ids` still pending.
+   */
+  readonly pending: (which?: {
+    readonly after?: string;
+    readonly ids?: readonly string[];
+  }) => readonly CaptureJob[];
   /** Records a crop, once. */
   readonly record: (threadId: string, outcome: CropOutcome) => void;
   /**
@@ -220,15 +226,45 @@ export function createCropper(options: CropperOptions): Cropper {
     }
   };
 
+  /** The threads a submit waits for: their crops go first (WP-20's review, finding 3). */
+  const urgent = new Set<string>();
+
+  /** Tries one job unless its owner is away; `true` when it should be tried again. */
+  const attempt = async (job: CaptureJob): Promise<boolean> => {
+    if (options.away?.(job)) return false;
+    const retry = await one(job);
+    wake();
+    return retry;
+  };
+
   const drain = async (): Promise<void> => {
     do {
       again = false;
-      for (const job of options.pending()) {
-        if (stopped) return;
-        if (options.away?.(job)) continue;
-        // A crop that failed this attempt is tried again on the next pass.
-        if (await one(job)) again = true;
-        wake();
+      if (urgent.size > 0) {
+        const ids = [...urgent];
+        urgent.clear();
+        for (const job of options.pending({ ids })) {
+          if (stopped) return;
+          if (await attempt(job)) again = true;
+        }
+      }
+      // Every pending crop, a page at a time: crops an away owner keeps waiting never hold back
+      // the others behind them.
+      let after = "";
+      for (;;) {
+        const page = options.pending({ after });
+        if (page.length === 0) break;
+        for (const job of page) {
+          if (stopped) return;
+          // A crop that failed this attempt is tried again on the next pass.
+          if (await attempt(job)) again = true;
+        }
+        after = page[page.length - 1]?.threadId ?? after;
+        // A submit waiting for its crops goes before the rest of the queue.
+        if (urgent.size > 0) {
+          again = true;
+          break;
+        }
       }
     } while (again && !stopped);
   };
@@ -252,11 +288,10 @@ export function createCropper(options: CropperOptions): Cropper {
     kick,
     settled(threadIds, timeoutMs) {
       if (threadIds.length === 0) return Promise.resolve();
-      const open = (): boolean => {
-        const pending = new Set(options.pending().map((job) => job.threadId));
-        return threadIds.some((id) => pending.has(id));
-      };
+      // These threads themselves, however many other crops are pending (finding 3).
+      const open = (): boolean => options.pending({ ids: threadIds }).length > 0;
       if (!open()) return Promise.resolve();
+      for (const id of threadIds) urgent.add(id);
       kick();
       return new Promise((resolve) => {
         const done = (): void => {

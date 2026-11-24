@@ -564,11 +564,36 @@ export function setCrop(db: LedgerDb, threadId: string, outcome: CropOutcome): b
 }
 
 /** The threads whose crops are still pending, oldest first. */
-export function pendingCrops(db: LedgerDb, limit = 100): ThreadRow[] {
+export function pendingCrops(db: LedgerDb, which: PendingCropsQuery = {}): ThreadRow[] {
+  const limit = which.limit ?? PENDING_CROPS_PAGE;
+  if (which.ids !== undefined) {
+    // A viewer has at most a thousand threads: every one asked for is read.
+    const ids = [...new Set(which.ids)];
+    if (ids.length === 0) return [];
+    return db.all<ThreadRow>(
+      `SELECT * FROM thread WHERE crop_state = 'pending' AND id IN (${ids.map(() => "?").join(", ")}) ORDER BY id`,
+      ...ids,
+    );
+  }
   return db.all<ThreadRow>(
-    "SELECT * FROM thread WHERE crop_state = 'pending' ORDER BY created_at LIMIT ?",
+    "SELECT * FROM thread WHERE crop_state = 'pending' AND id > ? ORDER BY id LIMIT ?",
+    which.after ?? "",
     limit,
   );
+}
+
+/** How many pending crops one read gives. */
+export const PENDING_CROPS_PAGE = 100;
+
+/**
+ * Which pending crops to read: a page of them in the order of their thread IDs, after `after`, or
+ * the ones of `ids` still pending (WP-20's review, finding 3: a queue that read only the first
+ * hundred starved every crop behind a hundred an owner away kept waiting).
+ */
+export interface PendingCropsQuery {
+  readonly after?: string;
+  readonly ids?: readonly string[];
+  readonly limit?: number;
 }
 
 /** A thread as a submission's snapshot keeps it (D10: comments are part of the draft). */

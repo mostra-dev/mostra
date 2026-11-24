@@ -626,7 +626,7 @@ async function assemble(home: OwnedHome, options: StartInstanceOptions): Promise
     log,
     blobs,
     capture: captureWith({ log, fallback: defaultCapture, host: hostCapture }),
-    pending: () => interaction.pendingCrops(),
+    pending: (which) => interaction.pendingCrops(which),
     record: (threadId, outcome) => interaction.setCrop(threadId, outcome),
     // Tests shorten the pauses between a crop's attempts.
     ...(Number(environment["MOSTRA_TEST_CROP_PAUSE_MS"]) > 0

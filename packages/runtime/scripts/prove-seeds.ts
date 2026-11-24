@@ -237,6 +237,22 @@ const SEEDS: readonly Seed[] = [
     e2e: true,
   },
   {
+    requirement: "RV-02",
+    name: "WP-20 review 3: the queue reads only its first page of crops",
+    file: "src/review/index.ts",
+    from: "        after = page[page.length - 1]?.threadId ?? after;",
+    to: "        break;",
+    check: unit("cropper.test.ts"),
+  },
+  {
+    requirement: "RV-02",
+    name: "WP-20 review 3: a submit's wait reads the first page, not its own threads",
+    file: "src/review/index.ts",
+    from: "      const open = (): boolean => options.pending({ ids: threadIds }).length > 0;",
+    to: "      const open = (): boolean =>\n        options.pending({}).some((job) => threadIds.includes(job.threadId));",
+    check: unit("cropper.test.ts"),
+  },
+  {
     requirement: "HY-03",
     name: "WP-20 review 1: a link revoked while its submit waits for crops still submits",
     file: "src/gateway/browser.ts",
