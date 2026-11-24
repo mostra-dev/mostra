@@ -40,6 +40,7 @@ import {
   setThreadStatus,
 } from "./api.ts";
 import { currentAppearance } from "./appearance.ts";
+import { Attempts } from "./attempts.ts";
 import { CloseIcon, CommentIcon } from "./icons.tsx";
 import { REVIEW_WORDS, submitProblem } from "./words.ts";
 
@@ -146,6 +147,7 @@ export function useReview(options: ReviewOptions): Review {
   const [draft, setDraft] = useState<Draft | undefined>();
   const [problem, setProblem] = useState<string | undefined>();
   const latest = useRef(options);
+  const attempts = useRef(new Attempts());
   // The newest options, written after each render commits, never during it.
   useLayoutEffect(() => {
     latest.current = options;
@@ -224,20 +226,26 @@ export function useReview(options: ReviewOptions): Review {
     async (text: string, mentions: readonly { key: string }[]): Promise<boolean> => {
       if (!draft) return false;
       const page = latest.current.page;
+      // The crop shows the page as the viewer saw it, light or dark.
+      const anchor = {
+        ...draft.anchor,
+        ...(page !== undefined && draft.anchor.page === undefined ? { page } : {}),
+        appearance: currentAppearance(),
+      };
+      // A retry of the same post repeats it, never making a second thread (finding 6).
+      const ids = attempts.current.ids("new", JSON.stringify({ anchor, text, mentions }), () => ({
+        threadId: ThreadId.create(),
+        commentId: CommentId.create(),
+      }));
       try {
         await createThread(latest.current.apiBase, latest.current.csrf, {
           viewId: latest.current.viewId,
-          threadId: ThreadId.create(),
-          commentId: CommentId.create(),
-          // The crop shows the page as the viewer saw it, light or dark.
-          anchor: {
-            ...draft.anchor,
-            ...(page !== undefined && draft.anchor.page === undefined ? { page } : {}),
-            appearance: currentAppearance(),
-          },
+          ...ids,
+          anchor,
           text,
           ...(mentions.length > 0 ? { mentions } : {}),
         });
+        attempts.current.done("new");
         setDraft(undefined);
         setMode(false);
         setProblem(undefined);
@@ -257,13 +265,18 @@ export function useReview(options: ReviewOptions): Review {
       text: string,
       mentions: readonly { key: string }[],
     ): Promise<boolean> => {
+      const slot = `reply:${threadId}`;
+      const commentId = attempts.current.ids(slot, JSON.stringify({ text, mentions }), () =>
+        CommentId.create(),
+      );
       try {
         await replyThread(latest.current.apiBase, latest.current.csrf, threadId, {
           viewId: latest.current.viewId,
-          commentId: CommentId.create(),
+          commentId,
           text,
           ...(mentions.length > 0 ? { mentions } : {}),
         });
+        attempts.current.done(slot);
         setProblem(undefined);
         await refresh();
         return true;

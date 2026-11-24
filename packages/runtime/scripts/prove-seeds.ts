@@ -125,6 +125,33 @@ const SEEDS: readonly Seed[] = [
   },
   // ── WP-20: the review layer ────────────────────────────────────────────────────────────
   {
+    requirement: "RV-01",
+    name: "WP-20 review 7: a frame Mostra doesn't serve answers for its anchor",
+    file: "../react/src/review/agent.ts",
+    from: "  if (!target || !servedFrame(frame)) return Promise.resolve(undefined);",
+    to: "  if (!target) return Promise.resolve(undefined);",
+    check: ["--project", "browser", "test/browser/agent.test.tsx"],
+    cwd: "../react",
+  },
+  {
+    requirement: "RV-01",
+    name: "WP-20 review 10: a frame is named by its place among the document's frames",
+    file: "../react/src/review/agent.ts",
+    from: "  return cssPath(frame);",
+    to: '  return `iframe:nth-of-type(${[...frame.ownerDocument.querySelectorAll("iframe")].indexOf(frame) + 1})`;',
+    check: ["--project", "browser", "test/browser/agent.test.tsx"],
+    cwd: "../react",
+  },
+  {
+    requirement: "RV-04",
+    name: "WP-20 review 6: a post sent again gets new IDs",
+    file: "../shell/src/attempts.ts",
+    from: "    if (open !== undefined && open.content === content) return open.ids as T;",
+    to: "    if (open !== undefined && open.content === content && false) return open.ids as T;",
+    check: ["test/attempts.test.ts"],
+    cwd: "../shell",
+  },
+  {
     requirement: "RV-02",
     name: "the review ID is asked before an anchor provider",
     file: "../react/src/review/anchors.ts",

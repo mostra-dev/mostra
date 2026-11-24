@@ -12,7 +12,7 @@
  * its coordinates, its frame's selector and the crop.
  */
 import type { AnchorLayer, AnchorRect, ReviewAnchor } from "@mostra/protocol";
-import { describe, resolveAnchor } from "./anchors.ts";
+import { cssPath, describe, resolveAnchor } from "./anchors.ts";
 import { anchorProviders } from "./registry.ts";
 
 /** The nested review protocol's message key: `{ [NESTED]: "hitTest" | "resolve" | "answer", id, … }`. */
@@ -34,14 +34,37 @@ export interface Located {
   readonly layer: AnchorLayer;
 }
 
+/**
+ * Whether a frame is one Mostra serves: its address is the page's own origin's, so it carries the
+ * injected agent, whether it runs there or in an opaque origin the artifact's `sandbox` gives it.
+ * Only such a frame is asked about a point or an anchor (WP-20's review, finding 7): a widget of
+ * another site the artifact embeds answers for nothing and is told nothing of the anchor.
+ */
+function servedFrame(frame: HTMLIFrameElement): boolean {
+  const view = frame.ownerDocument.defaultView;
+  if (!view) return false;
+  const src = frame.getAttribute("src");
+  if (src === null || src === "" || frame.hasAttribute("srcdoc")) return false;
+  try {
+    return new URL(src, frame.ownerDocument.baseURI).origin === view.location.origin;
+  } catch {
+    return false;
+  }
+}
+
 let asked = 0;
-/** Asks a child frame over the nested protocol; `undefined` when it doesn't answer in time. */
+/**
+ * Asks a frame Mostra serves over the nested protocol; `undefined` when it isn't one, or doesn't
+ * answer in time. An answer counts only from the frame's own window at the page's origin, or at the
+ * opaque origin its sandbox gives it (`"null"`), never from a frame of another site (finding 7).
+ */
 function askFrame<T>(
   frame: HTMLIFrameElement,
   message: Record<string, unknown>,
 ): Promise<T | undefined> {
   const target = frame.contentWindow;
-  if (!target) return Promise.resolve(undefined);
+  const own = frame.ownerDocument.defaultView?.location.origin;
+  if (!target || !servedFrame(frame)) return Promise.resolve(undefined);
   asked += 1;
   const id = `${Date.now()}-${asked}`;
   return new Promise((resolve) => {
@@ -53,6 +76,7 @@ function askFrame<T>(
     };
     const listener = (event: MessageEvent): void => {
       if (event.source !== target) return;
+      if (event.origin !== own && event.origin !== "null") return;
       const data = event.data as { [NESTED]?: string; id?: string; answer?: T } | null;
       if (data?.[NESTED] === "answer" && data.id === id) done(data.answer);
     };
@@ -74,14 +98,18 @@ function sameOriginDocument(frame: HTMLIFrameElement): Document | undefined {
   }
 }
 
-/** The CSS selector of a frame element in its document. */
+/**
+ * The CSS selector of a frame element in its document: a unique path, as CSS reads it, which an
+ * agent reading results can use as it is (WP-20's review, finding 10).
+ */
 function frameSelector(frame: HTMLIFrameElement): string {
-  if (frame.id) return `iframe#${CSS.escape(frame.id)}`;
-  const frames = [...frame.ownerDocument.querySelectorAll("iframe")];
-  return `iframe:nth-of-type(${frames.indexOf(frame) + 1})`;
+  return cssPath(frame);
 }
 
-/** The frame element a selector names. */
+/**
+ * The frame element a selector names. A bare `iframe:nth-of-type(N)` is how anchors before the
+ * review named the N-th frame of the whole document, and is still read that way.
+ */
 function frameBySelector(doc: Document, selector: string): HTMLIFrameElement | undefined {
   const match = /^iframe:nth-of-type\((\d+)\)$/.exec(selector);
   if (match) {

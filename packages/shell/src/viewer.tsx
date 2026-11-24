@@ -72,6 +72,7 @@ import {
 } from "./chrome.tsx";
 import { frameEntries } from "./entries.ts";
 import {
+  hosted,
   interstitialPassed,
   keepSignOut,
   markSignedOut,
@@ -1155,7 +1156,10 @@ export function ViewerPage(props: {
   // Where the submission stands, in place of a receipt over the page (D175 item 12): while the
   // draft is what was submitted, the status says Submitted, then each host's delivery (IN-13), or
   // on a hosted link only that the answer was sent (D165 item 1a).
-  const standing = submissionStanding(state, Boolean(chrome));
+  // Any hosted link, with the operator's chrome or without (a self-hosted server with no operator
+  // module): its respondent learns that the answer was sent, never its delivery (D165 item 1a;
+  // WP-20's review, finding 8).
+  const standing = submissionStanding(state, hosted() || Boolean(chrome));
   const statusKind: StatusKind = standing?.kind ?? (saveState as StatusKind);
   const statusWords = STATUS_WORDS[statusKind];
   const deliveryLines: DeliveryLine[] = (standing?.deliveries ?? []).map((delivery) => ({
