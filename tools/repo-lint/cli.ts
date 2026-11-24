@@ -13,8 +13,10 @@
  *   never versions or tags a private package;
  * - every published package declares its Node.js line, and everything it brings along admits that
  *   line (#92, `engines.ts`);
- * - every browser spec loads its pages through `gotoShell`, never a bare `page.goto` (#132).
+ * - every browser spec loads its pages through `gotoShell`, never a bare `page.goto` (#132);
+ * - no tracked text file keeps a merge's conflict markers (WP-20's review, finding 5).
  */
+import { execFileSync } from "node:child_process";
 import { createHash } from "node:crypto";
 import { existsSync, readdirSync, readFileSync } from "node:fs";
 import { dirname, join, relative } from "node:path";
@@ -48,6 +50,37 @@ export function e2eLoadProblems(file: string, text: string): string[] {
     );
   }
   return problems;
+}
+
+/** A line a merge leaves where it couldn't join two sides: `<<<<<<< `, `||||||| ` or `>>>>>>> `. */
+const CONFLICT_MARKER = /^(<{7}|\|{7}|>{7})( |$)/;
+
+/**
+ * A merge's conflict markers left in a file (WP-20's review, finding 5): a merge of `main` once
+ * left two `||||||| <base>` lines in the decision log, which no other check read. A file with a NUL
+ * byte in its first 8 KiB is binary and isn't read.
+ */
+export function conflictMarkerProblems(file: string, text: string): string[] {
+  if (text.slice(0, 8192).includes("\u0000")) return [];
+  const problems: string[] = [];
+  for (const [index, line] of text.split("\n").entries()) {
+    if (CONFLICT_MARKER.test(line)) {
+      problems.push(`${file}:${index + 1}: a merge's conflict marker is left in the file.`);
+    }
+  }
+  return problems;
+}
+
+/** The repository's tracked files, which `conflictMarkerProblems` reads. */
+function trackedFiles(root: string): string[] {
+  try {
+    return execFileSync("git", ["ls-files", "-z"], { cwd: root, encoding: "utf8" })
+      .split("\0")
+      .filter((name) => name !== "");
+  } catch {
+    // Not a Git checkout (a copy of the tree in a test): nothing to read.
+    return [];
+  }
 }
 
 /** The browser specs' files, which `e2eLoadProblems` reads. */
@@ -340,6 +373,11 @@ function main(): void {
   problems.push(...workspaceEngineProblems(listPackages(root), root));
   for (const file of specFiles(root)) {
     problems.push(...e2eLoadProblems(relative(root, file), readFileSync(file, "utf8")));
+  }
+  for (const file of trackedFiles(root)) {
+    const path = join(root, file);
+    if (!existsSync(path)) continue;
+    problems.push(...conflictMarkerProblems(file, readFileSync(path, "utf8")));
   }
   if (problems.length > 0) fail(problems, "repository lint");
   console.log(
