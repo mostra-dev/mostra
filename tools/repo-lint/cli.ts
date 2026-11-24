@@ -18,7 +18,7 @@
  */
 import { execFileSync } from "node:child_process";
 import { createHash } from "node:crypto";
-import { existsSync, readdirSync, readFileSync } from "node:fs";
+import { existsSync, lstatSync, readdirSync, readFileSync } from "node:fs";
 import { dirname, join, relative } from "node:path";
 import { parse as parseYaml } from "yaml";
 import { fail, ROOT } from "../lib/repo.ts";
@@ -376,7 +376,9 @@ function main(): void {
   }
   for (const file of trackedFiles(root)) {
     const path = join(root, file);
-    if (!existsSync(path)) continue;
+    // Regular files only: a tracked link may name a directory (a copy's shared node_modules) or a
+    // place outside the repository, and a submodule is a directory.
+    if (!existsSync(path) || !lstatSync(path).isFile()) continue;
     problems.push(...conflictMarkerProblems(file, readFileSync(path, "utf8")));
   }
   if (problems.length > 0) fail(problems, "repository lint");
