@@ -215,7 +215,7 @@ describe("what runs when (D152)", () => {
         matrix.e2e
           .filter((leg) => leg["os"] === os && leg["browser"] === browser)
           .map((leg) => leg["shard"]);
-      expect(parts("windows-arm64", "chromium")).toEqual(["1/3", "2/3", "3/3"]);
+      expect(parts("windows-arm64", "chromium")).toEqual(["1/4", "2/4", "3/4", "4/4"]);
       expect(parts("windows-x64", "firefox")).toEqual(["1/2", "2/2"]);
       expect(parts("windows-x64", "chromium")).toEqual([undefined]);
       expect(parts("linux", "firefox")).toEqual([undefined]);
