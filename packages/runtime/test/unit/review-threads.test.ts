@@ -319,13 +319,28 @@ describe("threads in submissions (RV-03, RV-05)", () => {
     for (let thread = 0; thread < 10; thread += 1) {
       const made = start(interaction, page(bo), bo.viewId, `Bo's thread ${thread}`);
       threads.push(made.id);
-      for (let reply = 0; reply < 480; reply += 1) {
+      // Two replies through the interaction core, the rest written in one transaction, as the
+      // ledger would hold them: 4,800 separate commits at synchronous=FULL take minutes on a slow
+      // runner (Windows arm64), and the path a reply takes is proven by the replies above.
+      for (let reply = 0; reply < 2; reply += 1) {
         interaction.replyThread(page(bo), made.id, {
           viewId: bo.viewId,
           commentId: CommentId.create(),
           text: long,
         });
       }
+      ledger.write((db) => {
+        for (let reply = 2; reply < 480; reply += 1) {
+          db.run(
+            "INSERT INTO comment (id, thread_id, author_viewer_id, text, mentions_json, at) VALUES (?, ?, ?, ?, NULL, ?)",
+            CommentId.create(),
+            made.id,
+            bo.viewerId,
+            long,
+            new Date(Date.now() + reply).toISOString(),
+          );
+        }
+      });
       // The owner writes once in each, so each is theirs to carry.
       interaction.replyThread(page(owner), made.id, {
         viewId: owner.viewId,
