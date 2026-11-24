@@ -1,6 +1,6 @@
 # WP-20 progress: Review layer and shell design
 
-**Status:** candidate, awaiting Mirza's review (design, words, a real phone). Owns RV-01, RV-02, RV-03, RV-04, RV-05, SH-05, SH-06, CO-06 and HO-11
+**Status:** candidate after the review's fixes and Mirza's notes, awaiting his acceptance (design, words, a real phone). Owns RV-01, RV-02, RV-03, RV-04, RV-05, SH-05, SH-06, CO-06 and HO-11
 ([specification](../design/work-packages/WP-20.md)), with #85, #152, #167, #188, #194 and #218 on
 its milestone.
 
@@ -18,7 +18,7 @@ its milestone.
 
 ## Decisions
 
-Mirza delegated every decision of this package at M100 ("I trust you to make the most robust … decision") and was away while it was built, so each is recorded as **D183** (items 1 to 15), worded there. In short:
+Mirza delegated every decision of this package at M100 ("I trust you to make the most robust … decision") and was away while it was built, so each is recorded as **D183** (items 1 to 16), worded there. In short:
 
 1. **Who sees a thread.** A page sees the threads it started, wrote in or is mentioned in; the artifact's owner, and every viewer under `team.visibility: "names"`, see all; agents and hosts see all.
 2. **Threads travel with the submission.** A submission's snapshot carries the threads its viewer started or wrote in, as they stand, with each crop's state; results, `review/export` and the submissions port read them from there.
@@ -31,7 +31,8 @@ Mirza delegated every decision of this package at M100 ("I trust you to make the
 9. **#188.** A Choose's label may be up to 256 characters (`CHOICE_LABEL_MAX`); the bar shortens what it shows, and the button's name and title carry it whole. A Submit's label stays at 48.
 10. **The receipt is gone** (D175 item 12): the status beside Submit says Submitted, Delivered, Pending delivery or Undeliverable, opens to each host's line and a stale view's note; on a hosted link it says Sent.
 11. **The server's pages**: Mostra's own name is its wordmark in every theme; an operator's name is set in Jost as a mark; a client's unchecked name reads "An app calling itself …".
-12. to 15. The overlay's place (above the frame, in the shell), #152's re-entry of an unpainted frame, #167's report, and the machinery (module `review`, area `REVIEW`, migration 20, budgets).
+12. to 14., 16. The overlay's place (above the frame, in the shell), #152's re-entry of an unpainted frame, #167's report, and the machinery (module `review`, area `REVIEW`, migration 20, budgets).
+15. **Selected words and comment mode** (after Mirza's review of the candidate, M101): selected words offer a comment beside them, anchored as those words (`selection: true`); comment mode says "Tap (or Click) what you want to comment on." with Cancel; crops follow the viewer's light or dark.
 
 ## What was built
 
@@ -89,6 +90,28 @@ Every check runs through the real interface: a real daemon over the host protoco
 - **Candidates side by side had no names**; each shows its name above it, but in the difference view.
 - **A plugin's anchor providers reached no page**: the manifest took `contributes.anchorProviders`, and nothing loaded them. Every page now registers them before it mounts, from the build's layout (`plugins.test.ts` "an anchor provider a plugin carries": the crop of a comment named in the provider's terms alone is the provider's element; seed "a plugin's anchor provider is never registered").
 
+## Review
+
+One independent review of the candidate (D172 item 0), posted on #244 on 2026-11-24: 10 findings (2 P1, 3 P2, 5 P3), read from the diff. Each is fixed with a test that fails on the old code and a seed planted where the fix holds (`node packages/runtime/scripts/prove-seeds.ts --name "<name>"`: red when planted, green restored). Severities are the review's.
+
+| Finding | Severity | What was done | Test, and its seed |
+|---|---|---|---|
+| 1. A link that dies while Submit waits for crops still submits | P1 | Both submits wait for the viewer's crops only when the submit would record something, then check the link again (410 `MOSTRA_HYGIENE_TOKEN_REVOKED`), then run the server's admission | `review.test.ts` "…finding 1" (a link revoked mid-wait records nothing); HY-03 seed |
+| 2. Crops rendered as the owner, with the real secrets, shown to others | P1 | A crop renders as a viewer of the commenter's own (a sandbox viewer with their answers, or the owner's for the owner), with no server function run (`dryRun` refused) and no live producer started: live values are the ones the home stored. Only the commenter and the owner see a crop's picture; others see that one exists (`withheld`) | `review-threads.test.ts` "findings 2, 9"; `review.test.ts` crop-probe (a page painting what it can learn: its colour proves no server code ran and no owner view); five RV-02 seeds |
+| 3. Crops starve past the 100 oldest; `settled` returns early | P2 | Pending crops are read in pages by ID; a submit's own threads go first, asked by ID | `cropper.test.ts` (150 jobs, 120 of an away owner); two RV-02 seeds |
+| 4. A viewer can be blocked from submitting for good | P2 | A submission's review has a budget (8 MiB, inside the snapshot's room after the answers): the submitter's own messages and the newest 50 of others' per thread; `messagesOmitted` and `commentsOmitted` count the rest, which `review/export` still has | `review-threads.test.ts` "…finding 4"; two RV-05 seeds |
+| 5. Leftover merge markers in the decision log | P2 | Removed; the repository lint now refuses conflict markers in any tracked text file | `tools/test/rules.test.ts` "conflict markers" |
+| 6. A post whose answer was lost makes a second thread | P3 | The same words post with the same thread and comment IDs until one succeeds | `packages/shell/test/attempts.test.ts`; e2e `review.spec.ts` "selected words, comment mode…" (the first post's answer dropped: one thread); RV-04 seeds (unit and end to end) |
+| 7. A foreign embedded frame can answer for the artifact | P3 | Only frames the version serves are asked, and only answers from the page's own origin or an opaque one (`"null"`) count | `agent.test.tsx` (a forger frame); RV-01 seed |
+| 8. A hosted respondent sees "Delivered" without hosted chrome | P3 | The shell judges a hosted link by its own address too | shell model tests; by inspection |
+| 9. Raw internal error text reaches pages | P3 | Pages see that a crop failed, never why; hosts and results keep the reason | `review-threads.test.ts` "findings 2, 9"; RV-02 seed |
+| 10. The opaque frame's selector isn't valid CSS for what it means | P3 | A frame is named by its CSS path; older anchors' form still resolves | `agent.test.tsx`; RV-01 seed |
+
+**Mirza's notes on the candidate (M101)**, each built and tested the same way:
+- **A light crop on the dark theme:** the picture he saw predates crops following the viewer's light or dark; the new pictures show a dark crop on the dark page (`dark-390-review-thread.png`), and `review-surfaces.spec.ts` judges each crop's light or dark against what the shell showed.
+- **Nothing in comment mode said what to do on a phone:** comment mode now says "Tap what you want to comment on." on a touch screen ("Click …" otherwise) at the top of the page, with Cancel, and a tap through those words still reaches the page (`dark-390-review-mode.png`); the comment button reads Cancel meanwhile. Three seeds (the words missing, the words covering the page, the offer missing).
+- **Comments on selected words:** select words on the page, and a Comment button appears beside them (a page can't add to the browser's own menu, and a phone has none); the comment anchors to those words with their context and finds them again after a reload or an edit around them (`anchors.test.tsx`; e2e in three engines with a mouse selection; `light-1280-review-selection.png`, `dark-390-review-selection.png`). Two RV-02 seeds.
+
 ## What CI found
 
 - **The first full run** (45138224745): the cycle above; seeds whose anchors moved (re-anchored, re-proved); the Rust wire types; expectations of the new ports and `frame-ancestors 'self'`; the comment button's accessible name; the React size budget (the lazily loaded review agent counted with the entry).
@@ -103,7 +126,7 @@ Every check runs through the real interface: a real daemon over the host protoco
 - **Candidates that are other versions or artifacts** (ROUND-3 §2's `<Candidate artifact version>`, shown in sibling frames) aren't built: RV-03's check names surfaces within one artifact, and another artifact's frame needs a capability the page's link doesn't hold. A later package can add them to the same `ReviewSet` additively.
 - **Pixel difference** is drawn by the browser over the live candidates (`mix-blend-mode: difference`), not computed from screenshots: it follows the page as the viewer scrolls and works for any content; the test reads its pixels.
 - **Artifact pages may frame each other** (`frame-ancestors 'self' <shell>`), amending D98 item 4, for served frames (D183 item 7).
-- **Size budgets** raised: `@mostra/protocol` 70 to 76 kB and its bridge 7.5 to 8.5 kB; `@mostra/react` 63 to 69 kB with Zod and 40 to 46 kB without (D183 item 15).
+- **Size budgets** raised: `@mostra/protocol` 70 to 76 kB and its bridge 7.5 to 8.5 kB; `@mostra/react` 63 to 69 kB with Zod and 40 to 46 kB without (D183 item 16).
 - **WP-34's planned ledger migration is 21**; 20 is this package's.
 - **D182 was MT-07's** by the time this package merged `main`: this package's decision is D183, its source message M100.
 

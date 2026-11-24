@@ -49,6 +49,7 @@ It writes `review/review.md` (or `review.json` with `--format json`) and `review
 | Data point | `chart-datum` Revenue, March | Find the series and point of a chart |
 | Candidate | `sidebar`/`airy` | Know which candidate the comment is about |
 | Selectors | CSS path, quoted text | Find an element you didn't mark |
+| Selected words | `the selected words "…"` (`selection: true`) | Know exactly which of your words the person answered |
 | Box | x, y, width, height at the viewport's size | Find a place on a canvas, an image or an embedded page |
 | Crop | `crops/<thread>.png` | Look at exactly what the person saw (open it) |
 
