@@ -287,4 +287,39 @@ describe("review: ports, routes, mentions and export (HO-11, CO-06, RV-05)", () 
     expect(refused.status).toBe(400);
     expect(refused.json<{ code: string }>().code).toBe("MOSTRA_REVIEW_MENTION_UNKNOWN");
   }, 120_000);
+  it("records no submission for a link revoked while its submit waits for crops (finding 1)", async () => {
+    const link = await gateway.link(receipt.artifactId, {
+      viewer: { ref: "linus", name: "Linus" },
+    });
+    const linus = await Page.open(link.url);
+    const { threadId, done } = linus.start("Waiting on its picture.");
+    expect((await done).status).toBe(200);
+    // The capture port hasn't answered: the submit waits for the crop (D183 item 2).
+    const call = await host.next(
+      (message: Call) =>
+        message.method === "port/capture.screenshot" &&
+        (message.params as { threadId: string }).threadId === threadId,
+      20_000,
+    );
+    const submitting = linus.browser.fetchJson(
+      linus.opened.link.shell,
+      `/a/${receipt.artifactId}/_mostra/v/${BROWSER_PROTOCOL_REVISION}/submit`,
+      {
+        csrf: linus.opened.shellCsrf,
+        body: { viewId: linus.opened.viewId, expectedRevision: "0" },
+      },
+    );
+    await new Promise((resolve) => setTimeout(resolve, 500));
+    ok(await host.call("view/revoke", { tokenId: (link as { tokenId: string }).tokenId }));
+    answer(host, call, { png: PNG_BASE64, width: 2, height: 1 });
+    const submitted = await submitting;
+    expect(submitted.status, submitted.body).toBe(410);
+    expect(submitted.json<{ code: string }>().code).toBe("MOSTRA_HYGIENE_TOKEN_REVOKED");
+    const events = ok<{ events: { type: string; payload: Record<string, unknown> }[] }>(
+      await host.call("events/read", {
+        filter: { artifacts: [receipt.artifactId], types: ["submission.created"] },
+      }),
+    ).events;
+    expect(events).toEqual([]);
+  }, 120_000);
 });

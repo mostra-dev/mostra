@@ -350,9 +350,10 @@ export function browserRoutes(options: BrowserRoutesOptions): BrowserRoutes {
     if (refused) return refused;
     const request = await body(context, SubmitRequest);
     if (request instanceof Response) return request;
+    const waited = await cropsSettled(context, request);
+    if (waited) return waited;
     const admitted = await admit(context, request);
     if (admitted) return admitted;
-    await options.beforeSubmit?.(pageOf(context));
     try {
       return jsonResponse(
         interaction.submit(pageOf(context), {
@@ -381,6 +382,38 @@ export function browserRoutes(options: BrowserRoutesOptions): BrowserRoutes {
     } catch (error) {
       return failure(error);
     }
+  };
+
+  /**
+   * Waits for the viewer's comment crops before a submit that would be recorded (D183 item 2), then
+   * checks the link again: one revoked or expired during the wait records nothing (HY-03), and a
+   * repeat or a refusal doesn't wait at all (WP-20's review, finding 1). The server's rules
+   * (`admit`) are asked after it, so a submit is admitted as it stands when it is made.
+   */
+  const cropsSettled = async (
+    context: RouteContext,
+    request: { readonly viewId: string; readonly expectedRevision: unknown },
+  ): Promise<Response | undefined> => {
+    if (!options.beforeSubmit) return undefined;
+    const page = pageOf(context);
+    if (
+      !interaction.wouldRecord(page, {
+        viewId: request.viewId,
+        expectedRevision: Number(request.expectedRevision),
+      })
+    ) {
+      return undefined;
+    }
+    await options.beforeSubmit(page);
+    if (live(context)) return undefined;
+    return answer(
+      refusal(
+        "MOSTRA_HYGIENE_TOKEN_REVOKED",
+        "The link this page came from was revoked or has expired.",
+        410,
+      ).diagnostic,
+      410,
+    );
   };
 
   /** Whether the session's link still works; a revoked link ends its streams. */
@@ -666,10 +699,11 @@ export function browserRoutes(options: BrowserRoutesOptions): BrowserRoutes {
     if (refused) return refused;
     const request = await body(context, ShellSubmitRequest);
     if (request instanceof Response) return request;
+    const waited = await cropsSettled(context, request);
+    if (waited) return waited;
     const admitted = await admit(context, request);
     if (admitted) return admitted;
     const page = pageOf(context);
-    await options.beforeSubmit?.(page);
     let submission: SubmissionSummary & { readonly duplicate?: true };
     try {
       submission = interaction.submit(page, {

@@ -237,6 +237,14 @@ const SEEDS: readonly Seed[] = [
     e2e: true,
   },
   {
+    requirement: "HY-03",
+    name: "WP-20 review 1: a link revoked while its submit waits for crops still submits",
+    file: "src/gateway/browser.ts",
+    from: "    if (live(context)) return undefined;\n    return answer(",
+    to: "    if (live(context) || true) return undefined;\n    return answer(",
+    check: integration("review.test.ts", "finding 1"),
+  },
+  {
     requirement: "RV-02",
     name: "a hosted page's crops are never rendered",
     file: "src/server/hosted.ts",
