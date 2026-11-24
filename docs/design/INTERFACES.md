@@ -474,6 +474,7 @@ interface Results {
   actions: { runId: string; action: string; status: string; at: string }[];         // runs started in this view
   signals: { name: string; at: string; payload?: unknown }[];   // the newest 100, within 1 MiB of payloads
   signalsOmitted?: number; signalsCompacted?: true;                // older signals left out; some removed by compaction
+  commentsOmitted?: number;                                        // threads that didn't fit (WP-20); each comment's messagesOmitted likewise
 }
 ```
 

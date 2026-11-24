@@ -23,6 +23,7 @@ import {
   peerKey,
   SubmitConflict,
 } from "../../src/interaction/index.ts";
+import { snapshotThreads } from "../../src/interaction/review.ts";
 import { viewerForSpec } from "../../src/interaction/viewers.ts";
 import type { Ledger } from "../../src/ledger/index.ts";
 import { silentLog } from "../../src/log.ts";
@@ -267,6 +268,66 @@ describe("mentions (CO-06)", () => {
 });
 
 describe("threads in submissions (RV-03, RV-05)", () => {
+  it("keeps a submission inside its bounds however long the threads it carries (finding 4)", () => {
+    const { interaction, owner, page, person, ledger, artifactId } = setup();
+    const bo = person("bo");
+    const long = "x".repeat(9_500);
+    const threads: string[] = [];
+    for (let thread = 0; thread < 10; thread += 1) {
+      const made = start(interaction, page(bo), bo.viewId, `Bo's thread ${thread}`);
+      threads.push(made.id);
+      for (let reply = 0; reply < 480; reply += 1) {
+        interaction.replyThread(page(bo), made.id, {
+          viewId: bo.viewId,
+          commentId: CommentId.create(),
+          text: long,
+        });
+      }
+      // The owner writes once in each, so each is theirs to carry.
+      interaction.replyThread(page(owner), made.id, {
+        viewId: owner.viewId,
+        commentId: CommentId.create(),
+        text: `Owner's answer ${thread}`,
+      });
+    }
+    // About 46 MB of comments: the submit is made all the same.
+    const submission = interaction.submit(page(owner), {
+      viewId: owner.viewId,
+      expectedRevision: 0,
+      channel: "shell",
+    });
+    const results = interaction.resultsOf(submission.id);
+    expect(results?.comments).toHaveLength(10);
+    for (const comment of results?.comments ?? []) {
+      // The owner's own message stays, with the newest 50 of Bo's, and the rest is counted.
+      expect(comment.messages.some((message) => message.text.startsWith("Owner's answer"))).toBe(
+        true,
+      );
+      expect(comment.messages).toHaveLength(51);
+      expect(comment.messagesOmitted).toBe(431);
+    }
+    // A smaller budget gives way message by message first: every thread, fewer of Bo's messages.
+    const trimmed = ledger.read((db) => snapshotThreads(db, artifactId, owner.viewerId, 1_200_000));
+    expect(trimmed.threads).toHaveLength(10);
+    expect(trimmed.threadsOmitted).toBeUndefined();
+    expect(
+      trimmed.threads.reduce((sum, thread) => sum + (thread.messagesOmitted ?? 0), 0),
+    ).toBeGreaterThan(4_310);
+    expect(
+      trimmed.threads.every((thread) =>
+        thread.messages.some((message) => message.author.id === owner.viewerId),
+      ),
+    ).toBe(true);
+    // One that fits fewer threads counts the ones it leaves out, and never refuses.
+    const small = ledger.read((db) => snapshotThreads(db, artifactId, owner.viewerId, 3_000));
+    expect(small.threads.length).toBeGreaterThan(0);
+    expect(small.threads.length + (small.threadsOmitted ?? 0)).toBe(10);
+    expect(small.threadsOmitted ?? 0).toBeGreaterThan(0);
+    expect(
+      small.threads.every((thread) => thread.messages.some((m) => m.author.id === owner.viewerId)),
+    ).toBe(true);
+  }, 120_000);
+
   it("carries the viewer's threads, their crops and messages into results and Markdown", async () => {
     const { interaction, owner, page, versionId } = setup();
     const made = start(interaction, page(owner), owner.viewId, "Make it `bold`\n## not a heading");

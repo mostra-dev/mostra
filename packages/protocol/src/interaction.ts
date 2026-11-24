@@ -605,6 +605,12 @@ export interface ResultComment {
     /** The people it mentions (CO-06). */
     readonly mentions?: readonly Viewer[];
   }[];
+  /**
+   * How many of the thread's messages the submission left out, oldest first (WP-20's review,
+   * finding 4): it keeps the submitter's own and the newest 50 of others' while they fit.
+   * `review/export` lists every message. Absent when none.
+   */
+  readonly messagesOmitted?: number;
   /** Every layer of the anchor that applies (D23). */
   readonly anchor: {
     readonly reviewId?: string;
@@ -737,6 +743,11 @@ export interface Results {
   }[];
   /** How many older signals of the view the limit left out; absent when none. */
   readonly signalsOmitted?: number;
+  /**
+   * How many of the submitter's threads didn't fit the submission (WP-20's review, finding 4), so
+   * a submit is never refused for its comments; `review/export` lists them. Absent when none.
+   */
+  readonly commentsOmitted?: number;
   /** Set when compaction removed events of this view before it submitted, so signals may be missing. */
   readonly signalsCompacted?: true;
 }
@@ -764,6 +775,7 @@ export const ResultComment: z.ZodType<ResultComment> = z
         }),
       )
       .readonly(),
+    messagesOmitted: z.int().min(1).exactOptional(),
     anchor: z.object({
       reviewId: z.string().exactOptional(),
       selectors: z.array(z.unknown()).readonly().exactOptional(),
@@ -894,6 +906,7 @@ export const Results: z.ZodType<Results> = z
       .readonly(),
     signalsOmitted: z.int().min(1).exactOptional(),
     signalsCompacted: z.literal(true).exactOptional(),
+    commentsOmitted: z.int().min(1).exactOptional(),
   })
   .register(wireRegistry, {
     id: "Results",

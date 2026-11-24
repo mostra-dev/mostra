@@ -14,6 +14,7 @@ import {
   type CapabilityScope,
   CommentId,
   type CropState,
+  canonicalJson,
   createDiagnostic,
   type KnownDiagnosticCode,
   type ResultComment,
@@ -620,17 +621,40 @@ export interface SnapshotThread {
       }
     | { readonly state: "pending" }
     | { readonly state: "failed"; readonly reason: string };
+  /** How many of its messages this snapshot left out to fit (finding 4). */
+  readonly messagesOmitted?: number;
+}
+
+/** The review part of a submission's snapshot. */
+export interface SnapshotReview {
+  readonly threads: readonly SnapshotThread[];
+  /** Threads that didn't fit at all (finding 4). */
+  readonly threadsOmitted?: number;
 }
 
 /**
+ * The most characters a submission's threads take (WP-20's review, finding 4): with a document's
+ * 16 MiB of answers and its shared state's, a snapshot stays inside its 40 Mi characters.
+ */
+export const REVIEW_SNAPSHOT_MAX: number = 8 * 1024 * 1024;
+
+/** How many of other people's messages a thread keeps in a snapshot: the newest. */
+export const OTHERS_PER_THREAD = 50;
+
+/**
  * The threads a viewer's submission carries (D183 item 2): every thread they started or wrote in on
- * the artifact, as it stands, with every message and its crop.
+ * the artifact, as it stands, with its crop, within `budget` characters (WP-20's review, finding
+ * 4): each keeps the submitter's own messages and the newest {@link OTHERS_PER_THREAD} of others',
+ * the oldest giving way first when a thread doesn't fit, and a thread that can't fit at all is
+ * counted in `threadsOmitted`. Comments are never deleted, so without the budget a viewer could be
+ * kept from ever submitting.
  */
 export function snapshotThreads(
   db: LedgerDb,
   artifactId: string,
   viewerId: string,
-): SnapshotThread[] {
+  budget: number = REVIEW_SNAPSHOT_MAX,
+): SnapshotReview {
   const rows = db.all<ThreadRow>(
     `SELECT * FROM thread WHERE artifact_id = ? AND (viewer_id = ? OR id IN
        (SELECT thread_id FROM comment WHERE author_viewer_id = ?)) ORDER BY created_at, id`,
@@ -638,7 +662,43 @@ export function snapshotThreads(
     viewerId,
     viewerId,
   );
-  return rows.map((row) => snapshotThread(db, row));
+  // The review's own envelope: `{"review":{"threads":[]}}` and a count.
+  let left = budget - 64;
+  let threadsOmitted = 0;
+  const threads: SnapshotThread[] = [];
+  for (const row of rows) {
+    const full = snapshotThread(db, row);
+    const others = full.messages.filter((message) => message.author.id !== viewerId);
+    const newest = new Set(others.slice(-OTHERS_PER_THREAD));
+    const kept = full.messages.filter(
+      (message) => message.author.id === viewerId || newest.has(message),
+    );
+    // A thread's length: its header, a count, and each message with its comma.
+    const header = canonicalJson({ ...full, messages: [] }).length + 32;
+    const sizes = new Map(kept.map((message) => [message, canonicalJson(message).length + 1]));
+    let length = header + [...sizes.values()].reduce((sum, size) => sum + size, 0);
+    // Others' oldest go first, then the submitter's own.
+    const order = [
+      ...kept.filter((message) => message.author.id !== viewerId),
+      ...kept.filter((message) => message.author.id === viewerId),
+    ];
+    const dropped = new Set<(typeof kept)[number]>();
+    for (const message of order) {
+      if (length + 1 <= left) break;
+      dropped.add(message);
+      length -= sizes.get(message) ?? 0;
+    }
+    const messages = kept.filter((message) => !dropped.has(message));
+    // A thread with none of its messages says nothing: it is counted as left out instead.
+    if (length + 1 > left || messages.length === 0) {
+      threadsOmitted += 1;
+      continue;
+    }
+    const omitted = full.messages.length - messages.length;
+    threads.push({ ...full, messages, ...(omitted > 0 ? { messagesOmitted: omitted } : {}) });
+    left -= length + 1;
+  }
+  return { threads, ...(threadsOmitted > 0 ? { threadsOmitted } : {}) };
 }
 
 /** One thread as it stands now, as a snapshot keeps it. */
@@ -746,6 +806,7 @@ export function resultComment(
       id: message.id,
       ...(message.mentions !== undefined ? { mentions: message.mentions } : {}),
     })),
+    ...(thread.messagesOmitted !== undefined ? { messagesOmitted: thread.messagesOmitted } : {}),
     anchor: {
       ...pick("reviewId"),
       ...pick("selectors"),
@@ -843,6 +904,11 @@ export function commentMarkdown(comment: ResultComment): string[] {
       (message) =>
         `  - ${quoted(personName(message.author))} at ${message.at}: ${quoted(message.text)}${message.mentions !== undefined && message.mentions.length > 0 ? ` (mentions ${message.mentions.map((person) => quoted(personName(person))).join(", ")})` : ""}`,
     ),
+    ...(comment.messagesOmitted !== undefined
+      ? [
+          `  - (${comment.messagesOmitted} earlier ${comment.messagesOmitted === 1 ? "message isn't" : "messages aren't"} in this submission; \`mostra review export\` has every message)`,
+        ]
+      : []),
   ];
 }
 

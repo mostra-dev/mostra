@@ -26,7 +26,7 @@ import type { LedgerDb } from "../ledger/index.ts";
 import { appendEvent } from "./events.ts";
 import { documentFor, type FieldRow } from "./fields.ts";
 import { storedPolicy } from "./policy.ts";
-import { type SnapshotThread, snapshotThreads } from "./review.ts";
+import { REVIEW_SNAPSHOT_MAX, type SnapshotReview, snapshotThreads } from "./review.ts";
 import { raiseSubmitSignal, SUBMIT_SIGNAL } from "./signals.ts";
 import { countSubmission } from "./tally.ts";
 import { type ViewRow, viewControls, viewer as viewerById, viewFor } from "./viewers.ts";
@@ -108,7 +108,7 @@ export interface Snapshot {
    * part of the draft), each with its crop as captured then. Snapshots made before WP-20, and
    * those of a viewer with no thread, have none.
    */
-  readonly review?: { readonly threads: readonly SnapshotThread[] };
+  readonly review?: SnapshotReview;
 }
 
 /** The most action runs a snapshot lists. */
@@ -521,9 +521,7 @@ export function submit(db: LedgerDb, input: SubmitInput): SubmitOutcome {
       SNAPSHOT_ACTIONS_MAX,
     )
     .map((run) => ({ runId: run.id, action: run.action, status: run.status, at: run.started_at }));
-  // The viewer's comment threads, as they stand (WP-20).
-  const threads = snapshotThreads(db, input.artifactId, input.viewerId);
-  const snapshot: Snapshot = {
+  const answers: Snapshot = {
     schema: 1,
     submissionId,
     at,
@@ -551,8 +549,18 @@ export function submit(db: LedgerDb, input: SubmitInput): SubmitOutcome {
     ...(signalsOmitted > 0 ? { signalsOmitted } : {}),
     ...(signalsCompacted ? { signalsCompacted: true as const } : {}),
     actions,
-    ...(threads.length > 0 ? { review: { threads } } : {}),
   };
+  // The viewer's comment threads, as they stand (WP-20), in the room the answers leave: comments
+  // never keep a submit from being made (WP-20's review, finding 4).
+  const room = Math.min(
+    REVIEW_SNAPSHOT_MAX,
+    SNAPSHOT_MAX_LENGTH - canonicalJson(answers).length - 64 * 1024,
+  );
+  const review = snapshotThreads(db, input.artifactId, input.viewerId, room);
+  const snapshot: Snapshot =
+    review.threads.length > 0 || review.threadsOmitted !== undefined
+      ? { ...answers, review }
+      : answers;
 
   // 5. The digest of the canonical snapshot, which must fit one protocol message with room to
   // spare, or no host could ever receive it.

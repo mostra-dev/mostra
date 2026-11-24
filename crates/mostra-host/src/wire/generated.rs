@@ -18017,6 +18017,11 @@ pub struct ResultComment {
     pub anchor: ResultCommentAnchor,
     pub crop: ResultCommentCrop,
     pub messages: ::std::vec::Vec<ResultCommentMessagesItem>,
+    #[serde(
+        rename = "messagesOmitted",
+        skip_serializing_if = "::std::option::Option::is_none"
+    )]
+    pub messages_omitted: ::std::option::Option<::std::num::NonZeroU64>,
     pub status: ResultCommentStatus,
     #[serde(rename = "threadId")]
     pub thread_id: ::std::string::String,
@@ -18294,6 +18299,11 @@ pub struct Results {
     pub artifact: ResultsArtifact,
     pub choices: ::std::vec::Vec<ResultsChoicesItem>,
     pub comments: ::std::vec::Vec<ResultComment>,
+    #[serde(
+        rename = "commentsOmitted",
+        skip_serializing_if = "::std::option::Option::is_none"
+    )]
+    pub comments_omitted: ::std::option::Option<::std::num::NonZeroU64>,
     pub fields: ::std::vec::Vec<ResultsFieldsItem>,
     pub orphaned: ::std::vec::Vec<ResultsOrphanedItem>,
     pub signals: ::std::vec::Vec<ResultsSignalsItem>,

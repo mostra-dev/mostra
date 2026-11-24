@@ -7478,6 +7478,11 @@
             ]
           }
         },
+        "messagesOmitted": {
+          "type": "integer",
+          "minimum": 1,
+          "maximum": 9007199254740991
+        },
         "anchor": {
           "type": "object",
           "properties": {
@@ -8048,6 +8053,11 @@
         "signalsCompacted": {
           "type": "boolean",
           "const": true
+        },
+        "commentsOmitted": {
+          "type": "integer",
+          "minimum": 1,
+          "maximum": 9007199254740991
         }
       },
       "required": [

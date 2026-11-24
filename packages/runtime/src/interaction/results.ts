@@ -220,6 +220,9 @@ export function buildResults(
     signals: snapshot.signals,
     ...(snapshot.signalsOmitted !== undefined ? { signalsOmitted: snapshot.signalsOmitted } : {}),
     ...(snapshot.signalsCompacted ? { signalsCompacted: true as const } : {}),
+    ...(snapshot.review?.threadsOmitted !== undefined
+      ? { commentsOmitted: snapshot.review.threadsOmitted }
+      : {}),
   };
 }
 
@@ -329,6 +332,11 @@ export function resultsMarkdown(results: Results, snapshot: Snapshot): string {
     "",
     "## Comments",
     ...(results.comments.length > 0 ? results.comments.flatMap(commentMarkdown) : ["- (none)"]),
+    ...(results.commentsOmitted !== undefined
+      ? [
+          `- (${results.commentsOmitted} more ${results.commentsOmitted === 1 ? "thread doesn't" : "threads don't"} fit this submission; \`mostra review export\` lists every thread)`,
+        ]
+      : []),
     "",
     "## Actions run in this view",
     ...(results.actions.length > 0

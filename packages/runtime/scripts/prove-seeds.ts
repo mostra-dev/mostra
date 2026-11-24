@@ -237,6 +237,22 @@ const SEEDS: readonly Seed[] = [
     e2e: true,
   },
   {
+    requirement: "RV-05",
+    name: "WP-20 review 4: a thread carries every message of others",
+    file: "src/interaction/review.ts",
+    from: "    const newest = new Set(others.slice(-OTHERS_PER_THREAD));",
+    to: "    const newest = new Set(others);",
+    check: unit("review-threads.test.ts", "finding 4"),
+  },
+  {
+    requirement: "RV-05",
+    name: "WP-20 review 4: a thread that doesn't fit is left out whole",
+    file: "src/interaction/review.ts",
+    from: "      if (length + 1 <= left) break;",
+    to: "      break;",
+    check: unit("review-threads.test.ts", "finding 4"),
+  },
+  {
     requirement: "RV-02",
     name: "WP-20 review 3: the queue reads only its first page of crops",
     file: "src/review/index.ts",

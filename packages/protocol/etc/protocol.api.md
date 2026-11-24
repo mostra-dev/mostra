@@ -3550,6 +3550,7 @@ export interface ResultComment {
         readonly id?: string;
         readonly mentions?: readonly Viewer[];
     }[];
+    readonly messagesOmitted?: number;
     readonly status: "open" | "resolved";
     readonly threadId: string;
     readonly versionId?: string;
@@ -3580,6 +3581,7 @@ export interface Results {
         readonly label?: string;
     }[];
     readonly comments: readonly ResultComment[];
+    readonly commentsOmitted?: number;
     readonly fields: readonly {
         readonly id: string;
         readonly label?: string;
