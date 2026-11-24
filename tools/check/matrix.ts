@@ -315,6 +315,7 @@ export function ciMatrix(scope: CiScope, plan: Plan, runners: Runners): CiMatrix
         // Firefox on x64 (7 min alone) and emulated Chromium on arm64, in four parts: in three, its
         // third took the job's whole 25 minutes with WP-20's review suites (merge queue 45463515020,
         // 17.5 minutes of tests after 7 of setup), as its second of two had with WP-18's kit suite.
+        // Each part takes whole spec files dealt by their length (tests/e2e/support/parts.ts).
         { os: "windows-x64", runner: runners.windows.x64, browser: "chromium" },
         ...shards({ os: "windows-x64", runner: runners.windows.x64, browser: "firefox" }, 2),
         ...(all

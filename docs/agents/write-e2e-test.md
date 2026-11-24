@@ -26,7 +26,10 @@ layers 3 and 4). Unit and property tests stay in each package's `test/`.
    A spec that waits on something an engine may never deliver (a refused frame in Firefox never
    fires `load`) bounds the wait and proves the probe with a control that must pass.
 6. **CI** runs the `e2e` job on macOS and Linux and keeps the traces of failed tests as an
-   artifact. Add specs to `specs/`, not new jobs or workflow files.
+   artifact. Add specs to `specs/`, not new jobs or workflow files. Where CI splits an engine
+   across machines (Windows), each part takes whole spec files dealt by their length
+   (`tests/e2e/support/parts.ts`): give a new spec its length in `SPEC_SECONDS`, its seconds in
+   one Chromium worker (`--workers=1 --reporter=json`), or `tools/test/e2e-parts.test.ts` fails.
 7. **Seed it.** Add the violation the spec must catch to `packages/runtime/scripts/prove-seeds.ts`
    with `e2e: true`, and run `node packages/runtime/scripts/prove-seeds.ts --only <ID>`.
 
