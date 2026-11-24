@@ -6,7 +6,6 @@
  * when the shell first asks, so a page nobody reviews carries none of it.
  */
 import {
-  type AnchorRect,
   type Bridge,
   mostraReviewHitTest,
   mostraReviewPositions,
@@ -57,58 +56,27 @@ export function showSurface(surface: ReviewSurface): () => void {
   };
 }
 
-/** How long a selection holds still before the shell is told of it. */
-const SELECTION_SETTLE_MS = 150;
-
 /**
  * Tells the shell where the words the viewer selects are, and when the selection ends, so the shell
- * offers to comment on them beside it (WP-20, after Mirza's review). Words typed into a field are
- * the viewer's own answer, not the page's, and offer nothing.
+ * offers to comment on them beside it (WP-20, after Mirza's review). The agent that measures them
+ * loads with the page's first selection of words, so a page nobody selects in carries none of it.
  */
 function reportSelections(bridge: Bridge): void {
-  let timer: ReturnType<typeof setTimeout> | undefined;
-  let shown = false;
-  const tell = (rect?: AnchorRect): void => {
-    try {
-      bridge.notify(mostraReviewSelection, rect ? { rect } : {});
-    } catch (error) {
-      console.error("Mostra: the selection couldn't be reported to the shell.", error);
-    }
-  };
-  const check = (): void => {
-    timer = undefined;
+  const first = (): void => {
     const selection = document.getSelection();
-    const active = document.activeElement;
-    const typing =
-      active instanceof HTMLInputElement ||
-      active instanceof HTMLTextAreaElement ||
-      (active instanceof HTMLElement && active.isContentEditable);
-    const range =
-      selection && !selection.isCollapsed && selection.rangeCount > 0 && !typing
-        ? selection.getRangeAt(0)
-        : undefined;
-    const box = range && range.toString().trim() !== "" ? range.getBoundingClientRect() : undefined;
-    if (box && box.width + box.height > 0) {
-      shown = true;
-      tell({
-        x: Math.round(box.left),
-        y: Math.round(box.top),
-        width: Math.round(box.width),
-        height: Math.round(box.height),
-      });
-    } else if (shown) {
-      shown = false;
-      tell();
-    }
+    if (!selection || selection.isCollapsed) return;
+    document.removeEventListener("selectionchange", first);
+    void loadAgent().then(({ watchSelections }) =>
+      watchSelections(document, (rect) => {
+        try {
+          bridge.notify(mostraReviewSelection, rect ? { rect } : {});
+        } catch (error) {
+          console.error("Mostra: the selection couldn't be reported to the shell.", error);
+        }
+      }),
+    );
   };
-  const later = (): void => {
-    if (timer !== undefined) clearTimeout(timer);
-    timer = setTimeout(check, SELECTION_SETTLE_MS);
-  };
-  document.addEventListener("selectionchange", later);
-  // A selection moves with the page under it.
-  window.addEventListener("scroll", () => (shown ? later() : undefined), { passive: true });
-  window.addEventListener("resize", () => (shown ? later() : undefined), { passive: true });
+  document.addEventListener("selectionchange", first);
 }
 
 /** Answers the shell's review messages on this page's bridge. */

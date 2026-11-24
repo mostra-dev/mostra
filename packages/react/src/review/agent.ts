@@ -368,3 +368,52 @@ export function answerParent(): () => void {
   window.addEventListener("message", listener);
   return () => window.removeEventListener("message", listener);
 }
+
+/** How long a selection holds still before the shell is told of it. */
+const SELECTION_SETTLE_MS = 150;
+
+/**
+ * Follows the words the viewer selects in `doc`: `tell` hears their box in the viewport as it
+ * settles, and nothing once the selection ends (WP-20, after Mirza's review). Words typed into a
+ * field are the viewer's own answer, not the page's, and are never offered.
+ */
+export function watchSelections(doc: Document, tell: (rect?: AnchorRect) => void): void {
+  const view = doc.defaultView;
+  let timer: ReturnType<typeof setTimeout> | undefined;
+  let shown = false;
+  const check = (): void => {
+    timer = undefined;
+    const selection = doc.getSelection();
+    const active = doc.activeElement;
+    const typing =
+      active instanceof HTMLInputElement ||
+      active instanceof HTMLTextAreaElement ||
+      (active instanceof HTMLElement && active.isContentEditable);
+    const range =
+      selection && !selection.isCollapsed && selection.rangeCount > 0 && !typing
+        ? selection.getRangeAt(0)
+        : undefined;
+    const box = range && range.toString().trim() !== "" ? range.getBoundingClientRect() : undefined;
+    if (box && box.width + box.height > 0) {
+      shown = true;
+      tell({
+        x: Math.round(box.left),
+        y: Math.round(box.top),
+        width: Math.round(box.width),
+        height: Math.round(box.height),
+      });
+    } else if (shown) {
+      shown = false;
+      tell();
+    }
+  };
+  const later = (): void => {
+    if (timer !== undefined) clearTimeout(timer);
+    timer = setTimeout(check, SELECTION_SETTLE_MS);
+  };
+  doc.addEventListener("selectionchange", later);
+  // A selection moves with the page under it.
+  view?.addEventListener("scroll", () => (shown ? later() : undefined), { passive: true });
+  view?.addEventListener("resize", () => (shown ? later() : undefined), { passive: true });
+  later();
+}

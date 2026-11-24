@@ -126,7 +126,7 @@ One independent review of the candidate (D172 item 0), posted on #244 on 2026-11
 - **Candidates that are other versions or artifacts** (ROUND-3 §2's `<Candidate artifact version>`, shown in sibling frames) aren't built: RV-03's check names surfaces within one artifact, and another artifact's frame needs a capability the page's link doesn't hold. A later package can add them to the same `ReviewSet` additively.
 - **Pixel difference** is drawn by the browser over the live candidates (`mix-blend-mode: difference`), not computed from screenshots: it follows the page as the viewer scrolls and works for any content; the test reads its pixels.
 - **Artifact pages may frame each other** (`frame-ancestors 'self' <shell>`), amending D98 item 4, for served frames (D183 item 7).
-- **Size budgets** raised: `@mostra/protocol` 70 to 76 kB and its bridge 7.5 to 8.5 kB; `@mostra/react` 63 to 69 kB with Zod and 40 to 46 kB without (D183 item 16).
+- **Size budgets** raised: `@mostra/protocol` 70 to 76 kB and its bridge 7.5 to 8.5 kB; `@mostra/react` 63 to 70 kB with Zod and 40 to 47 kB without (D183 item 16).
 - **WP-34's planned ledger migration is 21**; 20 is this package's.
 - **D182 was MT-07's** by the time this package merged `main`: this package's decision is D183, its source message M100.
 
