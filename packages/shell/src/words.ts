@@ -282,6 +282,8 @@ export const REVIEW_WORDS = {
     `Comment ${String(number)}${author ? ` by ${author}` : ""}: ${text.length > 80 ? `${text.slice(0, 79)}…` : text}`,
   capturing: "Taking a picture of this place…",
   cropFailed: "No picture of this place could be taken; the comment still says where it is.",
+  /** Another viewer's crop shows their own answers (WP-20's review, finding 2). */
+  cropWithheld: "Only its writer and the page's owner see this picture.",
   cropAlt: (label: string | undefined): string =>
     label ? `The place this comment points at: ${label}` : "The place this comment points at",
   otherPage: (page: string): string => `On ${page}`,

@@ -219,6 +219,49 @@ describe("review threads", () => {
     expect(seen.threads[0]?.messages[1]?.mentions?.[0]).toMatchObject({ key: boKey, self: true });
   });
 
+  it("shows a crop's picture to its viewer and the owner only, and no page why one failed (findings 2, 9)", () => {
+    const { interaction, owner, person, page, ledger, artifactId } = setup();
+    const ada = person("ada");
+    const bo = person("bo");
+    const adas = start(interaction, page(ada), ada.viewId, "Ada's note");
+    interaction.setCrop(adas.id, {
+      kind: "captured",
+      blob: "d".repeat(64),
+      width: 300,
+      height: 200,
+      source: "default",
+    });
+    const boKey = peerKey(artifactId, bo.viewerId);
+    interaction.replyThread(page(owner), adas.id, {
+      viewId: owner.viewId,
+      commentId: CommentId.create(),
+      text: "@BO look",
+      mentions: [{ key: boKey }],
+    });
+    // Bo, named, sees the thread, without the picture of Ada's answers.
+    const boSees = interaction.reviewThreads(page(bo), bo.viewId).threads[0];
+    expect(boSees?.id).toBe(adas.id);
+    expect(boSees?.crop).toMatchObject({ state: "captured", withheld: true });
+    expect(interaction.threadCrop(page(bo), adas.id)).toBeUndefined();
+    // Ada and the owner see it.
+    for (const who of [ada, owner]) {
+      expect(interaction.reviewThreads(page(who), who.viewId).threads[0]?.crop).not.toHaveProperty(
+        "withheld",
+      );
+      expect(interaction.threadCrop(page(who), adas.id)).toEqual({ blob: "d".repeat(64) });
+    }
+    // A failed crop's reason (a path in the home here) stays with hosts and results.
+    const failing = start(interaction, page(ada), ada.viewId, "Another");
+    interaction.setCrop(failing.id, { kind: "failed", reason: "ENOENT: /Users/owner/.mostra/x" });
+    const shown = interaction.reviewThreads(page(ada), ada.viewId);
+    expect(JSON.stringify(shown)).not.toContain("/Users/owner");
+    const pageEvents = interaction.pageEvents(page(ada), 0, 1000).events;
+    expect(JSON.stringify(pageEvents)).not.toContain("/Users/owner");
+    expect(JSON.stringify(eventsOf(ledger, artifactId, "review.crop.captured"))).toContain(
+      "/Users/owner",
+    );
+  });
+
   it("shows every thread under names, by key and display name", () => {
     const { interaction, person, page } = setup({ manifest: { team: { visibility: "names" } } });
     const ada = person("ada");

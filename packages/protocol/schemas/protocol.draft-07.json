@@ -8780,6 +8780,10 @@
             "reason": {
               "type": "string",
               "maxLength": 1024
+            },
+            "withheld": {
+              "type": "boolean",
+              "const": true
             }
           },
           "required": [

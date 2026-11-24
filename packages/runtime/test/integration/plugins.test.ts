@@ -15,7 +15,6 @@ import {
   writeFileSync,
 } from "node:fs";
 import { createRequire } from "node:module";
-import { homedir } from "node:os";
 import { join } from "node:path";
 import { BROWSER_PROTOCOL_REVISION, CommentId, ThreadId } from "@mostra/protocol";
 import { cssColor } from "@mostra/themes";
@@ -30,6 +29,7 @@ import {
   initializeParams,
   type LineClient,
   type Message,
+  playwrightBrowsers,
   type RuntimeProcess,
   startDaemon,
   type TestHome,
@@ -989,16 +989,7 @@ describe("an anchor provider a plugin carries (WP-20, D172)", () => {
   it("is registered by the page, so a comment on its content is found again in its terms", async () => {
     // The crop renders in the verify runner's browser, which Playwright keeps under the person's
     // own home: this suite's daemon runs with a home of its own.
-    const browsers =
-      process.env["PLAYWRIGHT_BROWSERS_PATH"] ??
-      (process.platform === "darwin"
-        ? join(homedir(), "Library", "Caches", "ms-playwright")
-        : WINDOWS
-          ? join(
-              process.env["LOCALAPPDATA"] ?? join(homedir(), "AppData", "Local"),
-              "ms-playwright",
-            )
-          : join(process.env["XDG_CACHE_HOME"] ?? join(homedir(), ".cache"), "ms-playwright"));
+    const browsers = playwrightBrowsers();
     const target = await start({ env: { PLAYWRIGHT_BROWSERS_PATH: browsers } });
     const dir = artifact({
       "index.tsx": `import { defineArtifact } from "@mostra/react";

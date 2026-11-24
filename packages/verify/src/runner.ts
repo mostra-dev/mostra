@@ -332,6 +332,7 @@ async function capturePage(
       if (other !== page) void other.close().catch(() => undefined);
     });
     const left = (): number => request.deadline - Date.now();
+    const network = watchNetwork(page, () => artifactFrame(page), "crop");
     await page.goto(request.url, { waitUntil: "commit", timeout: Math.max(1000, left()) });
     const readiness = await awaitReady(shellMarks(page), left).catch(() => "never" as const);
     const frame = artifactFrame(page);
@@ -343,6 +344,9 @@ async function capturePage(
       );
     }
     await frame.evaluate(() => document.fonts.ready.then(() => true)).catch(() => false);
+    // As verify does: the page's requests answered and its DOM quiet, so a crop shows the data the
+    // page loads, not its loading state (WP-20's review, finding 2).
+    await settle(frame, network, request.deadline);
     // Where the anchor is in the frame's viewport, after it is scrolled into view.
     const placed = (await frame
       .evaluate(

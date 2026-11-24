@@ -82,6 +82,7 @@ import {
   writeHomeSettings,
 } from "../home/index.ts";
 import {
+  type CropViewer,
   createEphemeralBus,
   createInteraction,
   type Interaction,
@@ -96,7 +97,7 @@ import {
   type Link,
   pauseHandler,
 } from "../link/index.ts";
-import { createLive, type LatestLive, liveMethods } from "../live/index.ts";
+import { createLive, type LatestLive, liveMethods, type StoredLiveValue } from "../live/index.ts";
 import type { Environment, Log } from "../log.ts";
 import { createPacks, type Packs, packMethods } from "../packs/index.ts";
 import { helperPath, type LaunchPipe, realPath } from "../platform/index.ts";
@@ -568,6 +569,8 @@ async function assemble(home: OwnedHome, options: StartInstanceOptions): Promise
     readonly anchor: CaptureJob["anchor"];
     readonly draft: Readonly<Record<string, unknown>>;
     readonly state: Readonly<Record<string, unknown>>;
+    readonly viewer: CropViewer;
+    readonly live: readonly StoredLiveValue[];
   }): Promise<{ readonly png: Uint8Array; readonly width: number; readonly height: number }> => {
     await mkdir(cropsScratch, { recursive: true, mode: 0o700 });
     const out = join(cropsScratch, `${job.threadId}-${Date.now()}.png`);
@@ -583,6 +586,8 @@ async function assemble(home: OwnedHome, options: StartInstanceOptions): Promise
         anchor: job.anchor,
         draft: job.draft,
         state: job.state,
+        viewer: job.viewer,
+        live: job.live,
         out,
       });
       return { png: await readFile(cropped.path), width: cropped.width, height: cropped.height };
@@ -591,7 +596,11 @@ async function assemble(home: OwnedHome, options: StartInstanceOptions): Promise
     }
   };
   const defaultCapture: Capture = async (job) => ({
-    ...(await renderCrop({ ...job, ...interaction.viewerAnswers(job.artifactId, job.viewerId) })),
+    ...(await renderCrop({
+      ...job,
+      ...interaction.viewerAnswers(job.artifactId, job.viewerId),
+      live: live.stored(job.artifactId),
+    })),
     source: "default",
   });
   /** The host's `capture` port, when one is registered (HO-11). */
@@ -957,7 +966,15 @@ async function assemble(home: OwnedHome, options: StartInstanceOptions): Promise
       const cropped = await captureWith({
         log,
         fallback: async (job) => ({
-          ...(await renderCrop({ ...job, draft: request.draft, state: request.state })),
+          ...(await renderCrop({
+            ...job,
+            draft: request.draft,
+            state: request.state,
+            // As the hosted home names the comment's viewer: never this home's owner for anyone
+            // else (WP-20's review, finding 2); a server before it named nobody.
+            viewer: request.viewer ?? { owner: false },
+            live: request.live ?? [],
+          })),
           source: "default",
         }),
         host: hostCapture,

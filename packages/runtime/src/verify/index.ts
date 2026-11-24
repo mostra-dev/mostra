@@ -14,6 +14,7 @@
  * error says the run couldn't vouch for the page (the environment, a timeout, a crash): publish
  * reuses it for the same digests (D41).
  */
+
 import { createHash, randomUUID } from "node:crypto";
 import { existsSync, readFileSync } from "node:fs";
 import { mkdir, readdir, rm, stat, utimes, writeFile } from "node:fs/promises";
@@ -38,7 +39,9 @@ import {
   viewportsFor,
 } from "@mostra/protocol";
 import type { KitBuild, VersionRegistry } from "../builder/index.ts";
+import type { CropViewer } from "../interaction/index.ts";
 import type { Ledger } from "../ledger/index.ts";
+import type { StoredLiveValue } from "../live/index.ts";
 import type { Log, Redactor } from "../log.ts";
 import type { Registry } from "../registry/index.ts";
 import { probedFieldLint, staticFieldLint, unstableFieldLint } from "./fields.ts";
@@ -216,6 +219,10 @@ export interface CropJobRequest {
   /** The viewer's draft fields and the artifact state, as values. */
   readonly draft: Readonly<Record<string, unknown>>;
   readonly state: Readonly<Record<string, unknown>>;
+  /** Who the page acts as (WP-20's review, finding 2). */
+  readonly viewer: CropViewer;
+  /** The artifact's live values as viewers last saw them; no producer runs for a crop. */
+  readonly live: readonly StoredLiveValue[];
   /** Where the PNG is written. */
   readonly out: string;
 }
@@ -904,6 +911,7 @@ export function createVerifier(options: VerifierOptions): Verifier {
         artifactId: request.artifactId,
         versions: [sandboxVersion(request.versionId, request.versionDir)],
         seed: { draft: request.draft, state: request.state },
+        crop: { viewer: request.viewer, live: request.live },
       });
       try {
         return await options.runner.crop({

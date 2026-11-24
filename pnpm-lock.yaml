@@ -1111,6 +1111,9 @@ importers:
       '@types/node':
         specifier: 'catalog:'
         version: 24.19.2
+      '@types/pngjs':
+        specifier: 'catalog:'
+        version: 6.0.5
       '@types/semver':
         specifier: 'catalog:'
         version: 7.8.0
@@ -1123,6 +1126,9 @@ importers:
       playwright:
         specifier: 'catalog:'
         version: 1.64.1
+      pngjs:
+        specifier: 'catalog:'
+        version: 7.0.0
       tsdown:
         specifier: 'catalog:'
         version: 0.23.1(@arethetypeswrong/core@0.18.5)(oxc-resolver@11.24.2)(publint@0.3.25)(typescript@7.0.2)

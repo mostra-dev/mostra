@@ -594,7 +594,7 @@ function Crop(props: {
   const { thread } = props;
   const [url, setUrl] = useState<string | undefined>();
   useEffect(() => {
-    if (thread.crop.state !== "captured") return;
+    if (thread.crop.state !== "captured" || thread.crop.withheld) return;
     let live = true;
     let made: string | undefined;
     void cropUrl(props.apiBase, thread.id)
@@ -608,7 +608,14 @@ function Crop(props: {
       live = false;
       if (made) URL.revokeObjectURL(made);
     };
-  }, [props.apiBase, thread.id, thread.crop.state]);
+  }, [props.apiBase, thread.id, thread.crop.state, thread.crop.withheld]);
+  if (thread.crop.withheld) {
+    return (
+      <div className="mostra-crop mostra-crop-pending" data-mostra-crop="withheld">
+        {REVIEW_WORDS.cropWithheld}
+      </div>
+    );
+  }
   if (thread.crop.state === "pending") {
     return (
       <div className="mostra-crop mostra-crop-pending" data-mostra-crop="pending">

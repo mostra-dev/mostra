@@ -31,9 +31,15 @@ import {
 } from "../builder/index.ts";
 import { noFaults } from "../faults.ts";
 import { Capabilities, createGateway, type DevUpstream } from "../gateway/index.ts";
-import { createEphemeralBus, createInteraction, seedAnswers } from "../interaction/index.ts";
+import {
+  type CropViewer,
+  createEphemeralBus,
+  createInteraction,
+  seedAnswers,
+  viewerForSpec,
+} from "../interaction/index.ts";
 import { openLedger } from "../ledger/index.ts";
-import { createLive } from "../live/index.ts";
+import { createLive, type StoredLiveValue, seedLiveValues } from "../live/index.ts";
 import type { Environment, Log, Redactor } from "../log.ts";
 import type { ProcessManager } from "../processes/index.ts";
 import { openRegistry } from "../registry/index.ts";
@@ -175,6 +181,16 @@ export async function startSandbox(
       readonly draft?: Readonly<Record<string, unknown>>;
       readonly state?: Readonly<Record<string, unknown>>;
     };
+    /**
+     * A comment's crop (WP-20's review, finding 2): the page acts as the comment's viewer (the
+     * owner, or a viewer of their name, never the owner for anyone else), `seed` is that viewer's,
+     * live sources show the values given and no producer runs, and no server function runs at all,
+     * whatever it opted into: a crop is a picture of the page, never a run of its code's effects.
+     */
+    readonly crop?: {
+      readonly viewer: CropViewer;
+      readonly live: readonly StoredLiveValue[];
+    };
   },
 ): Promise<Sandbox> {
   const { log } = options;
@@ -262,7 +278,20 @@ export async function startSandbox(
       coverage: (versionId) => coverageMatcher(readFieldCoverage(dirOf(versionId))),
     });
     stops.push(() => interaction.stop());
-    if (input.seed) seedAnswers(ledger, input.artifactId, input.seed);
+    // Who the page acts as: a crop's commenter, or the home's local user (verify, dev).
+    const viewerId =
+      input.crop && !input.crop.viewer.owner
+        ? ledger.write((db) =>
+            viewerForSpec(db, {
+              ref: "comment-viewer",
+              ...(input.crop?.viewer.owner === false && input.crop.viewer.name !== undefined
+                ? { name: input.crop.viewer.name }
+                : {}),
+            }),
+          )
+        : undefined;
+    if (input.seed) seedAnswers(ledger, input.artifactId, input.seed, viewerId);
+    if (input.crop) seedLiveValues(ledger, input.artifactId, input.crop.live);
     const bus = createEphemeralBus();
     stops.push(() => bus.close());
 
@@ -327,6 +356,8 @@ export async function startSandbox(
         : {
             dryRun: {
               optedIn: (versionId: string, fnId: string) => {
+                // A crop runs none of the page's server code (finding 2).
+                if (input.crop) return false;
                 let opted = optIns.get(versionId);
                 if (!opted) {
                   opted = dryRunFunctions(dirOf(versionId));
@@ -351,10 +382,10 @@ export async function startSandbox(
       // Every render of the run reads the candidate's producers, so the baseline and the
       // candidate show the same data (D138 item 4).
       latest: (artifactId) =>
-        artifactId === input.artifactId && sources.length > 0
+        !input.crop && artifactId === input.artifactId && sources.length > 0
           ? { versionId: candidate.versionId, sources }
           : undefined,
-      artifactsWithLive: () => (sources.length > 0 ? [input.artifactId] : []),
+      artifactsWithLive: () => (!input.crop && sources.length > 0 ? [input.artifactId] : []),
       version: workerVersion,
       redactor: options.redactor,
     });
@@ -389,10 +420,17 @@ export async function startSandbox(
     return {
       shellOrigin: gateway.shellOrigin(),
       link: (versionId) =>
-        gateway.link({
-          artifactId: input.artifactId,
-          version: numbers.get(versionId) as number,
-        }),
+        viewerId === undefined
+          ? gateway.link({
+              artifactId: input.artifactId,
+              version: numbers.get(versionId) as number,
+            })
+          : // A crop's sandbox holds one version: a link for the commenter opens it.
+            gateway.mintAt({
+              artifactId: input.artifactId,
+              shellOrigin: gateway.shellOrigin(),
+              viewerId,
+            }).url,
       skipped,
       crashes: () => [...crashes],
       replaceServer: async () => {

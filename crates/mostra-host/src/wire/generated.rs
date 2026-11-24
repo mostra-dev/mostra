@@ -20261,6 +20261,8 @@ pub struct ReviewThreadCrop {
     pub state: ReviewThreadCropState,
     #[serde(skip_serializing_if = "::std::option::Option::is_none")]
     pub width: ::std::option::Option<::std::num::NonZeroU64>,
+    #[serde(skip_serializing_if = "::std::option::Option::is_none")]
+    pub withheld: ::std::option::Option<crate::wire::ConstTrue>,
 }
 ///`ReviewThreadCropReason`
 #[derive(::serde::Serialize, Clone, Debug, Eq, Hash, Ord, PartialEq, PartialOrd)]

@@ -556,6 +556,7 @@ export async function openHostedHome(options: HostedHomeOptions): Promise<Hosted
             viewerId: job.viewerId,
             anchor: job.anchor,
             ...interaction.viewerAnswers(job.artifactId, job.viewerId),
+            live: live.stored(job.artifactId),
           },
         } as unknown as JsonRpcParams,
         RELAYED_CROP_MS,

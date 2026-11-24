@@ -433,6 +433,9 @@ The security review of shared ownership (removed members' tokens and links, a ma
 | Case | Behavior |
 |---|---|
 | A host's `capture` port fails, answers no PNG, or takes over 30 s | That attempt falls back to the verify runner's browser, which renders the crop itself (HO-11) |
+| A viewer comments many times on a page whose server code has effects (a mail sent, a paid API called), or whose owner-only view shows everyone's data | A crop renders the page as its commenter, never as the owner for anyone else, runs no server function and starts no live producer (the live values shown are the ones viewers last saw), so commenting never runs the artifact's effects or shows the commenter what only the owner may see (the review of WP-20, finding 2) |
+| Someone other than a comment's viewer and the owner sees its thread (a mention, `names`) | They see the thread without its crop picture, which shows the viewer's own answers (`crop.withheld`; the crop route answers 404) |
+| A crop fails with an error naming a path or a host's message | Hosts, results and `review export` keep the reason; pages are told only that it failed (finding 9) |
 | The verify runner can't render a crop (it crashed, the page never got ready, 60 s passed) | The crop is tried again after 2 s, then 4 s; after three attempts the thread's crop is `failed` with the reason, the thread and its anchor are kept, and results say so (`crop.state`, `crop.reason`). A crop is set once (a trigger) |
 | The instance stops or crashes while crops are pending | Nothing is lost: a pending crop is a column of its committed thread, and the capture queue takes it again at the next start |
 | Submit while the viewer's crops are being taken | Submit waits up to 20 s (`CROP_WAIT_MS`) for them, then submits; a crop still pending goes as `pending` in the submission, which is never refused for a crop |

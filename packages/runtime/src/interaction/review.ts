@@ -230,13 +230,24 @@ export function threadForPage(db: LedgerDb, page: ReviewPage, row: ThreadRow): R
     ...(row.status === "resolved" && row.status_at !== null && row.status_by !== null
       ? { resolved: { at: row.status_at, by: person(row.status_by) } }
       : {}),
+    // A failed crop's reason is the capture's own text (a path in the owner's home, a host's
+    // error): hosts and results have it, a page only that it failed (WP-20's review, finding 9).
     crop: {
       state: row.crop_state,
       ...(row.crop_width !== null ? { width: row.crop_width } : {}),
       ...(row.crop_height !== null ? { height: row.crop_height } : {}),
-      ...(row.crop_error !== null ? { reason: row.crop_error } : {}),
+      ...(cropShown(page, row) ? {} : { withheld: true as const }),
     },
   };
+}
+
+/**
+ * Whether a page sees a thread's crop picture (WP-20's review, finding 2): the crop shows the page
+ * with its viewer's own answers, which only they and the artifact's owner may see; whoever else
+ * sees the thread (a mention, `names`) sees it without the picture.
+ */
+export function cropShown(page: ReviewPage, row: ThreadRow): boolean {
+  return page.owner || row.viewer_id === page.viewerId;
 }
 
 /** The threads a page sees, oldest first. */

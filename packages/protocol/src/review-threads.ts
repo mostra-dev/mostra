@@ -78,12 +78,18 @@ export interface ReviewThread {
   readonly messages: readonly ReviewMessage[];
   /** Who resolved it, and when, while resolved. */
   readonly resolved?: { readonly at: string; readonly by: ReviewPerson };
-  /** Its crop: `pending` while the capture runs, `failed` with why. */
+  /** Its crop: `pending` while the capture runs, or `failed`. */
   readonly crop: {
     readonly state: CropState;
     readonly width?: number;
     readonly height?: number;
+    /** Why it failed; hosts and results have it, and pages are given none (WP-20's review, 9). */
     readonly reason?: string;
+    /**
+     * The crop shows its viewer's own answers, so only they and the artifact's owner see its
+     * picture (WP-20's review, finding 2); others see the thread without it.
+     */
+    readonly withheld?: true;
   };
 }
 
@@ -111,6 +117,7 @@ export const ReviewThread: z.ZodType<ReviewThread> = z
       width: z.int().min(1).exactOptional(),
       height: z.int().min(1).exactOptional(),
       reason: z.string().max(1024).exactOptional(),
+      withheld: z.literal(true).exactOptional(),
     }),
   })
   .register(wireRegistry, {

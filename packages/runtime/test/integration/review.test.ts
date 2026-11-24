@@ -14,10 +14,18 @@ import {
   portReviewsMirrorMethod,
   ThreadId,
 } from "@mostra/protocol";
+import { PNG } from "pngjs";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
 import { Browser, type Opened, openLink } from "../browser-client.ts";
 import { GatewayHome, ok, type Receipt } from "../gateway-home.ts";
-import { connectTo, initializeParams, type LineClient, type Message, tempDir } from "../support.ts";
+import {
+  connectTo,
+  initializeParams,
+  type LineClient,
+  type Message,
+  playwrightBrowsers,
+  tempDir,
+} from "../support.ts";
 
 /** A 2×1 PNG: one blue pixel, one red. */
 const PNG_BASE64 =
@@ -322,4 +330,87 @@ describe("review: ports, routes, mentions and export (HO-11, CO-06, RV-05)", () 
     ).events;
     expect(events).toEqual([]);
   }, 120_000);
+});
+
+describe("a crop shows the page as its viewer saw it, and runs none of its code (finding 2)", () => {
+  const gateway = new GatewayHome();
+  let receipt: Receipt;
+
+  beforeAll(async () => {
+    // The crops render in the verify runner's browser, kept under the person's own home.
+    await gateway.start({ env: { PLAYWRIGHT_BROWSERS_PATH: playwrightBrowsers() } });
+    receipt = await gateway.publish("crop-probe");
+    // A value viewers saw, pushed (no producer makes it); `probe`'s producer has made none.
+    ok(
+      await gateway.client.call("live/push", {
+        artifact: { artifactId: receipt.artifactId },
+        key: "seen",
+        value: "seeded",
+      }),
+    );
+  }, 180_000);
+  afterAll(async () => {
+    await gateway.stop();
+  });
+
+  /** The colour at the middle of a thread's crop, which the probe paints in. */
+  const middle = async (page: Page, threadId: string): Promise<[number, number, number]> => {
+    let state = "pending";
+    for (let tries = 0; tries < 600 && state === "pending"; tries += 1) {
+      state =
+        (await page.threads()).threads.find((entry) => entry.id === threadId)?.crop.state ?? "";
+      if (state === "pending") await new Promise((resolve) => setTimeout(resolve, 100));
+    }
+    expect(state).toBe("captured");
+    const image = await page.browser.fetchJson(
+      page.opened.link.shell,
+      page.path(`/threads/${threadId}/crop`),
+    );
+    expect(image.status).toBe(200);
+    const png = PNG.sync.read(image.bytes);
+    const at = (Math.floor(png.height / 2) * png.width + Math.floor(png.width / 2)) * 4;
+    return [png.data[at] ?? -1, png.data[at + 1] ?? -1, png.data[at + 2] ?? -1];
+  };
+
+  const probe = (page: Page) => {
+    const { threadId, done } = page.start("On the probe.", {
+      anchor: {
+        reviewId: "probe",
+        rect: { x: 40, y: 40, width: 480, height: 240 },
+        viewport: { width: 1280, height: 800, dpr: 1 },
+      },
+    });
+    return { threadId, done };
+  };
+
+  it("as the commenter, never the owner, with the live value seen and no server function run", async () => {
+    const grace = await Page.open(
+      (await gateway.link(receipt.artifactId, { viewer: { ref: "grace", name: "Grace" } })).url,
+    );
+    const mine = probe(grace);
+    expect((await mine.done).status).toBe(200);
+    // No server function ran (red 0), not as the owner (green 0), the value viewers saw (blue).
+    expect(await middle(grace, mine.threadId)).toEqual([0, 0, 255]);
+
+    // The owner's own comment shows the page as the owner sees it.
+    const owner = await Page.open((await gateway.link(receipt.artifactId)).url);
+    const theirs = probe(owner);
+    expect((await theirs.done).status).toBe(200);
+    expect(await middle(owner, theirs.threadId)).toEqual([0, 255, 255]);
+
+    // Grace's crop shows her answers: the owner sees it, and Alan, who may see the thread under
+    // no rule here, gets nothing; nor does anyone else get the picture.
+    const ownerSees = await owner.threads();
+    expect(ownerSees.threads.find((entry) => entry.id === mine.threadId)?.crop).not.toHaveProperty(
+      "withheld",
+    );
+    const alan = await Page.open(
+      (await gateway.link(receipt.artifactId, { viewer: { ref: "alan", name: "Alan" } })).url,
+    );
+    const refused = await alan.browser.fetchJson(
+      alan.opened.link.shell,
+      alan.path(`/threads/${mine.threadId}/crop`),
+    );
+    expect(refused.status).toBe(404);
+  }, 240_000);
 });

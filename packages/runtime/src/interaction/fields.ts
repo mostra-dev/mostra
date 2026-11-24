@@ -428,6 +428,8 @@ export function seedAnswers(
     readonly draft?: Readonly<Record<string, unknown>>;
     readonly state?: Readonly<Record<string, unknown>>;
   },
+  /** Whose draft: the home's local user unless named. */
+  viewerId?: string,
 ): void {
   ledger.write((db) => {
     const actor = { kind: "mostra" as const };
@@ -437,7 +439,7 @@ export function seedAnswers(
       applyMutation(db, {
         artifactId,
         scope: "viewer",
-        viewerId: localViewerId(db),
+        viewerId: viewerId ?? localViewerId(db),
         mutationId: MutationId.create(),
         ops: ops(seed.draft),
         actor,

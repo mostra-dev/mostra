@@ -84,6 +84,7 @@ import {
   type CropPaths,
   createThread,
   cropJob,
+  cropShown,
   mentionable,
   type PendingCropsQuery,
   pendingCrops,
@@ -198,6 +199,7 @@ export {
 export { SubmitConflict } from "./submissions.ts";
 export { tallyField, tallyState } from "./tally.ts";
 export { createTeamTraffic, type TeamTraffic } from "./team.ts";
+export { viewerForSpec } from "./viewers.ts";
 
 /** How the interaction core finds an artifact a host names. */
 export interface InteractionArtifacts {
@@ -260,6 +262,11 @@ const DELIVERY_EVENTS = new Set([
   "submission.rejected",
   "submission.undeliverable",
 ]);
+
+/** Who a comment's crop shows the page as (finding 2). */
+export type CropViewer =
+  | { readonly owner: true }
+  | { readonly owner: false; readonly name?: string };
 
 /** A browser session as the interaction core sees it: who it acts as. */
 export interface PageIdentity {
@@ -410,7 +417,15 @@ export interface Interaction {
   viewerAnswers(
     artifactId: string,
     viewerId: string,
-  ): { readonly draft: Record<string, unknown>; readonly state: Record<string, unknown> };
+  ): {
+    readonly draft: Record<string, unknown>;
+    readonly state: Record<string, unknown>;
+    /**
+     * Who a crop shows the page as (WP-20's review, finding 2): the artifact's owner, or another
+     * viewer by display name, never the owner for anyone else.
+     */
+    readonly viewer: CropViewer;
+  };
   /** Every viewer's choices of the artifact's review sets now, for `review export` (RV-05). */
   artifactChoices(artifactId: string): {
     readonly reviewSetId: string;
@@ -1203,9 +1218,12 @@ export function createInteraction(options: InteractionOptions): Interaction {
     },
     threadCrop(page, threadId) {
       return ledger.read((db) => {
-        if (!threadVisible(db, reviewPageOf(db, page), threadId)) return undefined;
+        const reviewer = reviewPageOf(db, page);
+        if (!threadVisible(db, reviewer, threadId)) return undefined;
         const row = threadById(db, threadId);
-        return row?.crop_state === "captured" && row.crop_blob !== null
+        // Only its viewer and the owner see a crop of the viewer's answers (finding 2).
+        if (row === undefined || !cropShown(reviewer, row)) return undefined;
+        return row.crop_state === "captured" && row.crop_blob !== null
           ? { blob: row.crop_blob }
           : undefined;
       });
@@ -1237,7 +1255,17 @@ export function createInteraction(options: InteractionOptions): Interaction {
               ([id, field]) => [id, field.value],
             ),
           );
-        return { draft: values(viewerId), state: values(null) };
+        const record = viewer(db, viewerId);
+        return {
+          draft: values(viewerId),
+          state: values(null),
+          viewer: ownerOf(db, viewerId)
+            ? { owner: true as const }
+            : {
+                owner: false as const,
+                ...(record.name !== undefined ? { name: record.name } : {}),
+              },
+        };
       });
     },
     artifactChoices(artifactId) {
@@ -1403,7 +1431,15 @@ export function createInteraction(options: InteractionOptions): Interaction {
               if (!threads.has(threadId)) {
                 threads.set(threadId, threadVisible(db, reviewPageOf(db, page), threadId));
               }
-              if (threads.get(threadId)) events.push(eventForPage(event, page.viewerId));
+              if (!threads.get(threadId)) continue;
+              // A failed crop's reason is for hosts (finding 9).
+              const { reason: _reason, ...payload } = event.payload as Record<string, unknown>;
+              events.push(
+                eventForPage(
+                  event.type === "review.crop.captured" ? { ...event, payload } : event,
+                  page.viewerId,
+                ),
+              );
               continue;
             }
             if (visibleTo(event, page, runOf)) events.push(eventForPage(event, page.viewerId));

@@ -70,6 +70,15 @@ export interface OwnerCropRequest {
   readonly anchor: ReviewAnchor;
   readonly draft: Readonly<Record<string, unknown>>;
   readonly state: Readonly<Record<string, unknown>>;
+  /** Who the page acts as for the crop (finding 2): the artifact's owner, or a viewer by name. */
+  readonly viewer?: { readonly owner: true } | { readonly owner: false; readonly name?: string };
+  /** The hosted artifact's live values as its viewers last saw them; no producer runs. */
+  readonly live?: readonly {
+    readonly key: string;
+    readonly revision: number;
+    readonly value: string;
+    readonly at: string;
+  }[];
 }
 
 const CropRequest = z.object({
@@ -81,6 +90,23 @@ const CropRequest = z.object({
   anchor: ReviewAnchor,
   draft: z.record(z.string(), z.unknown()),
   state: z.record(z.string(), z.unknown()),
+  viewer: z
+    .union([
+      z.object({ owner: z.literal(true) }),
+      z.object({ owner: z.literal(false), name: z.string().max(256).optional() }),
+    ])
+    .optional(),
+  live: z
+    .array(
+      z.object({
+        key: z.string().min(1).max(256),
+        revision: z.int().min(1),
+        value: z.string(),
+        at: z.string().max(64),
+      }),
+    )
+    .max(1024)
+    .optional(),
 });
 
 export type OwnerAuthor = (server: string, params: unknown) => Promise<unknown>;

@@ -82,10 +82,12 @@
     "@mostra/worker": "workspace:*",
     "@types/better-sqlite3": "catalog:",
     "@types/node": "catalog:",
+    "@types/pngjs": "catalog:",
     "@types/semver": "catalog:",
     "@types/ws": "catalog:",
     "fast-check": "catalog:",
     "playwright": "catalog:",
+    "pngjs": "catalog:",
     "tsdown": "catalog:",
     "vitest": "catalog:"
   },
