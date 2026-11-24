@@ -1100,13 +1100,14 @@ body {
 .mostra-review-hint {
   position: absolute;
   inset-block-start: 10px;
-  inset-inline-start: 50%;
-  transform: translateX(-50%);
+  /* Centred, as wide as its words need: a phone's whole width before they wrap. */
+  inset-inline: 10px;
+  inline-size: fit-content;
+  margin-inline: auto;
   z-index: 2;
   display: flex;
   align-items: center;
   gap: 12px;
-  max-inline-size: calc(100% - 20px);
   padding: 8px 8px 8px 14px;
   border-radius: 999px;
   background: var(--foreground);
@@ -1126,6 +1127,7 @@ body {
    the page wherever the page says its selection is (the inline clamp). */
 .mostra-selection-comment {
   position: absolute;
+  white-space: nowrap;
   z-index: 2;
   transform: translateX(-50%);
   pointer-events: auto;

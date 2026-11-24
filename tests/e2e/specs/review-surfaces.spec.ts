@@ -107,6 +107,10 @@ for (const mode of MODES) {
         // Comment mode, then a pin on the heading.
         await press(page.locator("[data-mostra-comment-button]"));
         await expect(page.locator("[data-mostra-review-surface]")).toBeVisible();
+        // Comment mode says what to do (Mirza's review): tap on a phone, click on a computer.
+        await expect(page.locator("[data-mostra-review-hint]")).toContainText(
+          "what you want to comment on.",
+        );
         await shoot("mode");
         const box = await frame.locator("h1").boundingBox();
         if (!box) throw new Error("No box for the heading");
@@ -130,6 +134,27 @@ for (const mode of MODES) {
         expect(Math.abs(pin.x + pin.width / 2 - point.x)).toBeLessThan(3);
         expect(Math.abs(pin.y + pin.height / 2 - point.y)).toBeLessThan(3);
         await shoot("thread");
+
+        // Words selected on the page offer a comment on them, beside them (Mirza's review).
+        await frame.locator("h1").evaluate((heading) => {
+          const text = heading.firstChild as Text;
+          const range = document.createRange();
+          range.setStart(text, 0);
+          range.setEnd(text, Math.min(text.data.length, 7));
+          const selection = document.getSelection() as Selection;
+          selection.removeAllRanges();
+          selection.addRange(range);
+        });
+        const offer = page.locator("[data-mostra-selection-comment]");
+        await expect(offer).toBeVisible();
+        await shoot("selection");
+        await press(offer);
+        await expect(page.locator("[data-mostra-review-new]")).toBeVisible();
+        await shoot("selection-composer");
+        await press(page.locator("[data-mostra-review-new] .mostra-button").first());
+        await expect(page.locator("[data-mostra-review-new]")).toHaveCount(0);
+        await frame.locator("h1").evaluate(() => document.getSelection()?.removeAllRanges());
+        await expect(offer).toHaveCount(0);
 
         // A reply, then resolving the thread.
         await press(thread.locator("[data-mostra-reply]"));
