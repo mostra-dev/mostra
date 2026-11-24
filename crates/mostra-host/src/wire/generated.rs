@@ -18060,6 +18060,8 @@ pub struct ResultCommentAnchor {
     pub review_set_id: ::std::option::Option<::std::string::String>,
     #[serde(skip_serializing_if = "::std::option::Option::is_none")]
     pub scroll: ::std::option::Option<ResultCommentAnchorScroll>,
+    #[serde(skip_serializing_if = "::std::option::Option::is_none")]
+    pub selection: ::std::option::Option<crate::wire::ConstTrue>,
     #[serde(default, skip_serializing_if = "::std::vec::Vec::is_empty")]
     pub selectors: ::std::vec::Vec<::serde_json::Value>,
     #[serde(skip_serializing_if = "::std::option::Option::is_none")]
@@ -18946,6 +18948,8 @@ pub struct ReviewAnchor {
     pub review_set_id: ::std::option::Option<ReviewAnchorReviewSetId>,
     #[serde(skip_serializing_if = "::std::option::Option::is_none")]
     pub scroll: ::std::option::Option<ReviewAnchorScroll>,
+    #[serde(skip_serializing_if = "::std::option::Option::is_none")]
+    pub selection: ::std::option::Option<crate::wire::ConstTrue>,
     #[serde(default, skip_serializing_if = "::std::vec::Vec::is_empty")]
     pub selectors: ::std::vec::Vec<AnchorSelector>,
     #[serde(skip_serializing_if = "::std::option::Option::is_none")]

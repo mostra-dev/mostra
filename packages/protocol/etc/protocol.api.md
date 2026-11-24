@@ -2415,6 +2415,7 @@ export const mostraReady: BridgeMessage<Readonly<Record<string, unknown>>, undef
 export const mostraReviewHitTest: BridgeMessage<{
     readonly x: number;
     readonly y: number;
+    readonly selection?: true;
 }, ReviewHit>;
 
 // @public
@@ -2428,6 +2429,11 @@ export const mostraReviewScrollTo: BridgeMessage<{
 }, {
     readonly found: boolean;
 }>;
+
+// @public
+export const mostraReviewSelection: BridgeMessage<{
+    readonly rect?: AnchorRect;
+}, undefined>;
 
 // @public
 export const mostraReviewTrack: BridgeMessage<{
@@ -3500,6 +3506,7 @@ export const RespondentStatus: z.ZodType<RespondentStatus>;
 export interface ResultComment {
     readonly anchor: {
         readonly reviewId?: string;
+        readonly selection?: true;
         readonly selectors?: readonly unknown[];
         readonly rect?: Rect;
         readonly viewport?: Viewport;
@@ -3714,6 +3721,7 @@ export interface ReviewAnchor {
         readonly x: number;
         readonly y: number;
     };
+    readonly selection?: true;
     readonly selectors?: readonly AnchorSelector[];
     readonly slide?: {
         readonly index: number;
@@ -3867,6 +3875,7 @@ export interface ReviewThread {
         readonly width?: number;
         readonly height?: number;
         readonly reason?: string;
+        readonly withheld?: true;
     };
     readonly id: string;
     readonly messages: readonly ReviewMessage[];
