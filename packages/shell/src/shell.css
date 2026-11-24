@@ -1095,7 +1095,8 @@ body {
   z-index: 5;
 }
 /* What to do in comment mode, at the top of the page (Mirza's review): "Click (or tap) what you
-   want to comment on", and a way out. Above the surface, so its button takes a click. */
+   want to comment on", and a way out. Above the surface; a click through its words reaches the
+   page, so nothing under it is out of reach. */
 .mostra-review-hint {
   position: absolute;
   inset-block-start: 10px;
@@ -1112,9 +1113,11 @@ body {
   color: var(--background);
   font: 550 0.8125rem / 1.3 var(--font-sans);
   box-shadow: var(--shadow-soft);
-  pointer-events: auto;
+  /* A click through its words still lands on the page under them: only Cancel takes one. */
+  pointer-events: none;
 }
 .mostra-review-hint .mostra-link {
+  pointer-events: auto;
   color: inherit;
   white-space: nowrap;
   padding: 4px 8px;

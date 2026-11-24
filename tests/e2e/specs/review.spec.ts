@@ -441,3 +441,99 @@ test.describe("the artifact can't hide or forge the review overlay (RV-04)", () 
     }
   });
 });
+
+test.describe("selected words, comment mode's words and a lost answer (Mirza's review of WP-20)", () => {
+  test("say what to do in comment mode, comment on selected words, and post a lost thread once", async ({
+    page,
+  }, info) => {
+    test.setTimeout(180_000);
+    const client = await Client.connect(run.socket);
+    try {
+      const own = await publishOwn(client, run.home, info, { fixture: "review" });
+      const url = await linkFor(client, own.artifactId, viewerName(info));
+      await page.setViewportSize({ width: 1280, height: 900 });
+      const frame = await openInShell(page, url);
+      await expect(page.locator("html")).toHaveAttribute("data-shell", "ready");
+
+      // Comment mode says what to do, and the way out.
+      const button = page.locator("[data-mostra-comment-button]");
+      await button.click();
+      const hint = page.locator("[data-mostra-review-hint]");
+      await expect(hint).toContainText("Click what you want to comment on.");
+      await expect(button).toContainText("Cancel");
+      await hint.getByRole("button", { name: "Cancel" }).click();
+      await expect(hint).toHaveCount(0);
+      await expect(page.locator("[data-mostra-review-surface]")).toHaveCount(0);
+
+      // Words selected with the mouse, as a person selects them: a Comment button beside them.
+      const paragraph = frame.locator('[data-testid="paragraph"]');
+      const box = await paragraph.boundingBox();
+      if (!box) throw new Error("no paragraph");
+      await page.mouse.move(box.x + 2, box.y + box.height / 2);
+      await page.mouse.down();
+      await page.mouse.move(box.x + box.width * 0.6, box.y + box.height / 2, { steps: 8 });
+      await page.mouse.up();
+      const selected = (
+        await paragraph.evaluate(() => document.getSelection()?.toString() ?? "")
+      ).trim();
+      expect(selected.length).toBeGreaterThan(5);
+      const offer = page.locator("[data-mostra-selection-comment]");
+      await expect(offer).toBeVisible();
+      // Beside the words: over the page, near the selection.
+      const offered = await offer.boundingBox();
+      expect(offered && Math.abs(offered.y + offered.height - box.y) < 80).toBe(true);
+      await offer.click();
+      const composer = page.locator("[data-mostra-review-new] textarea");
+      await expect(composer).toBeVisible();
+      await expect(page.locator("[data-mostra-review-new]")).toContainText(selected.slice(0, 20));
+
+      // The first post's answer is lost on its way back: posting again makes one thread, not two.
+      let lost = 0;
+      await page.route("**/_mostra/v/*/review/threads", async (route) => {
+        if (route.request().method() === "POST" && lost === 0) {
+          lost += 1;
+          await route.fetch();
+          await route.abort("connectionreset");
+          return;
+        }
+        await route.continue();
+      });
+      await composer.fill("I agree with this, for the record.");
+      const post = page.locator("[data-mostra-review-new] [data-mostra-review-post]");
+      await post.click();
+      await expect(page.locator("[data-mostra-review-problem]")).toBeVisible();
+      await post.click();
+      await expect(page.locator("[data-mostra-review-new]")).toHaveCount(0);
+      expect(lost).toBe(1);
+      await expect(page.locator("[data-mostra-thread]")).toHaveCount(1);
+
+      const exported = await client.call<{ content: string }>("review/export", {
+        artifact: { artifactId: own.artifactId },
+        format: "json",
+      });
+      const review = JSON.parse(exported.content) as {
+        comments: (Comment & { anchor: Anchor & { selection?: boolean } })[];
+      };
+      expect(review.comments).toHaveLength(1);
+      const anchor = review.comments[0]?.anchor;
+      expect(anchor?.selection).toBe(true);
+      expect(anchor?.selectors?.find((one) => one.type === "TextQuoteSelector")?.exact).toBe(
+        selected.replace(/\s+/g, " "),
+      );
+      // After a reload the pin stands on those words again.
+      await page.reload();
+      await expect(page.locator("html")).toHaveAttribute("data-shell", "ready");
+      const pin = page.locator("[data-mostra-pin]");
+      await expect(pin).toHaveCount(1);
+      const again = await paragraph.boundingBox();
+      const pinned = await pin.boundingBox();
+      expect(again && pinned).toBeTruthy();
+      if (again && pinned) {
+        expect(pinned.y + pinned.height / 2).toBeGreaterThan(again.y - 20);
+        expect(pinned.y + pinned.height / 2).toBeLessThan(again.y + again.height + 20);
+      }
+    } finally {
+      client.close();
+    }
+  });
+});
