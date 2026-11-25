@@ -45,7 +45,8 @@ An install that brings a source-available or proprietary license, or one Mostra 
 
 - An exporter: `mostra export <dir> --as <id> --out <path>`, with `--option name=value` for each option its schema takes (a value is read as JSON when it parses).
 - A CLI command: run `mostra` followed by its words, from the artifact's directory (or anywhere, for the home's plugins). `mostra plugin list` names each one.
-- An engine, an anchor provider or a connector: import the plugin's package in the page or in `live.ts`, as its README shows.
+- An engine or a connector: import the plugin's package in the page or in `live.ts`, as its README shows.
+- An anchor provider: nothing to import. Every page of the artifact registers the anchor providers its plugins contribute, so comments on their content anchor in their terms.
 - A theme: name its ID in the artifact's stack (`kit: { theme: "acme-dark" }`, or after a built-in one); `mostra theme list --artifact <dir>` lists it beside Mostra's.
 
 ## Write a plugin

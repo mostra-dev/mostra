@@ -213,6 +213,15 @@ body {
   text-overflow: ellipsis;
   pointer-events: none;
 }
+/* A Choose names its candidate, which may be long (up to 256 characters, #188): on a computer it
+   keeps to a share of the bar and cuts the rest with an ellipsis; its full name is its title and
+   its accessible name. An author's label is isolated, so its direction never reorders the bar. */
+.mostra-button[data-mostra-choose] {
+  max-inline-size: min(28rem, 40vw);
+}
+.mostra-button[data-mostra-choose] .mostra-button-text {
+  unicode-bidi: isolate;
+}
 .mostra-primary {
   min-height: 40px;
   padding: 0 22px;
@@ -380,6 +389,128 @@ body {
   block-size: 12px;
 }
 
+/* Where a submission stands (IN-13, D175 item 12): its words show beside the shape, and once a
+   host is involved the shape is a button to each host's delivery. */
+.mostra-status[data-mostra-submission] .mostra-status-words {
+  position: static;
+  width: auto;
+  height: auto;
+  overflow: visible;
+  clip-path: none;
+  color: var(--foreground);
+  font-weight: 500;
+}
+.mostra-dot-submitted,
+.mostra-dot-delivered {
+  inline-size: 18px;
+  block-size: 18px;
+  margin: 1px;
+  background: var(--primary);
+  color: var(--primary-foreground);
+}
+.mostra-dot-pending {
+  inline-size: 14px;
+  block-size: 14px;
+  margin: 3px;
+  border: 2px solid var(--warning);
+  border-block-start-color: transparent;
+  animation: mostra-wait 1.4s linear infinite;
+}
+.mostra-dot-undeliverable {
+  inline-size: 18px;
+  block-size: 18px;
+  margin: 1px;
+  background: var(--destructive);
+  color: var(--primary-foreground);
+}
+.mostra-dot-submitted svg,
+.mostra-dot-delivered svg,
+.mostra-dot-undeliverable svg {
+  inline-size: 12px;
+  block-size: 12px;
+}
+@keyframes mostra-wait {
+  to {
+    transform: rotate(360deg);
+  }
+}
+.mostra-status {
+  position: relative;
+}
+.mostra-status-button {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  padding: 2px 6px 2px 2px;
+  margin: -2px 0;
+  border: 0;
+  border-radius: 999px;
+  background: transparent;
+  font: inherit;
+  color: inherit;
+  cursor: pointer;
+  transition: background-color var(--state-ms) ease;
+}
+.mostra-status-button:hover,
+.mostra-status[data-open] .mostra-status-button {
+  background: var(--muted);
+}
+.mostra-status-button:focus-visible {
+  outline: 2px solid var(--ring);
+  outline-offset: 2px;
+}
+.mostra-status-details {
+  position: absolute;
+  inset-block-start: calc(100% + 10px);
+  inset-inline-end: 0;
+  z-index: 30;
+  min-inline-size: 16rem;
+  max-inline-size: min(24rem, 90vw);
+  padding: 12px 14px;
+  background: var(--card);
+  color: var(--card-foreground);
+  border: 1px solid var(--border);
+  border-radius: 14px;
+  box-shadow: var(--shadow-float);
+  white-space: normal;
+  font-size: 0.8125rem;
+}
+.mostra-status-details[hidden] {
+  display: none;
+}
+.mostra-status-details ul {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: grid;
+  gap: 6px;
+}
+.mostra-status-details li {
+  position: relative;
+  padding-inline-start: 16px;
+}
+.mostra-status-details li::before {
+  content: "";
+  position: absolute;
+  inset-inline-start: 0;
+  inset-block-start: 0.45em;
+  inline-size: 8px;
+  block-size: 8px;
+  border-radius: 50%;
+  background: var(--success);
+}
+.mostra-status-details li[data-mostra-delivery="pending"]::before {
+  background: var(--warning);
+}
+.mostra-status-details li[data-mostra-delivery="undeliverable"]::before,
+.mostra-status-details li[data-mostra-delivery="rejected"]::before {
+  background: var(--destructive);
+}
+.mostra-status-stale {
+  margin: 8px 0 0;
+  color: var(--muted-foreground);
+}
+
 /* Notices under the bar: a new version, a paused page, a preview, storage that failed. */
 .mostra-banner,
 .mostra-following {
@@ -459,7 +590,6 @@ body {
   /* A page that sets no background shows on white, as it would on its own. */
   background: #fff;
 }
-.mostra-receipt,
 .mostra-problem,
 .mostra-orphans {
   position: absolute;
@@ -472,9 +602,6 @@ body {
   font-size: 0.875rem;
   box-shadow: var(--shadow-float);
 }
-.mostra-receipt {
-  inset-block-end: 16px;
-}
 .mostra-problem {
   inset-block-start: 16px;
 }
@@ -483,13 +610,11 @@ body {
   inset-inline-start: 16px;
   inset-inline-end: auto;
 }
-.mostra-receipt h2,
 .mostra-problem h2,
 .mostra-orphans h2 {
   font: 500 1.0625rem / 1.3 var(--font-display);
   margin: 0 0 6px;
 }
-.mostra-receipt ul,
 .mostra-problem ul,
 .mostra-orphans ul {
   list-style: none;
@@ -498,45 +623,8 @@ body {
   display: grid;
   gap: 4px;
 }
-.mostra-receipt li {
-  display: flex;
-  justify-content: space-between;
-  gap: 16px;
-  padding-inline-start: 16px;
-  position: relative;
-}
-.mostra-receipt li::before {
-  content: "";
-  position: absolute;
-  inset-inline-start: 0;
-  inset-block-start: 0.45em;
-  inline-size: 8px;
-  block-size: 8px;
-  border-radius: 50%;
-  background: currentColor;
-}
-.mostra-ok::before {
-  color: var(--success);
-}
-.mostra-wait::before {
-  color: var(--warning);
-}
-.mostra-bad::before {
-  color: var(--destructive);
-}
-.mostra-receipt time {
-  font: 0.75rem var(--font-mono);
-  color: var(--muted-foreground);
-  font-variant-numeric: tabular-nums;
-}
-.mostra-footnote,
-.mostra-after-submit {
-  margin: 8px 0 0;
-  font-size: 0.75rem;
-  color: var(--muted-foreground);
-}
-.mostra-after-submit {
-  font-size: 0.875rem;
+.mostra-after-submit a {
+  color: inherit;
 }
 .mostra-problem p {
   margin: 0 0 6px;
@@ -641,10 +729,12 @@ body {
 .mostra-page[data-mostra-folded] .mostra-following {
   display: none;
 }
+/* Folded, the status and the way back stay where the bar was (#218): at the top on a computer,
+   at the bottom on a phone, where the dock was. */
 .mostra-folded {
   position: fixed;
   inset-inline-end: max(16px, env(safe-area-inset-right));
-  inset-block-end: max(16px, env(safe-area-inset-bottom));
+  inset-block-start: max(10px, env(safe-area-inset-top));
   z-index: 30;
   display: flex;
   align-items: center;
@@ -939,15 +1029,45 @@ body {
   .mostra-page[data-mostra-folded] {
     padding-block-end: 0;
   }
+  .mostra-folded {
+    inset-block-start: auto;
+    inset-block-end: max(16px, env(safe-area-inset-bottom));
+  }
+  /* One row on a phone (WP-20, Mirza's review): the warning keeps its words, wrapping inside its
+     own place if it must; Report and the made-with mark keep their icons, their words read by
+     screen readers. */
   .mostra-footer {
-    gap: 2px 14px;
+    flex-wrap: nowrap;
+    gap: 2px 12px;
     padding: 2px 4px 2px 12px;
     font-size: 0.75rem;
+  }
+  .mostra-footer-item[data-mostra-passwords] {
+    flex: 0 1 auto;
+    line-height: 1.3;
+  }
+  .mostra-footer-item[data-mostra-passwords] .mostra-icon-svg {
+    flex: none;
+  }
+  .mostra-footer-link,
+  .mostra-footer-end {
+    flex: none;
+  }
+  .mostra-footer-link {
+    min-inline-size: 32px;
+    justify-content: center;
+  }
+  .mostra-footer-words {
+    position: absolute;
+    width: 1px;
+    height: 1px;
+    overflow: hidden;
+    clip-path: inset(50%);
+    white-space: nowrap;
   }
   .mostra-made-line {
     display: none;
   }
-  .mostra-receipt,
   .mostra-orphans,
   .mostra-problem {
     inset-inline: 12px;
@@ -980,5 +1100,444 @@ body {
   .mostra-dev::before {
     forced-color-adjust: none;
     border: 1px solid CanvasText;
+  }
+}
+
+/* ── The review overlay (WP-20, RV-01 to RV-04) ─────────────────────────────────────────────
+ * Pins are giallo discs with nero numbers, the brand's one mark for what a person said; the panel
+ * is a white card column beside the page on a computer and a sheet from the bottom on a phone.
+ * Everything here is the shell's: the frame can move a pin inside its box, never make or hide one. */
+.mostra-frame-box {
+  position: relative;
+  flex: 1;
+  display: flex;
+  min-width: 0;
+  min-height: 0;
+}
+.mostra-review-layer {
+  position: absolute;
+  inset: 0;
+  pointer-events: none;
+  overflow: hidden;
+  z-index: 5;
+}
+/* What to do in comment mode, at the top of the page (Mirza's review): "Click (or tap) what you
+   want to comment on", and a way out. Above the surface; a click through its words reaches the
+   page, so nothing under it is out of reach. */
+.mostra-review-hint {
+  position: absolute;
+  inset-block-start: 10px;
+  /* Centred, as wide as its words need: a phone's whole width before they wrap. */
+  inset-inline: 10px;
+  inline-size: fit-content;
+  margin-inline: auto;
+  z-index: 2;
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 8px 8px 8px 14px;
+  border-radius: 999px;
+  background: var(--foreground);
+  color: var(--background);
+  font: 550 0.8125rem / 1.3 var(--font-sans);
+  box-shadow: var(--shadow-soft);
+  /* A click through its words still lands on the page under them: only Cancel takes one. */
+  pointer-events: none;
+}
+.mostra-review-hint .mostra-link {
+  pointer-events: auto;
+  color: inherit;
+  white-space: nowrap;
+  padding: 4px 8px;
+}
+/* Beside words the viewer selected on the page: comment on them (Mirza's review). Whole inside
+   the page wherever the page says its selection is (the inline clamp). */
+.mostra-selection-comment {
+  position: absolute;
+  white-space: nowrap;
+  z-index: 2;
+  transform: translateX(-50%);
+  pointer-events: auto;
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  min-block-size: 36px;
+  padding-inline: 12px 14px;
+  background: var(--foreground);
+  color: var(--background);
+  border-color: transparent;
+  box-shadow: var(--shadow-soft);
+  animation: mostra-selection-in 160ms var(--ease-out);
+}
+.mostra-selection-comment svg {
+  inline-size: 16px;
+  block-size: 16px;
+}
+@keyframes mostra-selection-in {
+  from {
+    opacity: 0;
+    translate: 0 4px;
+  }
+}
+@media (prefers-reduced-motion: reduce) {
+  .mostra-selection-comment {
+    animation: none;
+  }
+}
+.mostra-review-surface {
+  position: absolute;
+  inset: 0;
+  pointer-events: auto;
+  cursor: crosshair;
+  /* The shell scrolls the page for a drag here, and a tap picks a place (useScrollThrough). */
+  touch-action: none;
+  /* A hint of the mode: the page is behind glass while a comment is being placed. */
+  background: rgb(35 64 200 / 0.03);
+  box-shadow: inset 0 0 0 2px var(--primary);
+}
+.mostra-review-hover {
+  position: absolute;
+  border-radius: 6px;
+  outline: 2px solid var(--primary);
+  outline-offset: 2px;
+  background: rgb(35 64 200 / 0.06);
+  transition:
+    left 90ms var(--ease-out),
+    top 90ms var(--ease-out),
+    width 90ms var(--ease-out),
+    height 90ms var(--ease-out);
+}
+.mostra-pin {
+  --pin: 26px;
+  position: absolute;
+  inline-size: var(--pin);
+  block-size: var(--pin);
+  margin: calc(var(--pin) / -2) 0 0 calc(var(--pin) / -2);
+  display: inline-grid;
+  place-items: center;
+  border-radius: 50% 50% 50% 4px;
+  border: 2px solid #fff;
+  background: #f5b700;
+  color: #141414;
+  font: 650 0.75rem / 1 var(--font-sans);
+  font-variant-numeric: tabular-nums;
+  box-shadow: var(--shadow-soft);
+  pointer-events: auto;
+  cursor: pointer;
+  animation: mostra-pin-drop 400ms cubic-bezier(0.34, 1.56, 0.64, 1);
+}
+.mostra-pin[data-focused] {
+  outline: 3px solid var(--primary);
+  outline-offset: 2px;
+}
+.mostra-pin:focus-visible {
+  outline: 3px solid var(--ring);
+  outline-offset: 2px;
+}
+.mostra-pin-draft {
+  background: var(--primary);
+  border-color: #fff;
+}
+.mostra-pin-static {
+  position: static;
+  margin: 0;
+  flex: none;
+  animation: none;
+  box-shadow: none;
+}
+.mostra-pin-resolved {
+  background: var(--muted);
+  border-color: var(--border);
+}
+@keyframes mostra-pin-drop {
+  from {
+    transform: translateY(-8px) scale(0.6);
+    opacity: 0;
+  }
+}
+.mostra-comment-button[aria-pressed="true"] {
+  border-color: var(--foreground);
+}
+.mostra-comment-button[data-mostra-comment-button="commenting"],
+.mostra-pill.mostra-comment-button[data-mostra-comment-button="commenting"]:hover {
+  background: var(--foreground);
+  color: var(--background);
+  border-color: var(--foreground);
+}
+.mostra-count {
+  display: inline-grid;
+  place-items: center;
+  min-inline-size: 20px;
+  block-size: 20px;
+  padding: 0 6px;
+  border-radius: 999px;
+  background: #f5b700;
+  color: #141414;
+  font: 650 0.6875rem / 1 var(--font-sans);
+  font-variant-numeric: tabular-nums;
+}
+.mostra-review-panel {
+  flex: none;
+  inline-size: min(360px, 38vw);
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  padding: 16px;
+  overflow: auto;
+  overscroll-behavior: contain;
+  background: var(--background);
+  border-inline-start: 1px solid var(--border);
+  z-index: 6;
+}
+.mostra-review-panel-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+}
+.mostra-review-panel-head h2 {
+  margin: 0;
+  font: 500 1.375rem / 1.2 var(--font-display);
+}
+.mostra-review-panel-intro,
+.mostra-review-empty {
+  margin: 0;
+  color: var(--muted-foreground);
+  font-size: 0.8125rem;
+  line-height: 1.45;
+}
+.mostra-review-whole {
+  align-self: flex-start;
+  font-size: 0.8125rem;
+}
+.mostra-threads {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+.mostra-thread {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  padding: 12px;
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  background: var(--card);
+}
+.mostra-thread[data-focused] {
+  border-color: var(--primary);
+  box-shadow: 0 0 0 1px var(--primary);
+}
+.mostra-thread[data-mostra-thread-status="resolved"] {
+  opacity: 0.8;
+}
+.mostra-thread-head {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  min-width: 0;
+  font-size: 0.8125rem;
+  color: var(--muted-foreground);
+}
+.mostra-thread-where {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  unicode-bidi: isolate;
+}
+.mostra-thread-page {
+  flex: none;
+  font: 0.75rem / 1 var(--font-mono);
+}
+.mostra-crop {
+  display: block;
+  inline-size: 100%;
+  block-size: auto;
+  max-block-size: 180px;
+  object-fit: contain;
+  object-position: left top;
+  border-radius: 6px;
+  border: 1px solid var(--border);
+  background: var(--muted);
+}
+.mostra-crop-pending,
+.mostra-crop-failed {
+  display: grid;
+  place-items: center;
+  min-block-size: 56px;
+  padding: 8px 12px;
+  font-size: 0.75rem;
+  color: var(--muted-foreground);
+}
+.mostra-crop-pending {
+  background: linear-gradient(90deg, var(--muted), var(--card), var(--muted)) 0 0 / 200% 100%;
+  animation: mostra-shimmer 1.4s linear infinite;
+}
+@keyframes mostra-shimmer {
+  to {
+    background-position: -200% 0;
+  }
+}
+.mostra-messages {
+  margin: 0;
+  padding: 0;
+  list-style: none;
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+.mostra-message-meta {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  gap: 6px;
+  font-size: 0.75rem;
+  color: var(--muted-foreground);
+}
+.mostra-message-meta b {
+  color: var(--foreground);
+  font-weight: 600;
+  unicode-bidi: isolate;
+}
+.mostra-message-text {
+  margin: 4px 0 0;
+  font-size: 0.875rem;
+  line-height: 1.45;
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+  unicode-bidi: plaintext;
+}
+.mostra-thread-resolved {
+  margin: 0;
+  font-size: 0.75rem;
+  color: var(--muted-foreground);
+}
+.mostra-thread-actions {
+  display: flex;
+  gap: 16px;
+  font-size: 0.8125rem;
+}
+.mostra-composer {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  position: relative;
+}
+.mostra-composer textarea {
+  inline-size: 100%;
+  min-block-size: 64px;
+  resize: vertical;
+  padding: 8px 10px;
+  border: 1px solid var(--input);
+  border-radius: 8px;
+  background: var(--card);
+  color: var(--foreground);
+  font: 0.875rem / 1.45 var(--font-sans);
+}
+.mostra-composer textarea:focus-visible {
+  outline: 2px solid var(--ring);
+  outline-offset: 1px;
+}
+.mostra-composer .mostra-actions {
+  justify-content: flex-end;
+}
+.mostra-mentions {
+  margin: 0;
+  padding: 4px;
+  list-style: none;
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  background: var(--card);
+  box-shadow: var(--shadow-float);
+}
+.mostra-mentions .mostra-link {
+  display: block;
+  inline-size: 100%;
+  padding: 6px 8px;
+  text-align: start;
+  text-decoration: none;
+  border-radius: 6px;
+}
+.mostra-mentions .mostra-link:hover,
+.mostra-mentions .mostra-link:focus-visible {
+  background: var(--accent);
+  color: var(--accent-foreground);
+}
+.mostra-resolved {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  font-size: 0.8125rem;
+}
+@media (max-width: 720px) {
+  /* Out of sight, never out of its name. */
+  .mostra-comment-button .mostra-button-text {
+    position: absolute;
+    inline-size: 1px;
+    block-size: 1px;
+    overflow: hidden;
+    clip-path: inset(50%);
+    white-space: nowrap;
+  }
+  .mostra-comment-button {
+    padding: 0 12px;
+    min-block-size: 44px;
+  }
+  .mostra-review-panel {
+    position: fixed;
+    inset-inline: 0;
+    inset-block-end: 0;
+    inline-size: auto;
+    max-block-size: 62vh;
+    padding-block-end: max(16px, env(safe-area-inset-bottom));
+    border-inline-start: 0;
+    border-block-start: 1px solid var(--border);
+    border-radius: 16px 16px 0 0;
+    box-shadow: var(--shadow-float);
+    z-index: 30;
+  }
+  /* The sheet stands on the dock, never over it: the trusted Submit stays in reach. */
+  .mostra-page:has(.mostra-actionbar[data-mostra-dock]) .mostra-review-panel {
+    inset-block-end: calc(var(--dock-height) + env(safe-area-inset-bottom));
+    max-block-size: calc(62vh - var(--dock-height));
+    padding-block-end: 16px;
+  }
+  .mostra-pin {
+    --pin: 30px;
+  }
+  /* Peeking with comment mode (Mirza's review): its head, the comment being written and "Comment
+     on the whole page", never the threads over the page; one tap shows them. */
+  .mostra-review-panel[data-peek] .mostra-review-panel-intro,
+  .mostra-review-panel[data-peek] .mostra-review-empty,
+  .mostra-review-panel[data-peek] .mostra-threads,
+  .mostra-review-panel[data-peek] .mostra-resolved {
+    display: none;
+  }
+}
+/* The way to the threads shows only where a peeking panel hides them: on a phone. */
+.mostra-review-expand {
+  display: none;
+}
+@media (max-width: 720px) {
+  .mostra-review-panel[data-peek] .mostra-review-expand {
+    display: block;
+    text-align: start;
+  }
+}
+@media (prefers-reduced-motion: reduce) {
+  .mostra-pin,
+  .mostra-dot-pending,
+  .mostra-crop-pending {
+    animation: none;
+  }
+  .mostra-review-hover {
+    transition: none;
+  }
+}
+@media (forced-colors: active) {
+  .mostra-pin {
+    forced-color-adjust: none;
+    background: Highlight;
+    color: HighlightText;
+    border-color: CanvasText;
   }
 }

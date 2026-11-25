@@ -11,6 +11,11 @@ import {
   type FrameTicket,
   MutationId,
   type MutationResult,
+  type ReviewReplyRequest,
+  type ReviewStatusRequest,
+  type ReviewThread,
+  type ReviewThreadRequest,
+  type ReviewThreads,
   type SubmissionSummary,
 } from "@mostra/protocol";
 import { bootMark } from "./boot-marks.ts";
@@ -268,6 +273,19 @@ export function report(
   });
 }
 
+/** A page's one performance report, where the operator asks for it (#167). */
+export function reportPerformance(
+  apiBase: string,
+  csrf: string,
+  report: { readonly versionId: string; readonly loadMs: number; readonly errors: number },
+): Promise<unknown> {
+  return call(`${apiBase}/performance`, {
+    method: "POST",
+    headers: { ...JSON_HEADERS, "x-mostra-csrf": csrf },
+    body: JSON.stringify(report),
+  });
+}
+
 /** An anonymous viewer's name for this page, recorded unverified (D165 item 8). */
 export function nameViewer(apiBase: string, csrf: string, name: string | null): Promise<unknown> {
   return call(`${apiBase}/session/name`, {
@@ -322,4 +340,77 @@ export function signInFinish(
     headers: { ...JSON_HEADERS, "x-mostra-csrf": csrf },
     body: JSON.stringify(input),
   });
+}
+
+/** The comment threads this page may see, the people it may mention, and whether it may write (WP-20). */
+export function reviewThreads(apiBase: string, viewId: string): Promise<ReviewThreads> {
+  return call(shellRoute(apiBase, `/review/threads?view=${encodeURIComponent(viewId)}`), {
+    method: "GET",
+  });
+}
+
+/** Starts a comment thread: its anchor and first comment, under IDs the shell made (WP-20). */
+export function createThread(
+  apiBase: string,
+  csrf: string,
+  request: ReviewThreadRequest,
+): Promise<ReviewThread> {
+  return call(shellRoute(apiBase, "/review/threads"), {
+    method: "POST",
+    headers: { ...JSON_HEADERS, "x-mostra-csrf": csrf },
+    body: JSON.stringify(request),
+  });
+}
+
+/** Replies to a thread (WP-20). */
+export function replyThread(
+  apiBase: string,
+  csrf: string,
+  threadId: string,
+  request: ReviewReplyRequest,
+): Promise<ReviewThread> {
+  return call(shellRoute(apiBase, `/review/threads/${encodeURIComponent(threadId)}/comments`), {
+    method: "POST",
+    headers: { ...JSON_HEADERS, "x-mostra-csrf": csrf },
+    body: JSON.stringify(request),
+  });
+}
+
+/** Resolves or reopens a thread (WP-20). */
+export function setThreadStatus(
+  apiBase: string,
+  csrf: string,
+  threadId: string,
+  request: ReviewStatusRequest,
+): Promise<ReviewThread> {
+  return call(shellRoute(apiBase, `/review/threads/${encodeURIComponent(threadId)}/status`), {
+    method: "POST",
+    headers: { ...JSON_HEADERS, "x-mostra-csrf": csrf },
+    body: JSON.stringify(request),
+  });
+}
+
+/**
+ * A thread's crop as an object URL the page shows (WP-20): fetched with the shell's session (a
+ * hosted shell's is a header, never a cookie), so an `<img>` can't load it by its address alone.
+ * The caller revokes the URL.
+ */
+export async function cropUrl(apiBase: string, threadId: string): Promise<string> {
+  let response: Response;
+  try {
+    response = await fetch(
+      shellRoute(apiBase, `/review/threads/${encodeURIComponent(threadId)}/crop`),
+      { credentials: "same-origin", headers: sessionHeaders() },
+    );
+  } catch (error) {
+    throw new ShellError(0, "NETWORK", (error as Error).message);
+  }
+  if (!response.ok || response.headers.get("content-type") !== "image/png") {
+    throw new ShellError(
+      response.status,
+      "MOSTRA_REVIEW_CROP_MISSING",
+      "The crop isn't there yet.",
+    );
+  }
+  return URL.createObjectURL(await response.blob());
 }

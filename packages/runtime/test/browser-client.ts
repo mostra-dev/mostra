@@ -14,6 +14,8 @@ export interface Answer {
   /** Header name (lowercase) → every value. */
   readonly headers: Readonly<Record<string, readonly string[]>>;
   readonly body: string;
+  /** The body's bytes, for a body that isn't text (a crop's PNG). */
+  readonly bytes: Buffer;
   header(name: string): string | undefined;
   json<T = Record<string, unknown>>(): T;
 }
@@ -193,11 +195,7 @@ export function send(ask: Ask): Promise<Answer> {
             values.push(res.rawHeaders[index + 1] as string);
             headers[name] = values;
           }
-          const answer = answerOf(
-            res.statusCode ?? 0,
-            headers,
-            Buffer.concat(chunks).toString("utf8"),
-          );
+          const answer = answerOf(res.statusCode ?? 0, headers, Buffer.concat(chunks));
           seen.push(answer);
           resolve(answer);
         });
@@ -209,10 +207,12 @@ export function send(ask: Ask): Promise<Answer> {
   });
 }
 
-function answerOf(status: number, headers: Record<string, string[]>, body: string): Answer {
+function answerOf(status: number, headers: Record<string, string[]>, bytes: Buffer): Answer {
+  const body = bytes.toString("utf8");
   return {
     status,
     headers,
+    bytes,
     body,
     header: (name) => headers[name.toLowerCase()]?.[0],
     json: <T>() => JSON.parse(body) as T,

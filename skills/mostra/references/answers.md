@@ -236,7 +236,7 @@ function LayoutChoice() {
 }
 ```
 
-The choice arrives in results' `choices` and as the field `review.layout.choice`.
+The choice arrives in results' `choices` and as the field `review.layout.choice`. A label may be up to 256 characters; the button shows it in full where it fits and shortens it on a phone, so keep it to a few words. For candidates laid out for comparison, use the kit's review sets ([review.md](review.md)).
 
 ## Waiting
 

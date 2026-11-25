@@ -961,4 +961,62 @@ export const MIGRATIONS: readonly Migration[] = [
       db.exec("ALTER TABLE field ADD COLUMN options_json TEXT");
     },
   },
+  {
+    version: 20,
+    name: "review threads, their comments and crops",
+    up(db) {
+      // A comment thread (WP-20, D23, D47): made by a viewer in a view of a version, with every
+      // layer of its anchor, open or resolved. Its crop is captured after the thread commits and
+      // set once: `crop_state` goes from pending to captured (a blob in the home's `blobs/`) or
+      // failed (with why), never back, and a captured crop never changes (RV-02).
+      db.exec(`
+        CREATE TABLE thread (
+          id TEXT PRIMARY KEY,
+          artifact_id TEXT NOT NULL REFERENCES artifact(id),
+          version_id TEXT NOT NULL REFERENCES version(id),
+          view_id TEXT NOT NULL,
+          viewer_id TEXT NOT NULL REFERENCES viewer(id),
+          anchor_json TEXT NOT NULL,
+          review_set_id TEXT,
+          candidate_id TEXT,
+          page TEXT,
+          status TEXT NOT NULL CHECK (status IN ('open', 'resolved')),
+          status_at TEXT,
+          status_by TEXT REFERENCES viewer(id),
+          created_at TEXT NOT NULL,
+          crop_state TEXT NOT NULL DEFAULT 'pending' CHECK (crop_state IN ('pending', 'captured', 'failed')),
+          crop_blob TEXT,
+          crop_width INTEGER,
+          crop_height INTEGER,
+          crop_source TEXT,
+          crop_error TEXT,
+          crop_at TEXT,
+          CHECK ((crop_state = 'captured') = (crop_blob IS NOT NULL))
+        );
+        CREATE INDEX thread_artifact ON thread (artifact_id, created_at);
+        CREATE INDEX thread_pending ON thread (crop_state) WHERE crop_state = 'pending';
+        CREATE TRIGGER thread_crop_once BEFORE UPDATE OF crop_state, crop_blob, crop_width, crop_height, crop_source, crop_error, crop_at ON thread
+          WHEN OLD.crop_state <> 'pending'
+          BEGIN SELECT RAISE(ABORT, 'a thread''s crop is set once'); END;
+        CREATE TRIGGER thread_fixed BEFORE UPDATE OF id, artifact_id, version_id, view_id, viewer_id, anchor_json, created_at ON thread
+          BEGIN SELECT RAISE(ABORT, 'a thread''s anchor and origin never change'); END;
+        CREATE TRIGGER thread_kept BEFORE DELETE ON thread
+          BEGIN SELECT RAISE(ABORT, 'threads are never deleted'); END;
+        CREATE TABLE comment (
+          id TEXT PRIMARY KEY,
+          thread_id TEXT NOT NULL REFERENCES thread(id),
+          author_viewer_id TEXT NOT NULL REFERENCES viewer(id),
+          text TEXT NOT NULL,
+          mentions_json TEXT,
+          at TEXT NOT NULL,
+          edited_at TEXT
+        );
+        CREATE INDEX comment_thread ON comment (thread_id, at);
+        CREATE TRIGGER comment_written_once BEFORE UPDATE ON comment
+          BEGIN SELECT RAISE(ABORT, 'a comment is written once'); END;
+        CREATE TRIGGER comment_kept BEFORE DELETE ON comment
+          BEGIN SELECT RAISE(ABORT, 'comments are never deleted'); END;
+      `);
+    },
+  },
 ];

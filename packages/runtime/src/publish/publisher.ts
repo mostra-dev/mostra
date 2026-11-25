@@ -67,7 +67,12 @@ import {
 } from "../deps/index.ts";
 import { type Faults, noFaults } from "../faults.ts";
 import type { Gate } from "../gate.ts";
-import { contributedThemes, kitBuildFor, kitVersionOf } from "../kit/index.ts";
+import {
+  contributedAnchorProviders,
+  contributedThemes,
+  kitBuildFor,
+  kitVersionOf,
+} from "../kit/index.ts";
 import {
   InflightRequests,
   type Ledger,
@@ -554,6 +559,11 @@ export function createPublisher(options: PublisherOptions): Publisher {
       nodeModules: deps.nodeModules,
       // Themes the artifact's plugins contribute (D181 item 4), from the layout the build reads.
       contributed: contributedThemes(deps.nodeModules, parseLock(deps.lock).plugins ?? []),
+      // And their anchor providers, which the page registers (WP-20).
+      anchorProviders: contributedAnchorProviders(
+        deps.nodeModules,
+        parseLock(deps.lock).plugins ?? [],
+      ),
     });
     const environment: BuildEnvironment = {
       mostraVersion: options.runtimeVersion,

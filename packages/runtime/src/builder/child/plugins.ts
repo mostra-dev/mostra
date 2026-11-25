@@ -264,6 +264,9 @@ export function confinePlugin(inputs: BuildInputs): Plugin {
       }
       if (ours(file)) return resolved;
       if (bare && packaged(file)) return resolved;
+      // Mostra's own generated entry names a plugin's anchor provider by its file in the layout
+      // (WP-20): a package's file, which the lockfile's digest covers.
+      if (under(from, inputs.generatedDir) && packaged(file)) return resolved;
       const where = relative(inputs.sourceDir, from);
       return this.error(
         bare

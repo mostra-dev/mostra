@@ -219,6 +219,10 @@ export interface GatewayOptions {
   readonly controls: (artifact: ArtifactDetail) => Promise<ControlsPolicy>;
   /** Tells hosts with a `trustedControls` port that a trusted control was used (D108). */
   readonly activated: BrowserRoutesOptions["activated"];
+  /** A comment's crop by its SHA-256 (WP-20). */
+  readonly crops?: BrowserRoutesOptions["crops"];
+  /** Waits, bounded, for the crops a submission will carry (WP-20). */
+  readonly beforeSubmit?: BrowserRoutesOptions["beforeSubmit"];
   /**
    * Who a browser is that exchanges a link minted without a viewer (D143 item 2): the person a
    * host's identity port names, the standalone default, or a refusal. Absent: the default.
@@ -644,6 +648,8 @@ export function createGateway(options: GatewayOptions): Gateway {
         : undefined;
     },
     activated: options.activated,
+    ...(options.crops ? { crops: options.crops } : {}),
+    ...(options.beforeSubmit ? { beforeSubmit: options.beforeSubmit } : {}),
     ...(options.hosted?.admitSubmit ? { admitSubmit: options.hosted.admitSubmit } : {}),
     ...(options.revisions ? { revisions: options.revisions } : {}),
     ...(options.bus ? { bus: options.bus } : {}),
@@ -1720,6 +1726,46 @@ export function createGateway(options: GatewayOptions): Gateway {
         auth: "session",
         scope: () => "review",
         handler: served.choose,
+      },
+      {
+        method: "GET",
+        path: "/a/:artifactId/_mostra/v/:rev/review/threads",
+        intent: "read",
+        auth: "session",
+        scope: () => "review",
+        handler: served.reviewThreads,
+      },
+      {
+        method: "POST",
+        path: "/a/:artifactId/_mostra/v/:rev/review/threads",
+        intent: "mutation",
+        auth: "session",
+        scope: () => "review",
+        handler: served.createThread,
+      },
+      {
+        method: "POST",
+        path: "/a/:artifactId/_mostra/v/:rev/review/threads/:threadId/comments",
+        intent: "mutation",
+        auth: "session",
+        scope: () => "review",
+        handler: served.replyThread,
+      },
+      {
+        method: "POST",
+        path: "/a/:artifactId/_mostra/v/:rev/review/threads/:threadId/status",
+        intent: "mutation",
+        auth: "session",
+        scope: () => "review",
+        handler: served.threadStatus,
+      },
+      {
+        method: "GET",
+        path: "/a/:artifactId/_mostra/v/:rev/review/threads/:threadId/crop",
+        intent: "read",
+        auth: "session",
+        scope: () => "review",
+        handler: served.threadCrop,
       },
       {
         method: "POST",

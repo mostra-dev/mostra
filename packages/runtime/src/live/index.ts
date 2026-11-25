@@ -138,6 +138,43 @@ export interface Live {
   stop(): void;
   /** The artifact's sources whose producers failed last, with the error each reported (verify, D138). */
   failures(artifactId: string): { readonly key: string; readonly error: WireError }[];
+  /**
+   * The artifact's stored live values, as viewers last saw them (WP-20's review, finding 2): what a
+   * comment's crop shows, written into its sandbox, so a crop runs no producer.
+   */
+  stored(artifactId: string): StoredLiveValue[];
+}
+
+/** A live source's stored value: its key, revision, time and value as stored (serializer batches). */
+export interface StoredLiveValue {
+  readonly key: string;
+  readonly revision: number;
+  readonly value: string;
+  readonly at: string;
+}
+
+/** The most characters of live values a crop carries; past them the rest of the sources show none. */
+export const CROP_LIVE_MAX: number = 16 * 1024 * 1024;
+
+/** Writes live values a crop's sandbox shows, as stored elsewhere (finding 2). */
+export function seedLiveValues(
+  ledger: Ledger,
+  artifactId: string,
+  values: readonly StoredLiveValue[],
+): void {
+  ledger.write((db) => {
+    for (const value of values) {
+      db.run(
+        `INSERT INTO live_value (artifact_id, key, revision, value_json, producer_version_id, at)
+         VALUES (?, ?, ?, ?, NULL, ?)`,
+        artifactId,
+        value.key,
+        value.revision,
+        value.value,
+        value.at,
+      );
+    }
+  });
 }
 
 interface LiveRow {
@@ -461,6 +498,22 @@ export function createLive(options: LiveOptions): Live {
   };
 
   return {
+    stored(artifactId) {
+      return ledger.read((db) => {
+        const rows = db.all<{ key: string; revision: number; value_json: string; at: string }>(
+          "SELECT key, revision, value_json, at FROM live_value WHERE artifact_id = ? ORDER BY key",
+          artifactId,
+        );
+        const values: StoredLiveValue[] = [];
+        let total = 0;
+        for (const row of rows) {
+          total += row.value_json.length;
+          if (total > CROP_LIVE_MAX) break;
+          values.push({ key: row.key, revision: row.revision, value: row.value_json, at: row.at });
+        }
+        return values;
+      });
+    },
     failures(artifactId) {
       const prefix = keyOf(artifactId, "");
       return [...failures]

@@ -19,7 +19,8 @@
                                and, since WP-09, `verify: { status, verifyRevision }`, D138), client/, server/
                                (optional, entry.mjs), registry.json, lock.yaml
   sources/<artifactId>/<sourceDigest>.tar.zst   source snapshots for every published version (H-11)
-  blobs/<sha256>               crops, screenshots, recordings, attachments (content-addressed)
+  blobs/<sha256>.png           review comments' crops, PNGs named by their SHA-256, written once (WP-20, D183 item 4);
+                               a hosted home's too, removed with the last thread that names one (§7.5)
   deps/store/                  shared content-addressed package store (pnpm 10's, D20, D94)
   deps/locks/pinned-<digest>/  a version's layout once the warm set moved on: its locked warm versions installed (D135)
   deps/locks/<layout key>/     per-lockfile node_modules layouts (the key: the digest of its `warm`, `packages` and `pnpm`, so
@@ -120,9 +121,17 @@ event(cursor INTEGER PK AUTOINCREMENT, artifact_id, seq INTEGER, type, actor_jso
       UNIQUE(artifact_id, seq))
 subscriber(name PK, filter_json, acked_cursor, updated_at)               -- durable host subscriptions
 
--- Review
-thread(id PK, artifact_id, version_id, view_id, anchor_json, crop_blob, status, created_by, created_at)
-comment(id PK, thread_id FK, author_viewer_id, text, at, edited_at NULL)
+-- Review (migration 20, WP-20, D183)
+thread(id PK, artifact_id FK, version_id FK, view_id, viewer_id FK, anchor_json, review_set_id NULL, candidate_id NULL,
+       page NULL, status CHECK(status IN ('open','resolved')), status_at NULL, status_by NULL FK, created_at,
+       crop_state CHECK(crop_state IN ('pending','captured','failed')), crop_blob NULL, crop_width NULL, crop_height NULL,
+       crop_source NULL, crop_error NULL, crop_at NULL, CHECK((crop_state = 'captured') = (crop_blob IS NOT NULL)))
+                                                    -- triggers: the crop is set once (pending to captured or
+                                                    -- failed, never back); the anchor, view, viewer, version and
+                                                    -- creation never change; a thread is never deleted
+comment(id PK, thread_id FK, author_viewer_id FK, text, mentions_json NULL, at, edited_at NULL)
+                                                    -- written once, never deleted (triggers); mentions_json the
+                                                    -- viewers a comment mentions (CO-06)
 -- choices are fields: review.<setId>.choice (D65)
 
 -- Actions and live data
@@ -215,7 +224,9 @@ Every durable event has `{ cursor, artifactId, seq, type, at, actor: { kind: "vi
 | `submission.retrying` | submissionId, deliveryId, owner, attempts, reason: once per delivery, when its host is away or its first attempt failed, so the viewer sees "Pending delivery" (IN-13) |
 | `submission.delivered` / `submission.rejected` / `submission.undeliverable` | submissionId, deliveryId, owner, attempts, reason |
 | `signal.raised` | name, payload, source (`shell`, `artifact`, `action`), viewId; every submission raises `submit` (D106); from server code, the `viewerId` whose call raised it instead of a view, and a page sees it only when that is its own viewer (D136) |
-| `review.thread.created` / `review.comment.added` / `review.thread.resolved` / `review.thread.reopened` | thread and comment IDs, anchor summary |
+| `review.thread.created` / `review.comment.added` / `review.thread.resolved` / `review.thread.reopened` | thread and comment IDs, anchor summary (review ID, page, review set and candidate, provider kind); a page sees those of the threads it may see (D183 item 1) |
+| `review.crop.captured` | threadId, state (`captured` or `failed`), width and height or reason: a thread's crop, set once (RV-02) |
+| `review.mentioned` | threadId, commentId, `mentioned` (`{ viewerId, key, kind, name?, ref? }`), `by`: one per mentioned person per comment, for hosts only, never shown to pages (CO-06, D183 item 3) |
 | `action.started` / `action.succeeded` / `action.failed` / `action.cancelled` | runId, action, reason |
 | `action.waiting` / `action.unknown` | runId, action: a relayed run waiting for its owner, and one whose owner never reported its end within the offline limit (D165 item 4); a later end appends its own event |
 | `artifact.paused` / `artifact.resumed` | by (`owner` or `operator`), reason (D165 item 14) |
@@ -249,7 +260,7 @@ The plan update of 2026-10-16 added stored data for the remote server and teams.
 - **WP-28** (D116, D117) designed the remote server's data below (D165); WP-29 and WP-30 add its tables and migrations.
 - **WP-31** (D121, as built, D168): migration 16 adds `roster_entry(artifact_id, ref, name NULL, email NULL, viewer_id FK, token_id NULL, position, added_at, PRIMARY KEY(artifact_id, ref), UNIQUE(artifact_id, viewer_id), UNIQUE(artifact_id, position))`, one row per expected respondent, whose viewer is its personal link's (kind `token` by `ref`); and `roster_state(artifact_id PK, round, round_cursor, round_started_at, complete)`, a trigger refusing a round or its cursor that goes back. Attribution is `field.updated_by_json` and `updated_at` (§3). Presence, cursors and selections stay in the supervisor's memory and are never stored (§4, D47). The server's directory migration 4 lets `outbound` hold `invitations`, each by its link's token ID, never its URL.
 - **WP-17** (D175, as built): migration 18 widens `session.mode` with `app`, the app channel's sessions (item 4), and adds `remote_missing.hosted_cursor` and `remote_missing.envelope_json` (#139, item 9). A home keeps the MCP App pages it made under `cache/mcp-app/<versionId>/<exporter key>/` (`index.html`, `mcp-app.json`), a cache it can make again; a hosted home keeps the page it makes of each version beside its ledger as `pages/<versionId>.json` (`{ html, meta }`), written once and removed with the artifact (item 8).
-- **WP-20** (D121): the mention event raised by an `@mention` in a review comment (CO-06).
+- **WP-20** (D121, as built, D183): migration 20 adds `thread` and `comment` (§3) and the review events (§4), the mention event `review.mentioned` among them (CO-06); a hosted home keeps its comments' crops in its own `blobs/`, rendered by the owner instance, which keeps a copy in its own.
 - **WP-33 to WP-35** (D170): homes an organization owns, in §7.6.
 
 ### 7.1 A remote server's data directory
@@ -473,7 +484,7 @@ A route with `adopting_json` takes no push and sends no delivery or run until th
 
 **A hosted home's ledger.** No migration. `delivery_terminal` refuses a change of a delivery's `port_owner` (`ledger/migrations.ts:338-343`), and it stays: adoption rewrites no delivery, because a hosted home's outbox sends each pending delivery to its artifact's owner link as the route names it then (4.5). A delivery's `port_owner` on a hosted home is therefore the link that owned the route when the submission was committed. The adoption commit updates `relay_run.owner_link_id` and `relay_seq` of never-sent runs, which no trigger guards. The new events are rows of the existing `event` table.
 
-**The owner's ledger, migration 20 (WP-34; 18 is WP-17's, D175, and 19 WP-18's, D181).** `remote_link` is rebuilt with a local key, and its children reference the key.
+**The owner's ledger, migration 21 (WP-34; 18 is WP-17's, D175, 19 WP-18's, D181, and 20 WP-20's, D183).** `remote_link` is rebuilt with a local key, and its children reference the key.
 
 ```sql
 remote_link(id PK,                       -- local: rl_ + ULID
@@ -496,7 +507,7 @@ relayed_run   gains link_id
 - `server` stays on the children because `origin`, `scope_key` and every message to a person name the server.
 - Credentials: the personal link keeps `<home>/keys/remote/<server key>.json`; an organization link uses `<server key>.<home id>.json`, and the same for `.links.json` (mode 0600, never in the ledger, D44).
 
-**The owner's ledger, migration 20 (WP-35).**
+**The owner's ledger, migration 21 (WP-35).**
 
 ```sql
 ALTER TABLE version ADD COLUMN code TEXT NOT NULL DEFAULT 'full' CHECK (code IN ('full', 'client'));

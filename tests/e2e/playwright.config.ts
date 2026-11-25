@@ -1,4 +1,7 @@
+import { readdirSync } from "node:fs";
+import { fileURLToPath } from "node:url";
 import { defineConfig, devices } from "@playwright/test";
+import { specsForPart } from "./support/parts.ts";
 
 // The shared Playwright Test setup for Mostra's end-to-end suites. Suites start the real gateway
 // (WP-05 onward) and run in all three engines where behavior differs (STANDARDS, Verification).
@@ -18,7 +21,17 @@ const shardMatch = /^([1-9]\d*)\/([1-9]\d*)$/.exec(shardText);
 if (shardText && (!shardMatch || Number(shardMatch[1]) > Number(shardMatch[2]))) {
   throw new Error(`MOSTRA_E2E_SHARD is <current>/<total>, such as 1/2, not "${shardText}".`);
 }
-const shard = shardMatch ? { current: Number(shardMatch[1]), total: Number(shardMatch[2]) } : null;
+// A part takes whole spec files dealt by their measured length (support/parts.ts), not
+// Playwright's split by test count, which put every long suite in the last part (WP-20).
+const part = shardMatch
+  ? specsForPart(
+      readdirSync(fileURLToPath(new URL("./specs", import.meta.url))).filter((file) =>
+        file.endsWith(".spec.ts"),
+      ),
+      Number(shardMatch[1]),
+      Number(shardMatch[2]),
+    )
+  : undefined;
 
 export default defineConfig({
   testDir: "./specs",
@@ -34,7 +47,10 @@ export default defineConfig({
   // so a test that opens three pages ran past 30 s with nothing wrong (main's run 40096242377).
   // Windows gets 60 s.
   ...(process.platform === "win32" ? { timeout: 60_000 } : {}),
-  shard,
+  // Each part runs its own files: a regular expression per file, anchored at the path's end.
+  ...(part
+    ? { testMatch: part.map((file) => new RegExp(`[\\\\/]${file.replaceAll(".", "\\.")}$`)) }
+    : {}),
   forbidOnly: !!process.env["CI"],
   retries: 0,
   reporter: process.env["CI"] ? [["github"], ["list"]] : "list",

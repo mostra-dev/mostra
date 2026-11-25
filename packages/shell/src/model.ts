@@ -449,6 +449,38 @@ export function deliveryView(submission: SubmissionSummary): DeliveryView {
   return { kind: "submitted" };
 }
 
+/** Where a submission stands, as the status beside Submit tells it (IN-13, D175 item 12). */
+export interface SubmissionStanding {
+  /** `sent` on a hosted link (D165 item 1a); else submitted, then each host's delivery. */
+  readonly kind: "sent" | "submitted" | "pending" | "delivered" | "undeliverable";
+  /** Each host's delivery (Mostra's own adapter left out): none on a hosted link. */
+  readonly deliveries: readonly NonNullable<SubmissionSummary["deliveries"]>[number][];
+  /** Whether a newer version existed when it was made. */
+  readonly stale: boolean;
+}
+
+/**
+ * Where the view's submission stands, while the draft is what was submitted: a `once` submission
+ * closed it, or (under `epochs`) this view made the round's and nothing was written since. Then
+ * the status says so instead of the draft's save state; otherwise `undefined`.
+ */
+export function submissionStanding(
+  state: ViewState,
+  hostedLink: boolean,
+): SubmissionStanding | undefined {
+  const submission = receiptOf(state);
+  if (!submission) return undefined;
+  const current = state.closed || state.revision <= Number(submission.draftRevision);
+  if (!current) return undefined;
+  if (hostedLink) return { kind: "sent", deliveries: [], stale: false };
+  const view = deliveryView(submission);
+  return {
+    kind: view.kind,
+    deliveries: (submission.deliveries ?? []).filter((delivery) => delivery.owner !== ""),
+    stale: submission.staleView,
+  };
+}
+
 /** What the frame's page is: loading, a client runtime (WP-07), or a version built before it. */
 export type FrameKind = "loading" | "runtime" | "legacy";
 

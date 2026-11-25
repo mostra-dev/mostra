@@ -97,7 +97,7 @@ describe("versions built at an earlier browser-protocol revision (VR-10)", () =>
           await frame.getByTestId("ping").click();
           await frame.getByTestId("result").filter({ hasText: /^ok:/ }).waitFor();
           await page.locator("#mostra-submit").click();
-          await page.waitForSelector("[data-mostra-receipt]", { timeout: 15_000 });
+          await page.waitForSelector("[data-mostra-submission]", { timeout: 15_000 });
           const results = ok<Results>(
             await running.client.call("results/get", {
               artifact: { artifactId: frozen.artifactId },

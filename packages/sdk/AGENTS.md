@@ -33,6 +33,10 @@ the protocol over its stdio.
   origin the host forwards to the loopback `local` Mostra opened for a listener, or `null`; the
   same answer keeps a base, `null` or another origin withdraws it. `share()` and `stopShare()` are
   `share/start` and `share/stop` (D158).
+- **`ports.reviews` and `ports.capture` are the review's (HO-11, WP-20).** `reviews.mirror` gets
+  each thread (as results describe it) and each review set's choice, best effort, never retried;
+  `capture.screenshot` answers the PNG a comment's crop is cut from, and a failure falls back to
+  the instance's own verify browser.
 - **No telemetry.** This package contains no code that can send an event (D119, D140 item 1), and
   `telemetry-cli-only` keeps it from importing the CLI's.
 - **The event stream never buffers without bound.** Past `highWaterMark` pages it unsubscribes,

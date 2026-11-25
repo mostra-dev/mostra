@@ -1,0 +1,21 @@
+{
+  "$schema": "https://ui.shadcn.com/schema/registry-item.json",
+  "name": "mostra-review",
+  "type": "registry:component",
+  "title": "Review set",
+  "description": "Candidates to compare, comment on and choose between: a gallery, one at a time, or two to four side by side with their difference.",
+  "dependencies": [
+    "@mostra/react",
+    "cn"
+  ],
+  "files": [
+    {
+      "path": "components/mostra/review.tsx",
+      "type": "registry:component",
+      "target": "components/mostra/review.tsx"
+    }
+  ],
+  "mostra": {
+    "base": "base"
+  }
+}

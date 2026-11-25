@@ -10,7 +10,7 @@
  * ```
  */
 import { readFileSync, statSync } from "node:fs";
-import { readFile } from "node:fs/promises";
+import { mkdir, readFile, rm } from "node:fs/promises";
 import { dirname, join, relative, resolve } from "node:path";
 import type { Readable, Writable } from "node:stream";
 import { fileURLToPath } from "node:url";
@@ -27,6 +27,7 @@ import {
   type MostraInitializeResult,
   type PortTrustedControlsActivatedParams,
   portAddressingExternalBaseMethod,
+  portCaptureScreenshotMethod,
   portIdentityResolveMethod,
   portSecretsGetMethod,
   portTrustedControlsActivatedMethod,
@@ -81,6 +82,7 @@ import {
   writeHomeSettings,
 } from "../home/index.ts";
 import {
+  type CropViewer,
   createEphemeralBus,
   createInteraction,
   type Interaction,
@@ -95,7 +97,7 @@ import {
   type Link,
   pauseHandler,
 } from "../link/index.ts";
-import { createLive, type LatestLive, liveMethods } from "../live/index.ts";
+import { createLive, type LatestLive, liveMethods, type StoredLiveValue } from "../live/index.ts";
 import type { Environment, Log } from "../log.ts";
 import { createPacks, type Packs, packMethods } from "../packs/index.ts";
 import { helperPath, type LaunchPipe, realPath } from "../platform/index.ts";
@@ -123,6 +125,15 @@ import {
   versionDamage,
 } from "../publish/index.ts";
 import { openRegistry } from "../registry/index.ts";
+import {
+  type Capture,
+  type CaptureJob,
+  CROP_WAIT_MS,
+  captureWith,
+  createCropper,
+  openBlobs,
+  reviewMethods,
+} from "../review/index.ts";
 import { openSecrets, secretMethods } from "../secrets/index.ts";
 import { hasLoginService, type IdleWatch, watchIdle } from "../service/index.ts";
 import { createShares, type Shares, shareCacheDir } from "../share/index.ts";
@@ -246,6 +257,8 @@ export const SUPPORTED_PORTS: readonly string[] = [
   "trustedControls",
   "secrets",
   "addressing",
+  "reviews",
+  "capture",
 ];
 
 /** How long a host's `addressing` port has to answer: a page or a minted link waits (D158). */
@@ -507,8 +520,11 @@ async function assemble(home: OwnedHome, options: StartInstanceOptions): Promise
   });
   // The interaction core (WP-06): drafts, state, submissions, the outbox, events and waits. Its
   // host connections are the protocol server's, built below.
+  // The home's crops (WP-20): results name each one by its absolute path, which an agent reads.
+  const blobs = openBlobs(home.path);
   const interaction: Interaction = createInteraction({
     ledger: home.ledger,
+    crops: (sha256) => blobs.path(sha256),
     log,
     faults,
     hosts: {
@@ -541,6 +557,93 @@ async function assemble(home: OwnedHome, options: StartInstanceOptions): Promise
     ...(Number(environment["MOSTRA_TEST_PORT_TIMEOUT_MS"]) > 0
       ? { portTimeoutMs: Number(environment["MOSTRA_TEST_PORT_TIMEOUT_MS"]) }
       : {}),
+  });
+  // The review layer (WP-20): crops captured after each thread commits, by the host's `capture`
+  // port or by the verify runner's browser (HO-11), kept in the home's `blobs/`.
+  const cropsScratch = join(home.path, "cache", "crops");
+  /** Renders a crop of this home's version from the answers given, by the verify runner. */
+  const renderCrop = async (job: {
+    readonly artifactId: string;
+    readonly versionId: string;
+    readonly threadId: string;
+    readonly anchor: CaptureJob["anchor"];
+    readonly draft: Readonly<Record<string, unknown>>;
+    readonly state: Readonly<Record<string, unknown>>;
+    readonly viewer: CropViewer;
+    readonly live: readonly StoredLiveValue[];
+  }): Promise<{ readonly png: Uint8Array; readonly width: number; readonly height: number }> => {
+    await mkdir(cropsScratch, { recursive: true, mode: 0o700 });
+    const out = join(cropsScratch, `${job.threadId}-${Date.now()}.png`);
+    try {
+      const cropped = await getVerifier().crop({
+        artifactId: job.artifactId,
+        versionId: job.versionId,
+        versionDir: registry.store.versionDir(job.versionId),
+        viewport: {
+          width: Math.round(Math.min(Math.max(job.anchor.viewport?.width ?? 1280, 320), 2560)),
+          height: Math.round(Math.min(Math.max(job.anchor.viewport?.height ?? 800, 320), 2560)),
+        },
+        anchor: job.anchor,
+        draft: job.draft,
+        state: job.state,
+        viewer: job.viewer,
+        live: job.live,
+        out,
+      });
+      return { png: await readFile(cropped.path), width: cropped.width, height: cropped.height };
+    } finally {
+      await rm(out, { force: true }).catch(() => undefined);
+    }
+  };
+  const defaultCapture: Capture = async (job) => ({
+    ...(await renderCrop({
+      ...job,
+      ...interaction.viewerAnswers(job.artifactId, job.viewerId),
+      live: live.stored(job.artifactId),
+    })),
+    source: "default",
+  });
+  /** The host's `capture` port, when one is registered (HO-11). */
+  const hostCapture = (): Capture | undefined => {
+    const registrant = server.registrants("capture").at(-1);
+    if (!registrant) return undefined;
+    return async (job) => {
+      const answer = await server.callSession(
+        registrant.session,
+        portCaptureScreenshotMethod.method,
+        {
+          artifactId: job.artifactId,
+          versionId: job.versionId,
+          viewId: job.viewId,
+          viewerId: job.viewerId,
+          threadId: job.threadId,
+          anchor: job.anchor,
+        } as unknown as JsonRpcParams,
+        PORT_TIMEOUT_MS,
+      );
+      const parsed = portCaptureScreenshotMethod.result.safeParse(answer);
+      if (!parsed.success) throw new Error("the host's capture answer isn't a crop");
+      return {
+        png: Buffer.from(parsed.data.png, "base64"),
+        width: parsed.data.width,
+        height: parsed.data.height,
+        source: "host",
+      };
+    };
+  };
+  const cropper = createCropper({
+    log,
+    blobs,
+    capture: captureWith({ log, fallback: defaultCapture, host: hostCapture }),
+    pending: (which) => interaction.pendingCrops(which),
+    record: (threadId, outcome) => interaction.setCrop(threadId, outcome),
+    // Tests shorten the pauses between a crop's attempts.
+    ...(Number(environment["MOSTRA_TEST_CROP_PAUSE_MS"]) > 0
+      ? { pauseMs: Number(environment["MOSTRA_TEST_CROP_PAUSE_MS"]) }
+      : {}),
+  });
+  interaction.onThread((_job, change) => {
+    if (change === "created") cropper.kick();
   });
   // Server code (WP-08): secrets, the worker pool, action runs and live sources. Every secret the
   // home holds is protected from the log and the event log before anything runs.
@@ -798,6 +901,9 @@ async function assemble(home: OwnedHome, options: StartInstanceOptions): Promise
         }
       },
     },
+    crops: (sha256) => blobs.read(sha256),
+    beforeSubmit: (page) =>
+      cropper.settled(interaction.pendingCropsOf(page.artifactId, page.viewerId), CROP_WAIT_MS),
     activated: (event) => {
       // Best effort and never retried, like draft mirrors (D105, D108): the change is durable.
       for (const registrant of server.registrants("trustedControls")) {
@@ -848,6 +954,34 @@ async function assemble(home: OwnedHome, options: StartInstanceOptions): Promise
     runtimeVersion: runtimeVersion(),
     protocol: () => server,
     hostedOn: (artifactId) => link.hostedServers(artifactId),
+    // A hosted page's comment's crop (D183 item 4): rendered here, where the version is, and kept
+    // in this home's blobs too, so the submission's results, imported here, name a crop that exists.
+    crop: async (request) => {
+      const detail = registry.get(canonicalRef({ artifactId: request.artifactId }));
+      if (detail.versions.every((version) => version.id !== request.versionId)) {
+        throw new Error("This home has no such version of the artifact.");
+      }
+      // The owner's host's `capture` port first, as for this home's own comments, else its
+      // verify runner, from the answers the hosted home sent.
+      const cropped = await captureWith({
+        log,
+        fallback: async (job) => ({
+          ...(await renderCrop({
+            ...job,
+            draft: request.draft,
+            state: request.state,
+            // As the hosted home names the comment's viewer: never this home's owner for anyone
+            // else (WP-20's review, finding 2); a server before it named nobody.
+            viewer: request.viewer ?? { owner: false },
+            live: request.live ?? [],
+          })),
+          source: "default",
+        }),
+        host: hostCapture,
+      })(request);
+      await blobs.put(cropped.png);
+      return cropped;
+    },
     // A relayed verify's stages go back to the server that asked (#157), best effort.
     progress: (to, params) =>
       void link.forward(to, relayAuthorProgressMethod, params).catch(() => undefined),
@@ -1065,6 +1199,31 @@ async function assemble(home: OwnedHome, options: StartInstanceOptions): Promise
       // Pausing acts here and on every server the artifact is hosted on (D165 item 14).
       pauseHandler(link, (ref) => registry.get(canonicalRef(ref)).id, interaction.pause),
       ...secretMethods(secrets, (ref) => registry.get(canonicalRef(ref)).id),
+      // `review export` (RV-05): crops named where the home keeps them, or copied beside the export.
+      ...reviewMethods({
+        artifact: (ref) => {
+          const found = registry.get(canonicalRef(ref));
+          return { id: found.id, title: found.title };
+        },
+        submission: (artifactId, submissionId) => {
+          const results = interaction.resultsOf(submissionId);
+          if (results?.artifact.id !== artifactId) return undefined;
+          return {
+            at: results.submission.at,
+            viewer: results.submission.viewer,
+            version: results.submission.version,
+            comments: results.comments,
+            choices: results.choices.map((choice) => ({
+              ...choice,
+              viewer: results.submission.viewer,
+            })),
+          };
+        },
+        current: (artifactId) => ({
+          comments: interaction.artifactComments(artifactId, (sha) => blobs.path(sha)),
+          choices: interaction.artifactChoices(artifactId),
+        }),
+      }),
       ...gcMethods(
         createGc({
           ledger: home.ledger,
@@ -1138,6 +1297,7 @@ async function assemble(home: OwnedHome, options: StartInstanceOptions): Promise
         stopPushingPublishes();
         await link.stop();
         live.stop();
+        await cropper.stop();
         interaction.stop();
         // Before any child stops: on Windows the pipe's helper is a child, and it hands clients
         // the answers already sent (the `mostra/shutdown` reply among them) before it exits.
@@ -1191,6 +1351,8 @@ async function assemble(home: OwnedHome, options: StartInstanceOptions): Promise
     });
     // Deliveries pending from before a restart go out again (FAILURE_MODEL §4).
     interaction.start();
+    // Crops a restart cut short are captured now (WP-20).
+    cropper.kick();
     // Producers that `always` run, and those hosts subscribe to, start now (LL-04).
     live.start();
     // Every server this home is signed in to is dialled again (D165 item 2).
@@ -1204,6 +1366,7 @@ async function assemble(home: OwnedHome, options: StartInstanceOptions): Promise
   } catch (error) {
     // Undo what started before the home is released, so no listener or child outlives it.
     live.stop();
+    await cropper.stop();
     interaction.stop();
     await server.close();
     await gateway.close();

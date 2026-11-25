@@ -353,6 +353,16 @@ impl super::Method for PortAddressingExternalBase {
     type Params = super::generated::PortAddressingExternalBaseParams;
     type Result = super::generated::PortAddressingExternalBaseResult;
 }
+///`port/capture.screenshot`.
+#[derive(Clone, Copy, Debug)]
+pub struct PortCaptureScreenshot;
+impl super::Method for PortCaptureScreenshot {
+    const NAME: &'static str = "port/capture.screenshot";
+    const DIRECTION: super::Direction = super::Direction::InstanceToHost;
+    const MUTATING: bool = false;
+    type Params = super::generated::CaptureRequest;
+    type Result = super::generated::PortCaptureScreenshotResult;
+}
 ///`port/drafts.mirror`.
 #[derive(Clone, Copy, Debug)]
 pub struct PortDraftsMirror;
@@ -432,6 +442,16 @@ impl super::Method for PortRelayRun {
     const MUTATING: bool = false;
     type Params = super::generated::PortRelayRunParams;
     type Result = super::generated::PortRelayRunResult;
+}
+///`port/reviews.mirror`.
+#[derive(Clone, Copy, Debug)]
+pub struct PortReviewsMirror;
+impl super::Method for PortReviewsMirror {
+    const NAME: &'static str = "port/reviews.mirror";
+    const DIRECTION: super::Direction = super::Direction::InstanceToHost;
+    const MUTATING: bool = false;
+    type Params = super::generated::ReviewEnvelope;
+    type Result = ::serde_json::Value;
 }
 ///`port/secrets.get`.
 #[derive(Clone, Copy, Debug)]
@@ -602,6 +622,16 @@ impl super::Method for ResultsList {
     const MUTATING: bool = false;
     type Params = super::generated::ResultsListParams;
     type Result = super::generated::ResultsListResult;
+}
+///`review/export`.
+#[derive(Clone, Copy, Debug)]
+pub struct ReviewExport;
+impl super::Method for ReviewExport {
+    const NAME: &'static str = "review/export";
+    const DIRECTION: super::Direction = super::Direction::ClientToInstance;
+    const MUTATING: bool = false;
+    type Params = super::generated::ReviewExportParams;
+    type Result = super::generated::ReviewExportResult;
 }
 ///`roster/add`.
 #[derive(Clone, Copy, Debug)]
@@ -992,6 +1022,11 @@ pub const METHODS: &[super::MethodInfo] = &[
         mutating: false,
     },
     super::MethodInfo {
+        name: "port/capture.screenshot",
+        direction: super::Direction::InstanceToHost,
+        mutating: false,
+    },
+    super::MethodInfo {
         name: "port/drafts.mirror",
         direction: super::Direction::InstanceToHost,
         mutating: false,
@@ -1028,6 +1063,11 @@ pub const METHODS: &[super::MethodInfo] = &[
     },
     super::MethodInfo {
         name: "port/relay.run",
+        direction: super::Direction::InstanceToHost,
+        mutating: false,
+    },
+    super::MethodInfo {
+        name: "port/reviews.mirror",
         direction: super::Direction::InstanceToHost,
         mutating: false,
     },
@@ -1113,6 +1153,11 @@ pub const METHODS: &[super::MethodInfo] = &[
     },
     super::MethodInfo {
         name: "results/list",
+        direction: super::Direction::ClientToInstance,
+        mutating: false,
+    },
+    super::MethodInfo {
+        name: "review/export",
         direction: super::Direction::ClientToInstance,
         mutating: false,
     },

@@ -13,6 +13,9 @@ import { themeStylesheet } from "./css.ts";
 import { type HtmlValue, html, type SafeHtml } from "./html.ts";
 import { APPEARANCES, type Appearance, type Theme } from "./theme.ts";
 
+/** The name a server that names no other calls itself: its pages then show Mostra's wordmark. */
+const MOSTRA_NAME = "Mostra";
+
 /** The words the template itself says, for a server to translate or reword (D149). */
 export interface PageWords {
   /** The appearance switch's label while the page is light. */
@@ -293,6 +296,11 @@ export function createPages(options: PagesOptions): Pages {
         return html`<img class="m-logo" src="${src}" alt="${identity.logo.alt}" width="${identity.logo.width}" height="${identity.logo.height}">`;
       }
     }
+    // A server that calls itself Mostra, as one does by default, shows Mostra's own wordmark,
+    // drawn, never typed (B41); a name of the operator's own is set as a mark in the display face.
+    if (identity.name === MOSTRA_NAME) {
+      return html`<img class="m-wordmark m-light" src="${base}marks/wordmark-colour.svg" alt="${MOSTRA_NAME}" width="112" height="28"><img class="m-wordmark m-dark" src="${base}marks/wordmark-on-dark.svg" alt="${MOSTRA_NAME}" width="112" height="28">`;
+    }
     return identity.name ? html`<span class="m-name">${identity.name}</span>` : html``;
   };
 
@@ -465,7 +473,7 @@ p { margin: 0 0 1rem; }
 @media not (prefers-color-scheme: dark) { :root:not([data-appearance]) .m-dark { display: none !important; } }
 @media (prefers-color-scheme: dark) { :root:not([data-appearance]) .m-light { display: none !important; } }
 .m-logo { display: block; block-size: 28px; inline-size: auto; max-inline-size: 220px; object-fit: contain; }
-.m-name { font: 600 1.125rem/1.2 var(--font-sans); }
+.m-name { font: 600 1.25rem/1.2 var(--font-display); letter-spacing: -0.01em; }
 .m-panel-wrap { display: grid; justify-items: center; align-content: start; padding: 4vh 20px 48px; }
 .m-panel { inline-size: 100%; max-inline-size: 440px; background: var(--card); color: var(--card-foreground); border: 1px solid var(--border); border-radius: 16px; padding: 36px 32px; }
 .m-workspace-bar { display: flex; flex-wrap: wrap; align-items: center; gap: 8px 28px; border-block-end: 1px solid var(--border); background: var(--card); }

@@ -1164,7 +1164,9 @@ describe("results (IN-11)", () => {
         '- `sidebar`: "b" ("Compact")',
         "",
         "## Comments",
-        "- Thread thr_01JB8Z3QF6S7W3N8D5K2C4V9XG (open), crop `blobs/abc.png`, on `header`, page `/`",
+        // WP-20's layout: the crop with its size, then every layer of the anchor on a line.
+        "- Thread thr_01JB8Z3QF6S7W3N8D5K2C4V9XG (open), crop `blobs/abc.png` (320×120)",
+        "  - Where: review ID `header`; page `/`",
         '  - "Mirza" at 2026-10-15T08:59:00.000Z: "Header too tall"',
         "",
         "## Actions run in this view",
@@ -1374,7 +1376,10 @@ describe("no path delivers a draft as a submission (IN-06)", () => {
     expect(link).toMatch(/method === portSubmissionsDeliverMethod\.method/);
     const outbox = readFileSync(join(root, "interaction/outbox.ts"), "utf8");
     // The envelope's results come from the immutable submission row, never a document.
-    expect(outbox).toMatch(/kind: "submission",[\s\S]*results: buildResults\(db, submission\)/);
+    // (WP-20 passes where the home keeps crops, which names files, never draft content.)
+    expect(outbox).toMatch(
+      /kind: "submission",[\s\S]*results: buildResults\(db, submission, this\.#options\.crops\)/,
+    );
     expect(outbox).toMatch(/SELECT \* FROM submission WHERE id = \?/);
     // Drafts leave only through the drafts port, labelled as drafts.
     expect(outbox).toMatch(/kind: "draft"/);

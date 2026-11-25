@@ -11,18 +11,19 @@ from `dist/`, found beside the runtime package or through `MOSTRA_SHELL_DIR`.
 ## Invariants it owns
 
 - **Trusted controls render only here (SH-01, invariant 7).** Anything a person must be able to
-  trust (Submit, Choose, the version banner, the delivery receipt, the review overlay) is shell
+  trust (Submit, Choose, the version banner, where a submission stands, the review overlay) is shell
   DOM, never frame DOM. The frame can only ask for it over the bridge (`mostra/controls.request`),
   and the shell renders only what the view's policy allows (D108).
 - **The shell judges from its own sources.** Its event stream on its own origin
-  (`src/stream.ts`, `/a/<id>/_mostra/v/<rev>/events`) is what the banner, the receipt and the
+  (`src/stream.ts`, `/a/<id>/_mostra/v/<rev>/events`) is what the banner, the status and the
   required-field check read; the frame's reports (`mostra/fields`, `mostra/flush`) add labels,
   validation and conflicts, never decide on their own. A trusted Submit posts to the shell origin
   with the shell session's CSRF token, which no artifact code can read (D40, SH-02).
 - **A submission is made from what the viewer saw (D110, FAILURE_MODEL §4).** Submit flushes the
   frame, waits for the shell's stream to reach the frame's revision, checks blockers, and posts
   exactly the revision the frame confirmed (`submitRevision` in `src/model.ts`), never a newer one
-  only the shell's stream has met. A page with WP-07's runtime (it names its version in
+  only the shell's stream has met. A stream still behind that revision after its wait is read once
+  more (`readSnapshot`) before any required answer is judged missing (#194, #85). A page with WP-07's runtime (it names its version in
   `ui/initialize`) must answer the flush, or nothing is submitted; a version built before WP-07
   answers nothing and shows the shell's draft. On `MOSTRA_SUBMIT_REVISION_MOVED` the viewer checks
   the answers, which the frame already shows from its own stream, and submits again: nothing is
@@ -50,6 +51,12 @@ from `dist/`, found beside the runtime package or through `MOSTRA_SHELL_DIR`.
   `src/entries.ts`, which drops a ticket asked for before something happened to the frame: never
   call `frameTicket` and `setTicket` around it. `verify` loads a failed frame again once
   (`VERIFY_RELOAD_LIMIT`), and a switch the viewer chooses gets the whole budget again.
+- **A frame whose document has no layout is entered again (#152).** On Chromium a cross-origin
+  frame whose embedding page loaded again under load came up once with no boxes at all (its root
+  0 × 0 in a window with a size), blank and taking no input. The page says so with
+  `mostra/ready`'s `painted: false`; the shell enters the frame again, at most `REPAINT_LIMIT`
+  times per page (`data-frame-repaints`), and marks itself `ready` only for a page with a layout.
+  `client.spec.ts` "without a layout" proves it.
 - **A worker-mode frame enters through its bootstrap (D70, D158).** The ticket's `src` is
   `/_mostra/enter#t=…` and `mode: "worker"`: the bootstrap page registers Mostra's service worker,
   says `mostra/frameSession.entered`, then loads the version, so the page's greeting wait starts
@@ -94,7 +101,8 @@ from `dist/`, found beside the runtime package or through `MOSTRA_SHELL_DIR`.
 None: the package publishes `dist/` for the runtime bundle. `src/main.tsx` is the entry,
 `src/shell.tsx` the page up to its session (exchange, the choice between two links, errors),
 `src/viewer.tsx` the page around one view (the rail, the trusted zone, the frame and its bridge,
-the banner, the receipt, the "Not carried over" panel), `src/model.ts` the view's state built from
+the banner, the "Not carried over" panel), `src/review.tsx` the review overlay (pins, the comment
+mode, the panel of threads), `src/model.ts` the view's state built from
 the shell's stream, `src/stream.ts` that stream, `src/api.ts` its calls to the gateway (session,
 ticket, submit, choose, follow, carry), `src/links.ts` `ui/open-link`, `src/messages.ts` what the
 page tells a person when it can't show the artifact, `src/hosted.ts` and `src/chrome.tsx` a hosted
@@ -122,5 +130,14 @@ after a change: the gateway serves `dist/`.
   photographed and axe-checked by `tests/e2e/specs/surfaces.spec.ts`; run it after a visual change
   (`MOSTRA_E2E_SCREENS=<dir>` keeps the pictures). WP-20's final pass starts from here. Keep it
   quiet, and never weaken the trusted zone.
+- **Where a submission stands is the status beside Submit (D175 item 12).** No receipt covers the
+  page: once a submission is in, the status says Submitted, then Pending delivery, Delivered or
+  Undeliverable (IN-13), or on a hosted link only that the answer was sent (D165 item 1a), and
+  behind it each host's delivery and a stale view's note (`submissionStanding` in `src/model.ts`,
+  `StatusIndicator` in `src/chrome.tsx`, `data-mostra-submission`). It goes back to the draft's
+  save state once the next round's draft moves on (`epochs`).
+- **The review overlay is the shell's (RV-04).** A page answers where a point is and where its
+  anchors are; it can move a pin within its own box (a pin is clamped there), never make, hide or
+  resolve a thread, and the panel lists threads from the shell's own reads.
 - Only the person folds the chrome (`data-mostra-folded`); the artifact can't, and every page
   opens unfolded. Folded, the status and the way back stay.

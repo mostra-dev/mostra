@@ -18,7 +18,6 @@ import { type HostDiagnosticCode, hostDiagnostics } from "./host.ts";
 import { type HygieneDiagnosticCode, hygieneDiagnostics } from "./hygiene.ts";
 import { type KitDiagnosticCode, kitDiagnostics } from "./kit.ts";
 import { type LicenseDiagnosticCode, licenseDiagnostics } from "./license.ts";
-// gen:area-imports
 import { type LintDiagnosticCode, lintDiagnostics } from "./lint.ts";
 import { type LiveDiagnosticCode, liveDiagnostics } from "./live.ts";
 import { type ManifestDiagnosticCode, manifestDiagnostics } from "./manifest.ts";
@@ -29,6 +28,8 @@ import { type PluginDiagnosticCode, pluginDiagnostics } from "./plugin.ts";
 import { type PublishDiagnosticCode, publishDiagnostics } from "./publish.ts";
 import { type RegressionDiagnosticCode, regressionDiagnostics } from "./regression.ts";
 import { type RemoteDiagnosticCode, remoteDiagnostics } from "./remote.ts";
+// gen:area-imports
+import { type ReviewDiagnosticCode, reviewDiagnostics } from "./review.ts";
 import { type RuntimeDiagnosticCode, runtimeDiagnostics } from "./runtime.ts";
 import { type SecretDiagnosticCode, secretDiagnostics } from "./secret.ts";
 import { type ShareDiagnosticCode, shareDiagnostics } from "./share.ts";
@@ -53,7 +54,6 @@ export { type HostDiagnosticCode, hostDiagnosticCodes } from "./host.ts";
 export { type HygieneDiagnosticCode, hygieneDiagnosticCodes } from "./hygiene.ts";
 export { type KitDiagnosticCode, kitDiagnosticCodes } from "./kit.ts";
 export { type LicenseDiagnosticCode, licenseDiagnosticCodes } from "./license.ts";
-// gen:area-exports
 export { type LintDiagnosticCode, lintDiagnosticCodes } from "./lint.ts";
 export { type LiveDiagnosticCode, liveDiagnosticCodes } from "./live.ts";
 export { type ManifestDiagnosticCode, manifestDiagnosticCodes } from "./manifest.ts";
@@ -64,6 +64,8 @@ export { type PluginDiagnosticCode, pluginDiagnosticCodes } from "./plugin.ts";
 export { type PublishDiagnosticCode, publishDiagnosticCodes } from "./publish.ts";
 export { type RegressionDiagnosticCode, regressionDiagnosticCodes } from "./regression.ts";
 export { type RemoteDiagnosticCode, remoteDiagnosticCodes } from "./remote.ts";
+// gen:area-exports
+export { type ReviewDiagnosticCode, reviewDiagnosticCodes } from "./review.ts";
 export { type RuntimeDiagnosticCode, runtimeDiagnosticCodes } from "./runtime.ts";
 export { type SecretDiagnosticCode, secretDiagnosticCodes } from "./secret.ts";
 export { type ShareDiagnosticCode, shareDiagnosticCodes } from "./share.ts";
@@ -77,6 +79,7 @@ export { type VerifyDiagnosticCode, verifyDiagnosticCodes } from "./verify.ts";
 /** Every code in the catalog. Codes are semver surface and are never removed (AX-03). */
 export type KnownDiagnosticCode =
   // gen:area-codes
+  | ReviewDiagnosticCode
   | LintDiagnosticCode
   | KitDiagnosticCode
   | LicenseDiagnosticCode
@@ -114,6 +117,7 @@ export type KnownDiagnosticCode =
 /** Every cataloged code with its severity, phase, title, default hint and docs text. */
 export const diagnosticCatalog: Readonly<Record<KnownDiagnosticCode, DiagnosticSpec>> = {
   // gen:area-spreads
+  ...reviewDiagnostics,
   ...lintDiagnostics,
   ...kitDiagnostics,
   ...licenseDiagnostics,

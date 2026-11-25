@@ -7,6 +7,8 @@
 import { ariaSummary } from '@mostra/protocol';
 import { CompareRequest } from '@mostra/protocol';
 import { CompareResult } from '@mostra/protocol';
+import { CropRenderRequest } from '@mostra/protocol';
+import { CropRenderResult } from '@mostra/protocol';
 import { Diagnostic } from '@mostra/protocol';
 import { RenderRequest } from '@mostra/protocol';
 import { RenderResult } from '@mostra/protocol';
@@ -57,6 +59,7 @@ export function recorder(): void;
 export interface Runner {
     close(): Promise<void>;
     compare(request: CompareRequest): Promise<CompareResult>;
+    crop(request: CropRenderRequest): Promise<CropRenderResult>;
     render(request: RenderRequest): Promise<RenderResult>;
 }
 

@@ -14,7 +14,7 @@ import { parseCommandLine } from "../../src/parse.ts";
 import { loadPluginCommand, matchCommand } from "../../src/plugin-commands.ts";
 
 /** The commands later packages add, which plugins may not take from today (D60). */
-const RESERVED = ["review export", "term dump"];
+const RESERVED = ["term dump"];
 
 const info = (command: string, file: string): PluginCommandInfo => ({
   command,

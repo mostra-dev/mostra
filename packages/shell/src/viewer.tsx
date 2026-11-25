@@ -6,6 +6,8 @@
  * (D06, SH-01, SH-02).
  */
 import {
+  type AnchorPosition,
+  type AnchorRect,
   type AnyBridgeMessage,
   type Bridge,
   type ControlRequest,
@@ -13,7 +15,6 @@ import {
   type FieldsParams,
   type FlushResult,
   type FrameTicket,
-  type HostedChrome,
   MCP_APPS_PROTOCOL_VERSION,
   mostraControlsRequest,
   mostraFieldFocus,
@@ -23,8 +24,12 @@ import {
   mostraFrameSessionFailed,
   mostraPage,
   mostraReady,
+  mostraReviewPositions,
+  mostraReviewSelection,
+  mostraSurfaces,
   mostraVersionAvailable,
   type OrphanedField,
+  type ReviewSurface,
   type SubmitBlocker,
   type UiInitializeResult,
   uiHostContextChanged,
@@ -46,6 +51,7 @@ import {
   carryOver,
   choose,
   frameTicket,
+  reportPerformance,
   ShellError,
   type ShellSession,
   setFollow,
@@ -56,6 +62,7 @@ import { currentAppearance, onAppearance } from "./appearance.ts";
 import { bootMark } from "./boot-marks.ts";
 import {
   AppearanceButton,
+  type DeliveryLine,
   FoldButton,
   HostedFooter,
   Interstitial,
@@ -83,12 +90,11 @@ import {
   applyControlRequests,
   blockers as blockersOf,
   choiceOf,
-  deliveryView,
   type FrameKind,
   initialState,
-  receiptOf,
   showsChoose,
   showsSubmit,
+  submissionStanding,
   submitRevision,
   type ViewState,
   withControlRequest,
@@ -96,16 +102,17 @@ import {
   withSnapshot,
   withSubmission,
 } from "./model.ts";
+import { CommentButton, ReviewLayer, ReviewPanel, useReview } from "./review.tsx";
 import { openStream, readSnapshot } from "./stream.ts";
 import {
   BANNER_WORDS,
   BLOCKER_WORDS,
   CONTROL_WORDS,
+  DELIVERY_WORDS,
   DEV_WORDS,
   FRAME_WORDS,
   HOSTED_WORDS,
   ORPHAN_WORDS,
-  RECEIPT_WORDS,
   SERVER_WORDS,
   STATUS_WORDS,
   submitProblem,
@@ -126,6 +133,9 @@ const ORPHANS_REFRESH_MS = 150;
 
 /** How long the shell waits for its own stream to see the frame's last save. */
 const CATCH_UP_MS = 5_000;
+
+/** How many times a page whose frame came up without a layout enters it again (#152). */
+const REPAINT_LIMIT = 2;
 
 /** How many times within {@link REENTRY_WINDOW_MS} the frame is loaded again at its version. */
 const REENTRY_LIMIT = 3;
@@ -243,6 +253,21 @@ interface FrameHandlers {
   onFields(params: FieldsParams): void;
   onControl(request: ControlRequest): boolean;
   onPage(path: string): void;
+  /**
+   * The page rendered (`mostra/ready`): its review agent listens from now on, so the overlay
+   * tracks its anchors only then (WP-20).
+   */
+  /**
+   * The page said it is ready, with the errors it raised by then and whether its document has a
+   * layout (`painted`; #152).
+   */
+  onReady(errors: number, painted: boolean): void;
+  /** Where the page says the tracked comment anchors are (WP-20). */
+  onPositions(positions: readonly AnchorPosition[]): void;
+  /** The review sets the page shows (WP-20). */
+  onSurfaces(sets: readonly ReviewSurface[]): void;
+  /** Where the words the viewer selected on the page are, or that the selection ended. */
+  onSelection(rect: AnchorRect | undefined): void;
   /** The frame loaded another version than its view's (D98 item 5). */
   onWrongVersion(): void;
   /** A frame greeted the shell (`ui/initialize`), whatever its version: called at once. */
@@ -335,13 +360,29 @@ function Frame(props: {
       },
       onNotification: (message, params) => {
         if (message === uiInitialized) mark("initialized");
-        if (message === mostraReady) mark("ready");
+        if (message === mostraReady) {
+          // The page marks the shell ready itself (`onReady`), once it has a layout (#152).
+          const ready = params as { errors?: unknown; painted?: unknown };
+          handlersRef.current.onReady(
+            Math.max(0, Math.min(10_000, Number(ready.errors) || 0)),
+            ready.painted !== false,
+          );
+        }
         if (message === mostraFields) handlersRef.current.onFields(params as FieldsParams);
         if (message === mostraPage) handlersRef.current.onPage((params as { path: string }).path);
         if (message === mostraFrameSessionFailed) {
           handlersRef.current.onFrameSessionFailed(params as { reason: string; message: string });
         }
         if (message === mostraFrameSessionEntered) handlersRef.current.onFrameSessionEntered();
+        if (message === mostraReviewPositions) {
+          handlersRef.current.onPositions((params as { positions: AnchorPosition[] }).positions);
+        }
+        if (message === mostraReviewSelection) {
+          handlersRef.current.onSelection((params as { rect?: AnchorRect }).rect);
+        }
+        if (message === mostraSurfaces) {
+          handlersRef.current.onSurfaces((params as { sets: ReviewSurface[] }).sets);
+        }
       },
       onRejected: () => {
         rejections += 1;
@@ -433,87 +474,6 @@ function Orphans(props: { readonly orphans: readonly OrphanedField[] }): ReactEl
   );
 }
 
-/** The submission receipt (IN-13, D47): Mostra's record and each host's delivery, kept apart. */
-function Receipt(props: {
-  readonly state: ViewState;
-  readonly chrome?: HostedChrome | undefined;
-}): ReactElement | null {
-  const submission = receiptOf(props.state);
-  if (!submission) return null;
-  const time = new Date(submission.at).toLocaleTimeString(undefined, { timeStyle: "medium" });
-  // On a hosted link the respondent learns that the answer was sent, and nothing about its
-  // delivery, which only the owner sees (D165 item 1a, IN-13 for hosted links).
-  if (hosted()) {
-    return (
-      <aside className="mostra-receipt" data-mostra-receipt="sent" aria-live="polite">
-        <h2>{RECEIPT_WORDS.sent}</h2>
-        <ul>
-          <li className="mostra-ok">
-            <time dateTime={submission.at}>{time}</time>
-          </li>
-        </ul>
-        {/* One quiet line, where the server's operator turns it on (D161), as text. */}
-        {props.chrome?.afterSubmit !== undefined && (
-          <p className="mostra-after-submit" data-mostra-after-submit="">
-            {props.chrome.madeWith?.href?.startsWith("https:") ? (
-              <a href={props.chrome.madeWith.href} rel="noopener noreferrer" target="_blank">
-                {props.chrome.afterSubmit}
-              </a>
-            ) : (
-              props.chrome.afterSubmit
-            )}
-          </p>
-        )}
-      </aside>
-    );
-  }
-  const view = deliveryView(submission);
-  const title =
-    view.kind === "delivered"
-      ? RECEIPT_WORDS.delivered
-      : view.kind === "pending"
-        ? RECEIPT_WORDS.pending
-        : view.kind === "undeliverable"
-          ? RECEIPT_WORDS.undeliverable
-          : RECEIPT_WORDS.submitted;
-  return (
-    <aside className="mostra-receipt" data-mostra-receipt={view.kind} aria-live="polite">
-      <h2>{title}</h2>
-      <ul>
-        <li className="mostra-ok">
-          <span>{RECEIPT_WORDS.saved}</span>
-          <time dateTime={submission.at}>{time}</time>
-        </li>
-        {(submission.deliveries ?? [])
-          .filter((delivery) => delivery.owner !== "")
-          .map((delivery) => (
-            <li
-              key={delivery.deliveryId}
-              className={
-                delivery.state === "delivered"
-                  ? "mostra-ok"
-                  : delivery.state === "pending"
-                    ? "mostra-wait"
-                    : "mostra-bad"
-              }
-              data-mostra-delivery={delivery.state}
-            >
-              {delivery.state === "delivered"
-                ? RECEIPT_WORDS.deliveredTo(delivery.owner)
-                : delivery.state === "pending"
-                  ? RECEIPT_WORDS.pendingTo(delivery.owner)
-                  : RECEIPT_WORDS.undeliverableTo(delivery.owner, delivery.reason)}
-            </li>
-          ))}
-      </ul>
-      <p className="mostra-footnote">
-        {RECEIPT_WORDS.footnote(submission.version)}
-        {submission.staleView ? ` ${RECEIPT_WORDS.stale(props.state.latest.number)}` : ""}
-      </p>
-    </aside>
-  );
-}
-
 /** The page around one view. */
 export function ViewerPage(props: {
   readonly target: ShellTarget;
@@ -572,10 +532,16 @@ export function ViewerPage(props: {
   const [shownAt, setShownAt] = useState(() => Date.now());
   const [armedFor, setArmedFor] = useState<number | undefined>();
   const latestStateRef = useLatest(state);
+  /** How many times a frame without a layout was entered again (#152). */
+  const repaints = useRef(0);
+  /** Whether this page sent its one performance report (#167). */
+  const performanceSent = useRef(false);
 
   const onBridge = useCallback((next: Bridge | undefined) => {
     bridge.current = next;
   }, []);
+  const bridgeOf = useCallback(() => bridge.current, []);
+  const refreshReview = useRef<() => Promise<void>>(async () => undefined);
   // A worker-mode frame first loads its bootstrap page (D70), whose load isn't the page's: the
   // page's wait starts once the bootstrap says it entered.
   const [bootstrapping, setBootstrapping] = useState(ticket.mode === "worker");
@@ -680,6 +646,15 @@ export function ViewerPage(props: {
       onSnapshot: (snapshot) => setState((current) => withSnapshot(current, snapshot)),
       onEvents: (events) => {
         setState((current) => withEvents(current, events));
+        // A comment someone made or changed that this page may see (WP-20).
+        // A submission may close the draft, and its comments with it.
+        if (
+          events.some(
+            (event) => event.type.startsWith("review.") || event.type === "submission.created",
+          )
+        ) {
+          void refreshReview.current();
+        }
         // Another tab's submission: the receipt reads it whole.
         if (events.some((event) => event.type === "submission.created")) {
           void readSnapshot(target.apiBase, ticket.viewId).then((snapshot) => {
@@ -874,6 +849,32 @@ export function ViewerPage(props: {
     void setFollow(target.apiBase, session.csrf, next).catch(() => setFollowing(!next));
   };
 
+  // The review overlay (WP-20): its threads, pins and panel, for a link that may review.
+  const reviews = session.scopes.includes("review") && ticket.target !== "verify";
+  const [surfaces, setSurfaces] = useState<readonly ReviewSurface[]>([]);
+  // The view whose page reported `mostra/ready`: a new view waits for its own.
+  const [pageReady, setPageReady] = useState<string | undefined>();
+  const review = useReview({
+    apiBase: target.apiBase,
+    csrf: session.csrf,
+    viewId: ticket.viewId,
+    page: state.page,
+    bridge: bridgeOf,
+    agent: frameKind === "runtime" && pageReady === ticket.viewId,
+    enabled: reviews,
+  });
+  useLayoutEffect(() => {
+    refreshReview.current = review.refresh;
+  });
+  const candidateLabels = new Map(
+    surfaces.flatMap((set) =>
+      set.candidates.map((candidate) => [
+        `${set.id}/${candidate.id}`,
+        candidate.label ?? candidate.id,
+      ]),
+    ),
+  );
+
   const handlers: FrameHandlers = {
     onFields: (params) =>
       setState((current) => ({
@@ -893,6 +894,41 @@ export function ViewerPage(props: {
       // Whether it shows depends on the view's ticket only, which no event changes.
       return withControlRequest(latestStateRef.current, request, now).shown;
     },
+    onReady: (errors, painted) => {
+      // A page whose document came up without a layout (Chromium, a cross-origin frame whose
+      // embedding page loaded again under load, #152) shows the viewer a blank frame that takes no
+      // input: nothing the viewer typed is in it, so it is entered again, at most twice per page.
+      if (!painted && repaints.current < REPAINT_LIMIT) {
+        repaints.current += 1;
+        mark("", { frameRepaints: String(repaints.current) });
+        void entries
+          .enter((signal) =>
+            frameTicket(target.apiBase, session.csrf, ticket.version.number, signal),
+          )
+          .then((next) => {
+            if (next === undefined) return;
+            setFocusFrame(frameHasFocus());
+            setTicket(next);
+          })
+          .catch(() => setProblem(FRAME_WORDS.unreachable));
+        return;
+      }
+      mark("ready");
+      setPageReady(ticket.viewId);
+      // One report per page, where the server's operator asks for it (#167): how long the page
+      // took to be ready from the shell's own start, and its errors; nothing of the viewer.
+      if (chrome?.performance && !performanceSent.current) {
+        performanceSent.current = true;
+        void reportPerformance(target.apiBase, session.csrf, {
+          versionId: ticket.version.id,
+          loadMs: Math.round(performance.now()),
+          errors,
+        }).catch(() => undefined);
+      }
+    },
+    onPositions: (positions) => review.onPositions(positions),
+    onSurfaces: (sets) => setSurfaces(sets),
+    onSelection: (rect) => review.onSelection(rect),
     onPage: (path) => {
       setState((current) => ({ ...current, page: path }));
       mark("", { shellPage: path });
@@ -996,8 +1032,22 @@ export function ViewerPage(props: {
         setProblem(submitProblem(refused.problem));
         return;
       }
-      if (flushed) await caughtUp(Number(flushed.revision));
-      const current = latestStateRef.current;
+      let current = latestStateRef.current;
+      if (flushed) {
+        await caughtUp(Number(flushed.revision));
+        current = latestStateRef.current;
+        // A stream still behind the revision the page confirmed (the shell's page just loaded, a
+        // poll held back under load) would judge required answers from a draft older than what
+        // the viewer saw, and refuse a Submit nothing blocks (#194, #85): the shell reads its own
+        // source once more, now, before it judges.
+        if (current.revision < Number(flushed.revision)) {
+          const snapshot = await readSnapshot(target.apiBase, ticket.viewId);
+          if (snapshot) {
+            setState((latest) => withSnapshot(latest, snapshot));
+            current = withSnapshot(current, snapshot);
+          }
+        }
+      }
       const found = blockersOf(current, flushed?.blockers ?? []);
       if (found.length > 0) {
         setBlocked(found);
@@ -1018,6 +1068,7 @@ export function ViewerPage(props: {
         String(revision),
       );
       setState((latest) => withSubmission(latest, submission));
+      void refreshReview.current();
     } catch (error) {
       if (error instanceof ShellError && error.code === "MOSTRA_SUBMIT_ALREADY") {
         const existing = (error.body as { submission?: ViewState["submission"] } | undefined)
@@ -1110,10 +1161,27 @@ export function ViewerPage(props: {
   // "Connecting…" until then, never a "Saved" nobody confirmed (Claude review finding 4), and once
   // the answer is in, sent. A version built before WP-07 reports none, and none is shown.
   const saveState = frameKind === "loading" ? "connecting" : state.save;
-  const statusKind: StatusKind =
-    submitted && state.submission !== undefined ? "sent" : (saveState as StatusKind);
-  const statusWords =
-    statusKind === "sent" && chrome ? RECEIPT_WORDS.sent : STATUS_WORDS[statusKind];
+  // Where the submission stands, in place of a receipt over the page (D175 item 12): while the
+  // draft is what was submitted, the status says Submitted, then each host's delivery (IN-13), or
+  // on a hosted link only that the answer was sent (D165 item 1a).
+  // Any hosted link, with the operator's chrome or without (a self-hosted server with no operator
+  // module): its respondent learns that the answer was sent, never its delivery (D165 item 1a;
+  // WP-20's review, finding 8).
+  const standing = submissionStanding(state, hosted() || Boolean(chrome));
+  const statusKind: StatusKind = standing?.kind ?? (saveState as StatusKind);
+  const statusWords = STATUS_WORDS[statusKind];
+  const deliveryLines: DeliveryLine[] = (standing?.deliveries ?? []).map((delivery) => ({
+    key: delivery.deliveryId,
+    state: delivery.state,
+    text:
+      delivery.state === "delivered"
+        ? DELIVERY_WORDS.deliveredTo(delivery.owner)
+        : delivery.state === "pending"
+          ? DELIVERY_WORDS.pendingTo(delivery.owner)
+          : DELIVERY_WORDS.undeliverableTo(delivery.owner, delivery.reason),
+  }));
+  const staleNote =
+    standing?.stale === true ? DELIVERY_WORDS.stale(state.latest.number) : undefined;
   const showsStatus = frameKind !== "legacy";
 
   return (
@@ -1142,12 +1210,19 @@ export function ViewerPage(props: {
             onSignOut={signOutPage}
           />
         )}
+        {reviews && <CommentButton review={review} />}
         <div
           className="mostra-actionbar"
           data-mostra-dock={submitShown || chooses.length > 0 ? "" : undefined}
         >
           {showsStatus && (
-            <StatusIndicator kind={statusKind} words={statusWords} save={saveState} />
+            <StatusIndicator
+              kind={statusKind}
+              words={statusWords}
+              save={saveState}
+              deliveries={deliveryLines}
+              {...(staleNote !== undefined ? { stale: staleNote } : {})}
+            />
           )}
           {(submitShown || chooses.length > 0) && (
             <div
@@ -1211,6 +1286,18 @@ export function ViewerPage(props: {
         </div>
       </header>
       <PausedNotice ticket={ticket} />
+      {/* After an answer is sent, one quiet line, where the server's operator turns it on (D161). */}
+      {chrome?.afterSubmit !== undefined && standing?.kind === "sent" && (
+        <div className="mostra-following mostra-after-submit" data-mostra-after-submit="">
+          {chrome.madeWith?.href?.startsWith("https:") ? (
+            <a href={chrome.madeWith.href} rel="noopener noreferrer" target="_blank">
+              {chrome.afterSubmit}
+            </a>
+          ) : (
+            chrome.afterSubmit
+          )}
+        </div>
+      )}
       {chrome && sessionUnstored() && (
         <div className="mostra-banner mostra-warn" data-mostra-storage="unsaved" role="status">
           <div>{HOSTED_WORDS.storageFull}</div>
@@ -1287,15 +1374,26 @@ export function ViewerPage(props: {
         {/* One frame element per view: a switch or a re-entry loads a new browsing context instead
             of navigating the old one, so it adds no entry to the tab's history (Back never takes
             the frame to a spent ticket) and nothing of the old page lingers. */}
-        <Frame
-          key={ticket.viewId}
-          focus={focusFrame}
-          title={session.artifact.title}
-          ticket={ticket}
-          handlers={handlers}
-          onBridge={onBridge}
-          onLoaded={onFrameLoaded}
-        />
+        <div className="mostra-frame-box" data-mostra-commenting={review.mode ? "" : undefined}>
+          <Frame
+            key={ticket.viewId}
+            focus={focusFrame}
+            title={session.artifact.title}
+            ticket={ticket}
+            handlers={handlers}
+            onBridge={onBridge}
+            onLoaded={onFrameLoaded}
+          />
+          {reviews && <ReviewLayer review={review} page={state.page} />}
+        </div>
+        {reviews && review.panel && (
+          <ReviewPanel
+            review={review}
+            apiBase={target.apiBase}
+            candidates={candidateLabels}
+            page={state.page}
+          />
+        )}
         {(problem !== undefined || blocked.length > 0) && (
           <aside
             className="mostra-problem"
@@ -1330,7 +1428,6 @@ export function ViewerPage(props: {
             )}
           </aside>
         )}
-        <Receipt state={state} chrome={chrome} />
         <Orphans orphans={orphans} />
       </main>
       {chrome && !folded && (

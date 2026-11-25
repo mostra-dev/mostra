@@ -35,9 +35,15 @@ const HOOKS: Readonly<Record<string, ReadonlySet<string>>> = {
 export const KIT_FIELD_MODULES: ReadonlySet<string> = new Set([
   "@mostra/kit/questionnaire",
   "@/components/mostra/questionnaire",
+  "@mostra/kit/review",
+  "@/components/mostra/review",
 ]);
 const QUESTIONNAIRE_MODULES = KIT_FIELD_MODULES;
-const QUESTIONNAIRE_PARTS = new Set(["Questionnaire", "Question"]);
+/**
+ * The kit's parts whose `id`s name fields: a questionnaire and its questions, and a review set,
+ * whose choice is `review.<id>.choice` (WP-20, D109).
+ */
+const QUESTIONNAIRE_PARTS = new Set(["Questionnaire", "Question", "ReviewSet"]);
 
 /** The fields a question's answer may be: the answer, its comment and an answer of its own. */
 const QUESTION_SUFFIXES = ["", ".comment", ".other"];
@@ -231,6 +237,9 @@ class FieldScan {
           for (const child of (node["children"] as Node[]) ?? []) visit(child, id ?? null);
           return;
         }
+        if (part === "ReviewSet") {
+          this.reviewSet(node, at(node));
+        }
         if (part === "Question") {
           if (questionnaire === undefined) {
             // Its questionnaire's ID is somewhere the scan doesn't follow (another component).
@@ -384,6 +393,23 @@ class FieldScan {
         location,
       });
     }
+  }
+
+  /** A `<ReviewSet>`: its choice, `review.<id>.choice`, whether or not it asks for Choose. */
+  reviewSet(element: Node, location: FieldLocation): void {
+    const id = this.jsxId(element, location);
+    if (id === undefined) {
+      this.open("a <ReviewSet> whose id isn't a string literal", location);
+      return;
+    }
+    const parts = [...id];
+    parts[0] = `review.${parts[0] as string}`;
+    parts[parts.length - 1] = `${parts.at(-1) as string}.choice`;
+    this.entries.push({
+      ...(parts.length === 1 ? { id: parts[0] as string } : { template: parts }),
+      hook: "useChoice",
+      location,
+    });
   }
 
   storage(location: FieldLocation): void {

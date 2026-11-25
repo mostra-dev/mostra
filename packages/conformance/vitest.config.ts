@@ -8,15 +8,17 @@ import { defineConfig } from "vitest/config";
  * Rust reference host runs in the `conformance` job.
  */
 const group = process.env["MOSTRA_TEST_GROUP"];
+// Groups of their own, apart from the other clients' suites: on Windows arm64 the kit took about
+// 11.5 of its 14 minutes (#225), on macOS about 460 s of its 10 minutes (WP-18), and with WP-20's
+// review ports it passed the 14 minutes, so the reference host's other modes run in a second group.
 const integration =
-  group === undefined ||
-  group === "" ||
-  // A group of its own, apart from the other clients' suites: on Windows arm64 the kit takes about
-  // 11.5 of its 14 minutes (#225), on macOS about 460 s of its 10 minutes (WP-18).
-  group === "conformance" ||
-  group === "windows-conformance"
+  group === undefined || group === ""
     ? ["test/integration/**/*.test.ts"]
-    : [];
+    : group === "conformance" || group === "windows-conformance"
+      ? ["test/integration/kit.test.ts"]
+      : group === "conformance-adapters" || group === "windows-conformance-adapters"
+        ? ["test/integration/kit-adapters.test.ts"]
+        : [];
 
 // Tests import the package by name, resolved to source through the `@mostra/source` condition.
 export default defineConfig({

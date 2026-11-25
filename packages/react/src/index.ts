@@ -35,17 +35,21 @@ export {
   type ChoiceCandidate,
   type FieldMeta,
   type FieldOptions,
+  type ReviewSurfaceSpec,
   type StandardSchema,
   type SubmitHandle,
   useArtifact,
   useChoice,
   useField,
+  useReviewSurface,
   useSignal,
   useSubmit,
   useSubmitControl,
   useViewer,
 } from "./hooks.ts";
 export { mountArtifact } from "./mount.ts";
+export type { PageAnchorProvider } from "./review/anchors.ts";
+export { registerAnchorProvider } from "./review/registry.ts";
 export { type DiagnosticLike, MostraError } from "./runtime/errors.ts";
 export type { SubmitState } from "./runtime/store.ts";
 export {

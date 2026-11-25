@@ -147,6 +147,8 @@ export type MeterName =
   | "relay.messages"
   | "mcp.calls"
   | "home.activeSeconds"
+  | "page.loads"
+  | "page.errors"
   | (string & {});
 
 /**
@@ -416,6 +418,12 @@ export interface LinkPolicy extends Cacheable {
   readonly footer?: string;
   /** Whether the made-with mark shows, and where it links. */
   readonly madeWith?: { readonly show: boolean; readonly href?: string };
+  /**
+   * Whether the hosted shell sends one report per page view (#167): its load time and its
+   * errors, counted as `page.loads` (by `versionId` and `bucket`) and `page.errors` (by
+   * `versionId`). Off unless the operator asks; nothing of the viewer is sent or kept.
+   */
+  readonly performance?: { readonly report: boolean };
 }
 
 const duration = z.string().regex(/^[1-9][0-9]{0,8}[smhd]$/);
@@ -432,6 +440,7 @@ export const LinkPolicy: z.ZodType<LinkPolicy> = z.object({
   madeWith: z
     .object({ show: z.boolean(), href: z.url({ protocol: /^https$/ }).exactOptional() })
     .exactOptional(),
+  performance: z.object({ report: z.boolean() }).exactOptional(),
   cacheForMs: cacheFor,
 });
 

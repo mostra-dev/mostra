@@ -4,6 +4,7 @@
 
 ```ts
 
+import { AnchorRect } from '@mostra/protocol';
 import { ArtifactManifest } from '@mostra/protocol';
 import { Bridge } from '@mostra/protocol';
 import { ComponentType } from 'react';
@@ -166,6 +167,38 @@ export function mountArtifact(options: {
 // @public
 export function openLink(url: string): Promise<boolean>;
 
+// @public
+export interface PageAnchorProvider {
+    readonly id: string;
+    readonly kind: string;
+    matches?(input: {
+        target: Element;
+        point?: {
+            x: number;
+            y: number;
+        };
+    }, context: unknown): boolean;
+    resolve(input: {
+        anchor: Record<string, unknown>;
+        root: Element;
+    }, context: unknown): {
+        element?: Element;
+        rect?: AnchorRect;
+        label?: string;
+    } | undefined;
+    serialize(input: {
+        target: Element;
+        point?: {
+            x: number;
+            y: number;
+        };
+        selection?: Range;
+    }, context: unknown): {
+        anchor: Record<string, unknown>;
+        label?: string;
+    } | undefined;
+}
+
 export { Peer }
 
 // @public
@@ -190,6 +223,9 @@ export { PresencePeer }
 export { PresenceSelection }
 
 // @public
+export function registerAnchorProvider(provider: PageAnchorProvider): void;
+
+// @public
 export function reportReady(): void;
 
 export { RespondentForPage }
@@ -211,6 +247,14 @@ export interface Respondents {
 }
 
 export { RespondentStatus }
+
+// @public
+export interface ReviewSurfaceSpec {
+    readonly candidates: readonly ChoiceCandidate[];
+    readonly current?: string;
+    readonly id: string;
+    readonly layout: "gallery" | "focus" | "compare";
+}
 
 export { RosterCounts }
 
@@ -328,6 +372,9 @@ export function usePresence(options?: PresenceOptions): Presence;
 
 // @public
 export function useRespondents(): Respondents;
+
+// @public
+export function useReviewSurface(surface: ReviewSurfaceSpec): void;
 
 // @public
 export function useSignal(name: string): {

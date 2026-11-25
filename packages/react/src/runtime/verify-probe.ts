@@ -6,7 +6,7 @@
  * server work it waits on, and publishes both on `globalThis[VERIFY_PROBE]`, where the verify
  * runner reads them. Viewers' pages never install it.
  */
-import { type ProbedField, VERIFY_PROBE } from "@mostra/protocol";
+import { type ProbedField, type ReviewAnchor, VERIFY_PROBE } from "@mostra/protocol";
 import type { Registration, Store } from "./store.ts";
 
 /** `typeof`, with arrays and `null` named as such. */
@@ -60,8 +60,16 @@ export function installVerifyProbe(store: Store): void {
   // `pending`: the server work the page waits on (calls, runs, first live values), which the
   // runner's quiescence wait includes (Opus review finding 1).
   const pending = (): number => store.server.pending();
+  // `anchor`: a comment's place, scrolled into view, for its crop (WP-20, the capture port's
+  // default): its box in the viewport and the layer that found it.
+  // Selected words are marked as a selection is, not boxed: `highlighted` tells the runner.
+  const anchor = async (target: ReviewAnchor) => {
+    const { highlightSelection, scrollTo } = await import("../review/agent.ts");
+    const placed = await scrollTo(document, target);
+    return { ...placed, highlighted: highlightSelection(document, target) };
+  };
   Object.defineProperty(globalThis, VERIFY_PROBE, {
-    value: { fields, pending },
+    value: { fields, pending, anchor },
     configurable: true,
   });
 }

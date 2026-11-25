@@ -12,6 +12,7 @@ import { brokenLinks } from "../docs/links.ts";
 import { runSync } from "../lib/repo.ts";
 import { listPackages } from "../lib/workspace.ts";
 import {
+  conflictMarkerProblems,
   e2eLoadProblems,
   privilegedImportProblems,
   releaseGroupProblems,
@@ -328,6 +329,19 @@ describe("browser specs' page loads (#132)", () => {
     expect(problems[0]).toContain("tests/e2e/specs/x.spec.ts:3:");
     expect(problems[1]).toContain("tests/e2e/specs/x.spec.ts:4:");
     expect(problems[0]).toContain("gotoShell");
+  });
+});
+
+describe("conflict markers (WP-20's review, finding 5)", () => {
+  it("finds a merge's markers, and leaves a Markdown rule and a binary file alone", () => {
+    const text = "# Title\n=======\n| M1 |\n||||||| ef882eb7\n<<<<<<< ours\n>>>>>>> theirs\n";
+    const problems = conflictMarkerProblems("docs/x.md", text);
+    expect(problems).toEqual([
+      "docs/x.md:4: a merge's conflict marker is left in the file.",
+      "docs/x.md:5: a merge's conflict marker is left in the file.",
+      "docs/x.md:6: a merge's conflict marker is left in the file.",
+    ]);
+    expect(conflictMarkerProblems("a.png", "\u0000<<<<<<< x\n")).toEqual([]);
   });
 });
 

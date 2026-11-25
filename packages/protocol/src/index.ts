@@ -50,6 +50,7 @@ export {
 } from "./artifact.ts";
 export { type ArtifactPathCheck, checkArtifactPath } from "./artifact-path.ts";
 export {
+  type AnchorPosition,
   type AnyBridgeMessage,
   BRIDGE_FIELDS_MAX,
   BRIDGE_MESSAGES,
@@ -64,6 +65,7 @@ export {
   type BridgeReceiver,
   type BridgeRejection,
   type BridgeSide,
+  CHOICE_LABEL_MAX,
   CONTROL_LABEL_MAX,
   type ControlRequest,
   connectBridge,
@@ -80,8 +82,18 @@ export {
   mostraFrameSessionFailed,
   mostraPage,
   mostraReady,
+  mostraReviewHitTest,
+  mostraReviewPositions,
+  mostraReviewScroll,
+  mostraReviewScrollTo,
+  mostraReviewSelection,
+  mostraReviewTrack,
+  mostraSurfaces,
   mostraVersionAvailable,
   OPEN_LINK_SCHEMES,
+  REVIEW_TRACK_MAX,
+  type ReviewHit,
+  type ReviewSurface,
   type SaveState,
   type SubmitBlocker,
   type UiInitializeParams,
@@ -109,7 +121,10 @@ export {
   FrameTicket,
   type HostedChrome,
   OrphanedField,
+  PERFORMANCE_BUCKETS_MS,
+  PerformanceReport,
   PollResult,
+  performanceBucket,
   REVIEW_SET_ID_PATTERN,
   readViewContext,
   SHELL_SESSION_HEADER,
@@ -194,9 +209,11 @@ export {
   publishDiagnosticCodes,
   type RegressionDiagnosticCode,
   type RemoteDiagnosticCode,
+  type ReviewDiagnosticCode,
   type RuntimeDiagnosticCode,
   regressionDiagnosticCodes,
   remoteDiagnosticCodes,
+  reviewDiagnosticCodes,
   runtimeDiagnosticCodes,
   type SecretDiagnosticCode,
   type ShareDiagnosticCode,
@@ -565,6 +582,13 @@ export {
   portAddressingExternalBaseMethod,
 } from "./methods/port/addressing-external-base.ts";
 export {
+  CAPTURE_PNG_BASE64_MAX,
+  CaptureRequest,
+  type PortCaptureScreenshotParams,
+  type PortCaptureScreenshotResult,
+  portCaptureScreenshotMethod,
+} from "./methods/port/capture-screenshot.ts";
+export {
   DraftMirror,
   type DraftsMirrorResult,
   portDraftsMirrorMethod,
@@ -610,6 +634,12 @@ export {
   portRelayRunMethod,
   RelayViewer,
 } from "./methods/port/relay-run.ts";
+export {
+  type PortReviewsMirrorParams,
+  type PortReviewsMirrorResult,
+  portReviewsMirrorMethod,
+  ReviewEnvelope,
+} from "./methods/port/reviews-mirror.ts";
 export {
   type PortSecretsGetParams,
   type PortSecretsGetResult,
@@ -697,6 +727,12 @@ export {
   type ResultsListResult,
   resultsListMethod,
 } from "./methods/results/list.ts";
+export {
+  ReviewExport,
+  type ReviewExportParams,
+  type ReviewExportResult,
+  reviewExportMethod,
+} from "./methods/review/export.ts";
 export {
   RespondentLink,
   type RosterAddParams,
@@ -817,6 +853,28 @@ export {
   ServerOrigin,
 } from "./remote.ts";
 export {
+  ANCHOR_FRAMES_MAX,
+  ANCHOR_PROVIDER_DATA_MAX,
+  ANCHOR_SELECTORS_MAX,
+  ANCHOR_TEXT_MAX,
+  AnchorLayer,
+  AnchorRect,
+  AnchorSelector,
+  REVIEW_MENTIONS_MAX,
+  REVIEW_TEXT_MAX,
+  ReviewAnchor,
+} from "./review.ts";
+export {
+  CropState,
+  type ReviewMessage,
+  ReviewPerson,
+  ReviewReplyRequest,
+  ReviewStatusRequest,
+  ReviewThread,
+  ReviewThreadRequest,
+  ReviewThreads,
+} from "./review-threads.ts";
+export {
   HOST_PROTOCOL_REVISIONS,
   negotiateRevision,
   Revision,
@@ -892,6 +950,8 @@ export {
   ariaSummary,
   type CompareRequest,
   type CompareResult,
+  type CropRenderRequest,
+  type CropRenderResult,
   DEFAULT_VIEWPORTS,
   estimateImageTokens,
   type ProbedField,

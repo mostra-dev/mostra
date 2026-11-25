@@ -31,11 +31,29 @@ export const SERVER_WORDS = {
  * screen readers and on hover, and on a phone beside the shape.
  */
 export const STATUS_WORDS: Readonly<
-  Record<"saved" | "saving" | "offline" | "conflict" | "connecting" | "sent", string>
+  Record<
+    | "saved"
+    | "saving"
+    | "offline"
+    | "conflict"
+    | "connecting"
+    | "sent"
+    | "submitted"
+    | "pending"
+    | "delivered"
+    | "undeliverable",
+    string
+  >
 > = {
   ...SAVE_WORDS,
   saved: "Draft saved",
-  sent: "Sent",
+  /** On a hosted link a respondent learns only this, once the hosted home has the answer (D165). */
+  sent: "Your answer was sent.",
+  // Where the submission stands (IN-13, D47): durable in Mostra, then each host's delivery.
+  submitted: "Submitted",
+  pending: "Pending delivery",
+  delivered: "Delivered",
+  undeliverable: "Undeliverable",
 };
 
 /** The chrome's own controls: folding it away, light or dark, the viewer's choices on a phone. */
@@ -109,15 +127,12 @@ export const BLOCKER_WORDS = {
         : "was changed elsewhere: keep yours or take theirs",
 } as const;
 
-/** The submission receipt (IN-13): Mostra's record and each host's delivery, kept apart. */
-export const RECEIPT_WORDS = {
-  /** On a hosted link a respondent sees only this, once the hosted home has the answer (D165). */
-  sent: "Your answer was sent.",
-  submitted: "Submitted",
-  delivered: "Delivered",
-  pending: "Pending delivery",
-  undeliverable: "Undeliverable",
-  saved: "Saved by Mostra",
+/**
+ * What the status beside Submit tells about a submission once asked (IN-13, D175 item 12): each
+ * host's delivery, and a stale view's note. The rest the indicator's own words say.
+ */
+export const DELIVERY_WORDS = {
+  details: "Where your answer stands",
   deliveredTo: (host: string): string => `Delivered to ${host}`,
   pendingTo: (host: string): string => `Pending delivery to ${host}: Mostra will retry.`,
   undeliverableTo: (host: string, reason?: string): string =>
@@ -125,10 +140,6 @@ export const RECEIPT_WORDS = {
     " couldn't take it" +
     (reason !== undefined && reason !== "undeliverable" ? ` (${reason})` : "") +
     ".",
-  footnote: (version: number): string =>
-    "This submission names version " +
-    String(version) +
-    ". Nothing is lost if delivery is delayed.",
   stale: (latest: number): string =>
     `A newer version (${String(latest)}) existed when you submitted.`,
 } as const;
@@ -233,4 +244,59 @@ export const HOSTED_WORDS = {
   tryAgain: "Too many answers at once. Try again shortly; what you typed is kept.",
   notAccepting: "This page isn't accepting answers right now. What you typed is kept.",
   signInToAnswer: "Sign in to answer this page.",
+} as const;
+
+/**
+ * The review overlay (WP-20, RV-01 to RV-04, CO-06): comments pinned to the page, their threads,
+ * mentions and crops. Drafts for Mirza's review with the package's prose (D149).
+ */
+export const REVIEW_WORDS = {
+  comment: "Comment",
+  /** In comment mode, on a computer and on a touch screen (Mirza's review: say what to do). */
+  pointHint: "Click what you want to comment on.",
+  pointHintTouch: "Tap what you want to comment on.",
+  /** The comment button while commenting: leaves the mode. */
+  stopCommenting: "Cancel",
+  /** Beside words the viewer selected on the page. */
+  commentSelection: "Comment",
+  /** On a phone, the peeking panel's way to its threads (Mirza's review). */
+  showComments: (count: number): string =>
+    count === 1 ? "Show the comment" : `Show the ${String(count)} comments`,
+  countLabel: (count: number): string =>
+    count === 1 ? "1 open comment" : `${String(count)} open comments`,
+  title: "Comments",
+  intro:
+    "Pin a comment to anything on the page, or select words on it and comment on them. Comments are sent with your answers.",
+  closed: "Your answers were submitted, so comments here can be read but not added.",
+  empty: "No comments yet.",
+  wholePage: "Comment on the whole page",
+  thePage: "The whole page",
+  aPoint: "A place on the page",
+  placeholder: "Write a comment. Type @ to mention someone.",
+  replyPlaceholder: "Write a reply",
+  post: "Comment",
+  reply: "Reply",
+  cancel: "Cancel",
+  resolve: "Resolve",
+  reopen: "Reopen",
+  show: (number: number): string => `Show comment ${String(number)} on the page`,
+  closePanel: "Close comments",
+  you: "You",
+  someone: "Someone",
+  unverified: "name not verified",
+  mention: "People you can mention",
+  resolvedBy: (name: string): string => `Resolved by ${name}`,
+  resolvedCount: (count: number): string =>
+    count === 1 ? "1 resolved comment" : `${String(count)} resolved comments`,
+  pinLabel: (number: number, author: string | undefined, text: string): string =>
+    `Comment ${String(number)}${author ? ` by ${author}` : ""}: ${text.length > 80 ? `${text.slice(0, 79)}…` : text}`,
+  capturing: "Taking a picture of this place…",
+  cropFailed: "No picture of this place could be taken; the comment still says where it is.",
+  /** Another viewer's crop shows their own answers (WP-20's review, finding 2). */
+  cropWithheld: "Only its writer and the page's owner see this picture.",
+  cropAlt: (label: string | undefined): string =>
+    label ? `The place this comment points at: ${label}` : "The place this comment points at",
+  otherPage: (page: string): string => `On ${page}`,
+  failed: "The comment couldn't be saved. Try again.",
+  mentionUnknown: "Someone you mentioned can't be mentioned on this page.",
 } as const;

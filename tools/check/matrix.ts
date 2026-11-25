@@ -163,6 +163,8 @@ const POSIX_GROUPS = [
   // The conformance kit's TypeScript reference host, apart from the other clients' suites: beside
   // them on macOS it brought `clients` to its 10-minute deadline (WP-18, as `windows-conformance`).
   "conformance",
+  // Its other modes, apart since WP-20's review ports brought Windows arm64 past its deadline.
+  "conformance-adapters",
 ] as const;
 const WINDOWS_GROUPS = [
   "windows",
@@ -175,6 +177,7 @@ const WINDOWS_GROUPS = [
   "windows-extensions",
   "windows-clients",
   "windows-conformance",
+  "windows-conformance-adapters",
 ] as const;
 
 /**
@@ -309,12 +312,14 @@ export function ciMatrix(scope: CiScope, plan: Plan, runners: Runners): CiMatrix
           ),
         ),
         // Windows runs one test at a time, so its slowest engines are split across machines:
-        // Firefox on x64 (7 min alone) and emulated Chromium on arm64, in three parts since its
-        // second of two took 23 to 25 of the job's 25 minutes with WP-18's kit suite.
+        // Firefox on x64 (7 min alone) and emulated Chromium on arm64, in four parts: in three, its
+        // third took the job's whole 25 minutes with WP-20's review suites (merge queue 45463515020,
+        // 17.5 minutes of tests after 7 of setup), as its second of two had with WP-18's kit suite.
+        // Each part takes whole spec files dealt by their length (tests/e2e/support/parts.ts).
         { os: "windows-x64", runner: runners.windows.x64, browser: "chromium" },
         ...shards({ os: "windows-x64", runner: runners.windows.x64, browser: "firefox" }, 2),
         ...(all
-          ? shards({ os: "windows-arm64", runner: runners.windows.arm64, browser: "chromium" }, 3)
+          ? shards({ os: "windows-arm64", runner: runners.windows.arm64, browser: "chromium" }, 4)
           : []),
       ]
     : [];
@@ -332,7 +337,7 @@ export function ciMatrix(scope: CiScope, plan: Plan, runners: Runners): CiMatrix
   const remoteGroup = (leg: Leg): boolean =>
     String(leg["group"]).startsWith("remote") ||
     leg["group"] === "extensions" ||
-    leg["group"] === "conformance";
+    String(leg["group"]).startsWith("conformance");
   const macos: { readonly list: string; readonly leg: Leg }[] = [
     ...integration.filter((leg) => !remoteGroup(leg)).map((leg) => ({ list: "integration", leg })),
     ...e2e.map((leg) => ({ list: "e2e", leg })),

@@ -26,12 +26,15 @@ import { LivePushResult } from '@mostra/protocol';
 import { MethodDefinition } from '@mostra/protocol';
 import { PortAddressingExternalBaseParams } from '@mostra/protocol';
 import { PortAddressingExternalBaseResult } from '@mostra/protocol';
+import { PortCaptureScreenshotParams } from '@mostra/protocol';
+import { PortCaptureScreenshotResult } from '@mostra/protocol';
 import { PortIdentityResolveParams } from '@mostra/protocol';
 import { PortSecretsGetParams } from '@mostra/protocol';
 import { PortTrustedControlsActivatedParams } from '@mostra/protocol';
 import { PublishReceipt } from '@mostra/protocol';
 import { Results } from '@mostra/protocol';
 import { ResultsMarkdown } from '@mostra/protocol';
+import { ReviewEnvelope } from '@mostra/protocol';
 import { ShareStartParams } from '@mostra/protocol';
 import { ShareStartResult } from '@mostra/protocol';
 import { ShareStopResult } from '@mostra/protocol';
@@ -259,11 +262,17 @@ export interface Ports {
     readonly addressing?: {
         externalBase(request: PortAddressingExternalBaseParams): PortAddressingExternalBaseResult | Promise<PortAddressingExternalBaseResult>;
     };
+    readonly capture?: {
+        screenshot(request: PortCaptureScreenshotParams): PortCaptureScreenshotResult | Promise<PortCaptureScreenshotResult>;
+    };
     readonly drafts?: {
         mirror(draft: DraftMirror): void | Promise<void>;
     };
     readonly identity?: {
         resolve(request: PortIdentityResolveParams): ViewerSpec | null | Promise<ViewerSpec | null>;
+    };
+    readonly reviews?: {
+        mirror(review: ReviewEnvelope): void | Promise<void>;
     };
     readonly secrets?: {
         get(request: PortSecretsGetParams): string | null | Promise<string | null>;

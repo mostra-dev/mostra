@@ -578,6 +578,13 @@ jobs:
           browser: ${{ matrix.leg.browser }}
           package: "@mostra/e2e"
           image: ${{ steps.setup.outputs.image }}
+      # Comments' crops (WP-20, RV-02): the daemon's verify runner renders them in Chromium's headless
+      # shell whatever engine the leg's pages run in, as a person's home does.
+      - uses: ./.github/actions/browsers
+        with:
+          browser: chromium-headless-shell
+          package: "@mostra/runtime"
+          image: ${{ steps.setup.outputs.image }}
       - name: pnpm check --job e2e
         env:
           SCOPE: ${{ needs.plan.outputs.scope }}

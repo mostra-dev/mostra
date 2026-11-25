@@ -19,6 +19,7 @@
  */
 import * as z from "zod";
 import type { MethodDefinition } from "./method.ts";
+import { AnchorLayer, AnchorRect, ReviewAnchor } from "./review.ts";
 import { hostDiagnostic, JSON_RPC_ERROR_CODES, RpcError } from "./rpc/error.ts";
 import { classifyMessage } from "./rpc/messages.ts";
 import { RpcPeer } from "./rpc/peer.ts";
@@ -340,6 +341,12 @@ export type ControlRequest =
 export const CONTROL_LABEL_MAX = 48;
 
 /**
+ * The longest candidate label a Choose request carries (#188): a label past the bar's room is
+ * shortened where the bar shows it, never refused, so a long name keeps its trusted Choose.
+ */
+export const CHOICE_LABEL_MAX = 256;
+
+/**
  * `mostra/controls.request`: the artifact asks the shell for a trusted control (D06, SH-02). The
  * shell renders it in its own origin, where the artifact can neither click nor reach it, and
  * answers whether it is shown: a control the host's policy leaves out is not (D108).
@@ -361,7 +368,7 @@ export const mostraControlsRequest: BridgeMessage<ControlRequest, { readonly sho
         .array(
           z.looseObject({
             id: z.string().min(1).max(256),
-            label: z.string().max(CONTROL_LABEL_MAX).exactOptional(),
+            label: z.string().max(CHOICE_LABEL_MAX).exactOptional(),
           }),
         )
         .min(1)
@@ -502,8 +509,200 @@ export const mostraFrameSessionEntered: BridgeMessage<
   result: z.undefined(),
 };
 
+// ── Review (WP-20, ROUND-3 §8, D23) ─────────────────────────────────────────────────────
+
+/** What a page answers `mostra/review.hitTest`. */
+export interface ReviewHit {
+  /** The anchor of what is at the point, every layer the page knows; absent: nothing there. */
+  readonly anchor?: ReviewAnchor;
+  /** The target's box in the frame's viewport (CSS pixels), for the shell's highlight. */
+  readonly rect?: AnchorRect;
+}
+
 /**
- * Every message of the bridge in this release. WP-20 adds review messages; a message never
+ * `mostra/review.hitTest`: the viewer pointed at the frame in the shell's comment mode; the page
+ * says what is there (its anchor, every layer it knows: an anchor provider's data, the nearest
+ * `data-review-id`, selectors, the box, a nested frame's own anchor). The shell owns the comment;
+ * the page only describes the point. A page built before WP-20 doesn't answer, and the shell keeps
+ * the point's coordinates alone.
+ */
+export const mostraReviewHitTest: BridgeMessage<
+  {
+    readonly x: number;
+    readonly y: number;
+    /** Describe the words the viewer selected, not what is at the point (`selection: true`). */
+    readonly selection?: true;
+  },
+  ReviewHit
+> = {
+  method: "mostra/review.hitTest",
+  from: "shell",
+  kind: "request",
+  params: z.looseObject({
+    x: z.number().min(0).max(1e6),
+    y: z.number().min(0).max(1e6),
+    selection: z.literal(true).exactOptional(),
+  }),
+  result: z.looseObject({ anchor: ReviewAnchor.exactOptional(), rect: AnchorRect.exactOptional() }),
+};
+
+/** The most anchors one `mostra/review.track` names. */
+export const REVIEW_TRACK_MAX = 2_000;
+
+/**
+ * `mostra/review.track`: the anchors whose pins the shell shows, by the thread's ID. The page
+ * finds each and reports where it is now, and again whenever it moves (`mostra/review.positions`).
+ * Each message replaces the one before.
+ */
+export const mostraReviewTrack: BridgeMessage<
+  { readonly anchors: readonly { readonly id: string; readonly anchor: ReviewAnchor }[] },
+  undefined
+> = {
+  method: "mostra/review.track",
+  from: "shell",
+  kind: "notification",
+  params: z.looseObject({
+    anchors: z
+      .array(z.looseObject({ id: z.string().min(1).max(64), anchor: ReviewAnchor }))
+      .max(REVIEW_TRACK_MAX)
+      .readonly(),
+  }),
+  result: z.undefined(),
+};
+
+/** Where one tracked anchor is now. */
+export interface AnchorPosition {
+  /** The tracked anchor's ID: its thread's. */
+  readonly id: string;
+  /** Its box in the frame's viewport; absent when no layer found it on this page. */
+  readonly rect?: AnchorRect;
+  /** Which layer found it (RV-02's resolution order). */
+  readonly layer: AnchorLayer;
+}
+
+/**
+ * `mostra/review.positions`: where the tracked anchors are now, sent after a track and whenever
+ * the page scrolls, resizes or changes, at most once an animation frame. The shell places its pins
+ * from it; a page can move a pin but never make, hide or remove a thread, which the shell lists
+ * whatever the page says (RV-04).
+ */
+export const mostraReviewPositions: BridgeMessage<
+  { readonly positions: readonly AnchorPosition[] },
+  undefined
+> = {
+  method: "mostra/review.positions",
+  from: "artifact",
+  kind: "notification",
+  params: z.looseObject({
+    positions: z
+      .array(
+        z.looseObject({
+          id: z.string().min(1).max(64),
+          rect: AnchorRect.exactOptional(),
+          layer: AnchorLayer,
+        }),
+      )
+      .max(REVIEW_TRACK_MAX)
+      .readonly(),
+  }),
+  result: z.undefined(),
+};
+
+/**
+ * `mostra/review.selection`: the viewer selected words on the page, or the selection ended (no
+ * `rect`). The shell offers to comment on them beside the selection, in its own overlay; what the
+ * page reports only places that offer, and the comment's anchor comes from `mostra/review.hitTest`
+ * with `selection: true` (WP-20, after Mirza's review).
+ */
+export const mostraReviewSelection: BridgeMessage<{ readonly rect?: AnchorRect }, undefined> = {
+  method: "mostra/review.selection",
+  from: "artifact",
+  kind: "notification",
+  params: z.looseObject({ rect: AnchorRect.exactOptional() }),
+  result: z.undefined(),
+};
+
+/**
+ * `mostra/review.scroll`: the viewer scrolls while the shell's comment mode covers the page (a
+ * wheel, or a finger's drag on a touch screen): the page scrolls what is under `x`, `y` by `dx`,
+ * `dy` CSS pixels, the nearest scrollable element or else the document (WP-20, after Mirza's
+ * review). A page that ignores it doesn't scroll in comment mode.
+ */
+export const mostraReviewScroll: BridgeMessage<
+  { readonly x: number; readonly y: number; readonly dx: number; readonly dy: number },
+  undefined
+> = {
+  method: "mostra/review.scroll",
+  from: "shell",
+  kind: "notification",
+  params: z.looseObject({
+    x: z.number().finite(),
+    y: z.number().finite(),
+    dx: z.number().finite().min(-100_000).max(100_000),
+    dy: z.number().finite().min(-100_000).max(100_000),
+  }),
+  result: z.undefined(),
+};
+
+/** `mostra/review.scrollTo`: the viewer opened a thread; the page scrolls its anchor into view. */
+export const mostraReviewScrollTo: BridgeMessage<
+  { readonly anchor: ReviewAnchor },
+  { readonly found: boolean }
+> = {
+  method: "mostra/review.scrollTo",
+  from: "shell",
+  kind: "request",
+  params: z.looseObject({ anchor: ReviewAnchor }),
+  result: z.looseObject({ found: z.boolean() }),
+};
+
+/** A review set the page shows (ROUND-3 §2). */
+export interface ReviewSurface {
+  /** The review set's ID, as `useChoice` names it. */
+  readonly id: string;
+  /** How the page lays its candidates out. */
+  readonly layout: "gallery" | "focus" | "compare" | (string & {});
+  /** Its candidates, in order, with their labels. */
+  readonly candidates: readonly { readonly id: string; readonly label?: string }[];
+  /** The candidate shown now, in focus. */
+  readonly current?: string;
+}
+
+/**
+ * `mostra/surfaces`: the review sets the page shows and their candidates (INTERFACES §2.3: the
+ * runtime registers review surfaces with the shell), so the shell names a comment's candidate.
+ */
+export const mostraSurfaces: BridgeMessage<{ readonly sets: readonly ReviewSurface[] }, undefined> =
+  {
+    method: "mostra/surfaces",
+    from: "artifact",
+    kind: "notification",
+    params: z.looseObject({
+      sets: z
+        .array(
+          z.looseObject({
+            id: z.string().regex(REVIEW_SET_ID_PATTERN),
+            layout: z.string().min(1).max(32),
+            candidates: z
+              .array(
+                z.looseObject({
+                  id: z.string().min(1).max(256),
+                  label: z.string().max(CHOICE_LABEL_MAX).exactOptional(),
+                }),
+              )
+              .max(64)
+              .readonly(),
+            current: z.string().min(1).max(256).exactOptional(),
+          }),
+        )
+        .max(64)
+        .readonly(),
+    }),
+    result: z.undefined(),
+  };
+
+/**
+ * Every message of the bridge in this release, WP-20's review messages among them; a message never
  * changes meaning once released (D32).
  */
 export const BRIDGE_MESSAGES: readonly AnyBridgeMessage[] = [
@@ -521,6 +720,13 @@ export const BRIDGE_MESSAGES: readonly AnyBridgeMessage[] = [
   mostraFrameSessionFailed,
   mostraFrameSessionEntered,
   uiHostContextChanged,
+  mostraReviewHitTest,
+  mostraReviewTrack,
+  mostraReviewPositions,
+  mostraReviewScrollTo,
+  mostraSurfaces,
+  mostraReviewSelection,
+  mostraReviewScroll,
 ] as readonly AnyBridgeMessage[];
 
 /** The window events arrive on (`window` itself). */

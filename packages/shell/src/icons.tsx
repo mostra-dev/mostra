@@ -98,6 +98,18 @@ export const SunIcon = (props: IconProps = {}): ReactElement =>
     props,
   );
 
+export const CommentIcon = (props: IconProps = {}): ReactElement =>
+  svg(
+    <path
+      fill="none"
+      stroke="currentColor"
+      strokeWidth="1.5"
+      strokeLinejoin="round"
+      d="M3.75 3h8.5A1.75 1.75 0 0 1 14 4.75v5.5A1.75 1.75 0 0 1 12.25 12H7.5L4.5 14.5V12h-.75A1.75 1.75 0 0 1 2 10.25v-5.5A1.75 1.75 0 0 1 3.75 3z"
+    />,
+    props,
+  );
+
 export const CloseIcon = (props: IconProps = {}): ReactElement =>
   svg(
     <path

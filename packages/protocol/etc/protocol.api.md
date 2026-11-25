@@ -63,6 +63,60 @@ export const AddedPackage: z.ZodType<AddedPackage>;
 export const ALL_SCOPES: readonly CapabilityScope[];
 
 // @public
+export const ANCHOR_FRAMES_MAX = 8;
+
+// @public
+export const ANCHOR_PROVIDER_DATA_MAX: number;
+
+// @public
+export const ANCHOR_SELECTORS_MAX = 4;
+
+// @public
+export const ANCHOR_TEXT_MAX = 2048;
+
+// @public
+export type AnchorLayer = "provider" | "reviewId" | "selector" | "text" | "rect" | "none";
+
+// @public
+export const AnchorLayer: z.ZodType<AnchorLayer>;
+
+// @public
+export interface AnchorPosition {
+    readonly id: string;
+    readonly layer: AnchorLayer;
+    readonly rect?: AnchorRect;
+}
+
+// @public
+export interface AnchorRect {
+    readonly height: number;
+    readonly width: number;
+    readonly x: number;
+    readonly y: number;
+}
+
+// @public
+export const AnchorRect: z.ZodType<AnchorRect>;
+
+// @public
+export type AnchorSelector = {
+    readonly type: "CssSelector";
+    readonly value: string;
+} | {
+    readonly type: "TextQuoteSelector";
+    readonly exact: string;
+    readonly prefix?: string;
+    readonly suffix?: string;
+} | {
+    readonly type: "FragmentSelector";
+    readonly conformsTo: string;
+    readonly value: string;
+};
+
+// @public
+export const AnchorSelector: z.ZodType<AnchorSelector>;
+
+// @public
 export type AnyBridgeMessage = BridgeMessage<unknown, unknown>;
 
 // @public
@@ -714,6 +768,22 @@ export type CapabilityScope = "view" | "draft" | "submit" | "review" | "signal" 
 export const CapabilityScope: z.ZodType<CapabilityScope>;
 
 // @public
+export const CAPTURE_PNG_BASE64_MAX: number;
+
+// @public
+export interface CaptureRequest {
+    readonly anchor: ReviewAnchor;
+    readonly artifactId: string;
+    readonly threadId: string;
+    readonly versionId: string;
+    readonly viewerId: string;
+    readonly viewId: string;
+}
+
+// @public
+export const CaptureRequest: z.ZodType<CaptureRequest>;
+
+// @public
 export interface CarryOver {
     readonly orphans: readonly OrphanedField[];
     readonly version: VersionRef;
@@ -741,6 +811,9 @@ export interface ChildProcessStatus {
 
 // @public
 export const ChildProcessStatus: z.ZodType<ChildProcessStatus>;
+
+// @public
+export const CHOICE_LABEL_MAX = 256;
 
 // @public
 export interface ChooseRequest {
@@ -875,6 +948,33 @@ export function createDiagnostic(code: KnownDiagnosticCode, details: DiagnosticD
 export interface CreateDiagnosticOptions {
     readonly docsBase?: string;
 }
+
+// @public
+export interface CropRenderRequest {
+    readonly anchor: ReviewAnchor;
+    readonly clockMs: number;
+    readonly deadline: number;
+    readonly out: string;
+    readonly url: string;
+    readonly viewport: {
+        readonly width: number;
+        readonly height: number;
+    };
+}
+
+// @public
+export interface CropRenderResult {
+    readonly height: number;
+    readonly layer: AnchorLayer;
+    readonly path: string;
+    readonly width: number;
+}
+
+// @public
+export type CropState = "pending" | "captured" | "failed";
+
+// @public
+export const CropState: z.ZodType<CropState>;
 
 // @public
 export const CSRF_HEADER = "x-mostra-csrf";
@@ -1059,7 +1159,7 @@ export const Diagnostic: z.ZodType<Diagnostic>;
 export const DIAGNOSTIC_AREAS: readonly DiagnosticArea[];
 
 // @public
-export type DiagnosticArea = "MANIFEST" | "BUILD" | "TYPE" | "LINT" | "DEP" | "KIT" | "FIELD" | "ACTION" | "LIVE" | "RUNTIME" | "CONSOLE" | "NETWORK" | "A11Y" | "VISUAL" | "SMOKE" | "REGRESSION" | "TERM" | "PUBLISH" | "SUBMIT" | "HOST" | "HOME" | "HYGIENE" | "SECRET" | "SHARE" | "VERIFY" | "TARGET" | "ENV" | "PLATFORM" | "ARTIFACT" | "CLI" | "REMOTE" | "TEAM" | "PLUGIN" | "PACK" | "LICENSE";
+export type DiagnosticArea = "MANIFEST" | "BUILD" | "TYPE" | "LINT" | "DEP" | "KIT" | "FIELD" | "ACTION" | "LIVE" | "RUNTIME" | "CONSOLE" | "NETWORK" | "A11Y" | "VISUAL" | "SMOKE" | "REGRESSION" | "TERM" | "PUBLISH" | "SUBMIT" | "HOST" | "HOME" | "HYGIENE" | "SECRET" | "SHARE" | "VERIFY" | "TARGET" | "ENV" | "PLATFORM" | "ARTIFACT" | "CLI" | "REMOTE" | "TEAM" | "PLUGIN" | "PACK" | "LICENSE" | "REVIEW";
 
 // @public
 export const diagnosticCatalog: Readonly<Record<KnownDiagnosticCode, DiagnosticSpec>>;
@@ -1665,6 +1765,7 @@ export interface HostedChrome {
     readonly madeWith?: {
         readonly href?: string;
     };
+    readonly performance?: true;
     readonly sender?: {
         readonly name: string;
         readonly verifiedBy?: string;
@@ -1936,7 +2037,7 @@ export type KitDiagnosticCode = (typeof kitDiagnosticCodes)[number];
 export const kitDiagnosticCodes: readonly ["MOSTRA_KIT_THEME_UNKNOWN", "MOSTRA_KIT_THEME_FILE_MISSING", "MOSTRA_KIT_THEME_CONFLICT", "MOSTRA_KIT_THEME_CONTRAST", "MOSTRA_KIT_WRONG_BASE", "MOSTRA_KIT_CSS_UNPROCESSED"];
 
 // @public
-export type KnownDiagnosticCode = LintDiagnosticCode | KitDiagnosticCode | LicenseDiagnosticCode | PackDiagnosticCode | PluginDiagnosticCode | TeamDiagnosticCode | RemoteDiagnosticCode | ShareDiagnosticCode | CliDiagnosticCode | RegressionDiagnosticCode | SmokeDiagnosticCode | A11yDiagnosticCode | NetworkDiagnosticCode | ConsoleDiagnosticCode | TypeDiagnosticCode | VerifyDiagnosticCode | LiveDiagnosticCode | SecretDiagnosticCode | RuntimeDiagnosticCode | FieldDiagnosticCode | SubmitDiagnosticCode | HygieneDiagnosticCode | DepDiagnosticCode | EnvDiagnosticCode | TargetDiagnosticCode | ArtifactDiagnosticCode | PublishDiagnosticCode | ActionDiagnosticCode | BuildDiagnosticCode | ManifestDiagnosticCode | HomeDiagnosticCode | PlatformDiagnosticCode | HostDiagnosticCode;
+export type KnownDiagnosticCode = ReviewDiagnosticCode | LintDiagnosticCode | KitDiagnosticCode | LicenseDiagnosticCode | PackDiagnosticCode | PluginDiagnosticCode | TeamDiagnosticCode | RemoteDiagnosticCode | ShareDiagnosticCode | CliDiagnosticCode | RegressionDiagnosticCode | SmokeDiagnosticCode | A11yDiagnosticCode | NetworkDiagnosticCode | ConsoleDiagnosticCode | TypeDiagnosticCode | VerifyDiagnosticCode | LiveDiagnosticCode | SecretDiagnosticCode | RuntimeDiagnosticCode | FieldDiagnosticCode | SubmitDiagnosticCode | HygieneDiagnosticCode | DepDiagnosticCode | EnvDiagnosticCode | TargetDiagnosticCode | ArtifactDiagnosticCode | PublishDiagnosticCode | ActionDiagnosticCode | BuildDiagnosticCode | ManifestDiagnosticCode | HomeDiagnosticCode | PlatformDiagnosticCode | HostDiagnosticCode;
 
 // @public
 export type LicenseAcknowledgment = "not-needed" | "accepted" | "host" | "missing";
@@ -2311,6 +2412,46 @@ export const mostraPage: BridgeMessage<{
 export const mostraReady: BridgeMessage<Readonly<Record<string, unknown>>, undefined>;
 
 // @public
+export const mostraReviewHitTest: BridgeMessage<{
+    readonly x: number;
+    readonly y: number;
+    readonly selection?: true;
+}, ReviewHit>;
+
+// @public
+export const mostraReviewPositions: BridgeMessage<{
+    readonly positions: readonly AnchorPosition[];
+}, undefined>;
+
+// @public
+export const mostraReviewScroll: BridgeMessage<{
+    readonly x: number;
+    readonly y: number;
+    readonly dx: number;
+    readonly dy: number;
+}, undefined>;
+
+// @public
+export const mostraReviewScrollTo: BridgeMessage<{
+    readonly anchor: ReviewAnchor;
+}, {
+    readonly found: boolean;
+}>;
+
+// @public
+export const mostraReviewSelection: BridgeMessage<{
+    readonly rect?: AnchorRect;
+}, undefined>;
+
+// @public
+export const mostraReviewTrack: BridgeMessage<{
+    readonly anchors: readonly {
+        readonly id: string;
+        readonly anchor: ReviewAnchor;
+    }[];
+}, undefined>;
+
+// @public
 export const mostraShutdownMethod: MethodDefinition<MostraShutdownParams, MostraShutdownResult>;
 
 // @public
@@ -2318,6 +2459,11 @@ export type MostraShutdownParams = Record<string, never>;
 
 // @public
 export type MostraShutdownResult = Record<string, never>;
+
+// @public
+export const mostraSurfaces: BridgeMessage<{
+    readonly sets: readonly ReviewSurface[];
+}, undefined>;
 
 // @public
 export const mostraVersionAvailable: BridgeMessage<VersionAvailableParams, undefined>;
@@ -2459,6 +2605,22 @@ export interface Peer {
     readonly self: boolean;
     readonly verified?: boolean;
 }
+
+// @public
+export const PERFORMANCE_BUCKETS_MS: readonly number[];
+
+// @public
+export function performanceBucket(loadMs: number): string;
+
+// @public
+export interface PerformanceReport {
+    readonly errors: number;
+    readonly loadMs: number;
+    readonly versionId: string;
+}
+
+// @public
+export const PerformanceReport: z.ZodType<PerformanceReport>;
 
 // @public
 export type PlatformDiagnosticCode = (typeof platformDiagnosticCodes)[number];
@@ -2662,6 +2824,19 @@ export interface PortAddressingExternalBaseParams {
 export type PortAddressingExternalBaseResult = ExternalBase | null;
 
 // @public
+export const portCaptureScreenshotMethod: MethodDefinition<PortCaptureScreenshotParams, PortCaptureScreenshotResult>;
+
+// @public
+export type PortCaptureScreenshotParams = CaptureRequest;
+
+// @public
+export interface PortCaptureScreenshotResult {
+    readonly height: number;
+    readonly png: string;
+    readonly width: number;
+}
+
+// @public
 export const portDraftsMirrorMethod: MethodDefinition<DraftMirror, DraftsMirrorResult>;
 
 // @public
@@ -2773,6 +2948,15 @@ export interface PortRelayRunParams {
 export interface PortRelayRunResult {
     readonly accepted: true;
 }
+
+// @public
+export const portReviewsMirrorMethod: MethodDefinition<PortReviewsMirrorParams, PortReviewsMirrorResult>;
+
+// @public
+export type PortReviewsMirrorParams = ReviewEnvelope;
+
+// @public
+export type PortReviewsMirrorResult = unknown;
 
 // @public
 export const portSecretsGetMethod: MethodDefinition<PortSecretsGetParams, PortSecretsGetResult>;
@@ -2939,7 +3123,7 @@ export type RegressionDiagnosticCode = (typeof regressionDiagnosticCodes)[number
 export const regressionDiagnosticCodes: readonly ["MOSTRA_REGRESSION_ARIA", "MOSTRA_REGRESSION_PIXELS", "MOSTRA_REGRESSION_FIELD_REMOVED", "MOSTRA_REGRESSION_ACTION_REMOVED", "MOSTRA_REGRESSION_LIVE_REMOVED", "MOSTRA_REGRESSION_PAGE_REMOVED"];
 
 // @public
-export const RELAY_AUTHOR_METHODS: readonly ["artifact/create", "artifact/verify", "artifact/publish", "artifact/get", "workspace/root", "workspace/allocate", "workspace/read", "workspace/apply", "workspace/fingerprint", "verify/screenshot"];
+export const RELAY_AUTHOR_METHODS: readonly ["artifact/create", "artifact/verify", "artifact/publish", "artifact/get", "workspace/root", "workspace/allocate", "workspace/read", "workspace/apply", "workspace/fingerprint", "verify/screenshot", "review/crop"];
 
 // @public
 export type RelayAuthorMethod = (typeof RELAY_AUTHOR_METHODS)[number];
@@ -3330,6 +3514,7 @@ export const RespondentStatus: z.ZodType<RespondentStatus>;
 export interface ResultComment {
     readonly anchor: {
         readonly reviewId?: string;
+        readonly selection?: true;
         readonly selectors?: readonly unknown[];
         readonly rect?: Rect;
         readonly viewport?: Viewport;
@@ -3345,19 +3530,45 @@ export interface ResultComment {
             readonly index: number;
             readonly step: number;
         };
+        readonly reviewSetId?: string;
+        readonly point?: {
+            readonly x: number;
+            readonly y: number;
+        };
+        readonly scroll?: {
+            readonly x: number;
+            readonly y: number;
+        };
+        readonly provider?: {
+            readonly id: string;
+            readonly kind: string;
+            readonly data: Readonly<Record<string, unknown>>;
+            readonly label?: string;
+        };
+        readonly frames?: readonly {
+            readonly selector: string;
+            readonly served: boolean;
+        }[];
+        readonly label?: string;
     };
     readonly crop: {
         readonly path: string;
         readonly width: number;
         readonly height: number;
+        readonly state?: "captured" | "pending" | "failed";
+        readonly reason?: string;
     };
     readonly messages: readonly {
         readonly author: Viewer;
         readonly at: string;
         readonly text: string;
+        readonly id?: string;
+        readonly mentions?: readonly Viewer[];
     }[];
+    readonly messagesOmitted?: number;
     readonly status: "open" | "resolved";
     readonly threadId: string;
+    readonly versionId?: string;
 }
 
 // @public
@@ -3385,6 +3596,7 @@ export interface Results {
         readonly label?: string;
     }[];
     readonly comments: readonly ResultComment[];
+    readonly commentsOmitted?: number;
     readonly fields: readonly {
         readonly id: string;
         readonly label?: string;
@@ -3479,7 +3691,238 @@ export interface ResultsMarkdown {
 export const ResultsMarkdown: z.ZodType<ResultsMarkdown>;
 
 // @public
+export const REVIEW_MENTIONS_MAX = 20;
+
+// @public
 export const REVIEW_SET_ID_PATTERN: RegExp;
+
+// @public
+export const REVIEW_TEXT_MAX = 1e4;
+
+// @public
+export const REVIEW_TRACK_MAX = 2e3;
+
+// @public
+export interface ReviewAnchor {
+    readonly appearance?: "light" | "dark";
+    readonly candidateId?: string;
+    readonly frames?: readonly {
+        readonly selector: string;
+        readonly served: boolean;
+    }[];
+    readonly label?: string;
+    readonly page?: string;
+    readonly point?: {
+        readonly x: number;
+        readonly y: number;
+    };
+    readonly provider?: {
+        readonly id: string;
+        readonly kind: string;
+        readonly data: Readonly<Record<string, unknown>>;
+        readonly label?: string;
+    };
+    readonly rect?: AnchorRect;
+    readonly reviewId?: string;
+    readonly reviewSetId?: string;
+    readonly scroll?: {
+        readonly x: number;
+        readonly y: number;
+    };
+    readonly selection?: true;
+    readonly selectors?: readonly AnchorSelector[];
+    readonly slide?: {
+        readonly index: number;
+        readonly step: number;
+    };
+    readonly time?: number;
+    readonly viewport?: {
+        readonly width: number;
+        readonly height: number;
+        readonly dpr: number;
+    };
+}
+
+// @public
+export const ReviewAnchor: z.ZodType<ReviewAnchor>;
+
+// @public
+export type ReviewDiagnosticCode = (typeof reviewDiagnosticCodes)[number];
+
+// @public
+export const reviewDiagnosticCodes: readonly ["MOSTRA_REVIEW_THREAD_NOT_FOUND", "MOSTRA_REVIEW_MENTION_UNKNOWN", "MOSTRA_REVIEW_ID_REUSED", "MOSTRA_REVIEW_ANCHOR_TOO_LARGE", "MOSTRA_REVIEW_TOO_MANY", "MOSTRA_REVIEW_CROP_MISSING", "MOSTRA_REVIEW_ANCHOR_LOST"];
+
+// @public
+export type ReviewEnvelope = {
+    readonly kind: "thread";
+    readonly artifactId: string;
+    readonly viewerId: string;
+    readonly thread: ResultComment;
+} | {
+    readonly kind: "choice";
+    readonly artifactId: string;
+    readonly viewerId: string;
+    readonly reviewSetId: string;
+    readonly candidateId?: string;
+    readonly label?: string;
+};
+
+// @public
+export const ReviewEnvelope: z.ZodType<ReviewEnvelope>;
+
+// @public
+export interface ReviewExport {
+    readonly artifact: {
+        readonly id: string;
+        readonly title: string;
+    };
+    readonly choices: readonly {
+        readonly reviewSetId: string;
+        readonly candidateId: string;
+        readonly label?: string;
+        readonly viewer?: Viewer;
+    }[];
+    readonly comments: readonly ResultComment[];
+    readonly submission?: {
+        readonly id: string;
+        readonly at: string;
+        readonly viewer: Viewer;
+        readonly version: number;
+    };
+}
+
+// @public
+export const ReviewExport: z.ZodType<ReviewExport>;
+
+// @public
+export const reviewExportMethod: MethodDefinition<ReviewExportParams, ReviewExportResult>;
+
+// @public
+export interface ReviewExportParams {
+    readonly artifact: ArtifactRef;
+    readonly format?: "md" | "json";
+    readonly out?: string;
+    readonly submission?: string;
+}
+
+// @public
+export interface ReviewExportResult {
+    readonly content?: string;
+    readonly crops: number;
+    readonly format: "md" | "json";
+    readonly path?: string;
+    readonly threads: number;
+}
+
+// @public
+export interface ReviewHit {
+    readonly anchor?: ReviewAnchor;
+    readonly rect?: AnchorRect;
+}
+
+// @public
+export interface ReviewMessage {
+    readonly at: string;
+    readonly author: ReviewPerson;
+    readonly id: string;
+    readonly mentions?: readonly ReviewPerson[];
+    readonly text: string;
+}
+
+// @public
+export interface ReviewPerson {
+    readonly key: string;
+    readonly kind: ViewerKind;
+    readonly name?: string;
+    readonly self: boolean;
+    readonly verified?: boolean;
+}
+
+// @public
+export const ReviewPerson: z.ZodType<ReviewPerson>;
+
+// @public
+export interface ReviewReplyRequest {
+    readonly commentId: string;
+    readonly mentions?: readonly {
+        readonly key: string;
+    }[];
+    readonly text: string;
+    readonly viewId: string;
+}
+
+// @public
+export const ReviewReplyRequest: z.ZodType<ReviewReplyRequest>;
+
+// @public
+export interface ReviewStatusRequest {
+    readonly status: "open" | "resolved";
+    readonly viewId: string;
+}
+
+// @public
+export const ReviewStatusRequest: z.ZodType<ReviewStatusRequest>;
+
+// @public
+export interface ReviewSurface {
+    readonly candidates: readonly {
+        readonly id: string;
+        readonly label?: string;
+    }[];
+    readonly current?: string;
+    readonly id: string;
+    readonly layout: "gallery" | "focus" | "compare" | (string & {});
+}
+
+// @public
+export interface ReviewThread {
+    readonly anchor: ReviewAnchor;
+    readonly createdAt: string;
+    readonly crop: {
+        readonly state: CropState;
+        readonly width?: number;
+        readonly height?: number;
+        readonly reason?: string;
+        readonly withheld?: true;
+    };
+    readonly id: string;
+    readonly messages: readonly ReviewMessage[];
+    readonly resolved?: {
+        readonly at: string;
+        readonly by: ReviewPerson;
+    };
+    readonly status: "open" | "resolved";
+    readonly version: number;
+    readonly versionId: string;
+}
+
+// @public
+export const ReviewThread: z.ZodType<ReviewThread>;
+
+// @public
+export interface ReviewThreadRequest {
+    readonly anchor: ReviewAnchor;
+    readonly commentId: string;
+    readonly mentions?: readonly {
+        readonly key: string;
+    }[];
+    readonly text: string;
+    readonly threadId: string;
+    readonly viewId: string;
+}
+
+// @public
+export const ReviewThreadRequest: z.ZodType<ReviewThreadRequest>;
+
+// @public
+export interface ReviewThreads {
+    readonly people: readonly ReviewPerson[];
+    readonly threads: readonly ReviewThread[];
+    readonly writable: boolean;
+}
+
+// @public
+export const ReviewThreads: z.ZodType<ReviewThreads>;
 
 // @public
 export type Revision = string & {
@@ -4513,6 +4956,7 @@ export const VERIFY_REPORT = "__mostraVerifyReport";
 export const VERIFY_RUNNER_METHODS: {
     readonly render: "verify/render";
     readonly compare: "verify/compare";
+    readonly crop: "verify/crop";
 };
 
 // @public

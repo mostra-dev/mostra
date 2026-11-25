@@ -377,6 +377,19 @@ describe("every command, with --json and no terminal", () => {
     const listed = all.result as { results: unknown[]; cursor: string };
     expect(listed.results.map((one) => Results.parse(one).answers)).toEqual([{ choice: "B" }]);
     expect(Number(listed.cursor)).toBeGreaterThan(0);
+    // The review (RV-05): choices and comment threads, as JSON, as Markdown, and into a directory.
+    const review = await run(["review", "export", artifactId], { code: 0, ok: true });
+    expect(review.result).toMatchObject({ format: "json", threads: 0, crops: 0 });
+    const reviewText = await cli(["review", "export", artifactId], { env: home.env });
+    expect(reviewText.code).toBe(0);
+    expect(reviewText.stdout).toContain("# Review");
+    const out = join(home.root, "review-out");
+    const written = await run(["review", "export", artifactId, "--out", out], {
+      code: 0,
+      ok: true,
+    });
+    expect(written.result).toMatchObject({ format: "json", path: join(out, "review.json") });
+    expect(existsSync(join(out, "review.json"))).toBe(true);
   });
 
   it("state get, set and patch write and read artifact state; a stale base is a conflict, exit 6", async () => {

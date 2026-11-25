@@ -11,8 +11,11 @@ import { readFile, writeFile } from "node:fs/promises";
 import { createRequire } from "node:module";
 import { join } from "node:path";
 import {
+  type AnchorLayer,
   type CompareRequest,
   type CompareResult,
+  type CropRenderRequest,
+  type CropRenderResult,
   createDiagnostic,
   type Diagnostic,
   type ProbedField,
@@ -144,6 +147,8 @@ export interface Runner {
   render(request: RenderRequest): Promise<RenderResult>;
   /** Compares two screenshots and writes the difference. */
   compare(request: CompareRequest): Promise<CompareResult>;
+  /** Photographs the place a review anchor names, for a comment's crop (WP-20). */
+  crop(request: CropRenderRequest): Promise<CropRenderResult>;
   /** Closes the browser. */
   close(): Promise<void>;
 }
@@ -257,6 +262,34 @@ export function createRunner(options: RunnerOptions = {}): Runner {
         }
       }),
     compare: (request) => work(() => compareImages(request)),
+    crop: (request) =>
+      work(async () => {
+        const open = await launch();
+        const created: { context?: BrowserContext } = {};
+        const left = Math.max(1_000, request.deadline - Date.now());
+        let timer: ReturnType<typeof setTimeout> | undefined;
+        try {
+          return await Promise.race([
+            capturePage(open, request, created),
+            new Promise<never>((_, reject) => {
+              timer = setTimeout(
+                () =>
+                  reject(
+                    new RpcError(
+                      createDiagnostic("MOSTRA_VERIFY_TIMEOUT", {
+                        message: "The crop took longer than its time.",
+                      }),
+                    ),
+                  ),
+                left + RENDER_ABANDON_MS,
+              );
+            }),
+          ]);
+        } finally {
+          if (timer) clearTimeout(timer);
+          await created.context?.close().catch(() => undefined);
+        }
+      }),
     async close() {
       if (idleTimer) clearTimeout(idleTimer);
       const open = browser;
@@ -264,6 +297,161 @@ export function createRunner(options: RunnerOptions = {}): Runner {
       if (open) await (await open.catch(() => undefined))?.close();
     },
   };
+}
+
+/** How much of the page around the anchor a crop shows, in CSS pixels. */
+const CROP_MARGIN = 24;
+/** The smallest and largest crop. */
+const CROP_MIN = { width: 240, height: 140 };
+const CROP_MAX = { width: 1280, height: 900 };
+
+/**
+ * Renders a capability link like `render` and photographs the place an anchor names: the page's
+ * own resolution of the anchor where its client runtime offers one (`__mostraVerify.anchor`,
+ * scrolled into view), else the anchor's box, scrolled to. The crop keeps a margin around the place
+ * and outlines it, so the person reading it later sees exactly what was pointed at.
+ */
+async function capturePage(
+  browser: Browser,
+  request: CropRenderRequest,
+  created: { context?: BrowserContext },
+): Promise<CropRenderResult> {
+  const context = await browser.newContext({
+    viewport: { width: request.viewport.width, height: request.viewport.height },
+    deviceScaleFactor: 1,
+    reducedMotion: "reduce",
+    // Light or dark as the viewer saw it: the shell follows the device's setting, and tells the
+    // page (D181 item 9).
+    colorScheme: request.anchor.appearance ?? "light",
+  });
+  created.context = context;
+  try {
+    await context.clock.setFixedTime(request.clockMs);
+    const page = await context.newPage();
+    context.on("page", (other) => {
+      if (other !== page) void other.close().catch(() => undefined);
+    });
+    const left = (): number => request.deadline - Date.now();
+    const network = watchNetwork(page, () => artifactFrame(page), "crop");
+    await page.goto(request.url, { waitUntil: "commit", timeout: Math.max(1000, left()) });
+    const readiness = await awaitReady(shellMarks(page), left).catch(() => "never" as const);
+    const frame = artifactFrame(page);
+    if (readiness !== "ready" || !frame) {
+      throw new RpcError(
+        createDiagnostic("MOSTRA_RUNTIME_NOT_READY", {
+          message: "The page didn't get ready for its crop.",
+        }),
+      );
+    }
+    await frame.evaluate(() => document.fonts.ready.then(() => true)).catch(() => false);
+    // As verify does: the page's requests answered and its DOM quiet, so a crop shows the data the
+    // page loads, not its loading state (WP-20's review, finding 2).
+    await settle(frame, network, request.deadline);
+    // Where the anchor is in the frame's viewport, after it is scrolled into view.
+    const placed = (await frame
+      .evaluate(
+        async ({ probeName, anchor }) => {
+          const probe = (
+            globalThis as unknown as Record<string, { anchor?: (a: unknown) => Promise<unknown> }>
+          )[probeName];
+          return probe?.anchor ? probe.anchor(anchor) : undefined;
+        },
+        { probeName: VERIFY_PROBE, anchor: request.anchor as unknown as Record<string, unknown> },
+      )
+      .catch(() => undefined)) as
+      | {
+          rect?: { x: number; y: number; width: number; height: number };
+          layer?: AnchorLayer;
+          highlighted?: boolean;
+        }
+      | undefined;
+    let rect = placed?.rect;
+    let layer: AnchorLayer = placed?.layer ?? "rect";
+    if (!rect && request.anchor.rect) {
+      // An older page: the anchor's box, in document coordinates, scrolled to.
+      const box = request.anchor.rect;
+      const scrolled = await frame.evaluate(
+        ({ y, height }) => {
+          window.scrollTo({
+            top: Math.max(0, y + height / 2 - window.innerHeight / 2),
+            behavior: "instant",
+          });
+          return { x: window.scrollX, y: window.scrollY };
+        },
+        { y: box.y, height: box.height },
+      );
+      rect = { x: box.x - scrolled.x, y: box.y - scrolled.y, width: box.width, height: box.height };
+      layer = "rect";
+    }
+    if (!rect) {
+      throw new RpcError(
+        createDiagnostic("MOSTRA_REVIEW_ANCHOR_LOST", {
+          message: "No layer of the anchor found its place.",
+        }),
+      );
+    }
+    await page.waitForTimeout(100);
+    const view = request.viewport;
+    const width = Math.min(
+      Math.max(rect.width + CROP_MARGIN * 2, CROP_MIN.width),
+      CROP_MAX.width,
+      view.width,
+    );
+    const height = Math.min(
+      Math.max(rect.height + CROP_MARGIN * 2, CROP_MIN.height),
+      CROP_MAX.height,
+      view.height,
+    );
+    const clip = {
+      x: Math.min(Math.max(0, rect.x + rect.width / 2 - width / 2), view.width - width),
+      y: Math.min(Math.max(0, rect.y + rect.height / 2 - height / 2), view.height - height),
+      width,
+      height,
+    };
+    const shot = await page.screenshot({ clip, animations: "disabled", caret: "hide" });
+    const image = PNG.sync.read(shot);
+    // Selected words carry the page's own highlight, as the viewer saw their selection: a box
+    // would cover whole lines the words only begin or end in (Mirza's review of WP-20).
+    if (placed?.highlighted !== true) {
+      outline(image, {
+        x: Math.round(rect.x - clip.x),
+        y: Math.round(rect.y - clip.y),
+        width: Math.round(rect.width),
+        height: Math.round(rect.height),
+      });
+    }
+    const png = PNG.sync.write(image);
+    await writeFile(request.out, png);
+    return { path: request.out, width: image.width, height: image.height, layer };
+  } finally {
+    await context.close().catch(() => undefined);
+  }
+}
+
+/** Draws a 2-pixel outline in the brand's blue around a box, inside the image. */
+function outline(image: PNG, box: { x: number; y: number; width: number; height: number }): void {
+  const set = (x: number, y: number): void => {
+    if (x < 0 || y < 0 || x >= image.width || y >= image.height) return;
+    const at = (y * image.width + x) * 4;
+    image.data[at] = 0x23;
+    image.data[at + 1] = 0x40;
+    image.data[at + 2] = 0xc8;
+    image.data[at + 3] = 0xff;
+  };
+  const left = box.x - 2;
+  const top = box.y - 2;
+  const right = box.x + box.width + 1;
+  const bottom = box.y + box.height + 1;
+  for (let t = 0; t < 2; t += 1) {
+    for (let x = left; x <= right; x += 1) {
+      set(x, top + t);
+      set(x, bottom - t);
+    }
+    for (let y = top; y <= bottom; y += 1) {
+      set(left + t, y);
+      set(right - t, y);
+    }
+  }
 }
 
 /** The artifact's frame: the shell's only child frame. */

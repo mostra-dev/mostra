@@ -13,7 +13,9 @@ import type {
 } from "@mostra/protocol";
 import { createDiagnostic, RpcError } from "@mostra/protocol";
 import type { LedgerDb } from "../ledger/index.ts";
+import { code, LINE_BREAKS, longestBacktickRun, oneLine, quoted } from "./markdown.ts";
 import { storedPolicy } from "./policy.ts";
+import { type CropPaths, commentMarkdown, relativeCrop, resultComment } from "./review.ts";
 import {
   deliveriesOf,
   overallDelivery,
@@ -120,7 +122,11 @@ export function submissionFor(
 }
 
 /** The complete results of a submission (INTERFACES §8). */
-export function buildResults(db: LedgerDb, row: SubmissionRow): Results {
+export function buildResults(
+  db: LedgerDb,
+  row: SubmissionRow,
+  crops: CropPaths = relativeCrop,
+): Results {
   const snapshot = JSON.parse(row.snapshot_json) as Snapshot;
   const version = db.get<{ manifest_json: string }>(
     "SELECT manifest_json FROM version WHERE id = ?",
@@ -206,47 +212,18 @@ export function buildResults(db: LedgerDb, row: SubmissionRow): Results {
             ]
           : [];
       }),
-    comments: [],
+    comments: (snapshot.review?.threads ?? []).map((thread) =>
+      resultComment(thread, crops, row.version_id),
+    ),
     orphaned: snapshot.orphaned,
     actions: snapshot.actions ?? [],
     signals: snapshot.signals,
     ...(snapshot.signalsOmitted !== undefined ? { signalsOmitted: snapshot.signalsOmitted } : {}),
     ...(snapshot.signalsCompacted ? { signalsCompacted: true as const } : {}),
+    ...(snapshot.review?.threadsOmitted !== undefined
+      ? { commentsOmitted: snapshot.review.threadsOmitted }
+      : {}),
   };
-}
-
-/**
- * Text from viewers and hosts is data in the Markdown, never structure (Claude review finding 4):
- * labels and string values are JSON strings, identifiers and JSON are code spans whose delimiters
- * outrun any backticks inside, multi-line text sits in a fence longer than any backtick run in it,
- * and everything else is folded onto one line.
- */
-const LINE_BREAKS = /\r\n|\r|\n|\u2028|\u2029/;
-
-/** Control characters and line separators as spaces: the text stays on its line. */
-function oneLine(text: string): string {
-  // biome-ignore lint/suspicious/noControlCharactersInRegex: replacing them is the point.
-  return text.replace(/[\u0000-\u001f\u007f-\u009f\u2028\u2029]/g, " ");
-}
-
-/** The longest run of backticks in `text`. */
-function longestBacktickRun(text: string): number {
-  let longest = 0;
-  for (const run of text.match(/`+/g) ?? []) longest = Math.max(longest, run.length);
-  return longest;
-}
-
-/** `text` as an inline code span that nothing inside can close. */
-export function code(text: string): string {
-  const line = oneLine(text);
-  const ticks = "`".repeat(longestBacktickRun(line) + 1);
-  const pad = line.startsWith("`") || line.endsWith("`") || line.trim() === "" ? " " : "";
-  return `${ticks}${pad}${line}${pad}${ticks}`;
-}
-
-/** `text` as a JSON string: quoted, with its line breaks and controls escaped. */
-function quoted(text: string): string {
-  return oneLine(JSON.stringify(text));
 }
 
 /** A value as one Markdown line, or a fenced block for text with line breaks. */
@@ -354,15 +331,12 @@ export function resultsMarkdown(results: Results, snapshot: Snapshot): string {
       : ["- (none)"]),
     "",
     "## Comments",
-    ...(results.comments.length > 0
-      ? results.comments.flatMap((comment) => [
-          `- Thread ${comment.threadId} (${comment.status}), crop ${code(comment.crop.path)}${comment.anchor.reviewId ? `, on ${code(comment.anchor.reviewId)}` : ""}${comment.anchor.page ? `, page ${code(comment.anchor.page)}` : ""}`,
-          ...comment.messages.map(
-            (message) =>
-              `  - ${quoted(message.author.name ?? message.author.id)} at ${message.at}: ${quoted(message.text)}`,
-          ),
-        ])
-      : ["- (none)"]),
+    ...(results.comments.length > 0 ? results.comments.flatMap(commentMarkdown) : ["- (none)"]),
+    ...(results.commentsOmitted !== undefined
+      ? [
+          `- (${results.commentsOmitted} more ${results.commentsOmitted === 1 ? "thread doesn't" : "threads don't"} fit this submission; \`mostra review export\` lists every thread)`,
+        ]
+      : []),
     "",
     "## Actions run in this view",
     ...(results.actions.length > 0

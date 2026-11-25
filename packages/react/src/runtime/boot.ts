@@ -16,6 +16,7 @@ import {
   type VersionAvailableParams,
   type ViewContext,
 } from "@mostra/protocol";
+import { wireReview } from "../review/shell.ts";
 import {
   bootMark,
   builtVersion,
@@ -297,6 +298,8 @@ function wireShell(store: Store, shell: ShellConnection): void {
     queueMicrotask(report);
   });
   report();
+  // The shell's review overlay asks the page where things are (WP-20).
+  wireReview(shell.bridge);
   listenShell({
     request: async (message, params) => {
       if (message !== mostraFlush) return undefined;

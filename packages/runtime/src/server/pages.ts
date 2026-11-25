@@ -55,7 +55,8 @@ export const API_PAGE_WORDS = {
   allowTitle: (client: string): string => `Allow ${client}?`,
   asksToUse: (client: SafeHtml, who: string): SafeHtml =>
     html`${client} asks to use Mostra as <strong>${who}</strong>.`,
-  unverifiedName: "a name the app gives itself, not checked",
+  /** Before a name nobody checked: it never reads as checked (D165, INTERFACES §18.5). */
+  selfNamed: "An app calling itself",
   operatorClient: "this server's own app",
   grants: ["Read, create and change your hosted pages", "Read their answers"],
   sendsBackTo: (host: string): SafeHtml => html`It will send you back to <strong>${host}</strong>.`,
@@ -190,15 +191,12 @@ export function createApiPages(server: ServerPages, name: string | null): ApiPag
     readonly name: string;
     readonly trust: "first-party" | "operator" | "self-named";
   }): SafeHtml => {
-    const hint =
-      client.trust === "operator"
-        ? W.operatorClient
-        : client.trust === "self-named"
-          ? W.unverifiedName
-          : undefined;
-    return hint === undefined
-      ? html`<strong>${client.name}</strong>`
-      : html`<strong>${client.name}</strong> <span class="m-hint">(${hint})</span>`;
+    // A name the app gave itself is said to be its own, plainly, before it: "An app calling itself
+    // Claude asks…" (WP-20, Mirza's note on MT-06's pictures).
+    if (client.trust === "self-named") return html`${W.selfNamed} <strong>${client.name}</strong>`;
+    return client.trust === "operator"
+      ? html`<strong>${client.name}</strong> <span class="m-hint">(${W.operatorClient})</span>`
+      : html`<strong>${client.name}</strong>`;
   };
   return {
     name,

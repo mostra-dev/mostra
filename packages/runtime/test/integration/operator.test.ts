@@ -9,11 +9,11 @@
  * chrome and expiry hold; and the server handle pauses, suspends, revokes, drains and removes,
  * each acting on one route or home only.
  */
-import { cpSync, readdirSync, readFileSync, writeFileSync } from "node:fs";
+import { cpSync, existsSync, readdirSync, readFileSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 import { fileURLToPath } from "node:url";
 import { Client, StreamableHTTPClientTransport } from "@modelcontextprotocol/client";
-import { MutationId } from "@mostra/protocol";
+import { CommentId, MutationId, ThreadId } from "@mostra/protocol";
 import Database from "better-sqlite3";
 import { afterAll, beforeAll, beforeEach, describe, expect, it } from "vitest";
 import { openPage } from "../action-page.ts";
@@ -41,11 +41,15 @@ import {
   stopServer,
   testConfig,
 } from "../server-support.ts";
-import { eventually, tempDir } from "../support.ts";
+import { connectTo, eventually, initializeParams, tempDir } from "../support.ts";
 
 const REVISION = "2026-10-15";
 const OPERATOR = fileURLToPath(new URL("../fixtures/operator.mjs", import.meta.url));
 const FIXTURES = fileURLToPath(new URL("../fixtures/artifacts", import.meta.url));
+
+/** A 2 × 1 PNG, as a host's `capture` port answers. */
+const CROP_PNG =
+  "iVBORw0KGgoAAAANSUhEUgAAAAIAAAABCAIAAAB7QOjdAAAAEElEQVR4nGNQ2f+fgYGBAQAJ7AJ7ZbB2WAAAAABJRU5ErkJggg==";
 
 describe("operator ports (HO-09)", () => {
   let port: number;
@@ -361,6 +365,73 @@ describe("operator ports (HO-09)", () => {
     await operator.set({ policy: {} });
   }, 120_000);
 
+  it("counts a page's load time and errors where the operator's policy asks, once per session, keeping nothing (#167)", async () => {
+    await operator.set({ metering: "ok", policy: { performance: { report: true } } });
+    const { answer: shared } = await share();
+    const url = ok<{ url: string }>(shared).url;
+    const browser = new Browser();
+    const opened = await openLink(browser, url);
+    const api = `${new URL(url).pathname}/_mostra`;
+    const ticket = await browser.fetchJson(opened.link.shell, `${api}/ticket`, {
+      body: {},
+      csrf: opened.shellCsrf,
+    });
+    const { hosted, version } = ticket.json<{
+      hosted: { performance?: true };
+      version: { id: string };
+    }>();
+    expect(hosted.performance).toBe(true);
+    const send = (body: unknown) =>
+      browser.fetchJson(opened.link.shell, `${api}/performance`, { body, csrf: opened.shellCsrf });
+    // Malformed is refused; a report outside the bounds names nothing.
+    expect((await send({ versionId: version.id, loadMs: -1, errors: 0 })).status).toBe(400);
+    expect((await send({ versionId: version.id, loadMs: 320, errors: 2 })).status).toBe(204);
+    // A second report of the same session counts nothing.
+    expect((await send({ versionId: version.id, loadMs: 9_000, errors: 5 })).status).toBe(204);
+    const counted = async () =>
+      (await operator.calls("metering"))
+        .flatMap(
+          (call) =>
+            call.payload["counters"] as {
+              name: string;
+              value: number;
+              dimensions?: Record<string, string>;
+            }[],
+        )
+        .filter((counter) => counter.name.startsWith("page."));
+    await eventually(
+      async () => (await counted()).some((counter) => counter.name === "page.errors"),
+      30_000,
+      "the page's report counted",
+    );
+    const pages = await counted();
+    expect(pages.filter((counter) => counter.name === "page.loads")).toEqual([
+      expect.objectContaining({ value: 1, dimensions: { versionId: version.id, bucket: "500" } }),
+    ]);
+    expect(pages.filter((counter) => counter.name === "page.errors")).toEqual([
+      expect.objectContaining({ value: 2, dimensions: { versionId: version.id } }),
+    ]);
+    // Nothing of the viewer or the request travels with the counters.
+    expect(JSON.stringify(pages)).not.toMatch(/viewerKey|127\.0\.0\.1|vwr_|vw_/);
+    // Without the policy the shell is told nothing, and a report counts nothing.
+    await operator.set({ policy: {} });
+    const other = new Browser();
+    const second = await openLink(other, url);
+    const quiet = await other.fetchJson(second.link.shell, `${api}/ticket`, {
+      body: {},
+      csrf: second.shellCsrf,
+    });
+    expect(quiet.json<{ hosted: { performance?: true } }>().hosted.performance).toBeUndefined();
+    const before = (await counted()).length;
+    const ignored = await other.fetchJson(second.link.shell, `${api}/performance`, {
+      body: { versionId: version.id, loadMs: 100, errors: 0 },
+      csrf: second.shellCsrf,
+    });
+    expect(ignored.status).toBe(204);
+    await new Promise((resolve) => setTimeout(resolve, 2_500));
+    expect((await counted()).length).toBe(before);
+  }, 120_000);
+
   it("serves a host the operator supplies, mints links on it, and gives an unknown host nothing", async () => {
     const { answer: shared } = await share();
     const url = ok<{ url: string }>(shared).url;
@@ -390,7 +461,7 @@ describe("operator ports (HO-09)", () => {
       new RegExp(`^[0-9a-hjkmnp-tv-z]{26}\\.pages\\.acme\\.localhost:${port}$`),
     );
     expect(opened.page.header("content-security-policy")).toContain(
-      `frame-ancestors http://${outside}`,
+      `frame-ancestors 'self' http://${outside}`,
     );
     // The operator's domain serves only the routes of the home it was given for, and a host it
     // answers for is bound to that home forever.
@@ -513,6 +584,57 @@ describe("operator ports (HO-09)", () => {
     expect((await send(port, shellHost, `/a/${routeId}`)).status).toBe(404);
     expect((await send(port, label, "/")).status).toBe(421);
   }, 180_000);
+
+  it("removing a hosted artifact removes its comments' crops, which show what its viewers answered (D183 item 4)", async () => {
+    const { answer: shared } = await share();
+    const url = ok<{ url: string }>(shared).url;
+    const host = await connectTo(owner.daemon.status.socket as string);
+    try {
+      ok(
+        await host.call(
+          "mostra/initialize",
+          initializeParams({ client: { name: "crop-host", version: "1" }, ports: ["capture"] }),
+        ),
+      );
+      const browser = new Browser();
+      const opened = await openLink(browser, url);
+      const api = `${new URL(url).pathname}/_mostra/v/2026-10-15`;
+      const threadId = ThreadId.create();
+      const made = await browser.fetchJson(opened.link.shell, `${api}/review/threads`, {
+        body: {
+          viewId: opened.viewId,
+          threadId,
+          commentId: CommentId.create(),
+          anchor: { rect: { x: 0, y: 0, width: 100, height: 40 } },
+          text: "Remove me with the page.",
+        },
+        csrf: opened.shellCsrf,
+      });
+      expect(made.status, made.body).toBe(200);
+      const call = await host.next(
+        (message) => message.method === "port/capture.screenshot",
+        30_000,
+      );
+      host.sendRaw(
+        JSON.stringify({
+          jsonrpc: "2.0",
+          id: call.id,
+          result: { png: CROP_PNG, width: 2, height: 1 },
+        }),
+      );
+      const blobs = join(data, "homes", await homeOf(), "blobs");
+      await eventually(
+        async () => existsSync(blobs) && readdirSync(blobs).some((name) => name.endsWith(".png")),
+        30_000,
+        "the crop kept by the hosted home",
+      );
+      const removed = await operator.handle("remove", routeOf(url));
+      expect(removed.status, JSON.stringify(removed.json)).toBe(200);
+      expect(readdirSync(blobs).filter((name) => name.endsWith(".png"))).toEqual([]);
+    } finally {
+      host.close();
+    }
+  }, 120_000);
 
   /** The owner's hosted home, from the server's directory. */
   const homeOf = async (): Promise<string> => {

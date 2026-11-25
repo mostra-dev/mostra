@@ -427,3 +427,26 @@ The security review of shared ownership (removed members' tokens and links, a ma
 | `chatHosts` holds an entry the server can't use (a key that isn't a host name, a value that isn't a policy) | The entry is logged (`server.chat_host_ignored`) and left out; the server starts, as the release before did (D32) |
 | A client's metadata document can't be read when the server judges how its chat host renders | Its last answer holds, kept a minute per client; a client never judged before renders as `app` |
 | `artifact_verify` answers `running` and the source changes before it is called again | A write through the tools forgets the directory's runs, and a fingerprint that differs from the run's start starts a new one, so no verdict is given for code it didn't verify; a run that never settles is left after 30 minutes |
+
+## 14. Review (WP-20, D183)
+
+| Case | Behavior |
+|---|---|
+| A host's `capture` port fails, answers no PNG, or takes over 30 s | That attempt falls back to the verify runner's browser, which renders the crop itself (HO-11) |
+| A viewer comments many times on a page whose server code has effects (a mail sent, a paid API called), or whose owner-only view shows everyone's data | A crop renders the page as its commenter, never as the owner for anyone else, runs no server function and starts no live producer (the live values shown are the ones viewers last saw), so commenting never runs the artifact's effects or shows the commenter what only the owner may see (the review of WP-20, finding 2) |
+| Someone other than a comment's viewer and the owner sees its thread (a mention, `names`) | They see the thread without its crop picture, which shows the viewer's own answers (`crop.withheld`; the crop route answers 404) |
+| A crop fails with an error naming a path or a host's message | Hosts, results and `review export` keep the reason; pages are told only that it failed (finding 9) |
+| The verify runner can't render a crop (it crashed, the page never got ready, 60 s passed) | The crop is tried again after 2 s, then 4 s; after three attempts the thread's crop is `failed` with the reason, the thread and its anchor are kept, and results say so (`crop.state`, `crop.reason`). A crop is set once (a trigger) |
+| The instance stops or crashes while crops are pending | Nothing is lost: a pending crop is a column of its committed thread, and the capture queue takes it again at the next start |
+| Submit while the viewer's crops are being taken | Submit waits up to 20 s (`CROP_WAIT_MS`) for them, then submits; a crop still pending goes as `pending` in the submission, which is never refused for a crop |
+| A hosted page's comment while its owner instance is away | The thread commits on the hosted home at once; its crop waits, never failing for the owner's absence, and is rendered when the owner connects again. Submit doesn't wait for it then |
+| A comment, reply or status change on a draft a `once` submission closed | Refused with `MOSTRA_SUBMIT_ALREADY`; the threads stay readable in the shell |
+| A comment repeated with the same client-made IDs (a retry) | Answers the thread or comment it made; the same ID with other contents is `MOSTRA_REVIEW_ID_REUSED` |
+| A comment mentions a key the page may not mention, more than 20 people, or an anchor past 32 KiB | Refused (`MOSTRA_REVIEW_MENTION_UNKNOWN`; a malformed request, 400; `MOSTRA_REVIEW_ANCHOR_TOO_LARGE`); nothing is written |
+| A viewer passes 1,000 threads on an artifact, or a thread 500 comments | `MOSTRA_REVIEW_TOO_MANY`; what exists stays |
+| A viewer's threads hold more than a submission may carry (comments are never deleted) | The submit is made all the same (WP-20's review, finding 4): the snapshot keeps each thread's submitter's own messages and the newest 50 of others' within 8 Mi characters and the room the answers leave, others' oldest giving way first; results count what was left out (`messagesOmitted`, `commentsOmitted`), and `review export` lists every message |
+| A thread's anchor is gone in a newer version or after a change | The page reports it without a box: its pin isn't drawn, the shell lists the thread whatever the page says, and the crop shows the place as it was (RV-04) |
+| A page reports false places, leaves pins out, or sends review messages it may not send | A pin is drawn only inside the page's box (one whose place is out of view isn't drawn, as a pin scrolled past isn't) and keeps its last place when left out; the panel lists every thread and the comment button counts them whatever the page reports; messages of the wrong direction or shape are dropped (`data-bridge-rejections`); a page can neither make, hide from the panel nor resolve a thread |
+| A page ignores `mostra/review.scroll` (a version built before it) | Comment mode doesn't scroll that page; leaving comment mode scrolls it as usual |
+| A host's `reviews` port fails or doesn't answer | Nothing is retried (best effort, as draft mirrors are, D105); the ledger is canonical and `review/export` has every thread |
+| A hosted artifact is removed | Its threads and comments go with it, and the crops no other thread of the home names are deleted from the home's `blobs/` |

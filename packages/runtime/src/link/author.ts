@@ -16,6 +16,7 @@ import { isAbsolute, join, relative, resolve } from "node:path";
 import { defaultWorkspaceRoot, localWorkspace } from "@mostra/mcp";
 import {
   ARTIFACT_PROGRESS,
+  ArtifactId,
   artifactCreateMethod,
   artifactGetMethod,
   artifactPublishMethod,
@@ -23,9 +24,11 @@ import {
   createDiagnostic,
   portRelayAuthorMethod,
   type RelayAuthorProgressParams,
+  ReviewAnchor,
   RpcError,
   shareStartMethod,
 } from "@mostra/protocol";
+import * as z from "zod";
 import type { Environment, Log } from "../log.ts";
 import { attachInProcess, type ProtocolServer } from "../protocol-server/index.ts";
 
@@ -40,6 +43,15 @@ export interface OwnerAuthorOptions {
   /** The servers an artifact is hosted on now. */
   readonly hostedOn: (artifactId: string) => readonly string[];
   /**
+   * Renders a review comment's crop of a version this home holds, from the answers a hosted home
+   * sends (WP-20, D183 item 4), keeping it in this home's blobs too. Absent: crops are refused.
+   */
+  readonly crop?: (request: OwnerCropRequest) => Promise<{
+    readonly png: Uint8Array;
+    readonly width: number;
+    readonly height: number;
+  }>;
+  /**
    * Sends a relayed verify's stage back to the server that asked (`relay/author.progress`,
    * #157), best effort.
    */
@@ -47,6 +59,56 @@ export interface OwnerAuthorOptions {
 }
 
 /** Answers `port/relay.author` from the server `server`. */
+/** A hosted home's request for a crop of one of this home's versions (`review/crop`). */
+export interface OwnerCropRequest {
+  readonly artifactId: string;
+  readonly versionId: string;
+  readonly threadId: string;
+  /** The hosted home's view and viewer of the comment, for a host's `capture` port. */
+  readonly viewId: string;
+  readonly viewerId: string;
+  readonly anchor: ReviewAnchor;
+  readonly draft: Readonly<Record<string, unknown>>;
+  readonly state: Readonly<Record<string, unknown>>;
+  /** Who the page acts as for the crop (finding 2): the artifact's owner, or a viewer by name. */
+  readonly viewer?: { readonly owner: true } | { readonly owner: false; readonly name?: string };
+  /** The hosted artifact's live values as its viewers last saw them; no producer runs. */
+  readonly live?: readonly {
+    readonly key: string;
+    readonly revision: number;
+    readonly value: string;
+    readonly at: string;
+  }[];
+}
+
+const CropRequest = z.object({
+  artifactId: ArtifactId.schema,
+  versionId: z.string().regex(/^ver_[0-9A-HJKMNP-TV-Z]{26}$/),
+  threadId: z.string().regex(/^thr_[0-9A-HJKMNP-TV-Z]{26}$/),
+  viewId: z.string().regex(/^vw_[0-9A-HJKMNP-TV-Z]{26}$/),
+  viewerId: z.string().regex(/^vwr_[0-9A-HJKMNP-TV-Z]{26}$/),
+  anchor: ReviewAnchor,
+  draft: z.record(z.string(), z.unknown()),
+  state: z.record(z.string(), z.unknown()),
+  viewer: z
+    .union([
+      z.object({ owner: z.literal(true) }),
+      z.object({ owner: z.literal(false), name: z.string().max(256).optional() }),
+    ])
+    .optional(),
+  live: z
+    .array(
+      z.object({
+        key: z.string().min(1).max(256),
+        revision: z.int().min(1),
+        value: z.string(),
+        at: z.string().max(64),
+      }),
+    )
+    .max(1024)
+    .optional(),
+});
+
 export type OwnerAuthor = (server: string, params: unknown) => Promise<unknown>;
 
 /** The eight bytes every PNG file starts with. */
@@ -158,6 +220,18 @@ export function createOwnerAuthor(options: OwnerAuthorOptions): OwnerAuthor {
           }),
           delete: deletes.map(String),
         });
+      }
+      case "review/crop": {
+        // Only for an artifact this home shares to that server, and only a version of it here.
+        const request = CropRequest.safeParse(given);
+        if (!request.success || options.crop === undefined) return {};
+        if (!options.hostedOn(request.data.artifactId).includes(server)) return {};
+        const cropped = await options.crop(request.data as OwnerCropRequest);
+        return {
+          png: Buffer.from(cropped.png).toString("base64"),
+          width: cropped.width,
+          height: cropped.height,
+        };
       }
       case "verify/screenshot": {
         const path = resolve(String(given["path"] ?? ""));

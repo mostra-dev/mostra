@@ -73,7 +73,8 @@ Each step ends when its check holds. Don't hand a link out before step 4 passes.
 | A form with validation | `useForm` from `@mostra/react/form` (react-hook-form) | [answers.md](references/answers.md) |
 | Name or confirm the trusted Submit | `useSubmitControl({ label, confirm })` | [answers.md](references/answers.md) |
 | Let the person ping you without submitting | `useSignal(name).send(payload)`, then `mostra wait <dir> --until signal:<name>` | [answers.md](references/answers.md) |
-| Choose one of several candidates | `useChoice(reviewSetId, { candidates })` | [answers.md](references/answers.md) |
+| Compare candidates and choose one | `ReviewSet`, `Candidate` from `@mostra/kit/review` | [review.md](references/review.md) |
+| Read the person's comments, with a picture of each place | `mostra review export <dir> --out ./review` | [review.md](references/review.md) |
 | A button that does something real (send, file, deploy) | a `"use server"` function, run with `useAction(fn, { key })` | [server.md](references/server.md) |
 | Secrets for that code | `mostra secret set NAME`, then `secret("NAME")` in server code | [server.md](references/server.md) |
 | Data that updates by itself | `defineLive` in `live.ts`, `useLive(key)` in the page, `mostra push` from you | [long-lived.md](references/long-lived.md) |
@@ -123,6 +124,7 @@ Read the one you need when you need it.
 | [references/server.md](references/server.md) | The page must do something real: actions, secrets, idempotency |
 | [references/long-lived.md](references/long-lived.md) | A page that lives for days: shared state, live data, `none` policy, always-on |
 | [references/sharing.md](references/sharing.md) | Someone other than the person at this machine opens it, or on another device |
+| [references/review.md](references/review.md) | The person compares candidates and chooses one, or comments on the page, and you act on the comments |
 | [references/teams.md](references/teams.md) | Several people answer it or work on it together: personal links, waiting for everyone, who is here |
 | [references/libraries.md](references/libraries.md) | Using charts, tables, motion or UI primitives, or an import fails |
 | [references/plugins.md](references/plugins.md) | Adding a shadcn registry item or a plugin, a license asks for an acknowledgment, or you write a plugin |

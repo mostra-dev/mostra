@@ -234,6 +234,28 @@ export interface StoreResult {
     readonly local: string;
     readonly answer?: { readonly origin: string; readonly mode?: string } | null;
   }[];
+  /**
+   * `reviews.mirror` calls (WP-20, HO-11), in arrival order: the envelope's kind and artifact, and
+   * for a thread its ID and status, for a choice its review set and candidate. A host without the
+   * port leaves it out.
+   */
+  readonly reviews?: readonly {
+    readonly kind: string;
+    readonly artifactId: string;
+    readonly threadId?: string;
+    readonly status?: string;
+    readonly reviewSetId?: string;
+    readonly candidateId?: string;
+  }[];
+  /**
+   * `capture.screenshot` calls (WP-20, HO-11): the thread and artifact each was for, and the
+   * SHA-256 (hex) of the PNG the host answered. A host without the port leaves it out.
+   */
+  readonly captures?: readonly {
+    readonly artifactId: string;
+    readonly threadId: string;
+    readonly sha256: string;
+  }[];
 }
 
 /** The schema of `StoreResult`. */
@@ -297,6 +319,21 @@ export const StoreResult: z.ZodType<StoreResult> = z.object({
           .optional(),
       }),
     )
+    .optional(),
+  reviews: z
+    .array(
+      z.object({
+        kind: z.string(),
+        artifactId: z.string(),
+        threadId: z.string().optional(),
+        status: z.string().optional(),
+        reviewSetId: z.string().optional(),
+        candidateId: z.string().optional(),
+      }),
+    )
+    .optional(),
+  captures: z
+    .array(z.object({ artifactId: z.string(), threadId: z.string(), sha256: z.string() }))
     .optional(),
 }) as z.ZodType<StoreResult>;
 

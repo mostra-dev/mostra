@@ -5,6 +5,7 @@
  */
 import * as z from "zod";
 import { Diagnostic } from "./diagnostics/diagnostic.ts";
+import type { AnchorLayer, ReviewAnchor } from "./review.ts";
 import { wireRegistry } from "./wire-registry.ts";
 
 /** When a verdict's screenshots are handed to the caller (AX-05): images cost tokens. */
@@ -368,6 +369,8 @@ export const VERIFY_RUNNER_METHODS = {
   render: "verify/render",
   /** Compares two screenshots and writes their difference. */
   compare: "verify/compare",
+  /** Photographs the place a review anchor names, for a comment's crop (WP-20, HO-11). */
+  crop: "verify/crop",
 } as const;
 
 /** `verify/render`'s params; internal to Mostra. */
@@ -485,4 +488,32 @@ export function ariaSummary(text: string): string {
   ].filter((role) => counts.has(role));
   if (landmarks.length > 0) parts.push(`landmarks: ${landmarks.join(", ")}`);
   return parts.length > 0 ? parts.join(", ") : "no headings, controls or landmarks";
+}
+
+/** `verify/crop`'s params; internal to Mostra (WP-20). */
+export interface CropRenderRequest {
+  /** The capability link to open: the view's version, with the viewer's answers. */
+  readonly url: string;
+  /** The viewport of the view the comment was made in. */
+  readonly viewport: { readonly width: number; readonly height: number };
+  /** The fixed time `Date` reports, in ms since the epoch. */
+  readonly clockMs: number;
+  /** Where the comment points. */
+  readonly anchor: ReviewAnchor;
+  /** Where the PNG is written. */
+  readonly out: string;
+  /** When the crop must have ended, in ms since the epoch. */
+  readonly deadline: number;
+}
+
+/** `verify/crop`'s answer; internal to Mostra (WP-20). */
+export interface CropRenderResult {
+  /** Where the crop was written. */
+  readonly path: string;
+  /** Its width, in pixels. */
+  readonly width: number;
+  /** Its height, in pixels. */
+  readonly height: number;
+  /** The anchor's layer that found the place, or `rect` for the anchor's own box. */
+  readonly layer: AnchorLayer;
 }

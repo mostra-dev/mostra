@@ -94,6 +94,8 @@ export const INTEGRATION_GROUPS: Record<string, { include: string[]; exclude: st
   // The conformance kit's TypeScript reference host (packages/conformance/vitest.config.ts): about
   // 460 s on macOS, which beside the CLI's suites ran `clients` past its deadline (WP-18).
   conformance: { include: [], exclude: [] },
+  // Its other modes (standalone, unscripted, broken), apart since WP-20's review ports.
+  "conformance-adapters": { include: [], exclude: [] },
   // The Windows legs (WP-W1, WP-W2, D146): every suite, in groups one machine each (Windows arm64
   // runs them about twice as slowly as x64). They partition the files too, in their own way: a
   // test (`windows-groups.test.ts`) keeps every suite in exactly one of them. `windows-clients` is
@@ -145,6 +147,8 @@ export const INTEGRATION_GROUPS: Record<string, { include: string[]; exclude: st
       "test/integration/browser-revisions.test.ts",
       "test/integration/scale.test.ts",
       "test/integration/team.test.ts",
+      // WP-20: comments through the shell's routes and the review ports.
+      "test/integration/review.test.ts",
     ],
     exclude: [],
   },
@@ -170,6 +174,7 @@ export const INTEGRATION_GROUPS: Record<string, { include: string[]; exclude: st
   "windows-clients": { include: [], exclude: [] },
   // The conformance kit's TypeScript reference host, apart from the other clients (WP-18, #225).
   "windows-conformance": { include: [], exclude: [] },
+  "windows-conformance-adapters": { include: [], exclude: [] },
 };
 const group = process.env["MOSTRA_TEST_GROUP"];
 const integrationFiles = group
@@ -189,7 +194,7 @@ export default defineConfig({
   resolve: { conditions: ["@mostra/source"] },
   ssr: { resolve: { conditions: ["@mostra/source"] } },
   test: {
-    // The `clients` and `conformance` integration groups run none of the runtime's suites (a root option: vitest
+    // The `clients` and `conformance*` integration groups run none of the runtime's suites (a root option: vitest
     // reads it only here).
     passWithNoTests: integrationFiles.include.length === 0,
     projects: [

@@ -126,7 +126,8 @@ describe.each([stdio, socket])("protocol suite over $name", (transport) => {
     );
     // The ports the interaction ledger calls (WP-06, D105) and the notification it sends.
     // WP-07 added the trustedControls port (D108), WP-08 the secrets port (D44), WP-12 the
-    // identity port (D143), WP-13 the addressing port (HO-10).
+    // identity port (D143), WP-13 the addressing port (HO-10), WP-20 the reviews and capture
+    // ports (HO-11).
     expect(result.capabilities.ports).toEqual([
       "identity",
       "submissions",
@@ -134,6 +135,8 @@ describe.each([stdio, socket])("protocol suite over $name", (transport) => {
       "trustedControls",
       "secrets",
       "addressing",
+      "reviews",
+      "capture",
     ]);
     // WP-09 added verify's progress (D138), WP-10 the dev sessions' events (D140 item 12): each
     // sent only to a client that accepts it.

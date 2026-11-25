@@ -31,6 +31,11 @@
       "types": "./dist/layout.d.ts",
       "default": "./dist/layout.js"
     },
+    "./review": {
+      "@mostra/source": "./src/review.tsx",
+      "types": "./dist/review.d.ts",
+      "default": "./dist/review.js"
+    },
     "./css/*": "./css/*",
     "./registry/*": "./registry/*",
     "./package.json": "./package.json"
@@ -118,6 +123,19 @@
         "cn"
       ],
       "limit": "1.5 kB"
+    },
+    {
+      "name": "@mostra/kit/review (React and the client runtime excluded)",
+      "path": "dist/review.js",
+      "import": "*",
+      "ignore": [
+        "@mostra/react",
+        "cn",
+        "lucide-react",
+        "react",
+        "react-dom"
+      ],
+      "limit": "2.5 kB"
     }
   ]
 }

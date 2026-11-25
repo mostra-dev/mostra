@@ -18,7 +18,7 @@ import {
   statSync,
 } from "node:fs";
 import { createConnection } from "node:net";
-import { tmpdir } from "node:os";
+import { homedir, tmpdir } from "node:os";
 import { basename, dirname, join } from "node:path";
 import type { Readable, Writable } from "node:stream";
 import { fileURLToPath } from "node:url";
@@ -361,7 +361,9 @@ export class LineClient {
           : { jsonrpc: "2.0", id, method, params },
       ),
     );
-    return this.next((message) => message.id === id, timeoutMs);
+    // Only an answer: a port call from the instance carries an ID of the instance's own count,
+    // which may be the same number, and a method (WP-20's review suite met it).
+    return this.next((message) => message.id === id && message.method === undefined, timeoutMs);
   }
 
   close(): void {
@@ -886,4 +888,20 @@ function processTable(): { pid: number; ppid: number; command: string }[] {
     .filter((match): match is RegExpExecArray => match !== null)
     .map((match) => ({ pid: Number(match[1]), ppid: Number(match[2]), command: match[3] ?? "" }))
     .filter((row) => row.command !== "ps -A -o pid=,ppid=,command=");
+}
+
+/**
+ * Where Playwright keeps its browsers for the person running the tests: a suite whose daemon has a
+ * home of its own passes it on, so a crop or a verify run there finds the browser
+ * (`PLAYWRIGHT_BROWSERS_PATH`).
+ */
+export function playwrightBrowsers(): string {
+  return (
+    process.env["PLAYWRIGHT_BROWSERS_PATH"] ??
+    (process.platform === "darwin"
+      ? join(homedir(), "Library", "Caches", "ms-playwright")
+      : process.platform === "win32"
+        ? join(process.env["LOCALAPPDATA"] ?? join(homedir(), "AppData", "Local"), "ms-playwright")
+        : join(process.env["XDG_CACHE_HOME"] ?? join(homedir(), ".cache"), "ms-playwright"))
+  );
 }

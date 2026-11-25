@@ -38,6 +38,13 @@ export interface ListenerKind {
   readonly frameAncestors?: string;
 }
 
+/** An artifact document's `frame-ancestors`: its own origin and the shell's, or none. */
+export function artifactFrameAncestors(shells: string): string {
+  return shells.trim() === "'none'" || shells.trim() === ""
+    ? "frame-ancestors 'none'"
+    : `frame-ancestors 'self' ${shells}`;
+}
+
 /**
  * The framing and content-security headers of a document: the shell is never framed, and its own
  * page loads only from itself; an artifact page may be framed by the shell alone. An artifact's
@@ -53,7 +60,8 @@ export function documentHeaders(
         "default-src 'self'",
         "script-src 'self'",
         "style-src 'self'",
-        "img-src 'self' data:",
+        // `blob:`: a comment's crop, fetched with the shell's session and shown (WP-20).
+        "img-src 'self' data: blob:",
         "connect-src 'self'",
         `frame-src ${frameOrigins}`,
         "frame-ancestors 'none'",
@@ -72,7 +80,11 @@ export function documentHeaders(
     };
   }
   return {
-    "content-security-policy": `frame-ancestors ${listener.frameAncestors ?? listener.shellOrigin}`,
+    // The artifact's own pages may frame each other (WP-20: a served frame), but every ancestor
+    // must match, so a page still shows only under the shell that may frame it.
+    "content-security-policy": artifactFrameAncestors(
+      listener.frameAncestors ?? listener.shellOrigin,
+    ),
   };
 }
 

@@ -18,18 +18,24 @@ use std::sync::{Arc, Mutex, MutexGuard};
 use std::time::Duration;
 
 use mostra_host::ports::{
-    Addressing, Delivered, Delivery, Drafts, Identity, Person, PortError, Secrets, Submissions,
-    TrustedControls,
+    Addressing, Capture, Delivered, Delivery, Drafts, Identity, Person, PortError, Reviews,
+    Secrets, Submissions, TrustedControls,
 };
 use mostra_host::wire::{
-    ArtifactSummary, ControlsPolicy, DraftMirror, EventFilter, ExternalBase,
+    ArtifactSummary, CaptureRequest, ControlsPolicy, DraftMirror, EventFilter, ExternalBase,
     PortAddressingExternalBaseParams, PortAddressingExternalBaseParamsListener,
-    PortIdentityResolveParams, PortSecretsGetParams, PortTrustedControlsActivatedParams,
+    PortCaptureScreenshotResult, PortIdentityResolveParams, PortSecretsGetParams,
+    PortTrustedControlsActivatedParams, ReviewEnvelope,
 };
 use mostra_host::{EventStreamOptions, Mostra, Options};
 use serde_json::{Value, json};
 use tokio::io::{AsyncBufReadExt, AsyncWriteExt, BufReader};
 use tokio::sync::{RwLock, mpsc};
+
+/// The crop the capture port answers every comment with (HO-11): the TypeScript reference host's
+/// 2×1 PNG, one blue pixel and one red, and its SHA-256.
+const CROP_PNG: &str = "iVBORw0KGgoAAAANSUhEUgAAAAIAAAABCAIAAAB7QOjdAAAAEElEQVR4nGNQ2f+fgYGBAQAJ7AJ7ZbB2WAAAAABJRU5ErkJggg==";
+const CROP_SHA256: &str = "24146c5872e749d043fcd06c227d0ffdc1821e6b74a34a561257ea8090ccfbb5";
 
 /// The faults a broken reference host can carry.
 const FAULTS: [&str; 3] = ["store-duplicates", "drafts-as-submissions", "ignore-policy"];
@@ -54,6 +60,8 @@ struct State {
     policies: Vec<Value>,
     secrets_asked: Vec<Value>,
     addressing: Vec<Value>,
+    reviews: Vec<Value>,
+    captures: Vec<Value>,
     /// No external base until scripted: the loopback ports every other scenario expects.
     base: Value,
     deliver: String,
@@ -80,6 +88,8 @@ impl Store {
                 policies: Vec::new(),
                 secrets_asked: Vec::new(),
                 addressing: Vec::new(),
+                reviews: Vec::new(),
+                captures: Vec::new(),
                 base: Value::Null,
                 deliver: "accept".into(),
                 policy: json!({ "submitChannels": ["shell"], "controls": ["submit", "choose", "approve"] }),
@@ -142,6 +152,8 @@ impl Store {
             "policies": state.policies,
             "secrets": state.secrets_asked,
             "addressing": state.addressing,
+            "reviews": state.reviews,
+            "captures": state.captures,
         })
     }
 
@@ -230,6 +242,48 @@ impl Drafts for Store {
             self.record(id, 1, record);
         }
         Ok(())
+    }
+}
+
+impl Reviews for Store {
+    async fn mirror(&self, review: ReviewEnvelope) -> Result<(), PortError> {
+        let value = serde_json::to_value(&review).unwrap_or(Value::Null);
+        let entry = if value["kind"] == "thread" {
+            json!({
+                "kind": "thread",
+                "artifactId": value["artifactId"],
+                "threadId": value["thread"]["threadId"],
+                "status": value["thread"]["status"],
+            })
+        } else {
+            let mut entry = json!({
+                "kind": value["kind"],
+                "artifactId": value["artifactId"],
+                "reviewSetId": value["reviewSetId"],
+            });
+            if let Some(candidate) = value.get("candidateId") {
+                entry["candidateId"] = candidate.clone();
+            }
+            entry
+        };
+        self.lock().reviews.push(entry);
+        Ok(())
+    }
+}
+
+impl Capture for Store {
+    async fn screenshot(
+        &self,
+        request: CaptureRequest,
+    ) -> Result<PortCaptureScreenshotResult, PortError> {
+        let value = serde_json::to_value(&request).unwrap_or(Value::Null);
+        self.lock().captures.push(json!({
+            "artifactId": value["artifactId"],
+            "threadId": value["threadId"],
+            "sha256": CROP_SHA256,
+        }));
+        serde_json::from_value(json!({ "png": CROP_PNG, "width": 2, "height": 1 }))
+            .map_err(|error| PortError::new(error.to_string()))
     }
 }
 
@@ -409,6 +463,8 @@ impl Host {
                 "addressing",
                 "trustedControls",
                 "secrets",
+                "reviews",
+                "capture",
             ]
         }
     }
@@ -438,7 +494,9 @@ impl Host {
                 .identity(self.store.clone())
                 .addressing(self.store.clone())
                 .trusted_controls(self.store.clone())
-                .secrets(self.store.clone());
+                .secrets(self.store.clone())
+                .reviews(self.store.clone())
+                .capture(self.store.clone());
         }
         let attach = params["mode"].as_str() == Some("attach");
         let mostra = if attach {

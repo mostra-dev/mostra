@@ -452,44 +452,55 @@ test.describe("the viewer sees where the submission stands (IN-13)", () => {
       const frame = await openInShell(page, await linkFor(agent, own.artifactId, viewerName(info)));
       await frame.getByTestId("name").fill("Ana");
       await saved(page);
-      const receipt = page.locator("[data-mostra-receipt]");
+      // Where the submission stands is the status beside the trusted Submit (D175 item 12): its
+      // words, and each host's delivery behind it.
+      const status = page.locator("[data-mostra-submission]");
       const seen: string[] = [];
       await page.exposeFunction("mostraSeen", (state: string) => seen.push(state));
       await page.evaluate(() => {
-        // Each change of the receipt: its state, and whether it states the durable fact,
-        // "Saved by Mostra" with the time (Submitted, D47).
+        // Each change of the status once a submission is in, and whether it shows its words.
         const record = (): void => {
-          const receipt = document.querySelector("[data-mostra-receipt]");
-          const state = receipt?.getAttribute("data-mostra-receipt");
+          const status = document.querySelector("[data-mostra-submission]");
+          const state = status?.getAttribute("data-mostra-submission");
           if (!state) return;
-          const saved = receipt?.querySelector("li.mostra-ok time") ? "saved" : "unsaid";
-          (window as unknown as { mostraSeen(s: string): void }).mostraSeen(`${state}/${saved}`);
+          const words = status?.querySelector(".mostra-status-words");
+          const shown = words && words.getBoundingClientRect().width > 1 ? "shown" : "hidden";
+          (window as unknown as { mostraSeen(s: string): void }).mostraSeen(`${state}/${shown}`);
         };
         new MutationObserver(record).observe(document.body, {
           subtree: true,
           childList: true,
           attributes: true,
-          attributeFilter: ["data-mostra-receipt"],
+          attributeFilter: ["data-mostra-submission"],
         });
       });
       await page.locator("#mostra-submit").click();
-      await expect(receipt).toHaveAttribute("data-mostra-receipt", "pending", { timeout: 15_000 });
-      await expect(page.locator("[data-mostra-delivery=pending]")).toContainText("jcode-like");
+      await expect(status).toHaveAttribute("data-mostra-submission", "pending", {
+        timeout: 15_000,
+      });
+      await expect(status).toContainText("Pending delivery");
+      // The details name the host and its state, behind the status's button.
+      await status.getByRole("button").click();
+      await expect(status.locator("[data-mostra-delivery=pending]")).toBeVisible();
+      await expect(status.locator("[data-mostra-delivery=pending]")).toContainText("jcode-like");
       // The host comes back and accepts.
       host = await Client.connect(daemon.socket, {
         name: "jcode-like",
         ports: ["submissions"],
         onPortCall: () => ({ accepted: true }),
       });
-      await expect(receipt).toHaveAttribute("data-mostra-receipt", "delivered", {
+      await expect(status).toHaveAttribute("data-mostra-submission", "delivered", {
         timeout: 15_000,
       });
-      await expect(page.locator("[data-mostra-delivery=delivered]")).toContainText("jcode-like");
-      // Every state the viewer saw says the submission is saved in Mostra; the delivery then
-      // went Pending, then Delivered, never back. "Submitted" alone shows only until Mostra knows
-      // the host is away; here it may know that already when the receipt first appears, since
-      // the host left before the submit.
-      expect(seen.every((entry) => entry.endsWith("/saved"))).toBe(true);
+      await expect(status).toContainText("Delivered");
+      await expect(status.locator("[data-mostra-delivery=delivered]")).toContainText("jcode-like");
+      // No receipt covers the page any more.
+      await expect(page.locator("[data-mostra-receipt]")).toHaveCount(0);
+      // Every state the viewer saw was said in words; the delivery then went Pending, then
+      // Delivered, never back. "Submitted" alone shows only until Mostra knows the host is away;
+      // here it may know that already when the status first changes, since the host left before
+      // the submit.
+      expect(seen.every((entry) => entry.endsWith("/shown"))).toBe(true);
       const states = seen.map((entry) => entry.split("/")[0] as string);
       const order = states.filter((state, index) => state !== states[index - 1]);
       expect(["submitted,pending,delivered", "pending,delivered"]).toContain(order.join(","));
@@ -509,18 +520,19 @@ test.describe("the viewer sees where the submission stands (IN-13)", () => {
       await frame2.getByTestId("name").fill("Ben");
       await saved(page2);
       await page2.locator("#mostra-submit").click();
-      await expect(page2.locator("[data-mostra-receipt]")).toHaveAttribute(
-        "data-mostra-receipt",
-        "undeliverable",
-        { timeout: 15_000 },
-      );
-      await expect(page2.locator("[data-mostra-delivery=undeliverable]")).toContainText(
-        "jcode-like",
+      const status2 = page2.locator("[data-mostra-submission]");
+      await expect(status2).toHaveAttribute("data-mostra-submission", "undeliverable", {
+        timeout: 15_000,
+      });
+      await expect(status2).toContainText("Undeliverable");
+      await status2.getByRole("button").click();
+      await expect(status2.locator("[data-mostra-delivery=undeliverable]")).toContainText(
+        "jcode-like couldn't take it.",
       );
       // Reopened later, the page shows the same state: nothing depends on the tab that submitted.
       await page2.reload();
-      await expect(page2.locator("[data-mostra-receipt]")).toHaveAttribute(
-        "data-mostra-receipt",
+      await expect(page2.locator("[data-mostra-submission]")).toHaveAttribute(
+        "data-mostra-submission",
         "undeliverable",
         { timeout: 20_000 },
       );
@@ -535,7 +547,7 @@ test.describe("the viewer sees where the submission stands (IN-13)", () => {
 });
 
 test.describe("under epochs, a new round is open (#118)", () => {
-  test("the tab that submitted shows its receipt; the next round's tab shows no Submitted card", async ({
+  test("the tab that submitted says Submitted; the next round's tab shows the round as open", async ({
     page,
     context,
   }, info) => {
@@ -547,13 +559,21 @@ test.describe("under epochs, a new round is open (#118)", () => {
       await frame.getByTestId("name").fill("Ana");
       await saved(page);
       await page.locator("#mostra-submit").click();
-      await expect(page.locator("[data-mostra-receipt]")).toBeVisible({ timeout: 15_000 });
+      await expect(page.locator("[data-mostra-submission]")).toHaveAttribute(
+        "data-mostra-submission",
+        "submitted",
+        { timeout: 15_000 },
+      );
       // The agent replies with a new version; the person opens the link again for round two.
       await republish(client, own, (text) => text.replace("</main>", "<p>Round two</p></main>"));
       const next = await context.newPage();
       await openInShell(next, url);
       await expect(next.locator("#mostra-submit")).toBeVisible();
-      await expect(next.locator("[data-mostra-receipt]")).toHaveCount(0);
+      await expect(next.locator("[data-mostra-submission]")).toHaveCount(0);
+      await expect(next.locator("[data-mostra-status]")).not.toHaveAttribute(
+        "data-mostra-status",
+        "submitted",
+      );
     } finally {
       client.close();
     }
@@ -598,10 +618,30 @@ test.describe("on a phone, the trusted controls stay whole and pressable (#182)"
           body: await page.screenshot(),
           contentType: "image/png",
         });
+        // A label past the Submit's 48 characters still gets its Choose (#188): the bar cuts it
+        // where it has no room, and the control keeps its whole name.
+        const long =
+          "Write the launch post, record the walkthrough video, and answer every reply on the first day";
+        await frame.getByTestId("focus-launch").click();
+        await expect(choose).toHaveAccessibleName(new RegExp(long));
+        await expect(choose).toHaveAttribute("title", `Choose ${long}`);
+        for (const control of [choose, submit]) {
+          const box = await control.boundingBox();
+          expect(box?.x ?? -1).toBeGreaterThanOrEqual(0);
+          expect((box?.x ?? 0) + (box?.width ?? 0)).toBeLessThanOrEqual(width);
+        }
+        await expect(choose).toBeEnabled();
         await choose.click();
-        await expect(choose).toHaveAccessibleName(new RegExp(label));
+        await expect(choose).toHaveAccessibleName(new RegExp(`Chosen: ${long}`));
         await submit.click();
-        await expect(page.locator("[data-mostra-receipt]")).toBeVisible({ timeout: 15_000 });
+        await expect(page.locator("[data-mostra-submission]")).toBeVisible({ timeout: 15_000 });
+        // Results name the choice by its whole label.
+        const done = (await results(client, own.artifactId)) as {
+          choices: { reviewSetId: string; candidateId: string; label?: string }[];
+        };
+        expect(done.choices).toEqual([
+          { reviewSetId: "focus", candidateId: "launch", label: long },
+        ]);
       } finally {
         await context.close();
         client.close();

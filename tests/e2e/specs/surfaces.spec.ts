@@ -38,6 +38,8 @@ const OPERATOR = join(
 );
 const AXE: string = axe.source;
 const SCREENS = process.env["MOSTRA_E2E_SCREENS"];
+/** How long a check waits for a page of another origin to arrive (#152's class of slow loads). */
+const NAVIGATION_MS = 20_000;
 const MODES = ["light", "dark"] as const;
 /** A person per run, each signing in for the first time (consent is asked once per account). */
 const PEOPLE = ["Grace Hopper", "Katherine Johnson", "Dorothy Vaughan", "Mary Jackson"];
@@ -167,6 +169,8 @@ test.describe("every surface a person meets (UX-01, D171)", () => {
           ...process.env,
           MOSTRA_TEST_OPERATOR_PORT: String(control),
           MOSTRA_TEST_CIMD_ORIGIN: documentsOrigin,
+          // The meter's window, short, so a page's performance report is seen at once (#167).
+          MOSTRA_TEST_METER_WINDOW_MS: "300",
         },
       },
     );
@@ -241,13 +245,19 @@ test.describe("every surface a person meets (UX-01, D171)", () => {
     };
     await tabTo("[data-mostra-sign-in]");
     await page.keyboard.press("Enter");
-    await expect(page.getByRole("link", { name: "Continue with Development" })).toBeVisible();
+    // Each page of the API origin is a navigation to another origin, which on a cold server in
+    // emulated Chromium (Windows arm64) took 5.6 s: past the 5 s a check waits by default.
+    await expect(page.getByRole("link", { name: "Continue with Development" })).toBeVisible({
+      timeout: NAVIGATION_MS,
+    });
     await tabTo('a[href^="/signin/dev/start"]');
     await page.keyboard.press("Enter");
     await tabTo("input[name=name]");
     await page.keyboard.type("Mary Golda Ross");
     await page.keyboard.press("Enter");
-    await expect(page.getByText("Continue as Mary Golda Ross to answer")).toBeVisible();
+    await expect(page.getByText("Continue as Mary Golda Ross to answer")).toBeVisible({
+      timeout: NAVIGATION_MS,
+    });
     await tabTo('button[value="approve"]');
     await page.keyboard.press("Enter");
     await page.waitForURL((url) => url.pathname.startsWith("/a/"));
@@ -264,8 +274,8 @@ test.describe("every surface a person meets (UX-01, D171)", () => {
     await page.keyboard.press(browserName === "webkit" ? "Alt+Shift+Tab" : "Shift+Tab");
     await expect(page.locator("#mostra-submit")).toBeFocused();
     await page.keyboard.press("Enter");
-    await expect(page.locator("[data-mostra-receipt]")).toHaveAttribute(
-      "data-mostra-receipt",
+    await expect(page.locator("[data-mostra-submission]")).toHaveAttribute(
+      "data-mostra-submission",
       "sent",
     );
     await context.close();
@@ -402,6 +412,15 @@ test.describe("every surface a person meets (UX-01, D171)", () => {
         await expect(page.locator("#mostra-unfold")).toBeFocused();
         await expect(page.locator(".mostra-rail")).toBeHidden();
         await expect(page.locator("[data-mostra-passwords]")).toHaveCount(0);
+        // Folded where the bar was (#218): at the top on a computer, at the dock's place, the
+        // bottom, on a phone.
+        const folded = await page.locator("[data-mostra-folded-bar]").boundingBox();
+        const screen = page.viewportSize();
+        expect(folded && screen).toBeTruthy();
+        if (folded && screen) {
+          if (phone) expect(folded.y + folded.height).toBeGreaterThan(screen.height - 80);
+          else expect(folded.y).toBeLessThan(40);
+        }
         await shoot(page, "hosted-folded");
         await page.locator("#mostra-unfold").click();
         await expect(page.locator("#mostra-fold")).toBeFocused();
@@ -415,7 +434,11 @@ test.describe("every surface a person meets (UX-01, D171)", () => {
         if (phone) await page.locator("[data-mostra-sign-in]").click();
         await expect(page.getByRole("link", { name: "Continue with Development" })).toBeVisible();
         await shoot(page, "api-signin");
-        await page.getByRole("link", { name: "Continue with Development" }).click();
+        // The click loads another page: the picture waits for it, not for the page it leaves.
+        await Promise.all([
+          page.waitForEvent("load"),
+          page.getByRole("link", { name: "Continue with Development" }).click(),
+        ]);
         await shoot(page, "api-dev-name");
         await page.locator("input[name=name]").fill(who);
         await page.getByRole("button", { name: "Continue" }).click();
@@ -434,11 +457,24 @@ test.describe("every surface a person meets (UX-01, D171)", () => {
           "saved",
         );
         await page.locator("#mostra-submit").click();
-        await expect(page.locator("[data-mostra-receipt]")).toHaveAttribute(
-          "data-mostra-receipt",
+        await expect(page.locator("[data-mostra-submission]")).toHaveAttribute(
+          "data-mostra-submission",
           "sent",
         );
         await shoot(page, "hosted-sent");
+        // The footer is one row at any width (Mirza's review of WP-20): its items never wrap
+        // under each other, and Report keeps its name where only its flag shows.
+        const footer = page.locator("[data-mostra-footer]");
+        const items = await footer
+          .locator("[data-mostra-passwords], [data-mostra-report], .mostra-footer-end")
+          .evaluateAll((nodes) =>
+            nodes.map((node) => {
+              const box = node.getBoundingClientRect();
+              return box.top + box.height / 2;
+            }),
+          );
+        expect(Math.max(...items) - Math.min(...items)).toBeLessThan(8);
+        await expect(page.getByRole("button", { name: "Report" })).toBeVisible();
 
         // Linking a machine, signed in: approved and refused.
         const code = async (): Promise<string> => {
@@ -455,7 +491,11 @@ test.describe("every surface a person meets (UX-01, D171)", () => {
         await expect(page.getByText("The machine is linked to your account.")).toBeVisible();
         await shoot(page, "api-device-approved");
         await gotoShell(page, `${api}/device?user_code=${await code()}`);
-        await page.getByRole("button", { name: "Refuse" }).click();
+        // The click loads another page: the picture waits for it, not for the page it leaves.
+        await Promise.all([
+          page.waitForEvent("load"),
+          page.getByRole("button", { name: "Refuse" }).click(),
+        ]);
         await shoot(page, "api-device-refused");
 
         // A chat app's consent: a registered client, then one that returns to this computer.
@@ -514,7 +554,11 @@ test.describe("every surface a person meets (UX-01, D171)", () => {
         await shoot(device, "api-device");
         await device.locator("input[name=user_code]").fill("WXYZ-2345");
         await device.locator("input[name=name]").fill("Ada Lovelace");
-        await device.getByRole("button", { name: "Approve this machine" }).click();
+        // The click loads another page: the picture waits for it, not for the page it leaves.
+        await Promise.all([
+          device.waitForEvent("load"),
+          device.getByRole("button", { name: "Approve this machine" }).click(),
+        ]);
         await shoot(device, "api-device-error");
 
         // The pages a link can end on.
@@ -569,6 +613,32 @@ test.describe("every surface a person meets (UX-01, D171)", () => {
         await gotoShell(device, guarded.url);
         await expect(device.locator("[data-mostra-interstitial]")).toBeVisible();
         await shoot(device, "hosted-interstitial");
+        // Where the operator asks (#167), the shell sends one report of the page's load, which
+        // the server counts for the operator's metering and keeps nowhere.
+        await operator("/state", { policy: { performance: { report: true } } });
+        const measured = await share();
+        await openInShell(device, measured.url);
+        await expect(device.locator("html")).toHaveAttribute("data-shell", "ready");
+        await expect
+          .poll(
+            async () => {
+              const answer = await ask(control, `127.0.0.1:${control}`, "/calls");
+              const calls = JSON.parse(answer.body) as {
+                port: string;
+                payload: { counters?: { name: string; artifactId?: string }[] };
+              }[];
+              return calls.some(
+                (call) =>
+                  call.port === "metering" &&
+                  (call.payload.counters ?? []).some(
+                    (counter) =>
+                      counter.name === "page.loads" && counter.artifactId === measured.artifactId,
+                  ),
+              );
+            },
+            { timeout: 30_000 },
+          )
+          .toBe(true);
         await operator("/state", { policy: {} });
         const paused = await share();
         await owner.call("artifact/pause", {

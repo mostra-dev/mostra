@@ -45,7 +45,7 @@ test.describe("fields and the trusted Submit", () => {
       const again = page.frameLocator("iframe.mostra-frame");
       await expect(again.getByTestId("name")).toHaveValue("Ana");
       await page.locator("#mostra-submit").click();
-      await expect(page.locator("[data-mostra-receipt]")).toBeVisible();
+      await expect(page.locator("[data-mostra-submission]")).toBeVisible();
       await expect(page.locator("#mostra-submit")).toHaveText("Submitted");
       const submitted = (await results(client, own.artifactId)) as {
         submission: { channel: string; viewer: { name?: string } };
@@ -195,6 +195,92 @@ test.describe("a frame whose load fails (D157, #66)", () => {
       const done = (await results(client, own.artifactId)) as { answers: Record<string, unknown> };
       expect(done.answers).toMatchObject({ notes: "after a failed load", name: "Ana" });
       expect(refused).toBe(1);
+    } finally {
+      client.close();
+    }
+  });
+
+  test("a trusted Submit judges the draft the page confirmed, though the shell's stream lags (#194, #85)", async ({
+    page,
+  }, info) => {
+    test.setTimeout(90_000);
+    const client = await Client.connect(run.socket);
+    try {
+      const own = await publishOwn(client, run.home, info);
+      // The shell's own stream and polls answer nothing, as a stream held back under load or
+      // just reopened with its page: only a read of where the view stands now answers.
+      let held = 0;
+      await page.route("**/a/*/_mostra/v/*/events**", async (route) => {
+        if (route.request().url().includes("wait=0")) return route.fallback();
+        held += 1;
+        await new Promise<void>(() => undefined);
+      });
+      await gotoShell(page, await linkFor(client, own.artifactId, viewerName(info)));
+      await expect(page.locator("html")).toHaveAttribute("data-shell", "ready", {
+        timeout: 45_000,
+      });
+      const frame = page.frameLocator("iframe.mostra-frame");
+      const typing = await watchTyping(page, frame);
+      await frame.getByTestId("name").fill("Ana");
+      await typing.typed("name", "Ana");
+      await saved(page);
+      await page.locator("#mostra-submit").click();
+      // The required answer is in the draft the page confirmed: nothing blocks, and it is sent.
+      await expect(page.locator("#mostra-submit")).toHaveText("Submitted", { timeout: 20_000 });
+      await expect(page.locator("[data-mostra-blockers]")).toHaveCount(0);
+      const done = (await results(client, own.artifactId)) as { answers: Record<string, unknown> };
+      expect(done.answers).toMatchObject({ name: "Ana" });
+      expect(held).toBeGreaterThan(0);
+    } finally {
+      await page.unrouteAll({ behavior: "ignoreErrors" });
+      client.close();
+    }
+  });
+
+  test("whose document comes up without a layout is entered again, and works (#152)", async ({
+    page,
+  }, info) => {
+    test.setTimeout(90_000);
+    const client = await Client.connect(run.socket);
+    try {
+      const own = await publishOwn(client, run.home, info);
+      // The page's first document has no layout at all, as Chromium left a hosted frame whose
+      // embedding page loaded again under load (#152): its root has no box, though the window has
+      // a size. Every later document of the tab is laid out as usual.
+      await page.addInitScript(() => {
+        if (window.parent === window || location.pathname !== "/") return;
+        if (sessionStorage.getItem("mostra-e2e-unpainted") !== null) return;
+        sessionStorage.setItem("mostra-e2e-unpainted", "1");
+        const hide = (): void => {
+          document.documentElement.style.display = "none";
+        };
+        if (document.documentElement) hide();
+        else {
+          new MutationObserver((_, observer) => {
+            if (!document.documentElement) return;
+            hide();
+            observer.disconnect();
+          }).observe(document, { childList: true });
+        }
+      });
+      await gotoShell(page, await linkFor(client, own.artifactId, viewerName(info)));
+      await expect(page.locator("html")).toHaveAttribute("data-shell", "ready", {
+        timeout: 45_000,
+      });
+      await expect(page.locator("html")).toHaveAttribute("data-frame-repaints", "1");
+      const frame = page.frameLocator("iframe.mostra-frame");
+      await expect(frame.getByTestId("mode")).toHaveText("live");
+      await expect(frame.getByTestId("notes")).toBeVisible();
+      const typing = await watchTyping(page, frame);
+      await frame.getByTestId("notes").fill("after a blank frame");
+      await frame.getByTestId("name").fill("Ana");
+      await typing.typed("notes", "after a blank frame");
+      await typing.typed("name", "Ana");
+      await saved(page);
+      await page.locator("#mostra-submit").click();
+      await expect(page.locator("#mostra-submit")).toHaveText("Submitted");
+      const done = (await results(client, own.artifactId)) as { answers: Record<string, unknown> };
+      expect(done.answers).toMatchObject({ notes: "after a blank frame", name: "Ana" });
     } finally {
       client.close();
     }

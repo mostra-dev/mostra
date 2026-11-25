@@ -156,7 +156,9 @@ describe("the command line (AX-01)", () => {
     for (const name of ["plugin validate", "plugin add", "plugin list", "plugin remove"]) {
       expect(names).toContain(name);
     }
-    for (const later of ["review", "term"]) {
+    // WP-20 added `review export` (RV-05).
+    expect(names).toContain("review export");
+    for (const later of ["term"]) {
       expect(names.some((name) => name.split(" ")[0] === later)).toBe(false);
     }
   });

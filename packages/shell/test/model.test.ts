@@ -7,6 +7,7 @@ import {
   controlsArmed,
   initialState,
   receiptOf,
+  submissionStanding,
   submitRevision,
   withControlRequest,
   withEvents,
@@ -303,5 +304,34 @@ describe("the receipt under epochs (#118)", () => {
   it("keeps the receipt under once, in every view, since the submission closed the draft", () => {
     const later = initialState({ ...TICKET, viewId: "vw_01J00000000000000000000001" });
     expect(receiptOf(withSubmission(later, submission as never))?.id).toBe(submission.id);
+  });
+  // The receipt's place is the status beside Submit (D175 item 12).
+  it("says where the submission stands while the draft is what was submitted", () => {
+    const deliveries = [
+      { deliveryId: "dlv_1", owner: "", state: "delivered", updatedAt: "x" },
+      { deliveryId: "dlv_2", owner: "jcode", state: "pending", waiting: true, updatedAt: "x" },
+    ];
+    const once = withSubmission(initialState(TICKET), {
+      ...submission,
+      staleView: true,
+      delivery: "pending",
+      deliveries,
+    } as never);
+    const standing = submissionStanding(once, false);
+    expect(standing?.kind).toBe("pending");
+    // Mostra's own adapter isn't a host the viewer is told about.
+    expect(standing?.deliveries.map((delivery) => delivery.owner)).toEqual(["jcode"]);
+    expect(standing?.stale).toBe(true);
+    // A hosted link's respondent learns only that the answer was sent (D165 item 1a).
+    expect(submissionStanding(once, true)).toEqual({ kind: "sent", deliveries: [], stale: false });
+  });
+
+  it("goes back to the draft's state once the next round's draft moves on (epochs)", () => {
+    const epochs = initialState({ ...TICKET, policy: { policy: "epochs" } });
+    const sent = withSubmission(epochs, submission as never);
+    expect(submissionStanding(sent, false)?.kind).toBe("submitted");
+    const moved = { ...sent, revision: 4 };
+    expect(submissionStanding(moved, false)).toBeUndefined();
+    expect(submissionStanding(initialState(TICKET), false)).toBeUndefined();
   });
 });

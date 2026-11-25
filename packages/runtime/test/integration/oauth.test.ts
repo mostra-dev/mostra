@@ -166,7 +166,7 @@ describe("the authorization server for MCP clients (MC-04)", () => {
     const back = await signIn(who, first, "Ada");
     const consent = await who.ask("GET", `${back.pathname}${back.search}`);
     expect(consent.body).toContain("Test client");
-    expect(consent.body).toContain("not checked");
+    expect(consent.body).toContain("An app calling itself <strong>");
     expect(consent.body).toContain("client.example");
     const answer = await approve(who, consent);
     expect(answer.origin + answer.pathname).toBe(redirect);
@@ -499,7 +499,7 @@ describe("the authorization server for MCP clients (MC-04)", () => {
     expect(consent.body).toContain(
       '<strong>Example Cloud account</strong> <span class="m-hint">(this server&#39;s own app)</span>',
     );
-    expect(consent.body).not.toContain("not checked");
+    expect(consent.body).not.toContain("An app calling itself");
     expect(consent.body).not.toContain("Whatever the document says");
     expect(consent.body).toContain("account.example");
     // Approved once, the next sign-in of this account goes straight back with a code.
@@ -543,9 +543,7 @@ describe("the authorization server for MCP clients (MC-04)", () => {
       authorizeUrl(other, "https://stranger.example/cb", challenge),
     );
     expect(stranger.status, stranger.body).toBe(200);
-    expect(stranger.body).toContain(
-      '<strong>Example Cloud account</strong> <span class="m-hint">(a name the app gives itself, not checked)</span>',
-    );
+    expect(stranger.body).toContain("An app calling itself <strong>Example Cloud account</strong>");
     expect(stranger.body).not.toContain("this server&#39;s own app");
   }, 60_000);
 

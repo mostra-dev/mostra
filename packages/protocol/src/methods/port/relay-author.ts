@@ -20,6 +20,10 @@ export const RELAY_AUTHOR_METHODS = [
   // A fingerprint of an artifact's files, so a verify answers only for its source (#157).
   "workspace/fingerprint",
   "verify/screenshot",
+  // A review comment's crop, rendered by the owner's verify runner from what the hosted home sends
+  // (WP-20, D183 item 4): `{ artifactId, versionId, threadId, viewId, viewerId, anchor, draft,
+  // state }` → `{ png, width, height }`.
+  "review/crop",
 ] as const;
 
 /** One of {@link RELAY_AUTHOR_METHODS}. */

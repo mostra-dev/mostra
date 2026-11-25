@@ -260,6 +260,7 @@ export const RUNTIME_MODULES: readonly string[] = [
   "packs",
   "kit",
   "share",
+  "review",
   "link",
   "server",
   "protocol-server",

@@ -139,11 +139,12 @@ describe("the hosted shell's rules and viewers (HY-08, HY-09)", () => {
       "require-trusted-types-for 'script'",
     );
     expect(shellPage.header("x-frame-options")).toBe("DENY");
-    // Every document on the label, the worker-mode bootstrap included, names only this domain's shell.
+    // Every document on the label, the worker-mode bootstrap included, names only its own origin
+    // (the artifact's pages may frame each other, WP-20) and this domain's shell.
     const boot = await browser.navigate(`${opened.frameOrigin}/_mostra/enter`, apex);
     for (const document of [boot, opened.page]) {
       const policy = document.header("content-security-policy") ?? "";
-      expect(/frame-ancestors ([^;]+)/.exec(policy)?.[1]?.trim()).toBe(apex);
+      expect(/frame-ancestors ([^;]+)/.exec(policy)?.[1]?.trim()).toBe(`'self' ${apex}`);
     }
     // A shell asset is same-origin only.
     const asset = /\/_mostra\/shell\/assets\/[^"']+\.js/.exec(shellPage.body)?.[0];

@@ -206,14 +206,43 @@ function isViewer(value: unknown): value is Viewer {
 /** How long one attempt at the shell's handshake may take. */
 const HANDSHAKE_TIMEOUT_MS = 10_000;
 
+/** The errors the page raised since this module loaded: uncaught, and unhandled rejections. */
+let pageErrors = 0;
+if (typeof window !== "undefined") {
+  window.addEventListener("error", () => {
+    pageErrors += 1;
+  });
+  window.addEventListener("unhandledrejection", () => {
+    pageErrors += 1;
+  });
+}
+
 /**
- * Tells the shell the page has rendered (`mostra/ready`), after the next frame paints. The
- * client runtime calls it right after mounting the page.
+ * Whether this document was laid out as if its frame weren't shown: a window with a size whose
+ * root has no box at all, which Chromium has done to a cross-origin frame whose embedding page was
+ * loading again under load (#152). The shell then enters the frame again.
+ */
+function unpainted(): boolean {
+  if (window.innerWidth === 0 || window.innerHeight === 0) return false;
+  const root = document.documentElement.getBoundingClientRect();
+  return root.width === 0 && root.height === 0;
+}
+
+/**
+ * Tells the shell the page has rendered (`mostra/ready`), after the next frame paints, with how
+ * many errors it raised by then (`errors`, for an operator's performance report, #167), and
+ * `painted: false` when its document has no layout (#152). The client runtime calls it right after
+ * mounting the page.
  */
 export function reportReady(): void {
   void connectShell().then((connection) => {
     if (!connection) return;
-    requestAnimationFrame(() => connection.bridge.notify(mostraReady, {}));
+    requestAnimationFrame(() =>
+      connection.bridge.notify(mostraReady, {
+        errors: Math.min(pageErrors, 10_000),
+        ...(unpainted() ? { painted: false } : {}),
+      }),
+    );
   });
 }
 

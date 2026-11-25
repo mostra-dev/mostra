@@ -28,7 +28,10 @@ import {
   hostedPushMethod,
   hostedSubmissionMethod,
   type InstanceInfo,
+  type JsonRpcParams,
   type PausedBy,
+  performanceBucket,
+  portRelayAuthorMethod,
   type RelayAuthorProgressParams,
   RouteId,
   RpcError,
@@ -62,6 +65,7 @@ import {
 } from "../protocol-server/index.ts";
 import { canonicalRef, listingDigest, versionIdFor } from "../publish/index.ts";
 import { openRegistry, type Registry } from "../registry/index.ts";
+import { CROP_WAIT_MS, createCropper, openBlobs } from "../review/index.ts";
 import { type AppPages, createAppPages } from "./app-pages.ts";
 import type { Authorization } from "./auth.ts";
 import type { ClientAddresses, RateLimiter } from "./clients.ts";
@@ -100,6 +104,9 @@ function safeListingPath(path: string): boolean {
     .split("/")
     .every((part) => part !== "" && part !== "." && part !== ".." && !UNSAFE_PART.test(part));
 }
+
+/** How long an owner instance has to render a hosted comment's crop: verify's start and a render. */
+const RELAYED_CROP_MS = 90_000;
 
 export function randomLabel(): string {
   const bytes = randomBytes(26);
@@ -518,8 +525,74 @@ export async function openHostedHome(options: HostedHomeOptions): Promise<Hosted
       );
     },
   };
+  // A hosted page's comments (WP-20, D183 item 4): this home holds no build and runs no browser,
+  // so each crop is rendered on the artifact's owner instance, from the answers the comment's viewer
+  // gave here, while the owner is connected; while it is away, a crop waits, never failing for it.
+  const blobs = openBlobs(options.dir);
+  const ownerSession = (artifactId: string): number | undefined => {
+    const link = ownerLinkOf(artifactId);
+    if (link === undefined) return undefined;
+    return protocol
+      .registrants("relay")
+      .filter((entry) => entry.owner === link)
+      .at(-1)?.session;
+  };
+  const cropper = createCropper({
+    log,
+    blobs,
+    capture: async (job) => {
+      const session = ownerSession(job.artifactId);
+      if (session === undefined) throw new Error("the artifact's owner instance is away");
+      const answer = (await protocol.callSession(
+        session,
+        portRelayAuthorMethod.method,
+        {
+          method: "review/crop",
+          params: {
+            artifactId: job.artifactId,
+            versionId: job.versionId,
+            threadId: job.threadId,
+            viewId: job.viewId,
+            viewerId: job.viewerId,
+            anchor: job.anchor,
+            ...interaction.viewerAnswers(job.artifactId, job.viewerId),
+            live: live.stored(job.artifactId),
+          },
+        } as unknown as JsonRpcParams,
+        RELAYED_CROP_MS,
+      )) as { png?: unknown; width?: unknown; height?: unknown } | null;
+      if (
+        typeof answer?.png !== "string" ||
+        typeof answer.width !== "number" ||
+        typeof answer.height !== "number"
+      ) {
+        throw new Error("the owner instance gave no crop");
+      }
+      return {
+        png: Buffer.from(answer.png, "base64"),
+        width: answer.width,
+        height: answer.height,
+        source: "default",
+      };
+    },
+    away: (job) => ownerSession(job.artifactId) === undefined,
+    pending: (which) => interaction.pendingCrops(which),
+    record: (threadId, outcome) => interaction.setCrop(threadId, outcome),
+  });
+  interaction.onThread((_job, change) => {
+    if (change === "created") cropper.kick();
+  });
   const pages = options.services?.pages?.();
   const gateway: Gateway = createGateway({
+    crops: blobs.read,
+    // Submit waits for the viewer's crops only while the owner can take them.
+    beforeSubmit: async (page) => {
+      if (ownerSession(page.artifactId) === undefined) return;
+      await cropper.settled(
+        interaction.pendingCropsOf(page.artifactId, page.viewerId),
+        CROP_WAIT_MS,
+      );
+    },
     ...(pages ? { pages } : {}),
     ledger,
     log,
@@ -601,6 +674,7 @@ export async function openHostedHome(options: HostedHomeOptions): Promise<Hosted
             madeWith: options.services.madeWith,
             ...(options.services.signin ? { signin: options.services.signin } : {}),
             viewed: (input) => metered(input.artifactId, input.viewerId),
+            performed: (input) => performed(input),
             log,
           })
         : {}),
@@ -768,6 +842,34 @@ export async function openHostedHome(options: HostedHomeOptions): Promise<Hosted
    * A view for metering, under the viewer's monthly pseudonymous key (D167): the account for a
    * signed-in viewer, the viewer for a link minted with one, the route's key for anyone else.
    */
+  /** A page view's performance report (#167): its load time's bucket, and its errors. */
+  const performed = (input: {
+    readonly artifactId: string;
+    readonly versionId: string;
+    readonly loadMs: number;
+    readonly errors: number;
+  }): void => {
+    const meter = options.services?.meter;
+    if (!meter?.on) return;
+    const route = routeOf(input.artifactId);
+    const scope = {
+      account: (options.services as HostedServices).owner(id).account,
+      home: id,
+      artifactId: input.artifactId,
+      ...(route ? { routeId: route.id } : {}),
+    };
+    meter.add("page.loads", {
+      ...scope,
+      dimensions: { versionId: input.versionId, bucket: performanceBucket(input.loadMs) },
+    });
+    if (input.errors > 0) {
+      meter.add(
+        "page.errors",
+        { ...scope, dimensions: { versionId: input.versionId } },
+        input.errors,
+      );
+    }
+  };
   const metered = (artifactId: string, viewerId: string): void => {
     const meter = options.services?.meter;
     if (!meter?.on) return;
@@ -1167,6 +1269,8 @@ export async function openHostedHome(options: HostedHomeOptions): Promise<Hosted
     onInitialized: (session) => {
       interaction.connected(session);
       relay.connected(session);
+      // An owner back: the crops that waited for it are taken now.
+      cropper.kick();
     },
     onClosed: (session) => {
       interaction.disconnected(session);
@@ -1344,7 +1448,35 @@ export async function openHostedHome(options: HostedHomeOptions): Promise<Hosted
       const versions = plan.versions;
       const going = new Set(plan.going);
       if (registry.list({}).some((summary) => summary.id === artifactId)) revokeLinks(artifactId);
+      // Its comments' crops show what its viewers answered: they go with it, but for one another
+      // artifact's thread of this home still names (crops are content-addressed).
+      const crops = ledger.read((db) =>
+        db
+          .all<{ crop_blob: string }>(
+            "SELECT DISTINCT crop_blob FROM thread WHERE artifact_id = ? AND crop_blob IS NOT NULL",
+            artifactId,
+          )
+          .map((row) => row.crop_blob),
+      );
       const removed = ledger.removal((db) => purgeArtifact(db, artifactId));
+      const keptCrops = new Set(
+        ledger.read((db) =>
+          db
+            .all<{ crop_blob: string }>(
+              "SELECT DISTINCT crop_blob FROM thread WHERE crop_blob IS NOT NULL",
+            )
+            .map((row) => row.crop_blob),
+        ),
+      );
+      for (const sha of crops) {
+        if (!keptCrops.has(sha)) {
+          await blobs
+            .remove(sha)
+            .catch((error: unknown) =>
+              log.warn("server.remove_crop_failed", { artifactId, error }),
+            );
+        }
+      }
       // A test cuts the removal off here, between its two databases (`remove:after-purge`).
       faults.at("remove:after-purge");
       // Files another version of this home still names stay this home's.
@@ -1418,6 +1550,7 @@ export async function openHostedHome(options: HostedHomeOptions): Promise<Hosted
     serve,
     async stop() {
       feed?.stop();
+      await cropper.stop();
       relay.stop();
       live.stop();
       interaction.stop();
