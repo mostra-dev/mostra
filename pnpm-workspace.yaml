@@ -18,6 +18,8 @@ minimumReleaseAge: 10080
 minimumReleaseAgeStrict: true
 minimumReleaseAgeExclude:
   - '@mostra/*'
+  # Renovate security update: hono@4.13.16
+  - hono@4.13.16
 trustPolicy: no-downgrade
 trustPolicyIgnoreAfter: 262800
 blockExoticSubdeps: true
@@ -56,7 +58,7 @@ catalog:
   tar: 7.5.22
   undici: 8.12.3
   # The gateway (WP-05, D18): Hono on Node's HTTP server
-  hono: 4.13.13
+  hono: 4.13.16
   '@hono/node-server': 2.1.5
   # The remote server's network binding (WP-29, D165 item 2): JSON-RPC over WebSocket, with pings
   ws: 8.22.0
