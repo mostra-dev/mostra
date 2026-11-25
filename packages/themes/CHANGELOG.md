@@ -1,5 +1,11 @@
 # @mostra/themes
 
+## 0.20.0
+
+### Minor Changes
+
+- [#244](https://github.com/mostra-dev/mostra/pull/244) [`bd0834e`](https://github.com/mostra-dev/mostra/commit/bd0834e6c8ee9a1a0930c57d458733e5c2662c11) Thanks [@dev-mirzabicer](https://github.com/dev-mirzabicer)! - A server's own pages show Mostra's wordmark at the top where the server calls itself Mostra (its default), and an operator's own name set in the display face as a mark; the consent page says "An app calling itself …" before a name nobody checked, in place of a parenthesis after it.
+
 ## 0.19.1
 
 No changes in this release.
