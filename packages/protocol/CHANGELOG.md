@@ -1,5 +1,19 @@
 # @mostra/protocol
 
+## 0.20.0
+
+### Minor Changes
+
+- [#244](https://github.com/mostra-dev/mostra/pull/244) [`4540c0c`](https://github.com/mostra-dev/mostra/commit/4540c0c335822da6e1cb757db1e1e7bdc9a29b23) Thanks [@dev-mirzabicer](https://github.com/dev-mirzabicer)! - A hosted page's comments get their crops: the hosted home asks the artifact's owner instance (`port/relay.author`'s `review/crop`), which renders the crop with its host's `capture` port or its verify runner from the answers sent, keeps it in its own home and returns it; a crop waits while the owner is away.
+
+- [#244](https://github.com/mostra-dev/mostra/pull/244) [`c06fa31`](https://github.com/mostra-dev/mostra/commit/c06fa31bed473eddc348b3cc0bc638c0f7a1ff47) Thanks [@dev-mirzabicer](https://github.com/dev-mirzabicer)! - An operator's `policy.link` may ask for `performance: { report: true }` ([#167](https://github.com/mostra-dev/mostra/issues/167)): each hosted page then sends one report of how long it took to be ready and how many errors it raised, which the server counts as `page.loads` and `page.errors` for the `metering` port and keeps nowhere. A page's `mostra/ready` carries its error count.
+
+- [#244](https://github.com/mostra-dev/mostra/pull/244) [`b4d39b0`](https://github.com/mostra-dev/mostra/commit/b4d39b033760a8b80ee615f0d46b04ad09d61ee9) Thanks [@dev-mirzabicer](https://github.com/dev-mirzabicer)! - Comment mode on a phone: the comments panel peeks (expandable) instead of covering the page, a picked place always shows its composer, a drag or a wheel scrolls the page (`mostra/review.scroll`), pins scrolled out of view aren't drawn, and a crop of selected words highlights exactly those words.
+
+- [#244](https://github.com/mostra-dev/mostra/pull/244) [`3c8737c`](https://github.com/mostra-dev/mostra/commit/3c8737c3ff4ac1ed846ce2ca146b91afc5ea7ce0) Thanks [@dev-mirzabicer](https://github.com/dev-mirzabicer)! - The review layer's shapes (WP-20): anchors with every layer (`ReviewAnchor`, `AnchorSelector`), threads as pages see them (`ReviewThread`, `ReviewPerson`) and the shell's review routes' requests, the bridge's review messages (`mostra/review.hitTest`, `.track`, `.positions`, `.scrollTo`, `mostra/surfaces`), `review/export`, the `reviews` and `capture` ports (`port/reviews.mirror`, `port/capture.screenshot`), results' comments with every anchor layer and the crop's state, the `REVIEW` diagnostic area, and a Choose label of up to 256 characters ([#188](https://github.com/mostra-dev/mostra/issues/188)).
+
+- [#244](https://github.com/mostra-dev/mostra/pull/244) [`8720320`](https://github.com/mostra-dev/mostra/commit/87203205993c53e10f5d61167751d6725b2bc849) Thanks [@dev-mirzabicer](https://github.com/dev-mirzabicer)! - Comment on words selected on a page: the shell offers a Comment button beside them, and the comment anchors to those words (`ReviewAnchor.selection`, `mostra/review.selection`). Comment mode says what to do, with Cancel.
+
 ## 0.19.1
 
 No changes in this release.

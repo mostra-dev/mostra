@@ -1,5 +1,32 @@
 # @mostra/shell
 
+## 0.20.0
+
+### Minor Changes
+
+- [#244](https://github.com/mostra-dev/mostra/pull/244) [`c06fa31`](https://github.com/mostra-dev/mostra/commit/c06fa31bed473eddc348b3cc0bc638c0f7a1ff47) Thanks [@dev-mirzabicer](https://github.com/dev-mirzabicer)! - An operator's `policy.link` may ask for `performance: { report: true }` ([#167](https://github.com/mostra-dev/mostra/issues/167)): each hosted page then sends one report of how long it took to be ready and how many errors it raised, which the server counts as `page.loads` and `page.errors` for the `metering` port and keeps nowhere. A page's `mostra/ready` carries its error count.
+
+- [#244](https://github.com/mostra-dev/mostra/pull/244) [`b4d39b0`](https://github.com/mostra-dev/mostra/commit/b4d39b033760a8b80ee615f0d46b04ad09d61ee9) Thanks [@dev-mirzabicer](https://github.com/dev-mirzabicer)! - Comment mode on a phone: the comments panel peeks (expandable) instead of covering the page, a picked place always shows its composer, a drag or a wheel scrolls the page (`mostra/review.scroll`), pins scrolled out of view aren't drawn, and a crop of selected words highlights exactly those words.
+
+- [#244](https://github.com/mostra-dev/mostra/pull/244) [`12b5b07`](https://github.com/mostra-dev/mostra/commit/12b5b0796ee09e6aa50e0410679c049f9df71795) Thanks [@dev-mirzabicer](https://github.com/dev-mirzabicer)! - The review layer (WP-20): comments pinned on any content in the shell's overlay, with replies, resolve and reopen, mentions, every anchor layer and a crop of each place; review sets in `@mostra/kit/review` (gallery, focus, synchronized compare with a difference view, and the trusted Choose); `registerAnchorProvider` and `useReviewSurface` in `@mostra/react`; `mostra review export`; and the `reviews` and `capture` host ports.
+
+- [#244](https://github.com/mostra-dev/mostra/pull/244) [`8720320`](https://github.com/mostra-dev/mostra/commit/87203205993c53e10f5d61167751d6725b2bc849) Thanks [@dev-mirzabicer](https://github.com/dev-mirzabicer)! - Comment on words selected on a page: the shell offers a Comment button beside them, and the comment anchors to those words (`ReviewAnchor.selection`, `mostra/review.selection`). Comment mode says what to do, with Cancel.
+
+- [#244](https://github.com/mostra-dev/mostra/pull/244) [`20236c9`](https://github.com/mostra-dev/mostra/commit/20236c9f48dbe33e3020cc66d57df383ac7fce2a) Thanks [@dev-mirzabicer](https://github.com/dev-mirzabicer)! - No submission receipt covers the page any more: the status beside Submit says Submitted, then Pending delivery, Delivered or Undeliverable, and behind it each host's delivery and a stale view's note. A review set's Choose takes a candidate's label up to 256 characters, cut with an ellipsis where the bar has no room and named whole to assistive technology and in results ([#188](https://github.com/mostra-dev/mostra/issues/188)).
+
+### Patch Changes
+
+- [#244](https://github.com/mostra-dev/mostra/pull/244) [`9173c59`](https://github.com/mostra-dev/mostra/commit/9173c598a552ec755f423ac4329bdf1c3751b810) Thanks [@dev-mirzabicer](https://github.com/dev-mirzabicer)! - The hosted footer keeps one row on a phone: Report and the made-with mark show their icons, their words kept for screen readers.
+
+- [#244](https://github.com/mostra-dev/mostra/pull/244) [`bcfd78a`](https://github.com/mostra-dev/mostra/commit/bcfd78a4926ffde4c0a325e8e2999a04219efc8f) Thanks [@dev-mirzabicer](https://github.com/dev-mirzabicer)! - The review overlay's design pass: on a phone the comments sheet stands on the dock, so the trusted Submit stays in reach; a pin stands where the person pointed; a submission that closes the draft closes its comments too; the comment button's name is its words for every reader; comment places read as people say them ("heading", "drawing"); a page that leaves pins out of its reports can't make them flicker.
+
+- [#244](https://github.com/mostra-dev/mostra/pull/244) [`a3cfc72`](https://github.com/mostra-dev/mostra/commit/a3cfc721b9cb79f7ae8f0ef66a4584a81574bbff) Thanks [@dev-mirzabicer](https://github.com/dev-mirzabicer)! - The trusted Submit judges required answers from the draft the page confirmed: a shell whose own stream lags (just reopened, held back under load) reads where the view stands before it calls an answer missing ([#194](https://github.com/mostra-dev/mostra/issues/194), [#85](https://github.com/mostra-dev/mostra/issues/85)).
+
+- [#244](https://github.com/mostra-dev/mostra/pull/244) [`552ae52`](https://github.com/mostra-dev/mostra/commit/552ae5275017c14efadf7be961f805bf92271df6) Thanks [@dev-mirzabicer](https://github.com/dev-mirzabicer)! - A page whose document came up without a layout, as Chromium once left a hosted frame after its page loaded again ([#152](https://github.com/mostra-dev/mostra/issues/152)), says so when it is ready, and the shell enters the frame again.
+- Updated dependencies [[`4540c0c`](https://github.com/mostra-dev/mostra/commit/4540c0c335822da6e1cb757db1e1e7bdc9a29b23), [`c06fa31`](https://github.com/mostra-dev/mostra/commit/c06fa31bed473eddc348b3cc0bc638c0f7a1ff47), [`b4d39b0`](https://github.com/mostra-dev/mostra/commit/b4d39b033760a8b80ee615f0d46b04ad09d61ee9), [`3c8737c`](https://github.com/mostra-dev/mostra/commit/3c8737c3ff4ac1ed846ce2ca146b91afc5ea7ce0), [`8720320`](https://github.com/mostra-dev/mostra/commit/87203205993c53e10f5d61167751d6725b2bc849), [`bd0834e`](https://github.com/mostra-dev/mostra/commit/bd0834e6c8ee9a1a0930c57d458733e5c2662c11)]:
+  - @mostra/protocol@0.20.0
+  - @mostra/themes@0.20.0
+
 ## 0.19.1
 
 ### Patch Changes

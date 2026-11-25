@@ -1,5 +1,25 @@
 # @mostra/runtime
 
+## 0.20.0
+
+### Minor Changes
+
+- [#244](https://github.com/mostra-dev/mostra/pull/244) [`4540c0c`](https://github.com/mostra-dev/mostra/commit/4540c0c335822da6e1cb757db1e1e7bdc9a29b23) Thanks [@dev-mirzabicer](https://github.com/dev-mirzabicer)! - A hosted page's comments get their crops: the hosted home asks the artifact's owner instance (`port/relay.author`'s `review/crop`), which renders the crop with its host's `capture` port or its verify runner from the answers sent, keeps it in its own home and returns it; a crop waits while the owner is away.
+
+- [#244](https://github.com/mostra-dev/mostra/pull/244) [`c06fa31`](https://github.com/mostra-dev/mostra/commit/c06fa31bed473eddc348b3cc0bc638c0f7a1ff47) Thanks [@dev-mirzabicer](https://github.com/dev-mirzabicer)! - An operator's `policy.link` may ask for `performance: { report: true }` ([#167](https://github.com/mostra-dev/mostra/issues/167)): each hosted page then sends one report of how long it took to be ready and how many errors it raised, which the server counts as `page.loads` and `page.errors` for the `metering` port and keeps nowhere. A page's `mostra/ready` carries its error count.
+
+- [#244](https://github.com/mostra-dev/mostra/pull/244) [`12b5b07`](https://github.com/mostra-dev/mostra/commit/12b5b0796ee09e6aa50e0410679c049f9df71795) Thanks [@dev-mirzabicer](https://github.com/dev-mirzabicer)! - The review layer (WP-20): comments pinned on any content in the shell's overlay, with replies, resolve and reopen, mentions, every anchor layer and a crop of each place; review sets in `@mostra/kit/review` (gallery, focus, synchronized compare with a difference view, and the trusted Choose); `registerAnchorProvider` and `useReviewSurface` in `@mostra/react`; `mostra review export`; and the `reviews` and `capture` host ports.
+
+- [#244](https://github.com/mostra-dev/mostra/pull/244) [`bd0834e`](https://github.com/mostra-dev/mostra/commit/bd0834e6c8ee9a1a0930c57d458733e5c2662c11) Thanks [@dev-mirzabicer](https://github.com/dev-mirzabicer)! - A server's own pages show Mostra's wordmark at the top where the server calls itself Mostra (its default), and an operator's own name set in the display face as a mark; the consent page says "An app calling itself …" before a name nobody checked, in place of a parenthesis after it.
+
+### Patch Changes
+
+- Updated dependencies [[`4540c0c`](https://github.com/mostra-dev/mostra/commit/4540c0c335822da6e1cb757db1e1e7bdc9a29b23), [`c06fa31`](https://github.com/mostra-dev/mostra/commit/c06fa31bed473eddc348b3cc0bc638c0f7a1ff47), [`b4d39b0`](https://github.com/mostra-dev/mostra/commit/b4d39b033760a8b80ee615f0d46b04ad09d61ee9), [`3c8737c`](https://github.com/mostra-dev/mostra/commit/3c8737c3ff4ac1ed846ce2ca146b91afc5ea7ce0), [`8720320`](https://github.com/mostra-dev/mostra/commit/87203205993c53e10f5d61167751d6725b2bc849), [`bd0834e`](https://github.com/mostra-dev/mostra/commit/bd0834e6c8ee9a1a0930c57d458733e5c2662c11)]:
+  - @mostra/protocol@0.20.0
+  - @mostra/themes@0.20.0
+  - @mostra/mcp@0.20.0
+  - @mostra/plugin-mcp-app@0.20.0
+
 ## 0.19.1
 
 ### Patch Changes

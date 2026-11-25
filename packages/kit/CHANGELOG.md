@@ -1,5 +1,16 @@
 # @mostra/kit
 
+## 0.20.0
+
+### Minor Changes
+
+- [#244](https://github.com/mostra-dev/mostra/pull/244) [`12b5b07`](https://github.com/mostra-dev/mostra/commit/12b5b0796ee09e6aa50e0410679c049f9df71795) Thanks [@dev-mirzabicer](https://github.com/dev-mirzabicer)! - The review layer (WP-20): comments pinned on any content in the shell's overlay, with replies, resolve and reopen, mentions, every anchor layer and a crop of each place; review sets in `@mostra/kit/review` (gallery, focus, synchronized compare with a difference view, and the trusted Choose); `registerAnchorProvider` and `useReviewSurface` in `@mostra/react`; `mostra review export`; and the `reviews` and `capture` host ports.
+
+### Patch Changes
+
+- Updated dependencies [[`c06fa31`](https://github.com/mostra-dev/mostra/commit/c06fa31bed473eddc348b3cc0bc638c0f7a1ff47), [`b4d39b0`](https://github.com/mostra-dev/mostra/commit/b4d39b033760a8b80ee615f0d46b04ad09d61ee9), [`bcfd78a`](https://github.com/mostra-dev/mostra/commit/bcfd78a4926ffde4c0a325e8e2999a04219efc8f), [`12b5b07`](https://github.com/mostra-dev/mostra/commit/12b5b0796ee09e6aa50e0410679c049f9df71795), [`8720320`](https://github.com/mostra-dev/mostra/commit/87203205993c53e10f5d61167751d6725b2bc849), [`552ae52`](https://github.com/mostra-dev/mostra/commit/552ae5275017c14efadf7be961f805bf92271df6)]:
+  - @mostra/react@0.20.0
+
 ## 0.19.1
 
 ### Patch Changes
