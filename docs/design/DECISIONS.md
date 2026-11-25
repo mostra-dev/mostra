@@ -107,6 +107,7 @@
 | M100 | 2026-11-22T20:54:26Z | WP-20's assignment, with Mirza away for most of it: "For all of the decisions -- I trust you to make the most robust, appropriate, high-quality, enterprise-grade, top-notch, well-fit, well-thought and considered, reliable, future-proof and foolproof, well-informed, good-engineering, optimal decision." Recorded under D183. |
 | M101 | 2026-11-24T04:53:43Z | After WP-20's review was posted and the candidate's pictures seen ("they look excellent"): a crop of the commented component showed light on the dark theme; on a phone nothing in comment mode said to tap what to comment on; and "people should also be able to select a piece of text and comment on it -- as a convenience", including on the agent's own words, "not to request changes but to, say, answer/comment on a statement made by the agent". Recorded under D183 item 15. |
 | M102 | 2026-11-24T13:29:08Z | After the phone check over a public tunnel ("It looks excellent"): pins stuck to the top of the screen when scrolled past ("they should just disappear"); a crop of selected words boxed whole lines ("a highlight mechanism"); comment mode couldn't be scrolled on a phone; existing comments popped up over the whole screen in comment mode, and a place picked with the panel closed showed nothing ("Big problem!"); of a peeking panel or a drawer, "I lean onto 1" (the panel peeks, expandable, gone with comment mode unless expanded). Also: "you can completely delete the scratch files of the previous, now-complete WPs." Recorded under D183 item 15. |
+| M103 | 2026-11-24 | Accepted WP-20 after the review's fixes and his notes (M101): "This looks incredible! I absolutely accept", with one more note, the hosted footer on a phone, which took two rows (fixed before the merge), and a question about the phone check, which he then ran (M102). Recorded under D183. |
 | M38 | 2026-10-24T18:18:49Z | Accepted WP-W2 after its release, and delegated the three open points of its closeout ("I trust you to make the most robust, high-quality, well-thought decisions on all the points you mentioned"): Firefox on Windows arm64, the slow-flush hypothesis of #66, and the Mostra HQ roadmap update. Recorded under D151. |
 | M37 | 2026-10-24T09:53:18Z | Accepted the WP-W2 candidate and D151 ("Approved!"), and started its Claude Opus review; the review's ten findings were fixed under D151 before the merge (D149, D151). Recorded as D151. |
 | M36 | 2026-10-23T17:08:27Z | Accepted WP-W1 after its Claude Opus review: "100% approved", D150 and the package's agent-facing prose with it (D149), and allowed the matching Mostra HQ update. Recorded as D150. |
@@ -1785,7 +1786,7 @@ WP-28 designs and WP-30 builds, in the hosted shell on its trusted origin and ne
 
 *Source:* M97, M98, M99.
 
-### D183. The review layer, its ports and the shell's final pass (M100 to M102)
+### D183. The review layer, its ports and the shell's final pass (M100 to M103)
 *Status:* delegated at M100 ("I trust you to make the most robust, appropriate, high-quality … decision"), decided and built by WP-20 under D123; Mirza reviews the viewer-facing and agent-facing words with the package (D149) and its design (D68, SH-05). Amends D98 item 4 and ARCHITECTURE §15.6's wording on `frame-ancestors`, and D175 item 12 is carried out; every interface change is additive.
 1. **Who sees a thread.** Hosts and agents see every thread. A page sees the threads its viewer started, wrote in or is mentioned in, and every thread when its viewer is the artifact's owner or the manifest's `team.visibility` is `names` (D168 item 8). People on a page are named by their key on the artifact and display name, never a `ref`, email or viewer ID.
 2. **Threads travel with the submission.** A submission carries the threads its viewer started or wrote in, as they stand, with their crops; Submit waits up to 20 s (`CROP_WAIT_MS`) for that viewer's crops still being taken, and a crop still pending is submitted as `pending`. A results comment's `crop` gains `state` (`captured`, `pending`, `failed`) and `reason`, additively; its `path` is empty unless captured. A draft a `once` submission closed takes no new thread, reply or status change (`MOSTRA_SUBMIT_ALREADY`), and its threads stay readable.
@@ -1807,7 +1808,7 @@ WP-28 designs and WP-30 builds, in the hosted shell on its trusted origin and ne
 
 *Rejected:* comments as viewer-only draft fields (a mention could reach nobody, and replies from others would have nowhere to live); a crop taken by the page itself through SVG `foreignObject` (fails on cross-origin content and in WebKit, and a page could forge it); a pixel diff rendered on the server for in-page candidates (seconds per change, against a live CSS blend the viewer can scroll in sync); refusing a submission while a crop is pending (a capture failure would block answers).
 
-*Source:* M100, M101, M102.
+*Source:* M100 to M103.
 
 ## Research consensus adopted
 
