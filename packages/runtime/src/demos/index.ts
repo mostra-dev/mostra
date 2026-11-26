@@ -430,51 +430,56 @@ export function createDemos(options: DemosOptions): Demos {
     },
 
     build(inputs, how = {}) {
-      return inTurn(`${inputs.sourceDir}\0${inputs.outputDir}`, async () => {
-        if (!how.force) {
-          const found = await cached(inputs.digest);
-          if (found) return found;
-        }
-        const ran = await runBuild(inputs, how.signal);
-        if (!("ok" in ran)) return ran;
-        let problem: Diagnostic | undefined;
-        try {
-          problem = await checkDemoOutput(inputs.name, inputs.outputDir, inputs.base);
-        } catch {
-          problem = createDiagnostic("MOSTRA_DEMO_OUTPUT_MISSING", {
-            message: `The demo "${inputs.name}" built, but its output folder ${inputs.outputDir} doesn't exist.`,
-          });
-        }
-        if (problem) return { status: "failed", diagnostic: problem };
-        // Kept whole or not at all: a scratch folder renamed into place.
-        await mkdir(cacheDir, { recursive: true });
-        const scratch = join(cacheDir, `.tmp-${randomBytes(6).toString("hex")}`);
-        await cp(inputs.outputDir, join(scratch, "out"), { recursive: true, dereference: true });
-        const files = (await filesUnder(join(scratch, "out"))).length;
-        await writeFile(
-          join(scratch, "demo.json"),
-          `${JSON.stringify({ name: inputs.name, digest: inputs.digest, base: inputs.base, files, builtAt: new Date().toISOString() }, null, 2)}\n`,
-        );
-        const target = join(cacheDir, inputs.digest);
-        // One commit per digest at a time. Two folders with the same content build the same
-        // output, and a publish may be copying out of the entry now: an entry, once there, is never
-        // removed under a reader. The build that finds one already kept leaves its own; a forced
-        // build sets the old one aside first, so a reader holds either whole.
-        return inTurn(`digest\0${inputs.digest}`, async () => {
-          const there = await cached(inputs.digest);
-          if (there && !how.force) {
-            await rm(scratch, { recursive: true, force: true });
-            return { ...there, status: "built" as const, ms: ran.ms };
+      // One build per digest at a time: two folders holding the same source (a copy, a second
+      // checkout) build the same output, so the second waits and takes the first's from the cache.
+      // Then one build per folder at a time, since a build writes its output folder.
+      return inTurn(`digest-build\0${inputs.digest}`, () =>
+        inTurn(`${inputs.sourceDir}\0${inputs.outputDir}`, async () => {
+          if (!how.force) {
+            const found = await cached(inputs.digest);
+            if (found) return found;
           }
-          const aside = there
-            ? join(cacheDir, `.old-${randomBytes(6).toString("hex")}`)
-            : undefined;
-          if (aside !== undefined) await renamePath(target, aside);
-          await renamePath(scratch, target);
-          if (aside !== undefined) await rm(aside, { recursive: true, force: true });
-          return { status: "built" as const, dir: join(target, "out"), files, ms: ran.ms };
-        });
-      });
+          const ran = await runBuild(inputs, how.signal);
+          if (!("ok" in ran)) return ran;
+          let problem: Diagnostic | undefined;
+          try {
+            problem = await checkDemoOutput(inputs.name, inputs.outputDir, inputs.base);
+          } catch {
+            problem = createDiagnostic("MOSTRA_DEMO_OUTPUT_MISSING", {
+              message: `The demo "${inputs.name}" built, but its output folder ${inputs.outputDir} doesn't exist.`,
+            });
+          }
+          if (problem) return { status: "failed", diagnostic: problem };
+          // Kept whole or not at all: a scratch folder renamed into place.
+          await mkdir(cacheDir, { recursive: true });
+          const scratch = join(cacheDir, `.tmp-${randomBytes(6).toString("hex")}`);
+          await cp(inputs.outputDir, join(scratch, "out"), { recursive: true, dereference: true });
+          const files = (await filesUnder(join(scratch, "out"))).length;
+          await writeFile(
+            join(scratch, "demo.json"),
+            `${JSON.stringify({ name: inputs.name, digest: inputs.digest, base: inputs.base, files, builtAt: new Date().toISOString() }, null, 2)}\n`,
+          );
+          const target = join(cacheDir, inputs.digest);
+          // One commit per digest at a time. Two folders with the same content build the same
+          // output, and a publish may be copying out of the entry now: an entry, once there, is never
+          // removed under a reader. The build that finds one already kept leaves its own; a forced
+          // build sets the old one aside first, so a reader holds either whole.
+          return inTurn(`digest\0${inputs.digest}`, async () => {
+            const there = await cached(inputs.digest);
+            if (there && !how.force) {
+              await rm(scratch, { recursive: true, force: true });
+              return { ...there, status: "built" as const, ms: ran.ms };
+            }
+            const aside = there
+              ? join(cacheDir, `.old-${randomBytes(6).toString("hex")}`)
+              : undefined;
+            if (aside !== undefined) await renamePath(target, aside);
+            await renamePath(scratch, target);
+            if (aside !== undefined) await rm(aside, { recursive: true, force: true });
+            return { status: "built" as const, dir: join(target, "out"), files, ms: ran.ms };
+          });
+        }),
+      );
     },
   };
 }
