@@ -15,6 +15,7 @@ import {
   artifactPublishMethod,
   artifactVerifyMethod,
   type DiagnosticFix,
+  demoBuildMethod,
   depsAddMethod,
   packAddMethod,
   packKitMethod,
@@ -305,10 +306,14 @@ export const publishCommand: CommandDef = defineCommand({
   },
 });
 
-/** `mostra export <artifact> --as bundle --out <path>`. */
+/** The export classes Mostra writes itself (D185, VR-07). */
+const BUILT_IN_CLASSES = new Set(["bundle", "static", "html", "snapshot"]);
+
+/** `mostra export <artifact> --as <class> --out <path>`. */
 export const exportCommand: CommandDef = defineCommand({
   path: ["export"],
-  summary: "Write a published version out of the home, as a portable bundle another home can run.",
+  summary:
+    "Write a published version out of the home: its page as files, one HTML file or a snapshot, or a bundle another home can run.",
   args: [{ name: "artifact", summary: "The artifact: its source path or its ID." }],
   flags: [
     {
@@ -317,7 +322,32 @@ export const exportCommand: CommandDef = defineCommand({
       value: "<exporter>",
       default: "bundle",
       summary:
-        "What to write: `bundle`, the version's builds, manifest, lockfile and source; or the ID of an exporter a plugin of the artifact or the home contributes.",
+        "What to write: `static`, the page as a folder that opens from disk and on any static host; `html`, the page as one file; `snapshot`, the page with its answers and state frozen; `bundle`, the version's builds, manifest, lockfile and source; or the ID of an exporter a plugin of the artifact or the home contributes.",
+    },
+    {
+      name: "base",
+      kind: "string",
+      value: "<path>",
+      summary:
+        "`static` and `snapshot`: the path the folder will be served from (`/my-repo/`); each demo is built again under it, so it works fully there.",
+    },
+    {
+      name: "strict",
+      kind: "boolean",
+      summary: "Fail, writing nothing, when the export would lose anything its warnings name.",
+    },
+    {
+      name: "submission",
+      kind: "string",
+      value: "<id>",
+      summary:
+        "`snapshot`: freeze this submission's answers and state instead of your own answers now.",
+    },
+    {
+      name: "no-shared-state",
+      kind: "boolean",
+      summary:
+        "`snapshot`: leave the artifact's shared state out, which may hold other people's answers.",
     },
     {
       name: "option",
@@ -329,7 +359,8 @@ export const exportCommand: CommandDef = defineCommand({
       name: "out",
       kind: "string",
       value: "<path>",
-      summary: "Where: a new directory, or one archive when it ends in .tar.zst.",
+      summary:
+        "Where: a new directory (a bundle or a snapshot: one archive when it ends in .tar.zst; `html`: one file).",
     },
     {
       name: "version",
@@ -340,25 +371,56 @@ export const exportCommand: CommandDef = defineCommand({
   ],
   output: { type: "ArtifactExportResult", topic: "cli" },
   exits: [EXIT.failure],
-  example: "export ./sidebar-review --out ./sidebar-review.tar.zst",
+  example: "export ./sidebar-review --as static --out ./sidebar-review-page",
   async run(context) {
     const out = flag(context, "out");
     if (out === undefined) throw usage('"mostra export" needs --out <path>.');
     const version = flag(context, "version");
     const as = flag(context, "as") ?? "bundle";
-    if (as !== "bundle") return exportWithPlugin(context, as, out, version);
+    if (!BUILT_IN_CLASSES.has(as)) return exportWithPlugin(context, as, out, version);
+    const base = flag(context, "base");
+    if (base !== undefined && as !== "static" && as !== "snapshot")
+      throw usage("--base goes with --as static or --as snapshot.");
+    if (base !== undefined && !/^\/([^/?#\s]+\/)*$/.test(base))
+      throw usage(
+        `--base takes a path that starts and ends with /, such as /my-repo/; "${base}" isn't one.`,
+      );
+    const submission = flag(context, "submission");
+    const noShared = context.flags["no-shared-state"] === true;
+    if ((submission !== undefined || noShared) && as !== "snapshot")
+      throw usage("--submission and --no-shared-state go with --as snapshot.");
     const result = await context.call(artifactExportMethod, {
       artifact: artifactRef(arg(context, "artifact"), context.cwd),
-      as: "bundle",
+      as: as as "bundle" | "static" | "html" | "snapshot",
       out: resolve(context.cwd, out),
       ...(version !== undefined
         ? { version: /^\d+$/.test(version) ? Number(version) : version }
         : {}),
+      ...(base !== undefined ? { base } : {}),
+      ...(context.flags["strict"] === true ? { strict: true } : {}),
+      ...(submission !== undefined ? { submission } : {}),
+      ...(noShared ? { sharedState: false } : {}),
     });
-    return {
-      result,
-      human: `Exported ${result.versionId} to ${result.files.join(", ")}\n`,
-    };
+    const lines = [`Exported ${result.versionId} to ${result.files.join(", ")}`];
+    const report = result.report;
+    if (report?.snapshot) {
+      const frozen = report.snapshot;
+      lines.push(
+        `It holds ${frozen.answers === "submission" ? `the answers of ${frozen.submission ?? "the submission"}` : "your answers"} as of ${frozen.at}${frozen.sharedState.included ? `, and the shared state${frozen.sharedState.people > 0 ? `, which holds answers from ${frozen.sharedState.people} other ${frozen.sharedState.people === 1 ? "person" : "people"}` : ""}` : ", without the shared state"}.`,
+      );
+      if (frozen.leftOut.length > 0)
+        lines.push(`Sensitive fields left out: ${frozen.leftOut.join(", ")}.`);
+    }
+    for (const demo of report?.demos ?? []) {
+      lines.push(
+        demo.carried === "folder-only"
+          ? `The demo ${demo.name} isn't in the file: export --as static to carry it.`
+          : `The demo ${demo.name} is in it${demo.base !== undefined ? `, built for ${demo.base}` : ""}.`,
+      );
+    }
+    for (const warning of result.warnings ?? [])
+      lines.push(`warning ${warning.code}: ${warning.message}`);
+    return { result, human: `${lines.join("\n")}\n` };
   },
 });
 
@@ -398,6 +460,63 @@ async function exportWithPlugin(
   ];
   return { result, human: `${lines.join("\n")}\n` };
 }
+
+/** `mostra demo build [path]` (D185 item 4). */
+export const demoBuildCommand: CommandDef = defineCommand({
+  path: ["demo", "build"],
+  summary:
+    "Build an artifact's demos now, as verify and publish do, and report each build with its log when it fails.",
+  args: [
+    {
+      name: "path",
+      summary: "The artifact: its source path or its ID. Default: the current directory.",
+      optional: true,
+    },
+  ],
+  flags: [
+    {
+      name: "demo",
+      kind: "string",
+      value: "<name>",
+      summary: "One demo, by its name in the manifest.",
+    },
+    {
+      name: "force",
+      kind: "boolean",
+      summary: "Build again even when an unchanged build is in the cache.",
+    },
+  ],
+  output: { type: "DemoBuildResult", topic: "cli" },
+  exits: [EXIT.failure],
+  example: "demo build ./launch-review --demo app",
+  async run(context) {
+    const path = context.args["path"];
+    const demo = flag(context, "demo");
+    const result = await context.call(demoBuildMethod, {
+      source: sourceRef(typeof path === "string" ? path : ".", context.cwd),
+      ...(demo !== undefined ? { demo } : {}),
+      ...(context.flags["force"] === true ? { force: true } : {}),
+    });
+    const lines: string[] = [];
+    for (const outcome of result.demos) {
+      if (outcome.status === "failed") {
+        lines.push(`${outcome.name}: failed`);
+        for (const diagnostic of outcome.diagnostics)
+          lines.push(`  ${diagnostic.code}: ${diagnostic.message}`);
+      } else {
+        lines.push(
+          `${outcome.name}: ${outcome.status === "cached" ? "unchanged, from the cache" : `built in ${((outcome.ms ?? 0) / 1000).toFixed(1)} s`} (${outcome.files ?? 0} files)`,
+        );
+      }
+    }
+    const failed = result.demos.some((outcome) => outcome.status === "failed");
+    return {
+      result,
+      human: `${lines.join("\n")}\n`,
+      ...(failed ? { exit: EXIT.failure } : {}),
+    };
+  },
+});
 
 /** `mostra run <bundle>`. */
 export const runCommand: CommandDef = defineCommand({

@@ -55,7 +55,7 @@ function failed(message: string): RpcError {
 }
 
 /** The bundled MCP App exporter's entry: its directory, file and export. */
-async function bundledExporter(
+export async function bundledExporter(
   env: Readonly<Record<string, string | undefined>>,
 ): Promise<{ dir: string; file: string; export: string }> {
   for (const dir of locateBundledPlugins(env)) {
@@ -77,12 +77,95 @@ async function bundledExporter(
   );
 }
 
+/**
+ * One of Mostra's built-in exporters (D185 items 7, 8): an export of the carried
+ * `@mostra/plugin-mcp-app` that no manifest contributes (`staticExporter`, `htmlExporter`), run
+ * from the same entry file as its MCP App exporter.
+ */
+export async function builtinExporter(
+  env: Readonly<Record<string, string | undefined>>,
+  name: "staticExporter" | "htmlExporter",
+): Promise<{ dir: string; file: string; export: string }> {
+  const found = await bundledExporter(env);
+  return { ...found, export: name };
+}
+
 /** One file an exporter returned. */
 type ExportedFile = Extract<ExportResponse, { files: unknown }>["files"][number];
 
 /** One file of an export, as text. */
 function textOf(file: ExportedFile): string {
   return "text" in file ? file.text : Buffer.from(file.base64, "base64").toString("utf8");
+}
+
+/** What an exporter run in a child answered. */
+export type ChildExport = Extract<ExportResponse, { files: unknown }>;
+
+/**
+ * Runs one exporter in a plugin child started for the one task behind the platform's gate
+ * (D150), never in this process (RT-02): the child ends with its answer, and with its parent.
+ */
+export async function exportInChild(
+  dir: string,
+  request: ExportRequest,
+  how: {
+    readonly env: Readonly<Record<string, string | undefined>>;
+    readonly log: Log;
+    readonly timeoutMs: number;
+    /** What is being made, for the failure's words: "The MCP App of version …". */
+    readonly what: string;
+  },
+): Promise<ChildExport> {
+  const launched = launch(
+    {
+      kind: "plugin",
+      command: process.execPath,
+      args: [childEntry()],
+      cwd: dir,
+      env: artifactEnvironment(how.env),
+      extra: "ipc",
+    },
+    (event, fields) => how.log.warn(event, fields),
+  );
+  // No ledger records this child: it lives for one answer, and ends with its parent.
+  launched.release();
+  const child = launched.process;
+  child.stdout?.resume();
+  child.stderr?.resume();
+  const peer = new RpcPeer({ send: (message) => void child.send(message as never) });
+  child.on("message", (message) => peer.receive(message));
+  const ended = new Promise<never>((_, reject) => {
+    child.once("exit", (code, signal) =>
+      reject(
+        failed(`${how.what}: its exporter's child ended (${signal ?? code}) before it answered.`),
+      ),
+    );
+    child.once("error", (error) =>
+      reject(failed(`${how.what}: its exporter's child failed: ${error.message}`)),
+    );
+  });
+  let answer: ExportResponse;
+  try {
+    answer = (await Promise.race([
+      peer.request(EXPORT_METHOD, request as unknown as Record<string, unknown>, {
+        timeoutMs: how.timeoutMs,
+      }),
+      ended,
+    ])) as ExportResponse;
+  } catch (problem) {
+    if (problem instanceof RpcError && problem.diagnostic.code === "MOSTRA_PLUGIN_FAILED")
+      throw problem;
+    throw failed(
+      `${how.what} couldn't be made: ${problem instanceof Error ? problem.message : String(problem)}`,
+    );
+  } finally {
+    peer.close();
+    await launched.end(2000, []);
+  }
+  if ("refused" in answer) {
+    throw failed(`${how.what}: its exporter wasn't run: ${answer.refused.message}.`);
+  }
+  return answer;
 }
 
 /** Makes a version's page with the bundled exporter, in a child of its own. */
@@ -126,53 +209,12 @@ export async function bundledAppPage(input: BundledPageInput): Promise<AppPageRe
     options: {},
     mostraVersion: input.mostraVersion,
   };
-  const launched = launch(
-    {
-      kind: "plugin",
-      command: process.execPath,
-      args: [childEntry()],
-      cwd: exporter.dir,
-      env: artifactEnvironment(input.env),
-      extra: "ipc",
-    },
-    (event, fields) => input.log.warn(event, fields),
-  );
-  // No ledger records this child: it lives for one answer, and ends with its parent.
-  launched.release();
-  const child = launched.process;
-  child.stdout?.resume();
-  child.stderr?.resume();
-  const peer = new RpcPeer({ send: (message) => void child.send(message as never) });
-  child.on("message", (message) => peer.receive(message));
-  const ended = new Promise<never>((_, reject) => {
-    child.once("exit", (code, signal) =>
-      reject(failed(`The MCP App exporter's child ended (${signal ?? code}) before it answered.`)),
-    );
-    child.once("error", (error) =>
-      reject(failed(`The MCP App exporter's child failed: ${error.message}`)),
-    );
+  const answer = await exportInChild(exporter.dir, request, {
+    env: input.env,
+    log: input.log,
+    timeoutMs: input.timeoutMs ?? PAGE_TIMEOUT_MS,
+    what: `The MCP App of version ${input.versionId}`,
   });
-  let answer: ExportResponse;
-  try {
-    answer = (await Promise.race([
-      peer.request(EXPORT_METHOD, request as unknown as Record<string, unknown>, {
-        timeoutMs: input.timeoutMs ?? PAGE_TIMEOUT_MS,
-      }),
-      ended,
-    ])) as ExportResponse;
-  } catch (problem) {
-    if (problem instanceof RpcError && problem.diagnostic.code === "MOSTRA_PLUGIN_FAILED")
-      throw problem;
-    throw failed(
-      `The MCP App of version ${input.versionId} couldn't be made: ${problem instanceof Error ? problem.message : String(problem)}`,
-    );
-  } finally {
-    peer.close();
-    await launched.end(2000, []);
-  }
-  if ("refused" in answer) {
-    throw failed(`The MCP App exporter wasn't run: ${answer.refused.message}.`);
-  }
   const error = (answer.findings as readonly { severity?: unknown; message?: unknown }[]).find(
     (finding) => finding.severity === "error",
   );

@@ -107,8 +107,9 @@ export function WebDemo({
   ...props
 }: WebDemoProps): React.JSX.Element {
   const handle = useDemo(demo, path !== undefined ? { path } : {});
-  const [current, setCurrent] = React.useState<DemoDeviceName | "none">(device);
-  React.useEffect(() => setCurrent(device), [device]);
+  // The viewer's pick, once they make one; until then the page's `device`.
+  const [picked, setCurrent] = React.useState<DemoDeviceName | undefined>(undefined);
+  const current: DemoDeviceName | "none" = picked ?? device;
   const box = React.useRef<HTMLDivElement>(null);
   const width = useWidth(box);
   const frame = React.useRef<HTMLIFrameElement>(null);
@@ -137,7 +138,10 @@ export function WebDemo({
   const scale = spec && width > 0 ? Math.min(1, width / outerWidth) : 1;
   const switcher =
     devices !== false && devices.length > 1 ? (
-      <div role="group" aria-label="Viewport" className="flex flex-wrap justify-center gap-1">
+      <fieldset
+        aria-label="Viewport"
+        className="m-0 flex flex-wrap justify-center gap-1 border-0 p-0"
+      >
         {devices.map((name) => (
           <button
             key={name}
@@ -154,7 +158,7 @@ export function WebDemo({
             {DEMO_DEVICES[name].label}
           </button>
         ))}
-      </div>
+      </fieldset>
     ) : null;
 
   const content =
@@ -170,9 +174,7 @@ export function WebDemo({
         }}
         className="block border-0 bg-white"
         style={
-          spec
-            ? { width: spec.width, height: spec.height }
-            : { width: "100%", height: outerHeight }
+          spec ? { width: spec.width, height: spec.height } : { width: "100%", height: outerHeight }
         }
       />
     ) : (
@@ -180,9 +182,7 @@ export function WebDemo({
         role="note"
         className="flex items-center justify-center p-6 text-center text-sm text-(--muted-foreground)"
         style={
-          spec
-            ? { width: spec.width, height: spec.height }
-            : { width: "100%", height: outerHeight }
+          spec ? { width: spec.width, height: spec.height } : { width: "100%", height: outerHeight }
         }
       >
         {WORDS[handle.status]}

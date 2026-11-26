@@ -25,6 +25,7 @@ import {
   type ShellConnection,
 } from "../shell-bridge.ts";
 import { blockersForShell, clip, firstThatMatter } from "./bridge-limits.ts";
+import { mountExportNotice, readExport, readSnapshot, snapshotStorage } from "./exported.ts";
 import { IndexedDbJournal, type Journal, MemoryJournal } from "./journal.ts";
 import { guardFrameServiceWorker } from "./service-worker.ts";
 import { Store } from "./store.ts";
@@ -206,8 +207,23 @@ export async function startRuntime(): Promise<Runtime> {
     return { store, target, mode: view.target, shell };
   }
   if (!shell || !view) {
-    const store = new Store({ mode: "local", journal: new MemoryJournal(), tab });
+    // An export (D185 items 7, 8): answers kept under the artifact's own keys, live values frozen
+    // as they were, a snapshot's values read-only; and its notice naming what doesn't work here.
+    const exported = target === "static" ? readExport() : undefined;
+    const snapshot = exported ? readSnapshot() : undefined;
+    const prefix = exported ? `mostra.field.${exported.artifactId}.` : undefined;
+    const store = new Store({
+      mode: "local",
+      journal: new MemoryJournal(),
+      tab,
+      ...(prefix !== undefined ? { localPrefix: prefix } : {}),
+      ...(exported ? { frozenLive: exported.live ?? [] } : {}),
+      ...(snapshot && prefix !== undefined
+        ? { readOnly: true, local: snapshotStorage(snapshot, prefix) }
+        : {}),
+    });
     store.start();
+    if (exported) mountExportNotice(exported);
     return { store, target, mode: target === "live" ? "static" : target, shell: undefined };
   }
   bootMark("journal-opening");

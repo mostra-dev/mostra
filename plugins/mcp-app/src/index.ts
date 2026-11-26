@@ -25,6 +25,13 @@ import {
 import { bundleEntry, clientFiles, extensionOf, FONT_EXTENSIONS } from "./bundle.ts";
 import { httpsOrigin, inlineStylesheet, ownOrigins, pageHtml, readBuiltPage } from "./page.ts";
 
+export {
+  type BuiltinOptions,
+  type BuiltinReport,
+  htmlExporter,
+  staticExporter,
+} from "./builtin.ts";
+
 /** The exporter's ID: what `mostra export --as` names. */
 export const EXPORTER_ID = "mcp-app";
 

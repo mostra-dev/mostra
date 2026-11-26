@@ -41,6 +41,11 @@
       "types": "./dist/demo.d.ts",
       "default": "./dist/demo.js"
     },
+    "./action": {
+      "@mostra/source": "./src/action.tsx",
+      "types": "./dist/action.d.ts",
+      "default": "./dist/action.js"
+    },
     "./css/*": "./css/*",
     "./registry/*": "./registry/*",
     "./package.json": "./package.json"
