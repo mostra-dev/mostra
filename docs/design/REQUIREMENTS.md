@@ -4,7 +4,7 @@
 
 **Strength.** Every row is a **requirement** ([STANDARDS.md](STANDARDS.md#rule-strengths)) unless it is marked **Invariant** or **Default**. Invariants are listed in [PRODUCT.md](PRODUCT.md#rule-strengths), and rows that restate one carry the label.
 
-**Release.** `v1`, `v1.1`, `v1.x` or `later` per D16. `v1.1` marks requirements built after the first release by the packages under "After the first release" in [WORK_PACKAGES.md](WORK_PACKAGES.md): homes an organization owns (D170) and the terminal modes (D122). Windows moved into v1 (D146). Like `v1` rows, each has exactly one owning package, a concrete check and evidence, listed in their own section of [EVIDENCE_MATRIX.md](EVIDENCE_MATRIX.md). `v1.x` and `later` rows have no owner yet.
+**Release.** `v1`, `v1.1`, `v1.x` or `later` per D16. `v1.1` marks requirements built after the first release by the packages under "After the first release" in [WORK_PACKAGES.md](WORK_PACKAGES.md): motion and decks and the evaluation suite (D184), homes an organization owns (D170) and the terminal modes (D122). Windows moved into v1 (D146). Like `v1` rows, each has exactly one owning package, a concrete check and evidence, listed in their own section of [EVIDENCE_MATRIX.md](EVIDENCE_MATRIX.md). `v1.x` and `later` rows have no owner yet.
 
 **Verification routes:**
 - **M:** mechanism or unit tests.
@@ -24,7 +24,7 @@
 | AU-03 | No per-artifact `package.json` or configuration is required to start | v1 | D18, D20 | I |
 | AU-04 | Artifacts declare optional metadata (title, description, `family`, related artifacts) and a render `mode` defaulting to `spa` | v1 | D19, §2 | M |
 | AU-05 | Every persisted input has a stable field ID; `verify` reports missing or duplicate IDs | v1 | D09 | M, B |
-| AU-06 | `mostra new` scaffolds from templates for each family (questionnaire, proposal, prototype or review, dashboard, deck, demo, inbox or actions, custom) with AGENTS.md included | v1 | D29 | I, R |
+| AU-06 | `mostra new` scaffolds from templates for each family (questionnaire, proposal, prototype or review, dashboard, demo, inbox or actions, custom; the deck family arrives with KT-07 in v1.1, D184) with AGENTS.md included | v1 | D29, D184 | I, R |
 
 ## Runtime (RT)
 
@@ -157,8 +157,8 @@
 | KT-03 | Design-system packs ship for Base UI and Radix bases; one base per artifact; the default chosen by evaluation (EVAL-01) | v1 | D27, D34 | B, E |
 | KT-04 | One token system themes every kit library, supports dark mode and accepts host brand themes; names align with MCP Apps host variables | v1 | D26, §13 | B, R |
 | KT-05 | Questionnaire and form components (choices with recommended option, ranking, scales, text, per-item comments, required items, sections, progress) persist through drafts | v1 | D08 | B, R |
-| KT-06 | Mostra's own frame-based motion composition primitive with play, scrub and loop; deterministic for screenshots | v1 | D26 | M, B, R |
-| KT-07 | Mostra's own MDX deck runtime with layouts, click steps, presenter view and print to PDF | v1 | D26 | B, R |
+| KT-06 | Mostra's own frame-based motion composition primitive with play, scrub and loop; deterministic for screenshots | v1.1 | D26, D184 | M, B, R |
+| KT-07 | Mostra's own MDX deck runtime with layouts, click steps, presenter view and print to PDF | v1.1 | D26, D184 | B, R |
 | KT-08 | "Write this, not that" guidance and lint autofixes for every kit library and recently changed tool (Base UI `render`, Tailwind 4, Zod 4, `motion/react`, `@xyflow/react`, Mermaid 12, TanStack Table 9, the `cn` package), including the wrong-base diagnostic | v1 | §13, D48 | M |
 | KT-09 | "Beautiful by default": representative gallery artifacts pass Mirza's review | v1 | PRODUCT | R |
 | KT-11 | Kit components for presence, cursors, a respondent tracker and attribution, built on the CO hooks and restylable (KT-10) | v1 | D121, D68 | B, R |
@@ -187,7 +187,7 @@
 | AX-05 | Screenshots default to DPR 1, carry token estimates and are returned only on failure or request | v1 | D29 | M |
 | AX-06 | The Agent Skill (trigger D69) and AGENTS.md in the repository and in every scaffolded artifact ship; their prose is accepted through Mirza's review. Templates are AU-06, the gallery is AX-07 | v1 | D29, D69 | R |
 | AX-07 | Docs site built with a standard static docs generator at `docs.mostradev.com`, describing the released version, with `llms.txt` and per-page Markdown; links in released versions keep resolving | v1 | PRODUCT | B, R |
-| AX-08 | An opt-in, budgeted agent-evaluation suite measures first-pass verify success, turns to pass and retention across turns (subject to D33 confirmation) | v1 | D33 | E |
+| AX-08 | An opt-in, budgeted agent-evaluation suite measures first-pass verify success, turns to pass and retention across turns (subject to D33 confirmation) | v1.1 | D33, D184 | E |
 
 ## MCP (MC)
 
@@ -207,7 +207,7 @@
 | EX-02 | A plugin manifest under the `"mostra"` key with contracts, contributions, declared effects, SPDX license and bundled licenses, validated by `mostra plugin validate` | v1 | D30 | M |
 | EX-03 | Copy-source packs in a superset of the shadcn registry format; any shadcn item installs unchanged | v1 | D30 | I |
 | EX-04 | License classes shown at install; non-OSI classes need a one-time scriptable acknowledgment recorded in the lockfile; hosts can pre-accept | v1 | D31 | I |
-| EX-05 | First-party plugins prove the contracts (MCP App exporter, Remotion adapter, GSAP adapter); the xterm.js engine plugin ships with the terminal packages | v1 | D30, D122 | I, B |
+| EX-05 | First-party plugins prove the contracts (the MCP App exporter, the chart datum anchor provider, the filesystem connector); the Remotion and GSAP adapters ship with the motion package (D184) and the xterm.js engine plugin with the terminal packages | v1 | D30, D122, D184 | I, B |
 | EX-06 | A metadata-only registry with namespace verification, provenance, compatibility badges and agent tools | v1.x | D30 | I, X |
 | EX-07 | The marketplace web interface | later | D30 | R |
 | EX-08 | Embedding Mostra views in host applications: a chrome-less mode with host theming, identity and host-rendered trusted controls | later | D126 | B |
@@ -285,10 +285,10 @@ These requirements come from decisions made during the design (D38 to D71). They
 | LL-03 | "Always follow this artifact": a per-viewer choice that loads new versions automatically unless unsaved edits or orphans would result | v1 | D63 | B |
 | LL-04 | Live updates are ephemeral notifications over a persisted latest value and optional ring buffer; producers run while viewed or subscribed, or always with `always: true` | v1 | D56, D63 | I |
 | LL-05 | Local capability URLs don't expire by default and stay revocable and rotatable; `mostra doctor` warns when long-lived artifacts exist without an always-on daemon | v1 | D63 | I |
-| LL-06 | Templates, the conformance kit, the gallery and the agent evaluations include long-lived scenarios (J11, J12) alongside one-off ones | v1 | D63 | C, E, R |
+| LL-06 | Templates, the conformance kit and the gallery include long-lived scenarios (J11, J12) alongside one-off ones; the agent evaluations add theirs with AX-08 in v1.1 (D184) | v1 | D63, D184 | C, R |
 | HY-07 | Worker-mode frame sessions: service-worker header authentication for cross-site frames, ticketed event streams and WebSockets, and a diagnostic when artifact code registers a conflicting root service worker | v1 | D70 | B |
 | KT-10 | Design freedom: nothing enforces kit usage; every kit visual reads the tokens, accepts `className` and can be copied and edited; the defaults give a beautiful result without design skill | v1 | D68 | B, R |
 | AX-09 | The CLI implements the D60 command set plus `mostra run` and `mostra state`, with the exit codes of INTERFACES §9 | v1 | D60 | I |
 | AX-10 | Harness plugins for Claude Code, Codex, Gemini CLI, Cursor and Copilot are generated as real copies from one `skills/` source and plugin definition | v1 | D65 | I, X |
 | EN-07 | Repository standards (REPO_STANDARDS.md): parallel, affected-only CI under 10 minutes for a typical pull request, `pnpm check` parity with CI, mechanical quality gates, lefthook, Conventional Commits with DCO, per-package AGENTS.md and agent playbooks | v1 | D50, D65 | M |
-| RV-06 | Comments on timelines, motion and video anchor to time plus region, and on slides to slide and step | v1 | D23 | B |
+| RV-06 | Comments on timelines, motion and video anchor to time plus region, and on slides to slide and step | v1.1 | D23, D184 | B |
