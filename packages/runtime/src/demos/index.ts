@@ -18,6 +18,7 @@ import { createReadStream } from "node:fs";
 import { cp, mkdir, readdir, readFile, rm, stat, writeFile } from "node:fs/promises";
 import { join, relative, resolve } from "node:path";
 import {
+  canonicalJson,
   createDiagnostic,
   DEMO_TIMEOUT_DEFAULT_MS,
   type DemoBuildSpec,
@@ -32,7 +33,29 @@ import ignore from "ignore";
 import type { Environment, Log } from "../log.ts";
 import { programCommand, removeTree, renamePath } from "../platform/index.ts";
 import { demoEnvironment, type ProcessManager } from "../processes/index.ts";
-import { canonicalJson, listingDigest, sha256Hex } from "../publish/digest.ts";
+
+/** SHA-256 as lowercase hex. */
+function sha256Hex(data: string | Uint8Array): string {
+  return createHash("sha256").update(data).digest("hex");
+}
+
+/**
+ * The SHA-256 of a folder's canonical listing, in the form DATA_MODEL §2 gives a source's: the
+ * JSON array of `[path, executable, sha256]` for every file, sorted by the path's UTF-8 bytes. Here
+ * rather than borrowed from `publish`, which builds demos and so depends on this module.
+ */
+function listingDigest(
+  files: readonly {
+    readonly path: string;
+    readonly executable: boolean;
+    readonly sha256: string;
+  }[],
+): string {
+  const sorted = [...files].sort((a, b) =>
+    Buffer.compare(Buffer.from(a.path, "utf8"), Buffer.from(b.path, "utf8")),
+  );
+  return sha256Hex(JSON.stringify(sorted.map((file) => [file.path, file.executable, file.sha256])));
+}
 
 /** Folders a demo's source digest never reads: installs, caches and build tools' own state. */
 const SKIPPED_DIRS = new Set([

@@ -111,20 +111,6 @@ function listed(items: readonly string[]): string {
     : `${items.slice(0, -1).join(", ")} and ${items.at(-1) as string}`;
 }
 
-/** Every file under `dir`, `/`-separated and relative to it. */
-async function filesUnder(dir: string): Promise<string[]> {
-  const found: string[] = [];
-  const walk = async (at: string, rel: string): Promise<void> => {
-    for (const entry of await readdir(at, { withFileTypes: true })) {
-      const path = rel ? `${rel}/${entry.name}` : entry.name;
-      if (entry.isDirectory()) await walk(join(at, entry.name), path);
-      else if (entry.isFile()) found.push(path);
-    }
-  };
-  await walk(dir, "");
-  return found;
-}
-
 /**
  * Makes a copy of a sealed version writable (files 0444 and folders 0555 in the home, DATA_MODEL
  * §1): the export's scratch view replaces its demos with ones built again under `--base`.
@@ -562,9 +548,4 @@ export function createExports(options: ExportsOptions): Exports {
       }
     },
   };
-}
-
-/** Lists the files of an export folder, for tests and the CLI's summary. */
-export async function exportedFiles(dir: string): Promise<string[]> {
-  return filesUnder(dir);
 }

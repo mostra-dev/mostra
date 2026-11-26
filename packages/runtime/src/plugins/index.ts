@@ -6,7 +6,6 @@
 export {
   builtinExporter,
   bundledAppPage,
-  type ChildExport,
   exportInChild,
 } from "./bundled-page.ts";
 export { pluginMethods } from "./methods.ts";

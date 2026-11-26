@@ -55,7 +55,6 @@ export { adoptable, launch, reapRecorded } from "./launch.ts";
 export { shellWord } from "./shell.ts";
 export {
   installHint,
-  type ProgramCommand,
   programCommand,
   type ToolCommand,
   toolCommand,

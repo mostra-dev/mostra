@@ -12,6 +12,7 @@
  */
 import { cpSync, existsSync, mkdirSync, readFileSync, statSync } from "node:fs";
 import { createServer, type Server } from "node:http";
+import { createRequire } from "node:module";
 import { dirname, extname, join, posix } from "node:path";
 import { pathToFileURL } from "node:url";
 import {
@@ -29,6 +30,13 @@ import { listenShortLived } from "../support/ports.ts";
 const run = readRun();
 
 /**
+ * The tools the fixture's demos build with, the suite's own (`npx --no vite`, `npx --no next`):
+ * resolved here, so a checkout without them says so before a build fails on it.
+ */
+const require = createRequire(import.meta.url);
+const BUILDERS = [require.resolve("vite/package.json"), require.resolve("next/package.json")];
+
+/**
  * Where a test copies the fixture: inside the suite's own folder, so a demo's build resolves the
  * suite's Vite and Next.js the way a project's build resolves its own dependencies.
  */
@@ -38,6 +46,7 @@ let copies = 0;
 
 /** Copies the demos fixture to a folder of the test's own and publishes it. */
 async function publishDemos(client: Client, info: TestInfo): Promise<string> {
+  expect(BUILDERS).toHaveLength(2);
   const dir = join(WORK, `demos-${info.project.name}-${process.pid}-${Date.now()}-${copies++}`);
   mkdirSync(WORK, { recursive: true });
   cpSync(join(E2E_FIXTURES, "demos"), dir, { recursive: true });
