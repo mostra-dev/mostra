@@ -29,6 +29,7 @@ export {
   type BuiltinOptions,
   type BuiltinReport,
   htmlExporter,
+  type Routing,
   staticExporter,
 } from "./builtin.ts";
 

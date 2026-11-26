@@ -28,10 +28,16 @@ export interface DemoOptions {
 
 /** A demo, as {@link useDemo} gives it. */
 export interface DemoHandle {
+  /** The demo's name in the manifest. */
   readonly name: string;
+  /**
+   * `ready` to show; `unknown` when the version declares no demo of the name; `folder-only` in a
+   * single file that couldn't carry it; `unavailable` where no demo shows (inline in a chat host).
+   */
   readonly status: DemoStatus;
   /** The frame's address, when it is `ready` and served as files. */
   readonly src?: string;
+  /** How the demo moves between its pages: by browser history, or by the address's fragment. */
   readonly routing: DemoRouting;
   /** Tells verify the frame loaded, so it stops waiting for it. */
   loaded(): void;

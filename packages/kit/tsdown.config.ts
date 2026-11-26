@@ -7,6 +7,7 @@ export default defineConfig({
     "src/layout.tsx",
     "src/review.tsx",
     "src/demo.tsx",
+    "src/action.tsx",
   ],
   format: "esm",
   platform: "browser",

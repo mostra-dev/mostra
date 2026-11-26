@@ -99,8 +99,9 @@ export function demoBase(name: string): string {
   return `/_mostra/demos/${name}/`;
 }
 
-/** A demo build's default time limit, and its longest (D185 item 3). */
+/** A demo build's time limit when its spec names none (D185 item 3): 10 minutes. */
 export const DEMO_TIMEOUT_DEFAULT_MS: number = 10 * 60_000;
+/** The longest time limit a demo's spec may name (D185 item 3): 60 minutes. */
 export const DEMO_TIMEOUT_MAX_MS: number = 60 * 60_000;
 
 /** A demo's name: 1 to 64 lower-case letters, digits and `-`, starting with a letter or digit. */

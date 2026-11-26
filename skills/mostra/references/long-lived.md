@@ -106,6 +106,7 @@ function Builds() {
 - A source needs `load`, `stream` or both. `refresh` is `1s` to `24h`. `always: true` keeps it running with nobody looking; otherwise producers run while a page shows the source and stop a minute after.
 - The latest value is kept, so a page opening later shows it at once, with `at` saying when it was produced. A failing producer sets `error` and keeps the last good value; show both.
 - `useLive` keys and value types come from `live.ts` automatically.
+- In an export of the page, `frozen` is `true`: `data` is the value when it was exported, from `at`. Say so beside it ("as of …").
 - You can feed a source from outside too, with no `live.ts` entry needed: `mostra push ./dash deploys --value '{"today":14}'`, or `--append` to add to its ring. Values are up to 4 MiB. Before its first push such a source isn't loading: `data` is `undefined` and `isLoading` is false, so show an empty state ("No deploys pushed yet").
 - When the artifact also has a `live.ts`, `useLive` only takes the keys it defines, so declare a pushed key's type in a file of its own:
 

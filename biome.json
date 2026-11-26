@@ -19,6 +19,7 @@
       "!docs/design/evaluations",
       "!pnpm-lock.yaml",
       "!**/fixtures",
+      "!tests/e2e/.work",
       "!packages/themes/css",
       "!packages/kit/registry",
       "!packages/kit/upstream",

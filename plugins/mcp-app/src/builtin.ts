@@ -18,8 +18,8 @@ import {
 import { bundleEntry, type ClientFiles, clientFiles, dataUrl, extensionOf } from "./bundle.ts";
 import { moduleElements } from "./page.ts";
 
-/** How a demo moves between its pages. */
-type Routing = "history" | "hash";
+/** How a demo moves between its pages: by browser history, or by the address's fragment. */
+export type Routing = "history" | "hash";
 
 /** The options the runtime gives a built-in exporter. */
 export interface BuiltinOptions {
@@ -37,7 +37,9 @@ export interface BuiltinOptions {
 
 /** What a built-in export reports, in `.mostra-report.json` (read and left out by the runtime). */
 export interface BuiltinReport {
+  /** What the export names but doesn't hold: absolute URLs, which need a network. */
   readonly notInlined: readonly string[];
+  /** Each demo, and how fully the export carries it. */
   readonly demos: readonly {
     readonly name: string;
     readonly routing: Routing;

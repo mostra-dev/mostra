@@ -284,14 +284,20 @@ export const artifactExportMethod: MethodDefinition<ArtifactExportParams, Artifa
 export interface ArtifactExportParams {
     readonly artifact: ArtifactRef;
     readonly as: ExportClass;
+    readonly base?: string;
     readonly out: string;
+    readonly sharedState?: boolean;
+    readonly strict?: boolean;
+    readonly submission?: string;
     readonly version?: number | string;
 }
 
 // @public
 export interface ArtifactExportResult {
     readonly files: readonly string[];
+    readonly report?: ExportReport;
     readonly versionId: string;
+    readonly warnings?: readonly Diagnostic[];
 }
 
 // @public
@@ -1051,7 +1057,61 @@ export const DeliveryStatus: z.ZodType<DeliveryStatus>;
 export type DeliveryTarget = "live" | "static" | "mcp-app" | "verify";
 
 // @public
-export type DemoSpec = {
+export const DEMO_NAME: RegExp;
+
+// @public
+export const DEMO_TIMEOUT_DEFAULT_MS: number;
+
+// @public
+export const DEMO_TIMEOUT_MAX_MS: number;
+
+// @public
+export function demoBase(name: string): string;
+
+// @public
+export const demoBuildMethod: MethodDefinition<DemoBuildParams, DemoBuildResult>;
+
+// @public
+export interface DemoBuildOutcome {
+    readonly diagnostics: readonly Diagnostic[];
+    readonly digest?: string;
+    readonly files?: number;
+    readonly ms?: number;
+    readonly name: string;
+    readonly status: "built" | "cached" | "failed";
+}
+
+// @public
+export interface DemoBuildParams {
+    readonly demo?: string;
+    readonly force?: boolean;
+    readonly source: SourceRef;
+}
+
+// @public
+export interface DemoBuildResult {
+    readonly demos: readonly DemoBuildOutcome[];
+}
+
+// @public
+export interface DemoBuildSpec {
+    readonly bridge?: boolean;
+    readonly build: readonly string[];
+    readonly env?: Readonly<Record<string, string>>;
+    readonly output: string;
+    readonly routing?: "history" | "hash";
+    readonly source: string;
+    readonly timeout?: Duration;
+}
+
+// @public
+export type DemoDiagnosticCode = (typeof demoDiagnosticCodes)[number];
+
+// @public
+export const demoDiagnosticCodes: readonly ["MOSTRA_DEMO_UNSUPPORTED", "MOSTRA_DEMO_SOURCE_MISSING", "MOSTRA_DEMO_BUILD_FAILED", "MOSTRA_DEMO_BUILD_TIMEOUT", "MOSTRA_DEMO_OUTPUT_MISSING", "MOSTRA_DEMO_BASE_MISMATCH", "MOSTRA_DEMO_UNKNOWN", "MOSTRA_DEMO_NOT_IN_FILE", "MOSTRA_DEMO_BASE_NEEDED", "MOSTRA_DEMO_NOT_REBUILT"];
+
+// @public
+export type DemoSpec = DemoBuildSpec | {
     readonly command: readonly string[];
     readonly cwd?: string;
     readonly ready?: string;
@@ -1159,7 +1219,7 @@ export const Diagnostic: z.ZodType<Diagnostic>;
 export const DIAGNOSTIC_AREAS: readonly DiagnosticArea[];
 
 // @public
-export type DiagnosticArea = "MANIFEST" | "BUILD" | "TYPE" | "LINT" | "DEP" | "KIT" | "FIELD" | "ACTION" | "LIVE" | "RUNTIME" | "CONSOLE" | "NETWORK" | "A11Y" | "VISUAL" | "SMOKE" | "REGRESSION" | "TERM" | "PUBLISH" | "SUBMIT" | "HOST" | "HOME" | "HYGIENE" | "SECRET" | "SHARE" | "VERIFY" | "TARGET" | "ENV" | "PLATFORM" | "ARTIFACT" | "CLI" | "REMOTE" | "TEAM" | "PLUGIN" | "PACK" | "LICENSE" | "REVIEW";
+export type DiagnosticArea = "MANIFEST" | "BUILD" | "TYPE" | "LINT" | "DEP" | "KIT" | "FIELD" | "ACTION" | "LIVE" | "RUNTIME" | "CONSOLE" | "NETWORK" | "A11Y" | "VISUAL" | "SMOKE" | "REGRESSION" | "TERM" | "PUBLISH" | "SUBMIT" | "HOST" | "HOME" | "HYGIENE" | "SECRET" | "SHARE" | "VERIFY" | "TARGET" | "ENV" | "PLATFORM" | "ARTIFACT" | "CLI" | "REMOTE" | "TEAM" | "PLUGIN" | "PACK" | "LICENSE" | "REVIEW" | "DEMO";
 
 // @public
 export const diagnosticCatalog: Readonly<Record<KnownDiagnosticCode, DiagnosticSpec>>;
@@ -1432,10 +1492,41 @@ export type EventTypePattern = string;
 export const EventTypePattern: z.ZodType<EventTypePattern>;
 
 // @public
-export type ExportClass = "bundle";
+export type ExportClass = "bundle" | "static" | "html" | "snapshot";
 
 // @public
 export const ExportClass: z.ZodType<ExportClass>;
+
+// @public
+export interface ExportedDemo {
+    readonly base?: string;
+    readonly carried: "full" | "root" | "folder-only";
+    readonly name: string;
+    readonly routing: "history" | "hash";
+}
+
+// @public
+export interface ExportReport {
+    readonly as: ExportClass;
+    readonly demos: readonly ExportedDemo[];
+    readonly notInlined: readonly string[];
+    readonly snapshot?: {
+        readonly answers: "viewer" | "submission";
+        readonly submission?: string;
+        readonly at: string;
+        readonly sharedState: {
+            readonly included: boolean;
+            readonly people: number;
+        };
+        readonly live: readonly string[];
+        readonly leftOut: readonly string[];
+    };
+    readonly unavailable: {
+        readonly actions: readonly string[];
+        readonly live: readonly string[];
+        readonly submit: boolean;
+    };
+}
 
 // @public
 export interface ExternalBase {
@@ -1946,6 +2037,9 @@ export interface InstanceStatusResult {
 }
 
 // @public
+export function isDemoBuild(spec: DemoSpec): spec is DemoBuildSpec;
+
+// @public
 export function isFieldId(id: unknown): id is string;
 
 // @public
@@ -2037,7 +2131,7 @@ export type KitDiagnosticCode = (typeof kitDiagnosticCodes)[number];
 export const kitDiagnosticCodes: readonly ["MOSTRA_KIT_THEME_UNKNOWN", "MOSTRA_KIT_THEME_FILE_MISSING", "MOSTRA_KIT_THEME_CONFLICT", "MOSTRA_KIT_THEME_CONTRAST", "MOSTRA_KIT_WRONG_BASE", "MOSTRA_KIT_CSS_UNPROCESSED"];
 
 // @public
-export type KnownDiagnosticCode = ReviewDiagnosticCode | LintDiagnosticCode | KitDiagnosticCode | LicenseDiagnosticCode | PackDiagnosticCode | PluginDiagnosticCode | TeamDiagnosticCode | RemoteDiagnosticCode | ShareDiagnosticCode | CliDiagnosticCode | RegressionDiagnosticCode | SmokeDiagnosticCode | A11yDiagnosticCode | NetworkDiagnosticCode | ConsoleDiagnosticCode | TypeDiagnosticCode | VerifyDiagnosticCode | LiveDiagnosticCode | SecretDiagnosticCode | RuntimeDiagnosticCode | FieldDiagnosticCode | SubmitDiagnosticCode | HygieneDiagnosticCode | DepDiagnosticCode | EnvDiagnosticCode | TargetDiagnosticCode | ArtifactDiagnosticCode | PublishDiagnosticCode | ActionDiagnosticCode | BuildDiagnosticCode | ManifestDiagnosticCode | HomeDiagnosticCode | PlatformDiagnosticCode | HostDiagnosticCode;
+export type KnownDiagnosticCode = DemoDiagnosticCode | ReviewDiagnosticCode | LintDiagnosticCode | KitDiagnosticCode | LicenseDiagnosticCode | PackDiagnosticCode | PluginDiagnosticCode | TeamDiagnosticCode | RemoteDiagnosticCode | ShareDiagnosticCode | CliDiagnosticCode | RegressionDiagnosticCode | SmokeDiagnosticCode | A11yDiagnosticCode | NetworkDiagnosticCode | ConsoleDiagnosticCode | TypeDiagnosticCode | VerifyDiagnosticCode | LiveDiagnosticCode | SecretDiagnosticCode | RuntimeDiagnosticCode | FieldDiagnosticCode | SubmitDiagnosticCode | HygieneDiagnosticCode | DepDiagnosticCode | EnvDiagnosticCode | TargetDiagnosticCode | ArtifactDiagnosticCode | PublishDiagnosticCode | ActionDiagnosticCode | BuildDiagnosticCode | ManifestDiagnosticCode | HomeDiagnosticCode | PlatformDiagnosticCode | HostDiagnosticCode;
 
 // @public
 export type LicenseAcknowledgment = "not-needed" | "accepted" | "host" | "missing";
@@ -4687,7 +4781,7 @@ export interface TallyValue {
 export type TargetDiagnosticCode = (typeof targetDiagnosticCodes)[number];
 
 // @public
-export const targetDiagnosticCodes: readonly ["MOSTRA_TARGET_UNAVAILABLE", "MOSTRA_TARGET_CALL_TOO_LONG"];
+export const targetDiagnosticCodes: readonly ["MOSTRA_TARGET_UNAVAILABLE", "MOSTRA_TARGET_CALL_TOO_LONG", "MOSTRA_TARGET_SERVER_FEATURES", "MOSTRA_TARGET_NOT_INLINED", "MOSTRA_TARGET_SHARED_STATE", "MOSTRA_TARGET_EXPORT_STRICT"];
 
 // @public
 export type TeamDiagnosticCode = (typeof teamDiagnosticCodes)[number];
