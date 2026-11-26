@@ -1,0 +1,18 @@
+{
+  "$schema": "https://ui.shadcn.com/schema/registry-item.json",
+  "name": "mostra-tokens",
+  "type": "registry:component",
+  "title": "Theme tokens",
+  "description": "The page's theme as values a canvas or WebGL library can take: every colour resolved, the faces and the radius, kept current as the theme or its light or dark changes.",
+  "dependencies": [],
+  "files": [
+    {
+      "path": "components/mostra/tokens.tsx",
+      "type": "registry:component",
+      "target": "components/mostra/tokens.tsx"
+    }
+  ],
+  "mostra": {
+    "base": "base"
+  }
+}

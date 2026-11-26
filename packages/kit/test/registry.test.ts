@@ -39,11 +39,18 @@ function check(base: "base" | "radix"): string[] {
         noEmit: true,
         skipLibCheck: true,
         types: [],
-        paths: { "@/*": [`${registry}/*`] },
+        // A kit module imports another as an artifact does (`@mostra/kit/tokens`): the registry's.
+        paths: {
+          "@/*": [`${registry}/*`],
+          "@mostra/kit/*": [`${registry}/components/mostra/*`],
+        },
       },
-      include: [`${registry}/**/*.ts`, `${registry}/**/*.tsx`],
+      // Verify's check declares what the build's imports are with Vite's own client types; a
+      // stylesheet imported for its effect is one (`declare module "*.css" {}`).
+      include: [`${registry}/**/*.ts`, `${registry}/**/*.tsx`, join(dir, "assets.d.ts")],
     }),
   );
+  writeFileSync(join(dir, "assets.d.ts"), 'declare module "*.css" {}\n');
   const run = spawnSync(
     process.execPath,
     [tsc, "-p", join(dir, "tsconfig.json"), "--pretty", "false"],

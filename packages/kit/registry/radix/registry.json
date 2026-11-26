@@ -284,6 +284,18 @@
       "type": "registry:component",
       "title": "Review set",
       "description": "Candidates to compare, comment on and choose between: a gallery, one at a time, or two to four side by side with their difference."
+    },
+    {
+      "name": "mostra-tokens",
+      "type": "registry:component",
+      "title": "Theme tokens",
+      "description": "The page's theme as values a canvas or WebGL library can take: every colour resolved, the faces and the radius, kept current as the theme or its light or dark changes."
+    },
+    {
+      "name": "mostra-live-chart",
+      "type": "registry:component",
+      "title": "Live chart",
+      "description": "A chart of points that keep arriving, many a second, from a live source in append mode or from the page: uPlot on a canvas in the theme's series colours."
     }
   ]
 }

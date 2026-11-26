@@ -69,14 +69,37 @@ const KIT_ITEMS = [
     description:
       "Candidates to compare, comment on and choose between: a gallery, one at a time, or two to four side by side with their difference.",
   },
+  {
+    name: "mostra-tokens",
+    module: "tokens",
+    title: "Theme tokens",
+    description:
+      "The page's theme as values a canvas or WebGL library can take: every colour resolved, the faces and the radius, kept current as the theme or its light or dark changes.",
+  },
+  {
+    name: "mostra-live-chart",
+    module: "live-chart",
+    title: "Live chart",
+    description:
+      "A chart of points that keep arriving, many a second, from a live source in append mode or from the page: uPlot on a canvas in the theme's series colours.",
+  },
 ] as const;
+
+/** The kit modules a module imports (`@mostra/kit/<module>`), as their registry items. */
+function kitItemsOf(content: string): string[] {
+  const names = new Set<string>();
+  for (const match of content.matchAll(/from "@mostra\/kit\/([a-z][a-z0-9-]*)"/g)) {
+    names.add(`mostra-${match[1] as string}`);
+  }
+  return [...names].sort();
+}
 
 /** The packages a file imports, by package name, without React. */
 function packagesOf(content: string): string[] {
   const names = new Set<string>();
   for (const match of content.matchAll(/from "([^".][^"]*)"/g)) {
     const specifier = match[1] as string;
-    if (specifier.startsWith("@/")) continue;
+    if (specifier.startsWith("@/") || specifier.startsWith("@mostra/kit/")) continue;
     const parts = specifier.split("/");
     names.add(specifier.startsWith("@") ? parts.slice(0, 2).join("/") : (parts[0] as string));
   }
@@ -200,6 +223,7 @@ for (const [base, style] of Object.entries(BASES) as [Base, string][]) {
       title: own.title,
       description: own.description,
       dependencies: packagesOf(content),
+      ...(kitItemsOf(content).length > 0 ? { registryDependencies: kitItemsOf(content) } : {}),
       files: [{ path, type: "registry:component", target: path }],
       mostra: { base },
     };

@@ -36,6 +36,16 @@
       "types": "./dist/review.d.ts",
       "default": "./dist/review.js"
     },
+    "./tokens": {
+      "@mostra/source": "./src/tokens.tsx",
+      "types": "./dist/tokens.d.ts",
+      "default": "./dist/tokens.js"
+    },
+    "./live-chart": {
+      "@mostra/source": "./src/live-chart.tsx",
+      "types": "./dist/live-chart.d.ts",
+      "default": "./dist/live-chart.js"
+    },
     "./css/*": "./css/*",
     "./registry/*": "./registry/*",
     "./package.json": "./package.json"
@@ -79,20 +89,68 @@
     "shiki": "catalog:",
     "sonner": "catalog:",
     "tw-animate-css": "catalog:",
+    "uplot": "catalog:",
     "vaul": "catalog:"
   },
   "peerDependencies": {
-    "react": "^19"
+    "@deck.gl/core": "9.4.1",
+    "@deck.gl/layers": "9.4.1",
+    "@deck.gl/mapbox": "9.4.1",
+    "@excalidraw/excalidraw": "0.18.1",
+    "@react-three/drei": "10.7.9",
+    "@react-three/fiber": "9.8.2",
+    "@types/three": "0.187.0",
+    "maplibre-gl": "6.19.0",
+    "react": "^19",
+    "three": "0.187.0"
+  },
+  "peerDependenciesMeta": {
+    "@deck.gl/core": {
+      "optional": true
+    },
+    "@deck.gl/layers": {
+      "optional": true
+    },
+    "@deck.gl/mapbox": {
+      "optional": true
+    },
+    "@excalidraw/excalidraw": {
+      "optional": true
+    },
+    "@react-three/drei": {
+      "optional": true
+    },
+    "@react-three/fiber": {
+      "optional": true
+    },
+    "@types/three": {
+      "optional": true
+    },
+    "maplibre-gl": {
+      "optional": true
+    },
+    "three": {
+      "optional": true
+    }
   },
   "devDependencies": {
+    "@deck.gl/core": "catalog:",
+    "@deck.gl/layers": "catalog:",
+    "@deck.gl/mapbox": "catalog:",
+    "@excalidraw/excalidraw": "catalog:",
     "@mostra/tools": "workspace:*",
+    "@react-three/drei": "catalog:",
+    "@react-three/fiber": "catalog:",
     "@size-limit/preset-small-lib": "catalog:",
     "@types/node": "catalog:",
     "@types/react": "catalog:",
     "@types/react-dom": "catalog:",
+    "@types/three": "catalog:",
+    "maplibre-gl": "catalog:",
     "react": "catalog:",
     "react-dom": "catalog:",
     "size-limit": "catalog:",
+    "three": "catalog:",
     "tsdown": "catalog:",
     "typescript": "catalog:",
     "vitest": "catalog:"

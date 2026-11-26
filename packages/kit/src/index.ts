@@ -9,10 +9,12 @@
  */
 
 /** The kit's own modules, each `@mostra/kit/<name>` and the registry item `mostra-<name>`. */
-export const KIT_MODULES: readonly ["questionnaire", "layout", "review"] = [
+export const KIT_MODULES: readonly ["questionnaire", "layout", "review", "tokens", "live-chart"] = [
   "questionnaire",
   "layout",
   "review",
+  "tokens",
+  "live-chart",
 ];
 
 /** The shadcn bases the kit carries a registry for (D27); `base`, Base UI, is the default (D72). */
