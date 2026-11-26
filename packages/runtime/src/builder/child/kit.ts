@@ -3,7 +3,7 @@
  * first and the kit's registry for its base next, and the stylesheet the client entry imports,
  * which puts the theme stack inside the build's one Tailwind run.
  */
-import { existsSync, realpathSync } from "node:fs";
+import { existsSync, readdirSync, readFileSync, realpathSync } from "node:fs";
 import { isAbsolute, join, relative } from "node:path";
 import { HOST_TOKENS } from "@mostra/themes";
 import type { Plugin } from "vite";
@@ -80,6 +80,102 @@ export function kitPeersPlugin(buildRoot: string): Plugin {
       if (!isUnder(real, dir)) return null;
       // As if the artifact's own root imported it: from the layout its lockfile installed.
       return this.resolve(source, join(buildRoot, "index.html"), { ...options, skipSelf: true });
+    },
+  };
+}
+
+/** One set of files a kit peer loads at run time from the page's origin (`mostra-kit.assets`). */
+interface KitAsset {
+  /** The package whose files they are (`@excalidraw/excalidraw`). */
+  readonly package: string;
+  /** Their directory in the package (`dist/prod/fonts`). */
+  readonly from: string;
+  /** Where the page finds them, under `/kit-assets/` (`excalidraw/fonts`). */
+  readonly to: string;
+  /** Directories under `from` left out. */
+  readonly skip?: readonly string[];
+}
+
+/** The files of one asset set, by their path under it. */
+function assetFiles(dir: string, skip: ReadonlySet<string>, prefix = ""): string[] {
+  const files: string[] = [];
+  for (const entry of readdirSync(dir, { withFileTypes: true })) {
+    const path = prefix === "" ? entry.name : `${prefix}/${entry.name}`;
+    if (entry.isDirectory()) {
+      if (!skip.has(path)) files.push(...assetFiles(join(dir, entry.name), skip, path));
+    } else if (entry.isFile()) files.push(path);
+  }
+  return files.sort();
+}
+
+/**
+ * The files a kit peer fetches at run time from the page's own origin (WP-19): Excalidraw's fonts,
+ * say, which it loads by URL rather than through the bundler. The kit names them in its
+ * `package.json` (`mostra-kit.assets`); a build whose graph includes that package carries them at
+ * `/kit-assets/<to>/`, byte for byte, so the version's output digest covers them and the page
+ * needs no CDN; `mostra dev` serves them from the package. A build that doesn't use the package
+ * carries nothing.
+ */
+export function kitAssetsPlugin(buildRoot: string): Plugin {
+  let sets: { readonly asset: KitAsset; readonly root: string; readonly dir: string }[] | undefined;
+  const load = (): NonNullable<typeof sets> => {
+    if (sets !== undefined) return sets;
+    sets = [];
+    const link = join(buildRoot, "node_modules", "@mostra", "kit");
+    if (!existsSync(link)) return sets;
+    let declared: readonly KitAsset[] = [];
+    try {
+      const manifest = JSON.parse(
+        readFileSync(join(realpathSync(link), "package.json"), "utf8"),
+      ) as {
+        readonly "mostra-kit"?: { readonly assets?: readonly KitAsset[] };
+      };
+      declared = manifest["mostra-kit"]?.assets ?? [];
+    } catch {
+      declared = [];
+    }
+    for (const asset of declared) {
+      const packageDir = join(buildRoot, "node_modules", asset.package);
+      if (!existsSync(packageDir)) continue;
+      const root = realpathSync(packageDir);
+      const dir = join(root, asset.from);
+      if (existsSync(dir)) sets.push({ asset, root, dir });
+    }
+    return sets;
+  };
+  return {
+    name: "mostra:kit-assets",
+    generateBundle() {
+      const ids = [...this.getModuleIds()].map((id) => id.split("?")[0] ?? id);
+      for (const { asset, root, dir } of load()) {
+        if (!ids.some((id) => isAbsolute(id) && isUnder(id, root))) continue;
+        for (const file of assetFiles(dir, new Set(asset.skip ?? []))) {
+          this.emitFile({
+            type: "asset",
+            fileName: `kit-assets/${asset.to}/${file}`,
+            source: readFileSync(join(dir, file)),
+          });
+        }
+      }
+    },
+    configureServer(server) {
+      server.middlewares.use((request, response, next) => {
+        const path = decodeURIComponent((request.url ?? "").split("?")[0] ?? "");
+        if (!path.startsWith("/kit-assets/")) return next();
+        for (const { asset, dir } of load()) {
+          const prefix = `/kit-assets/${asset.to}/`;
+          if (!path.startsWith(prefix)) continue;
+          const file = join(dir, path.slice(prefix.length));
+          if (!isUnder(file, dir) || !existsSync(file)) break;
+          response.setHeader(
+            "content-type",
+            file.endsWith(".woff2") ? "font/woff2" : "application/octet-stream",
+          );
+          response.end(readFileSync(file));
+          return;
+        }
+        next();
+      });
     },
   };
 }

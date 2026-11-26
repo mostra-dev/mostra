@@ -8,6 +8,7 @@
   "type": "module",
   "dependencies": {
     "@base-ui/react": "catalog:",
+    "@codemirror/autocomplete": "catalog:",
     "@codemirror/commands": "catalog:",
     "@codemirror/lang-css": "catalog:",
     "@codemirror/lang-html": "catalog:",
@@ -19,6 +20,7 @@
     "@codemirror/state": "catalog:",
     "@codemirror/view": "catalog:",
     "@hookform/resolvers": "catalog:",
+    "@lezer/highlight": "catalog:",
     "@mostra/kit": "workspace:*",
     "@mostra/react": "workspace:*",
     "@mostra/themes": "workspace:*",

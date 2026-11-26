@@ -50,7 +50,11 @@ function check(base: "base" | "radix"): string[] {
       include: [`${registry}/**/*.ts`, `${registry}/**/*.tsx`, join(dir, "assets.d.ts")],
     }),
   );
-  writeFileSync(join(dir, "assets.d.ts"), 'declare module "*.css" {}\n');
+  // Vite's own declarations of these (its `client.d.ts`), as verify's check has them.
+  writeFileSync(
+    join(dir, "assets.d.ts"),
+    'declare module "*.css" {}\ndeclare module "*?worker&url" {\n  const src: string;\n  export default src;\n}\n',
+  );
   const run = spawnSync(
     process.execPath,
     [tsc, "-p", join(dir, "tsconfig.json"), "--pretty", "false"],

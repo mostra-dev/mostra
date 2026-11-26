@@ -16,7 +16,7 @@ import { cp, mkdir, rm, writeFile } from "node:fs/promises";
 import { createRequire } from "node:module";
 import { dirname, join } from "node:path";
 import { createDiagnostic, type Diagnostic } from "@mostra/protocol";
-import { LIVE_DECLARATION } from "../builder/index.ts";
+import { kitPeers, LIVE_DECLARATION } from "../builder/index.ts";
 import { runtimeRoot } from "../deps/index.ts";
 import type { Environment, Log } from "../log.ts";
 import { linkDirectory } from "../platform/index.ts";
@@ -107,7 +107,7 @@ export const TYPECHECK_REVISION: string = createHash("sha256")
       // The declarations' text without this machine's path to them.
       AMBIENT: AMBIENT.replace(VITE_CLIENT?.path ?? "\u0000", "vite/client.d.ts"),
       vite: VITE_CLIENT?.version ?? null,
-      revision: 4,
+      revision: 5,
     }),
   )
   .digest("hex");
@@ -226,6 +226,28 @@ function serverTypes(): string | undefined {
   return undefined;
 }
 
+/**
+ * The kit's on-demand libraries as the build has them (WP-19): a kit module's import of MapLibre or
+ * three.js resolves, for the check as for the build, from the artifact's own packages, which its
+ * lockfile installed, never beside the kit. So the types a kit module gives the artifact (a
+ * react-three-fiber scene's elements, a deck.gl layer) are the installed library's. A library with
+ * types in `@types` (three.js) is checked against them.
+ */
+function kitPeerPaths(nodeModules: string): Record<string, string[]> {
+  const paths: Record<string, string[]> = {};
+  for (const name of kitPeers(join(nodeModules, "@mostra", "kit")).keys()) {
+    if (name.startsWith("@types/") || !existsSync(join(nodeModules, name))) continue;
+    const typed = `@types/${name.startsWith("@") ? name.slice(1).replace("/", "__") : name}`;
+    const roots = [
+      ...(existsSync(join(nodeModules, typed)) ? [`./node_modules/${typed}`] : []),
+      `./node_modules/${name}`,
+    ];
+    paths[name] = roots;
+    paths[`${name}/*`] = roots.map((root) => `${root}/*`);
+  }
+  return paths;
+}
+
 /** Runs the type check of the snapshot in `sourceDir` against `nodeModules`. */
 export async function typecheck(options: {
   readonly processes: ProcessManager;
@@ -274,6 +296,7 @@ export async function typecheck(options: {
             }
           : {}),
         ...(server ? { "@mostra/server": [server] } : {}),
+        ...kitPeerPaths(options.nodeModules),
       },
     };
     // The build's options first, the artifact's own configuration over them, Mostra's forced

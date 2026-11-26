@@ -28,6 +28,11 @@ interface Control {
   readonly name: string;
   /** How it is used. */
   readonly use: "click" | "hover" | "context" | "fill" | "toggle" | "select" | "skip";
+  /**
+   * Inside `data-mostra-transient`: an input whose value is the page's passing state (a table's
+   * search, a filter), used but never judged unbound (WP-19).
+   */
+  readonly transient: boolean;
 }
 
 /** Options for {@link runSmoke}. */
@@ -127,7 +132,15 @@ function findControls([mark, start]: readonly [string, number]): Control[] {
     }
     const index = start + controls.length;
     element.setAttribute(mark, String(index));
-    controls.push({ index, tag, role, type, name, use });
+    controls.push({
+      index,
+      tag,
+      role,
+      type,
+      name,
+      use,
+      transient: element.closest("[data-mostra-transient]") !== null,
+    });
   }
   return controls;
 }
@@ -379,6 +392,7 @@ export async function runSmoke(options: SmokeOptions): Promise<SmokeOutcome> {
   /** Reports an input the smoke test changed whose value saved nothing (a hint). */
   const unbound = (control: Control, outcome: Use): void => {
     if (control.use !== "fill" && control.use !== "toggle" && control.use !== "select") return;
+    if (control.transient) return;
     if (!outcome.valueChanged) return;
     if (outcome.writes > 0 || outcome.navigated || outcome.newDocument) return;
     findings.push(

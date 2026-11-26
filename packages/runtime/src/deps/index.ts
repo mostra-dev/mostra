@@ -863,27 +863,29 @@ export function createDependencies(options: DependenciesOptions): Dependencies {
   };
 
   /**
-   * The on-demand libraries the kit's modules the artifact uses import, by name, with the kit's
-   * pin: every kit file the artifact reaches (`@mostra/kit/<module>`, `@/…` it has no copy of), and
-   * of their imports the kit's optional peers (WP-19).
+   * The kit's on-demand set (its optional peers, each pinned) and, of it, what the kit's modules
+   * the artifact uses import: every kit file the artifact reaches (`@mostra/kit/<module>`, `@/…` it
+   * has no copy of), and of their imports the kit's peers (WP-19).
    */
   const kitLibraries = async (
     sourceDir: string,
     base: "base" | "radix",
-  ): Promise<ReadonlyMap<string, string>> => {
+  ): Promise<{
+    readonly needs: ReadonlyMap<string, string>;
+    readonly pins: ReadonlyMap<string, string>;
+  }> => {
     const kitDir = join(warm.nodeModules, "@mostra", "kit");
-    const peers = kitPeers(kitDir);
-    if (peers.size === 0) return new Map();
-    const registry = join(kitDir, "registry", base);
-    if (!existsSync(registry)) return new Map();
+    const pins = kitPeers(kitDir);
     const needs = new Map<string, string>();
+    const registry = join(kitDir, "registry", base);
+    if (pins.size === 0 || !existsSync(registry)) return { needs, pins };
     for (const file of kitFilesUsed(sourceDir, registry)) {
       for (const name of await scanFileImports(file)) {
-        const pin = peers.get(name);
+        const pin = pins.get(name);
         if (pin !== undefined) needs.set(name, pin);
       }
     }
-    return needs;
+    return { needs, pins };
   };
 
   return {
@@ -906,7 +908,7 @@ export function createDependencies(options: DependenciesOptions): Dependencies {
           ...new Set([
             ...[...imports.keys()].filter((name) => !(name in warm.packages)),
             ...added,
-            ...[...kitNeeds.keys()].filter((name) => !(name in warm.packages)),
+            ...[...kitNeeds.needs.keys()].filter((name) => !(name in warm.packages)),
           ]),
         ].sort();
         const pinned = working?.lock.packages ?? {};
@@ -945,9 +947,10 @@ export function createDependencies(options: DependenciesOptions): Dependencies {
             artifactDir: target.artifactDir,
             pins,
             additions: missing.map((name) => {
-              // A library a kit module needs, and the artifact doesn't import itself, comes at the
-              // version the kit was built and checked with.
-              const pin = imports.has(name) ? undefined : kitNeeds.get(name);
+              // A library of the kit's on-demand set (a kit module needs it, or the artifact
+              // imports it itself, such as another deck.gl package) comes at the version the kit
+              // was built and checked with, so the set's packages agree (WP-19).
+              const pin = kitNeeds.pins.get(name);
               return (pin !== undefined ? parseSpec(`${name}@${pin}`) : undefined) ?? { name };
             }),
             previous: working?.lock.pnpm,

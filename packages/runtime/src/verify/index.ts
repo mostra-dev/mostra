@@ -69,7 +69,7 @@ import { lintArtifact, type WrongBaseSite } from "./lint.ts";
 
 /** The revision of verify's rules: a cached verdict made under other rules is never reused. */
 export const VERIFY_REVISION: string = createHash("sha256")
-  .update(`verify 4 ${TYPECHECK_REVISION}`)
+  .update(`verify 5 ${TYPECHECK_REVISION}`)
   .digest("hex")
   .slice(0, 16);
 

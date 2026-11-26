@@ -300,6 +300,72 @@
       "type": "registry:component",
       "title": "Live chart",
       "description": "A chart of points that keep arriving, many a second, from a live source in append mode or from the page: uPlot on a canvas in the theme's series colours."
+    },
+    {
+      "name": "mostra-charts",
+      "type": "registry:component",
+      "title": "Charts",
+      "description": "Bar, line, area and donut charts on Recharts in the theme's series colours, every series named in a legend."
+    },
+    {
+      "name": "mostra-echarts",
+      "type": "registry:component",
+      "title": "ECharts",
+      "description": "Any ECharts chart (heat maps, Sankey, treemaps, candlesticks, graphs) from its option, in a theme made from the page's tokens."
+    },
+    {
+      "name": "mostra-data-table",
+      "type": "registry:component",
+      "title": "Data table",
+      "description": "A table of rows on TanStack Table, sortable by every column, with a search and pages when asked."
+    },
+    {
+      "name": "mostra-mermaid",
+      "type": "registry:component",
+      "title": "Mermaid diagram",
+      "description": "A diagram written as Mermaid text (flowcharts, sequences, states, Gantt charts), drawn in the page's theme."
+    },
+    {
+      "name": "mostra-flow",
+      "type": "registry:component",
+      "title": "Flow graph",
+      "description": "Nodes and edges on React Flow's pannable canvas, the nodes the theme's cards and the edges its rules."
+    },
+    {
+      "name": "mostra-code",
+      "type": "registry:component",
+      "title": "Code",
+      "description": "Code highlighted by Shiki, and a CodeMirror editor whose text saves as a field, both coloured from the theme."
+    },
+    {
+      "name": "mostra-math",
+      "type": "registry:component",
+      "title": "Formula",
+      "description": "TeX typeset by KaTeX, inline in a sentence or on its own line."
+    },
+    {
+      "name": "mostra-map",
+      "type": "registry:component",
+      "title": "Map",
+      "description": "A map on MapLibre with deck.gl layers and markers, on a world outline in the theme that needs no tile server."
+    },
+    {
+      "name": "mostra-scene",
+      "type": "registry:component",
+      "title": "3D scene",
+      "description": "A three.js scene on react-three-fiber with light, orbit controls and a floor grid in the theme."
+    },
+    {
+      "name": "mostra-whiteboard",
+      "type": "registry:component",
+      "title": "Whiteboard",
+      "description": "An Excalidraw whiteboard whose drawing saves as a field."
+    },
+    {
+      "name": "mostra-team",
+      "type": "registry:component",
+      "title": "Team",
+      "description": "Who is here, their cursors, who has answered and who changed a shared field, from the team hooks."
     }
   ]
 }

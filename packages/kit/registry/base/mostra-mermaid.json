@@ -1,0 +1,24 @@
+{
+  "$schema": "https://ui.shadcn.com/schema/registry-item.json",
+  "name": "mostra-mermaid",
+  "type": "registry:component",
+  "title": "Mermaid diagram",
+  "description": "A diagram written as Mermaid text (flowcharts, sequences, states, Gantt charts), drawn in the page's theme.",
+  "dependencies": [
+    "cn",
+    "mermaid"
+  ],
+  "registryDependencies": [
+    "mostra-tokens"
+  ],
+  "files": [
+    {
+      "path": "components/mostra/mermaid.tsx",
+      "type": "registry:component",
+      "target": "components/mostra/mermaid.tsx"
+    }
+  ],
+  "mostra": {
+    "base": "base"
+  }
+}

@@ -8,13 +8,51 @@
  * @packageDocumentation
  */
 
-/** The kit's own modules, each `@mostra/kit/<name>` and the registry item `mostra-<name>`. */
-export const KIT_MODULES: readonly ["questionnaire", "layout", "review", "tokens", "live-chart"] = [
+/**
+ * The kit's own modules, each `@mostra/kit/<name>` and the registry item `mostra-<name>`. Those in
+ * {@link KIT_ON_DEMAND_MODULES} import libraries that install on demand (D65).
+ */
+export const KIT_MODULES: readonly [
   "questionnaire",
   "layout",
   "review",
   "tokens",
   "live-chart",
+  "charts",
+  "echarts",
+  "data-table",
+  "mermaid",
+  "flow",
+  "code",
+  "math",
+  "map",
+  "scene",
+  "whiteboard",
+  "team",
+] = [
+  "questionnaire",
+  "layout",
+  "review",
+  "tokens",
+  "live-chart",
+  "charts",
+  "echarts",
+  "data-table",
+  "mermaid",
+  "flow",
+  "code",
+  "math",
+  "map",
+  "scene",
+  "whiteboard",
+  "team",
+];
+
+/** The kit modules whose libraries aren't in the warm set: MapLibre with deck.gl, three.js, Excalidraw. */
+export const KIT_ON_DEMAND_MODULES: readonly ["map", "scene", "whiteboard"] = [
+  "map",
+  "scene",
+  "whiteboard",
 ];
 
 /** The shadcn bases the kit carries a registry for (D27); `base`, Base UI, is the default (D72). */

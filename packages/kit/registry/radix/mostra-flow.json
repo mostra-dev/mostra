@@ -1,0 +1,21 @@
+{
+  "$schema": "https://ui.shadcn.com/schema/registry-item.json",
+  "name": "mostra-flow",
+  "type": "registry:component",
+  "title": "Flow graph",
+  "description": "Nodes and edges on React Flow's pannable canvas, the nodes the theme's cards and the edges its rules.",
+  "dependencies": [
+    "@xyflow/react",
+    "cn"
+  ],
+  "files": [
+    {
+      "path": "components/mostra/flow.tsx",
+      "type": "registry:component",
+      "target": "components/mostra/flow.tsx"
+    }
+  ],
+  "mostra": {
+    "base": "radix"
+  }
+}

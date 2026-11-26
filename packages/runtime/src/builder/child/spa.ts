@@ -29,6 +29,7 @@ import {
 import {
   entryStylesheet,
   hostTokensElement,
+  kitAssetsPlugin,
   kitPeersPlugin,
   kitResolvePlugin,
   themeAttributes,
@@ -227,6 +228,7 @@ export function baseConfig(
       ...observers,
       kitResolvePlugin(sourceDir, request.kit),
       kitPeersPlugin(request.stagingDir),
+      kitAssetsPlugin(request.stagingDir),
       ...plugins,
     ],
   };

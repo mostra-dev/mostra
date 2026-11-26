@@ -1,0 +1,29 @@
+{
+  "$schema": "https://ui.shadcn.com/schema/registry-item.json",
+  "name": "mostra-map",
+  "type": "registry:component",
+  "title": "Map",
+  "description": "A map on MapLibre with deck.gl layers and markers, on a world outline in the theme that needs no tile server.",
+  "dependencies": [
+    "@deck.gl/core@9.4.1",
+    "@deck.gl/layers@9.4.1",
+    "@deck.gl/mapbox@9.4.1",
+    "cn",
+    "maplibre-gl@6.19.0",
+    "topojson-client@3.1.0",
+    "world-atlas@2.0.2"
+  ],
+  "registryDependencies": [
+    "mostra-tokens"
+  ],
+  "files": [
+    {
+      "path": "components/mostra/map.tsx",
+      "type": "registry:component",
+      "target": "components/mostra/map.tsx"
+    }
+  ],
+  "mostra": {
+    "base": "radix"
+  }
+}

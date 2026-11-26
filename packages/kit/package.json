@@ -1,7 +1,7 @@
 {
   "name": "@mostra/kit",
   "version": "0.20.0",
-  "description": "Mostra's kit: shadcn components for the Base UI and Radix bases, shaped by the themes' tokens, and the questionnaire and form parts that save as fields.",
+  "description": "Mostra's kit: shadcn components for the Base UI and Radix bases, shaped by the themes' tokens, the questionnaire and form parts that save as fields, and token-aware charts, tables, diagrams, code, math, maps, 3D and team parts.",
   "license": "Apache-2.0",
   "author": "The Mostra Authors",
   "homepage": "https://github.com/mostra-dev/mostra/tree/main/packages/kit#readme",
@@ -46,6 +46,61 @@
       "types": "./dist/live-chart.d.ts",
       "default": "./dist/live-chart.js"
     },
+    "./charts": {
+      "@mostra/source": "./src/charts.tsx",
+      "types": "./dist/charts.d.ts",
+      "default": "./dist/charts.js"
+    },
+    "./echarts": {
+      "@mostra/source": "./src/echarts.tsx",
+      "types": "./dist/echarts.d.ts",
+      "default": "./dist/echarts.js"
+    },
+    "./data-table": {
+      "@mostra/source": "./src/data-table.tsx",
+      "types": "./dist/data-table.d.ts",
+      "default": "./dist/data-table.js"
+    },
+    "./mermaid": {
+      "@mostra/source": "./src/mermaid.tsx",
+      "types": "./dist/mermaid.d.ts",
+      "default": "./dist/mermaid.js"
+    },
+    "./flow": {
+      "@mostra/source": "./src/flow.tsx",
+      "types": "./dist/flow.d.ts",
+      "default": "./dist/flow.js"
+    },
+    "./code": {
+      "@mostra/source": "./src/code.tsx",
+      "types": "./dist/code.d.ts",
+      "default": "./dist/code.js"
+    },
+    "./math": {
+      "@mostra/source": "./src/math.tsx",
+      "types": "./dist/math.d.ts",
+      "default": "./dist/math.js"
+    },
+    "./map": {
+      "@mostra/source": "./src/map.tsx",
+      "types": "./dist/map.d.ts",
+      "default": "./dist/map.js"
+    },
+    "./scene": {
+      "@mostra/source": "./src/scene.tsx",
+      "types": "./dist/scene.d.ts",
+      "default": "./dist/scene.js"
+    },
+    "./whiteboard": {
+      "@mostra/source": "./src/whiteboard.tsx",
+      "types": "./dist/whiteboard.d.ts",
+      "default": "./dist/whiteboard.js"
+    },
+    "./team": {
+      "@mostra/source": "./src/team.tsx",
+      "types": "./dist/team.d.ts",
+      "default": "./dist/team.js"
+    },
     "./css/*": "./css/*",
     "./registry/*": "./registry/*",
     "./package.json": "./package.json"
@@ -74,14 +129,31 @@
   },
   "dependencies": {
     "@base-ui/react": "catalog:",
+    "@codemirror/autocomplete": "catalog:",
+    "@codemirror/commands": "catalog:",
+    "@codemirror/lang-css": "catalog:",
+    "@codemirror/lang-html": "catalog:",
+    "@codemirror/lang-javascript": "catalog:",
+    "@codemirror/lang-json": "catalog:",
+    "@codemirror/lang-markdown": "catalog:",
+    "@codemirror/lang-python": "catalog:",
+    "@codemirror/language": "catalog:",
+    "@codemirror/state": "catalog:",
+    "@codemirror/view": "catalog:",
+    "@lezer/highlight": "catalog:",
     "@mostra/react": "workspace:*",
     "@shadcn/react": "catalog:",
+    "@tanstack/react-table": "catalog:",
+    "@xyflow/react": "catalog:",
     "class-variance-authority": "catalog:",
     "cmdk": "catalog:",
     "cn": "catalog:",
+    "echarts": "catalog:",
     "embla-carousel-react": "catalog:",
     "input-otp": "catalog:",
+    "katex": "catalog:",
     "lucide-react": "catalog:",
+    "mermaid": "catalog:",
     "radix-ui": "catalog:",
     "react-day-picker": "catalog:",
     "react-resizable-panels": "catalog:",
@@ -93,7 +165,9 @@
     "vaul": "catalog:"
   },
   "peerDependencies": {
+    "@deck.gl/aggregation-layers": "9.4.1",
     "@deck.gl/core": "9.4.1",
+    "@deck.gl/geo-layers": "9.4.1",
     "@deck.gl/layers": "9.4.1",
     "@deck.gl/mapbox": "9.4.1",
     "@excalidraw/excalidraw": "0.18.1",
@@ -102,10 +176,18 @@
     "@types/three": "0.187.0",
     "maplibre-gl": "6.19.0",
     "react": "^19",
-    "three": "0.187.0"
+    "three": "0.187.0",
+    "topojson-client": "3.1.0",
+    "world-atlas": "2.0.2"
   },
   "peerDependenciesMeta": {
+    "@deck.gl/aggregation-layers": {
+      "optional": true
+    },
     "@deck.gl/core": {
+      "optional": true
+    },
+    "@deck.gl/geo-layers": {
       "optional": true
     },
     "@deck.gl/layers": {
@@ -131,6 +213,12 @@
     },
     "three": {
       "optional": true
+    },
+    "topojson-client": {
+      "optional": true
+    },
+    "world-atlas": {
+      "optional": true
     }
   },
   "devDependencies": {
@@ -142,18 +230,34 @@
     "@react-three/drei": "catalog:",
     "@react-three/fiber": "catalog:",
     "@size-limit/preset-small-lib": "catalog:",
+    "@types/geojson": "catalog:",
     "@types/node": "catalog:",
     "@types/react": "catalog:",
     "@types/react-dom": "catalog:",
     "@types/three": "catalog:",
+    "@types/topojson-client": "catalog:",
     "maplibre-gl": "catalog:",
     "react": "catalog:",
     "react-dom": "catalog:",
     "size-limit": "catalog:",
     "three": "catalog:",
+    "topojson-client": "catalog:",
     "tsdown": "catalog:",
     "typescript": "catalog:",
-    "vitest": "catalog:"
+    "vitest": "catalog:",
+    "world-atlas": "catalog:"
+  },
+  "mostra-kit": {
+    "assets": [
+      {
+        "package": "@excalidraw/excalidraw",
+        "from": "dist/prod/fonts",
+        "to": "excalidraw/fonts",
+        "skip": [
+          "Xiaolai"
+        ]
+      }
+    ]
   },
   "size-limit": [
     {

@@ -1,0 +1,25 @@
+{
+  "$schema": "https://ui.shadcn.com/schema/registry-item.json",
+  "name": "mostra-whiteboard",
+  "type": "registry:component",
+  "title": "Whiteboard",
+  "description": "An Excalidraw whiteboard whose drawing saves as a field.",
+  "dependencies": [
+    "@excalidraw/excalidraw@0.18.1",
+    "@mostra/react",
+    "cn"
+  ],
+  "registryDependencies": [
+    "mostra-tokens"
+  ],
+  "files": [
+    {
+      "path": "components/mostra/whiteboard.tsx",
+      "type": "registry:component",
+      "target": "components/mostra/whiteboard.tsx"
+    }
+  ],
+  "mostra": {
+    "base": "base"
+  }
+}

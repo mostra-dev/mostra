@@ -1,0 +1,24 @@
+{
+  "$schema": "https://ui.shadcn.com/schema/registry-item.json",
+  "name": "mostra-echarts",
+  "type": "registry:component",
+  "title": "ECharts",
+  "description": "Any ECharts chart (heat maps, Sankey, treemaps, candlesticks, graphs) from its option, in a theme made from the page's tokens.",
+  "dependencies": [
+    "cn",
+    "echarts"
+  ],
+  "registryDependencies": [
+    "mostra-tokens"
+  ],
+  "files": [
+    {
+      "path": "components/mostra/echarts.tsx",
+      "type": "registry:component",
+      "target": "components/mostra/echarts.tsx"
+    }
+  ],
+  "mostra": {
+    "base": "base"
+  }
+}

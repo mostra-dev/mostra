@@ -1,0 +1,21 @@
+{
+  "$schema": "https://ui.shadcn.com/schema/registry-item.json",
+  "name": "mostra-charts",
+  "type": "registry:component",
+  "title": "Charts",
+  "description": "Bar, line, area and donut charts on Recharts in the theme's series colours, every series named in a legend.",
+  "dependencies": [
+    "cn",
+    "recharts"
+  ],
+  "files": [
+    {
+      "path": "components/mostra/charts.tsx",
+      "type": "registry:component",
+      "target": "components/mostra/charts.tsx"
+    }
+  ],
+  "mostra": {
+    "base": "radix"
+  }
+}
