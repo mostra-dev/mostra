@@ -96,12 +96,74 @@ export interface LiveView {
   readonly ring: readonly unknown[];
 }
 
+/**
+ * Append mode's values and their revisions, oldest first (AC-08): a value is appended in constant
+ * time, however many are kept, and the array a page reads is made at most once per change it sees
+ * (`snapshot()`), so a source sending a burst of values, or hundreds a second, costs the page one
+ * copy a frame rather than one per value.
+ */
+export class LiveRing {
+  #values: unknown[] = [];
+  #revisions: number[] = [];
+  #start = 0;
+  #snapshot: readonly unknown[] | undefined = [];
+
+  /** How many values are kept. */
+  get length(): number {
+    return this.#values.length - this.#start;
+  }
+
+  /** The revisions kept, oldest first. */
+  revisions(): readonly number[] {
+    return this.#revisions.slice(this.#start);
+  }
+
+  /** Appends one value, keeping at most `window` (every value when `undefined`). */
+  push(value: unknown, revision: number, window: number | undefined): void {
+    this.#values.push(value);
+    this.#revisions.push(revision);
+    this.#trim(window);
+    this.#snapshot = undefined;
+  }
+
+  /** Replaces what is kept (a read of the source's ring), keeping at most `window`. */
+  replace(
+    values: readonly unknown[],
+    revisions: readonly number[],
+    window: number | undefined,
+  ): void {
+    this.#values = [...values];
+    this.#revisions = [...revisions];
+    this.#start = 0;
+    this.#trim(window);
+    this.#snapshot = undefined;
+  }
+
+  /** The values kept, oldest first: the same array until the next change. */
+  snapshot(): readonly unknown[] {
+    this.#snapshot ??= this.#values.slice(this.#start);
+    return this.#snapshot;
+  }
+
+  #trim(window: number | undefined): void {
+    if (window === undefined) return;
+    if (this.length > window) this.#start = this.#values.length - window;
+    // The dropped values are let go once they are as many as those kept: amortized constant time.
+    if (this.#start > 0 && this.#start >= this.#values.length - this.#start) {
+      this.#values = this.#values.slice(this.#start);
+      this.#revisions = this.#revisions.slice(this.#start);
+      this.#start = 0;
+    }
+  }
+}
+
 interface TrackedLive {
   view: LiveView;
   watchers: Map<number, number | undefined>;
   /** Revision numbers decoded or decoding, so an older value never replaces a newer one. */
   newest: number;
-  ringRevisions: number[];
+  /** Append mode's values; `view.ring` is its snapshot, taken when the page reads the view. */
+  ring: LiveRing;
   /**
    * Every read and update of this source applies in the order it arrived, one at a time: values
    * decode asynchronously, and two in flight must never land out of order.
@@ -473,7 +535,11 @@ export class ServerClient {
 
   /** What the page knows of a live source. */
   liveView(key: string): LiveView | undefined {
-    return this.#live.get(key)?.view;
+    const tracked = this.#live.get(key);
+    if (!tracked) return undefined;
+    const ring = tracked.ring.snapshot();
+    if (tracked.view.ring !== ring) tracked.view = { ...tracked.view, ring };
+    return tracked.view;
   }
 
   /**
@@ -487,7 +553,7 @@ export class ServerClient {
         view: { key, loading: true, ring: [] },
         watchers: new Map(),
         newest: 0,
-        ringRevisions: [],
+        ring: new LiveRing(),
         applying: Promise.resolve(),
       };
       this.#live.set(key, tracked);
@@ -608,18 +674,16 @@ export class ServerClient {
       const revisions = state.ring.map((entry) => Number(entry.revision));
       // A read answered after newer updates arrived keeps them: the ring only moves forward.
       const last = revisions.at(-1) ?? 0;
-      const kept = tracked.ringRevisions.flatMap((held, index) =>
-        held > last ? [{ revision: held, value: tracked.view.ring[index] }] : [],
+      const held = tracked.ring.revisions();
+      const heldValues = tracked.ring.snapshot();
+      const kept = held.flatMap((revision, index) =>
+        revision > last ? [{ revision, value: heldValues[index] }] : [],
       );
-      const window = this.#windowOf(tracked);
-      const merged = [...values, ...kept.map((entry) => entry.value)];
-      const mergedRevisions = [...revisions, ...kept.map((entry) => entry.revision)];
-      tracked.ringRevisions =
-        window === undefined ? mergedRevisions : mergedRevisions.slice(-window);
-      tracked.view = {
-        ...tracked.view,
-        ring: window === undefined ? merged : merged.slice(-window),
-      };
+      tracked.ring.replace(
+        [...values, ...kept.map((entry) => entry.value)],
+        [...revisions, ...kept.map((entry) => entry.revision)],
+        this.#windowOf(tracked),
+      );
     }
     if (state.value && revision >= tracked.newest) {
       tracked.newest = revision;
@@ -672,17 +736,13 @@ export class ServerClient {
     tracked.newest = revision;
     const data = await decode(update.value);
     const window = this.#windowOf(tracked);
-    const ring =
-      window === undefined ? tracked.view.ring : [...tracked.view.ring, data].slice(-window);
-    if (window !== undefined)
-      tracked.ringRevisions = [...tracked.ringRevisions, revision].slice(-window);
+    if (window !== undefined) tracked.ring.push(data, revision, window);
     // A new value came from its producer, so its owner is back.
     const { error: _cleared, ownerOffline: _back, ...rest } = tracked.view;
     tracked.view = {
       ...rest,
       loading: false,
       data,
-      ring,
       revision: String(revision),
       ...(update.at !== undefined ? { at: update.at } : {}),
     };
