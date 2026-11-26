@@ -37,7 +37,7 @@
 | Builder or verify runner crashes | The operation fails with `MOSTRA_BUILD_CRASHED` or `MOSTRA_VERIFY_CRASHED` plus the child's last stderr lines. Nothing is published. The next operation starts a fresh child |
 | A `mostra dev` session's dev server stops, or the source doesn't build (D140 item 12) | The session reports it on `dev/notify` (`diagnostics`, `MOSTRA_BUILD_CRASHED` or the build's codes); a client module that doesn't build shows Vite's error overlay in the page, and server code that doesn't build leaves the last good bundle running. The next change of the source builds again. The connection that started the session closing, `dev/stop` or the instance stopping ends it: its children stop and `cache/dev/<session>/` is removed, and a start removes what a killed instance left |
 | PTY host crashes | Live terminals show "Session ended unexpectedly", recordings keep their bytes up to the crash, and a reconnect starts a new PTY host. Other features are unaffected |
-| Demo dev server exits | `<WebDemo>` shows the exit code and the last log lines. `mostra open` or a reload restarts it |
+| A demo's build fails, outruns its time limit or is cancelled (D185 item 4) | Its whole process tree is ended (its group, or its Job Object on Windows); `verify` fails with `MOSTRA_DEMO_BUILD_FAILED` or `MOSTRA_DEMO_BUILD_TIMEOUT` and the build's last log lines, so nothing is published; the cache keeps no failed output, and the next `verify` builds again |
 | CLI version differs from the daemon's | Protocol negotiation picks the highest common revision. If none exists, the CLI reports `MOSTRA_HOST_REVISION_UNSUPPORTED` with `mostra daemon restart` as the fix. Restarting is safe: everything durable survives, and open views reconnect |
 
 ## 3. Persistence

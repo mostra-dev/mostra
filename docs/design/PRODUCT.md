@@ -91,7 +91,7 @@ These are the caller-first scenarios that the design and acceptance must serve. 
 
 **J4. Terminal UI prototypes (`v1.1`, D122).** For a TUI redesign, an agent builds ratatui candidates. It captures them cell-exact through the TestBackend capture crate. It also shows the real binary live in a PTY next to the captures. It verifies the layout with `mostra term dump --format text` before publishing. The human compares candidates with synchronized playback and pins comments to cell regions.
 
-**J5. End-of-work presentation.** An agent writes an MDX deck with motion compositions, a chart, a code diff and an embedded live demo of the feature it built (the project's own dev server proxied into an iframe). It asks for approval with a trusted Approve control.
+**J5. End-of-work presentation.** An agent writes an MDX deck with motion compositions, a chart, a code diff and an embedded live demo of the feature it built (the project's own front end, built into the version, D185). It asks for approval with a trusted Approve control.
 
 **J6. Multi-round questionnaire.** Round one is an artifact with structured questions and free-text notes. After submission, the agent publishes round two as a new artifact linked to the first, under the `once` policy. A host using `epochs` would instead open a new epoch on the same artifact.
 

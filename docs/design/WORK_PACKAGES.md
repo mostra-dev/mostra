@@ -522,18 +522,19 @@ Each entry lists the requirements the package owns, then what it builds, what it
 ### WP-24. Web demos and exports
 - **Owns:** TM-08, VR-07.
 - **Builds:**
-  - declared demos with the process lifecycle;
-  - the per-demo port proxy with HTTP and WebSocket passthrough and Host rewriting;
-  - framing headers stripped for that demo only;
-  - bridge injection and its opt-out;
-  - `<WebDemo>` with device frames and viewports;
-  - the `static`, `html` and `snapshot` export classes (the `bundle` class, `mostra run` and the `WorkerLauncher` documentation are WP-29's, D125).
+  - declared demos (D185: a demo is a built front end, never a running dev server) built from their source at `verify`, publish and on demand (`mostra demo build`), cached by the source's content, stored with the version and served from the artifact origin under `/_mostra/demos/<name>/` with an SPA fallback;
+  - bridge injection into a demo's documents and its opt-out;
+  - `useDemo` and `<WebDemo>` with device frames and viewports;
+  - the `static`, `html` and `snapshot` export classes, carrying demos, with `--base`, `--strict`, `--submission` and `--no-shared-state`, an export report naming what each loses, controls degrading in place, and no server code in any export (the `bundle` class, `mostra run` and the `WorkerLauncher` documentation are WP-29's, D125).
 
   Terminal exports wait for the terminal packages.
 - **Depends on:** WP-20.
 - **Evidence:**
-  - a Vite demo and a Next.js demo hot-reload inside the frame, and their screenshots are captured;
-  - exports open from disk, and actions show as unavailable in `static` and `snapshot`;
+  - a Vite app and a Next.js static-export app, each with client-side routing and mock data, build through the demo spec and pass `verify`, with their screenshots;
+  - both are fully interactive in `<WebDemo>` in Chromium, Firefox and WebKit, locally and through a share; a deep link to a client-side route works; a review comment inside a demo survives a reload;
+  - a broken build fails `verify` with its log;
+  - each export class opens the demo from disk in all three engines; a history-routed demo from disk shows its notice when it navigates in Chromium; a `static` export with `--base /sub/` serves a history-routed demo fully from `/sub/`;
+  - actions show as unavailable in `static` and `snapshot`, and an export of a page with actions, a live producer and a secret holds none of their server code or values;
   - VR-07's bundle case reuses WP-29's `bundle` class and `mostra run`.
 
 ### WP-25. First-party plugins

@@ -22,12 +22,12 @@ flowchart TB
   end
   subgraph Instance["One instance per home"]
     SUP["Supervisor (@mostra/runtime)<br/>protocol server · registry · ledger (sole SQLite writer)<br/>interaction core · addressing · process manager"]
-    GW["Gateway (Hono, in the supervisor)<br/>shell port · artifact ports · demo ports"]
+    GW["Gateway (Hono, in the supervisor)<br/>shell port · artifact ports"]
     BLD["Builder (child)<br/>Vite 8 · tsc 7 · MDX · server-function transform"]
     VER["Verify runner (child)<br/>warm Playwright Chromium"]
     WRK["Workers (child, per active artifact version with server code)<br/>server functions · action runs · live producers"]
     PTY["PTY host (child)<br/>node-pty"]
-    DEMO["Demo dev servers (children)"]
+    DEMO["Demo builds (children)"]
     DEPS["Package installs (children, in the artifact's context)"]
   end
   subgraph Browser
@@ -95,7 +95,7 @@ Design is unbounded: the kit is a beautiful baseline, never a requirement (D68).
 
 | Class | Contents | Server features |
 |---|---|---|
-| `static` | the client build as files, hash-routed (D57) | None. Fields keep local state and say they can't be submitted |
+| `static` | the client build as files, hash-routed (D57), its code inline in `index.html` so it opens from disk, with its demos (D185) | None. Fields keep local state and say they can't be submitted |
 | `html` | one self-contained HTML file | Same as `static` |
 | `bundle` | client build, server bundle, manifest and lockfile: the **portable artifact package** (RM-01) | Run anywhere with `mostra run <bundle>` |
 | `snapshot` | what a view showed, including field values and live values at a cursor | Actions marked unavailable, never faked |
@@ -116,7 +116,7 @@ Design is unbounded: the kit is a beautiful baseline, never a requirement (D68).
 - the verify runner;
 - workers (one per active artifact version with server code; usually one per artifact);
 - the PTY host;
-- declared demo dev servers;
+- demo builds (D185);
 - package installs.
 
 Each child runs in its own process group (on Windows its own Job Object, which ends it and its descendants the moment the supervisor dies, D150). Its PID and start time (creation time on Windows) are recorded in the ledger before it may run, so a restarted supervisor reaps leftovers from a crash (FAILURE_MODEL §2). Frozen client-only versions need no process at all; the gateway serves their files (RT-05).
@@ -253,7 +253,7 @@ One frame model (cells, styles, cursor, size, timing, width table) underlies all
 
 `mostra term dump` and terminal lint give agents text, cells and ANSI output without vision (TM-06).
 
-Web demos are declared in the manifest. The gateway proxies each one on its own leased port origin, with HTTP and WebSocket passthrough, header rewriting where needed, framing headers stripped from that demo's responses only, and the bridge injected unless turned off (TM-08). The kit's `<WebDemo>` adds device frames and viewport switching.
+Web demos are built front ends (D185, TM-08): the manifest declares a demo's source folder, build command and output folder; Mostra builds it at `verify`, publish and on demand, cached by its source's content, and stores the output with the version, under `client/_mostra/demos/<name>/`. The artifact origin serves it at `/_mostra/demos/<name>/` behind the page's frame session, with an SPA fallback, and injects the review agent into its documents unless turned off. A demo depends on nothing running, so it behaves the same locally, through every share, on a remote server and in every export. Dev servers, hot reload and demos with a server side are out of scope (D185 item 2). The kit's `<WebDemo>` adds device frames and viewport switching.
 
 ## 10. Hygiene and remote viewing
 
