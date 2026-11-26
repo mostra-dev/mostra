@@ -32,8 +32,6 @@ export interface DemoHandle {
   readonly status: DemoStatus;
   /** The frame's address, when it is `ready` and served as files. */
   readonly src?: string;
-  /** The demo's whole document, when it is `ready` inside a single-file export. */
-  readonly srcdoc?: string;
   readonly routing: DemoRouting;
   /** Tells verify the frame loaded, so it stops waiting for it. */
   loaded(): void;
@@ -95,14 +93,25 @@ function pagePath(path: string | undefined): string {
   return (path ?? "").replace(/^\/+/, "");
 }
 
-/** A single-file export's demo document, decoded from its base64 element. */
+/** The addresses of single-file exports' demo documents, made once per page. */
+const documents = new Map<string, string>();
+
+/**
+ * A single-file export's demo document, decoded from its base64 element, at a `blob:` address of
+ * its own: links inside it resolve against that address, so a hash-routed demo moves between its
+ * pages in place (a `srcdoc` frame resolves them against the page around it, and loads that).
+ */
 function documentOf(id: string): string | undefined {
+  const known = documents.get(id);
+  if (known !== undefined) return known;
   const text = document.getElementById(id)?.textContent?.trim();
   if (!text) return undefined;
   const binary = atob(text);
   const bytes = new Uint8Array(binary.length);
   for (let index = 0; index !== binary.length; index++) bytes[index] = binary.charCodeAt(index);
-  return new TextDecoder().decode(bytes);
+  const url = URL.createObjectURL(new Blob([bytes], { type: "text/html" }));
+  documents.set(id, url);
+  return url;
 }
 
 /**
@@ -126,7 +135,12 @@ export function resolveDemo(name: string, options: DemoOptions = {}): Omit<DemoH
     const doc = documentOf(facts.document);
     return doc === undefined
       ? { name, status: "folder-only", routing }
-      : { name, status: "ready", srcdoc: doc, routing };
+      : {
+          name,
+          status: "ready",
+          src: routing === "hash" && path !== "" ? `${doc}#/${path}` : doc,
+          routing,
+        };
   }
   const base = exportFacts()?.base ?? "/";
   const here = new URL(".", window.location.href);

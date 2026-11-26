@@ -456,9 +456,24 @@ export function createDemos(options: DemosOptions): Demos {
           `${JSON.stringify({ name: inputs.name, digest: inputs.digest, base: inputs.base, files, builtAt: new Date().toISOString() }, null, 2)}\n`,
         );
         const target = join(cacheDir, inputs.digest);
-        await rm(target, { recursive: true, force: true });
-        await renamePath(scratch, target);
-        return { status: "built", dir: join(target, "out"), files, ms: ran.ms };
+        // One commit per digest at a time. Two folders with the same content build the same
+        // output, and a publish may be copying out of the entry now: an entry, once there, is never
+        // removed under a reader. The build that finds one already kept leaves its own; a forced
+        // build sets the old one aside first, so a reader holds either whole.
+        return inTurn(`digest\0${inputs.digest}`, async () => {
+          const there = await cached(inputs.digest);
+          if (there && !how.force) {
+            await rm(scratch, { recursive: true, force: true });
+            return { ...there, status: "built" as const, ms: ran.ms };
+          }
+          const aside = there
+            ? join(cacheDir, `.old-${randomBytes(6).toString("hex")}`)
+            : undefined;
+          if (aside !== undefined) await renamePath(target, aside);
+          await renamePath(scratch, target);
+          if (aside !== undefined) await rm(aside, { recursive: true, force: true });
+          return { status: "built" as const, dir: join(target, "out"), files, ms: ran.ms };
+        });
       });
     },
   };

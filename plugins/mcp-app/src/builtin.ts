@@ -146,7 +146,8 @@ function insert(html: string, head: string, body: string): string {
 function historyGuard(): string {
   const sentence = JSON.stringify(SERVER_SENTENCE);
   return `<script>(function () {
-  if (location.protocol !== "file:") return;
+  // Only where the browser refuses moving to another path: a page opened from disk, or a
+  // single file's demo at its own blob: address. Over a web server this does nothing.
   var refused = false;
   try {
     var here = location.href;
@@ -184,12 +185,36 @@ function historyGuard(): string {
     if (!link || link.target === "_blank" || link.hasAttribute("download")) return;
     var href = link.getAttribute("href") || "";
     if (href.charAt(0) === "#" || /^[a-z][a-z0-9+.-]*:/i.test(href) && !/^file:/i.test(href)) return;
-    var to = new URL(href, location.href);
-    if (to.pathname === location.pathname) return;
+    var to = null;
+    try { to = new URL(href, location.href); } catch (error) {}
+    if (to && to.pathname === location.pathname) return;
     event.preventDefault();
     event.stopImmediatePropagation();
     notice();
   }, true);
+})();</script>`;
+}
+
+/**
+ * The script a single file's demo runs first: its document lives at a `blob:` address, where
+ * Chromium refuses loading the same address with another fragment (a link to `#/items/2`), yet
+ * takes the history API's fragment change. A link to a fragment of the document moves there that
+ * way and says so (`hashchange`), as a browser does, so a hash-routed demo moves between its pages
+ * inside the single file in every engine.
+ */
+function fragmentShim(): string {
+  return `<script>(function () {
+  if (location.protocol !== "blob:") return;
+  addEventListener("click", function (event) {
+    var link = event.target && event.target.closest ? event.target.closest("a[href]") : null;
+    if (!link || link.target === "_blank") return;
+    var href = link.getAttribute("href") || "";
+    if (href.charAt(0) !== "#" || event.defaultPrevented) return;
+    event.preventDefault();
+    var before = location.href;
+    history.pushState(history.state, "", href);
+    dispatchEvent(new HashChangeEvent("hashchange", { oldURL: before, newURL: location.href }));
+  });
 })();</script>`;
 }
 
@@ -253,7 +278,7 @@ async function demoDocument(
   } catch {
     return undefined;
   }
-  const head = `${routing === "history" ? historyGuard() : ""}<style>${css.join("\n").replace(/<\/(style)/gi, "<\\/$1")}</style><script>addEventListener("vite:preloadError", function (event) { event.preventDefault(); });</script>`;
+  const head = `${fragmentShim()}${routing === "history" ? historyGuard() : ""}<style>${css.join("\n").replace(/<\/(style)/gi, "<\\/$1")}</style><script>addEventListener("vite:preloadError", function (event) { event.preventDefault(); });</script>`;
   return insert(rest, head, `${moduleElements(bundled.code)}\n`);
 }
 

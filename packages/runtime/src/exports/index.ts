@@ -14,7 +14,7 @@
  */
 import { randomBytes } from "node:crypto";
 import { existsSync } from "node:fs";
-import { cp, mkdir, readdir, readFile, rm, stat, writeFile } from "node:fs/promises";
+import { chmod, cp, mkdir, readdir, readFile, rm, stat, writeFile } from "node:fs/promises";
 import { dirname, join } from "node:path";
 import { zstdCompressSync } from "node:zlib";
 import {
@@ -123,6 +123,19 @@ async function filesUnder(dir: string): Promise<string[]> {
   };
   await walk(dir, "");
   return found;
+}
+
+/**
+ * Makes a copy of a sealed version writable (files 0444 and folders 0555 in the home, DATA_MODEL
+ * §1): the export's scratch view replaces its demos with ones built again under `--base`.
+ */
+async function writableTree(dir: string): Promise<void> {
+  await chmod(dir, 0o755);
+  for (const entry of await readdir(dir, { withFileTypes: true })) {
+    const path = join(dir, entry.name);
+    if (entry.isDirectory()) await writableTree(path);
+    else if (entry.isFile()) await chmod(path, 0o644);
+  }
 }
 
 /** Creates the built-in exports. */
@@ -272,7 +285,7 @@ export function createExports(options: ExportsOptions): Exports {
       const built = await options.demos.build(inputs);
       if (built.status === "failed") return { rebuilt: false, why: built.diagnostic.message };
       const target = join(view, "client", "_mostra", "demos", name);
-      await rm(target, { recursive: true, force: true });
+      await removeTree(target);
       await cp(built.dir, target, { recursive: true });
       if (spec.bridge !== false && agent !== undefined) {
         const code = await readFile(join(view, "client", agent), "utf8").catch(() => undefined);
@@ -370,6 +383,7 @@ export function createExports(options: ExportsOptions): Exports {
       try {
         await mkdir(scratch, { recursive: true });
         await cp(join(versionDir, "client"), join(scratch, "client"), { recursive: true });
+        await writableTree(join(scratch, "client"));
         await cp(join(versionDir, "manifest.json"), join(scratch, "manifest.json"));
         if (existsSync(join(versionDir, "registry.json"))) {
           await cp(join(versionDir, "registry.json"), join(scratch, "registry.json"));
@@ -384,7 +398,7 @@ export function createExports(options: ExportsOptions): Exports {
           rebuilt = outcome.rebuilt;
           if (!outcome.rebuilt) {
             // Carried as the version built them: the scratch view still holds those files.
-            await rm(join(scratch, "client", "_mostra", "demos"), { recursive: true, force: true });
+            await removeTree(join(scratch, "client", "_mostra", "demos"));
             await cp(
               join(versionDir, "client", "_mostra", "demos"),
               join(scratch, "client", "_mostra", "demos"),
