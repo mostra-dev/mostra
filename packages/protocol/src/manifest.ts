@@ -55,8 +55,14 @@ export interface TerminalSpec {
   readonly input?: boolean;
 }
 
-/** A web demo the artifact declares (ROUND-3 §5.4, TM-08): a command to run, or a port to attach to. */
+/**
+ * A web demo the artifact declares (TM-08, D185): a front end Mostra builds from its source into
+ * the version and serves under `/_mostra/demos/<name>/` ({@link DemoBuildSpec}). The dev-server
+ * forms (a command to run, a port to attach to, ROUND-3 §5.4) stay readable, and `verify` refuses
+ * them with `MOSTRA_DEMO_UNSUPPORTED` (D185 item 3).
+ */
 export type DemoSpec =
+  | DemoBuildSpec
   | {
       readonly command: readonly string[];
       readonly cwd?: string;
@@ -64,6 +70,41 @@ export type DemoSpec =
       readonly bridge?: boolean;
     }
   | { readonly attach: number; readonly bridge?: boolean };
+
+/** A demo built from its source (D185 item 3). */
+export interface DemoBuildSpec {
+  /** The demo's project folder, relative to the artifact's directory. */
+  readonly source: string;
+  /** The command that builds it, run in `source`: `["pnpm", "build"]`. */
+  readonly build: readonly string[];
+  /** The folder the build writes, relative to `source`, holding its `index.html`. */
+  readonly output: string;
+  /** Settings for the build, never secrets: a demo holds none. */
+  readonly env?: Readonly<Record<string, string>>;
+  /** How the demo moves between its pages: `history` (the default) or `hash`. */
+  readonly routing?: "history" | "hash";
+  /** Whether its documents get the review agent, so comments anchor inside it. Default `true`. */
+  readonly bridge?: boolean;
+  /** The build's time limit: `10m` by default, at most `60m`. */
+  readonly timeout?: Duration;
+}
+
+/** Whether a demo is declared as a build (D185), not as a dev server. */
+export function isDemoBuild(spec: DemoSpec): spec is DemoBuildSpec {
+  return "build" in spec && "source" in spec && "output" in spec;
+}
+
+/** The path a demo is served under, and its build's `MOSTRA_DEMO_BASE`: `/_mostra/demos/<name>/`. */
+export function demoBase(name: string): string {
+  return `/_mostra/demos/${name}/`;
+}
+
+/** A demo build's default time limit, and its longest (D185 item 3). */
+export const DEMO_TIMEOUT_DEFAULT_MS: number = 10 * 60_000;
+export const DEMO_TIMEOUT_MAX_MS: number = 60 * 60_000;
+
+/** A demo's name: 1 to 64 lower-case letters, digits and `-`, starting with a letter or digit. */
+export const DEMO_NAME: RegExp = /^[a-z0-9][a-z0-9-]{0,63}$/;
 
 /**
  * A count by choice the artifact opts into (D165 item 12, RM-07): every accepted submission adds
@@ -192,6 +233,15 @@ const TerminalSpec: z.ZodType<TerminalSpec> = z.object({
 
 const DemoSpec: z.ZodType<DemoSpec> = z.union([
   z.object({
+    source: z.string().min(1),
+    build: z.array(z.string().min(1)).min(1).readonly(),
+    output: z.string().min(1),
+    env: z.record(z.string(), z.string()).readonly().exactOptional(),
+    routing: z.enum(["history", "hash"]).exactOptional(),
+    bridge: z.boolean().exactOptional(),
+    timeout: Duration.exactOptional(),
+  }),
+  z.object({
     command: z.array(z.string()).min(1).readonly(),
     cwd: z.string().exactOptional(),
     ready: z.string().exactOptional(),
@@ -300,6 +350,31 @@ export function manifestProblem(
   const limit = manifest.hosted?.offline?.limit;
   if (limit !== undefined && durationMs(limit) > HOSTED_OFFLINE_LIMIT_MAX_MS) {
     return { path: "hosted.offline.limit", message: "an offline limit is at most 7d" };
+  }
+  for (const [name, spec] of Object.entries(manifest.demos ?? {})) {
+    if (!isDemoBuild(spec)) continue;
+    if (!DEMO_NAME.test(name)) {
+      return {
+        path: `demos.${name}`,
+        message:
+          "a demo's name is 1 to 64 lower-case letters, digits and -, starting with a letter or digit",
+      };
+    }
+    if (spec.timeout !== undefined && durationMs(spec.timeout) > DEMO_TIMEOUT_MAX_MS) {
+      return { path: `demos.${name}.timeout`, message: "a demo's build timeout is at most 60m" };
+    }
+    for (const key of ["source", "output"] as const) {
+      const value = spec[key].replaceAll("\\", "/");
+      if (value.startsWith("/") || /^[a-z]:/i.test(value)) {
+        return { path: `demos.${name}.${key}`, message: `a demo's ${key} is a relative path` };
+      }
+    }
+    if (spec.output.replaceAll("\\", "/").split("/").includes("..")) {
+      return {
+        path: `demos.${name}.output`,
+        message: "a demo's output is a folder inside its source",
+      };
+    }
   }
   const stack = manifest.kit?.theme;
   if (stack !== undefined) {

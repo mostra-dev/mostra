@@ -81,3 +81,32 @@ export function artifactEnvironment(env: Environment): Environment {
   result[pathName] = already ? path : path === "" ? own : `${own}${delimiter}${path}`;
   return result;
 }
+
+/**
+ * The environment of a demo's build (D185 item 4): the artifact environment, but with the user's
+ * own `PATH` first and the directory of Mostra's Node.js last, as a fallback, since the build is
+ * the project's own program and uses the project's own tools; then the demo's own settings and
+ * `MOSTRA_DEMO_BASE`, which no setting replaces.
+ */
+export function demoEnvironment(
+  env: Environment,
+  settings: Readonly<Record<string, string>>,
+  base: string,
+): Environment {
+  const result: Record<string, string> = {};
+  for (const [name, value] of Object.entries(artifactEnvironment(env))) {
+    if (value !== undefined) result[name] = value;
+  }
+  const pathName = Object.keys(result).find((name) => name.toUpperCase() === "PATH") ?? "PATH";
+  const own = dirname(process.execPath);
+  const user = Object.entries(env).find(([name]) =>
+    WINDOWS ? name.toUpperCase() === "PATH" : name === "PATH",
+  )?.[1];
+  const parts = (user ?? "").split(delimiter).filter((part) => part !== "");
+  const same = (part: string): boolean =>
+    WINDOWS ? part.toLowerCase() === own.toLowerCase() : part === own;
+  result[pathName] = [...parts.filter((part) => !same(part)), own].join(delimiter);
+  for (const [name, value] of Object.entries(settings)) result[name] = value;
+  result["MOSTRA_DEMO_BASE"] = base;
+  return result;
+}

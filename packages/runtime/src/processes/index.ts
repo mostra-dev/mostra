@@ -9,7 +9,7 @@ export {
   type SupervisorConnection,
   type SupervisorConnectionOptions,
 } from "./child.ts";
-export { artifactEnvironment } from "./environment.ts";
+export { artifactEnvironment, demoEnvironment } from "./environment.ts";
 export {
   type ChildExit,
   type ChildHandle,

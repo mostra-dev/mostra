@@ -15,6 +15,7 @@ import {
   artifactListMethod,
   artifactPublishMethod,
   artifactVerifyMethod,
+  demoBuildMethod,
   depsAddMethod,
   type SourceRef,
 } from "@mostra/protocol";
@@ -98,6 +99,7 @@ export function artifactMethods(options: {
     handler(artifactExportMethod, (params) =>
       options.publisher().exportBundle({ ...params, artifact: canonicalRef(params.artifact) }),
     ),
+    handler(demoBuildMethod, (params) => options.publisher().buildDemos(params)),
     handler(artifactImportMethod, async (params) => {
       const receipt = await options.publisher().importBundle(params);
       options.published?.(receipt.artifactId);

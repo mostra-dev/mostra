@@ -115,6 +115,16 @@
         "$ref": "#/definitions/VerifyVerdict"
       }
     },
+    "demo/build": {
+      "direction": "client-to-instance",
+      "mutating": false,
+      "params": {
+        "$ref": "#/definitions/DemoBuildParams"
+      },
+      "result": {
+        "$ref": "#/definitions/DemoBuildResult"
+      }
+    },
     "deps/add": {
       "direction": "client-to-instance",
       "mutating": true,
@@ -1464,6 +1474,20 @@
         "out": {
           "type": "string",
           "minLength": 1
+        },
+        "base": {
+          "type": "string",
+          "pattern": "^\\/([^/?#\\s]+\\/)*$"
+        },
+        "strict": {
+          "type": "boolean"
+        },
+        "submission": {
+          "type": "string",
+          "minLength": 1
+        },
+        "sharedState": {
+          "type": "boolean"
         }
       },
       "required": [
@@ -1484,6 +1508,20 @@
         },
         "versionId": {
           "type": "string"
+        },
+        "report": {
+          "allOf": [
+            {
+              "$ref": "#/definitions/ExportReport"
+            }
+          ]
+        },
+        "warnings": {
+          "readOnly": true,
+          "type": "array",
+          "items": {
+            "$ref": "#/definitions/Diagnostic"
+          }
         }
       },
       "required": [
@@ -1692,6 +1730,60 @@
           },
           "additionalProperties": {
             "anyOf": [
+              {
+                "type": "object",
+                "properties": {
+                  "source": {
+                    "type": "string",
+                    "minLength": 1
+                  },
+                  "build": {
+                    "readOnly": true,
+                    "minItems": 1,
+                    "type": "array",
+                    "items": {
+                      "type": "string",
+                      "minLength": 1
+                    }
+                  },
+                  "output": {
+                    "type": "string",
+                    "minLength": 1
+                  },
+                  "env": {
+                    "readOnly": true,
+                    "type": "object",
+                    "propertyNames": {
+                      "type": "string"
+                    },
+                    "additionalProperties": {
+                      "type": "string"
+                    }
+                  },
+                  "routing": {
+                    "type": "string",
+                    "enum": [
+                      "history",
+                      "hash"
+                    ]
+                  },
+                  "bridge": {
+                    "type": "boolean"
+                  },
+                  "timeout": {
+                    "allOf": [
+                      {
+                        "$ref": "#/definitions/Duration"
+                      }
+                    ]
+                  }
+                },
+                "required": [
+                  "source",
+                  "build",
+                  "output"
+                ]
+              },
               {
                 "type": "object",
                 "properties": {
@@ -2716,6 +2808,79 @@
       ],
       "description": "One submission's delivery to one host: owner, state, attempts and reason."
     },
+    "DemoBuildOutcome": {
+      "type": "object",
+      "properties": {
+        "name": {
+          "type": "string"
+        },
+        "status": {
+          "type": "string",
+          "enum": [
+            "built",
+            "cached",
+            "failed"
+          ]
+        },
+        "digest": {
+          "type": "string"
+        },
+        "files": {
+          "type": "integer",
+          "minimum": 0,
+          "maximum": 9007199254740991
+        },
+        "ms": {
+          "type": "number",
+          "minimum": 0
+        },
+        "diagnostics": {
+          "readOnly": true,
+          "type": "array",
+          "items": {
+            "$ref": "#/definitions/Diagnostic"
+          }
+        }
+      },
+      "required": [
+        "name",
+        "status",
+        "diagnostics"
+      ]
+    },
+    "DemoBuildParams": {
+      "type": "object",
+      "properties": {
+        "source": {
+          "$ref": "#/definitions/SourceRef"
+        },
+        "demo": {
+          "type": "string",
+          "minLength": 1
+        },
+        "force": {
+          "type": "boolean"
+        }
+      },
+      "required": [
+        "source"
+      ]
+    },
+    "DemoBuildResult": {
+      "type": "object",
+      "properties": {
+        "demos": {
+          "readOnly": true,
+          "type": "array",
+          "items": {
+            "$ref": "#/definitions/DemoBuildOutcome"
+          }
+        }
+      },
+      "required": [
+        "demos"
+      ]
+    },
     "DependencyPolicy": {
       "type": "string",
       "enum": [
@@ -3467,9 +3632,154 @@
     "ExportClass": {
       "type": "string",
       "enum": [
-        "bundle"
+        "bundle",
+        "static",
+        "html",
+        "snapshot"
       ],
       "description": "An export class (VR-07)."
+    },
+    "ExportReport": {
+      "type": "object",
+      "properties": {
+        "as": {
+          "$ref": "#/definitions/ExportClass"
+        },
+        "unavailable": {
+          "type": "object",
+          "properties": {
+            "actions": {
+              "readOnly": true,
+              "type": "array",
+              "items": {
+                "type": "string"
+              }
+            },
+            "live": {
+              "readOnly": true,
+              "type": "array",
+              "items": {
+                "type": "string"
+              }
+            },
+            "submit": {
+              "type": "boolean"
+            }
+          },
+          "required": [
+            "actions",
+            "live",
+            "submit"
+          ]
+        },
+        "notInlined": {
+          "readOnly": true,
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
+        },
+        "demos": {
+          "readOnly": true,
+          "type": "array",
+          "items": {
+            "$ref": "#/definitions/ExportedDemo"
+          }
+        },
+        "snapshot": {
+          "type": "object",
+          "properties": {
+            "answers": {
+              "type": "string",
+              "enum": [
+                "viewer",
+                "submission"
+              ]
+            },
+            "submission": {
+              "type": "string"
+            },
+            "at": {
+              "type": "string"
+            },
+            "sharedState": {
+              "type": "object",
+              "properties": {
+                "included": {
+                  "type": "boolean"
+                },
+                "people": {
+                  "type": "integer",
+                  "minimum": 0,
+                  "maximum": 9007199254740991
+                }
+              },
+              "required": [
+                "included",
+                "people"
+              ]
+            },
+            "live": {
+              "readOnly": true,
+              "type": "array",
+              "items": {
+                "type": "string"
+              }
+            },
+            "leftOut": {
+              "readOnly": true,
+              "type": "array",
+              "items": {
+                "type": "string"
+              }
+            }
+          },
+          "required": [
+            "answers",
+            "at",
+            "sharedState",
+            "live",
+            "leftOut"
+          ]
+        }
+      },
+      "required": [
+        "as",
+        "unavailable",
+        "notInlined",
+        "demos"
+      ]
+    },
+    "ExportedDemo": {
+      "type": "object",
+      "properties": {
+        "name": {
+          "type": "string"
+        },
+        "routing": {
+          "type": "string",
+          "enum": [
+            "history",
+            "hash"
+          ]
+        },
+        "carried": {
+          "type": "string",
+          "enum": [
+            "full",
+            "root",
+            "folder-only"
+          ]
+        },
+        "base": {
+          "type": "string"
+        }
+      },
+      "required": [
+        "name",
+        "routing",
+        "carried"
+      ]
     },
     "ExternalBase": {
       "type": "object",

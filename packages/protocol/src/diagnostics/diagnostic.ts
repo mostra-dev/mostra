@@ -45,7 +45,8 @@ export type DiagnosticArea =
   | "PLUGIN"
   | "PACK"
   | "LICENSE"
-  | "REVIEW";
+  | "REVIEW"
+  | "DEMO";
 
 /** Every diagnostic area, in INTERFACES §13 order. */
 export const DIAGNOSTIC_AREAS: readonly DiagnosticArea[] = [
@@ -85,6 +86,7 @@ export const DIAGNOSTIC_AREAS: readonly DiagnosticArea[] = [
   "PACK",
   "LICENSE",
   "REVIEW",
+  "DEMO",
 ];
 
 /**

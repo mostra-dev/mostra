@@ -143,3 +143,53 @@ export function installHint(tool: TunnelTool): string {
     return "Install cloudflared with `brew install cloudflared` (https://developers.cloudflare.com/cloudflare-one/connections/connect-networks/downloads/).";
   return "Install cloudflared from your distribution's Cloudflare package repository or https://developers.cloudflare.com/cloudflare-one/connections/connect-networks/downloads/.";
 }
+
+/** A program a command line names, as the process manager starts it. */
+export interface ProgramCommand {
+  readonly command: string;
+  readonly args: readonly string[];
+}
+
+/**
+ * How to run a command line a project names (`["pnpm", "build"]`, a demo's build, D185): on POSIX
+ * the gate's shell finds the program on `env`'s `PATH` itself; on Windows the program is looked up
+ * on `PATH` with `PATHEXT`, and a `.cmd` or `.bat` script (how npm, pnpm and yarn install their
+ * commands) runs through `cmd.exe`, since Node.js starts no script directly (CVE-2024-27980).
+ * `undefined` when Windows finds no such program.
+ */
+export function programCommand(
+  line: readonly string[],
+  env: Readonly<Record<string, string | undefined>>,
+): ProgramCommand | undefined {
+  const [program, ...args] = line;
+  if (program === undefined) return undefined;
+  if (!WINDOWS) return { command: program, args };
+  const value = (name: string): string | undefined => {
+    const key = Object.keys(env).find((candidate) => candidate.toUpperCase() === name);
+    return key === undefined ? undefined : env[key];
+  };
+  const extensions = (value("PATHEXT") ?? ".COM;.EXE;.BAT;.CMD")
+    .split(";")
+    .filter((extension) => extension !== "")
+    .map((extension) => extension.toLowerCase());
+  const named = /[\\/]/.test(program);
+  const dirs = named ? [""] : (value("PATH") ?? "").split(delimiter).filter((dir) => dir !== "");
+  const hasExtension = /\.[^\\/.]+$/.test(program);
+  let found: string | undefined;
+  for (const dir of dirs) {
+    const base = dir === "" ? program : join(dir, program);
+    const candidates = hasExtension
+      ? [base, ...extensions.map((extension) => base + extension)]
+      : extensions.map((extension) => base + extension);
+    found = candidates.find(executable);
+    if (found !== undefined) break;
+  }
+  if (found === undefined) return undefined;
+  if (/\.(cmd|bat)$/i.test(found)) {
+    // Each word stays its own argument, which the gate quotes as the C runtime reads them; without
+    // `/s`, `cmd.exe` keeps the quotes of a script path that holds a space.
+    const comspec = value("COMSPEC") ?? "C:\\Windows\\System32\\cmd.exe";
+    return { command: comspec, args: ["/d", "/c", found, ...args] };
+  }
+  return { command: found, args };
+}

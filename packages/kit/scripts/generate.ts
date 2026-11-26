@@ -69,6 +69,13 @@ const KIT_ITEMS = [
     description:
       "Candidates to compare, comment on and choose between: a gallery, one at a time, or two to four side by side with their difference.",
   },
+  {
+    name: "mostra-demo",
+    module: "demo",
+    title: "Web demo",
+    description:
+      "A front end the artifact builds into its version, shown in a phone, tablet or browser frame at that device's viewport, with a switcher between them.",
+  },
 ] as const;
 
 /** The packages a file imports, by package name, without React. */

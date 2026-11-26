@@ -48,6 +48,7 @@ import {
   readLiveSources,
   readServerFunctions,
 } from "../builder/index.ts";
+import { createDemos, recoverDemos } from "../demos/index.ts";
 import {
   createDependencies,
   type Dependencies,
@@ -333,6 +334,7 @@ async function assemble(home: OwnedHome, options: StartInstanceOptions): Promise
   await recoverVerify(home.path, log);
   // And of `mostra dev`: its sessions' mirrors, builds and scratch ledgers (D140 item 12).
   await recoverDev(home.path, log);
+  await recoverDemos(home.path);
   // Building and serving go through the render mode (D19 seam 5): SPA, v1's only one. Made on
   // first use, like the publisher, so a runtime missing its build packages still starts.
   let spa: RenderMode | undefined;
@@ -433,8 +435,15 @@ async function assemble(home: OwnedHome, options: StartInstanceOptions): Promise
       homeTheme: () => readHomeSettings(home.path).look?.theme,
       verifier: getVerifier,
       unverified: unverifiedPublish,
+      demos: getDemos(),
     });
     return publisher;
+  };
+  // Web demos (D185): their builds, one at a time per demo folder, kept by their inputs' digest.
+  let demos: ReturnType<typeof createDemos> | undefined;
+  const getDemos = (): ReturnType<typeof createDemos> => {
+    demos ??= createDemos({ home: home.path, processes: manager, log, env: environment });
+    return demos;
   };
   // verify (WP-09, D138): the runner child with its warm browser, and the sandbox each run serves
   // its build from. Made on first use, like the publisher.

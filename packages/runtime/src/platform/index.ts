@@ -53,4 +53,10 @@ export {
 export { isSameProcess, listProcesses, readProcess } from "./identity.ts";
 export { adoptable, launch, reapRecorded } from "./launch.ts";
 export { shellWord } from "./shell.ts";
-export { installHint, type ToolCommand, toolCommand } from "./tools.ts";
+export {
+  installHint,
+  type ProgramCommand,
+  programCommand,
+  type ToolCommand,
+  toolCommand,
+} from "./tools.ts";
