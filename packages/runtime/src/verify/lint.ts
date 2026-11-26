@@ -100,6 +100,48 @@ const TABLE_LEGACY: Readonly<Record<string, string>> = {
   getFacetedMinMaxValues: "getFacetedMinMaxValues",
 };
 
+/**
+ * Packages renamed or replaced, by the import that names them (WP-19): the one a page imports
+ * now, and why. Each fix rewrites only the import's source.
+ */
+const MOVED_PACKAGES: Readonly<
+  Record<string, { readonly now: string; readonly rule: string; readonly why: string }>
+> = {
+  "reactflow/dist/style.css": {
+    now: "@xyflow/react/style.css",
+    rule: "React Flow",
+    why: "React Flow 13 is `@xyflow/react`, its stylesheet `@xyflow/react/style.css`.",
+  },
+  "mapbox-gl": {
+    now: "maplibre-gl",
+    rule: "MapLibre",
+    why: "the kit draws maps with MapLibre GL, the open fork of Mapbox GL with its API, which needs no access token: import `maplibre-gl` (or use `@mostra/kit/map`).",
+  },
+  "mapbox-gl/dist/mapbox-gl.css": {
+    now: "maplibre-gl/dist/maplibre-gl.css",
+    rule: "MapLibre",
+    why: "MapLibre GL's stylesheet is `maplibre-gl/dist/maplibre-gl.css`.",
+  },
+  "react-map-gl": {
+    now: "react-map-gl/maplibre",
+    rule: "MapLibre",
+    why: "react-map-gl draws with MapLibre from `react-map-gl/maplibre`, with no Mapbox access token.",
+  },
+  "react-three-fiber": {
+    now: "@react-three/fiber",
+    rule: "react-three-fiber",
+    why: "the package is `@react-three/fiber` (`react-three-fiber` is deprecated).",
+  },
+  drei: {
+    now: "@react-three/drei",
+    rule: "react-three-fiber",
+    why: "drei is `@react-three/drei` (`drei` is deprecated).",
+  },
+};
+
+/** React Flow 12's change helpers, which React Flow 13 replaced by the changeset's `applyTo`. */
+const FLOW_APPLY = new Set(["applyNodeChanges", "applyEdgeChanges"]);
+
 /** Tailwind CSS 3 classes Tailwind 4 renamed, with nothing else to decide. */
 const TAILWIND_RENAMES: Readonly<Record<string, string>> = {
   "flex-shrink": "shrink",
@@ -328,6 +370,9 @@ function lintScript(lint: FileLint, program: Node, base: "base" | "radix"): void
   // Local names of `mermaid` and of Zod's namespace.
   const mermaid = new Set<string>();
   const zod = new Set<string>();
+  // React Flow: its change helpers as the page names them, and its flow component's local names.
+  const flowApply = new Set<string>();
+  const flowComponents = new Set<string>();
 
   for (const statement of program["body"] as Node[]) {
     if (statement.type !== "ImportDeclaration") continue;
@@ -349,6 +394,62 @@ function lintScript(lint: FileLint, program: Node, base: "base" | "radix"): void
     if (source === "zod" || source === "zod/v4") {
       for (const specifier of specifiers) zod.add((specifier["local"] as Node)["name"] as string);
     }
+    if (source === "@xyflow/react") {
+      const removed: Node[] = [];
+      for (const specifier of specifiers) {
+        if (specifier.type !== "ImportSpecifier") continue;
+        const imported = (specifier["imported"] as Node)["name"] as string;
+        const local = (specifier["local"] as Node)["name"] as string;
+        if (imported === "ReactFlow") flowComponents.add(local);
+        if (FLOW_APPLY.has(imported)) {
+          flowApply.add(local);
+          removed.push(specifier);
+        }
+      }
+      if (removed.length > 0) {
+        const kept = specifiers
+          .filter((specifier) => !removed.includes(specifier))
+          .map((specifier) => lint.text.slice(specifier.start, specifier.end));
+        const typeOnly = statement["importKind"] === "type" ? "type " : "";
+        lint.report(
+          "React Flow 13",
+          `${removed.map((specifier) => `\`${(specifier["imported"] as Node)["name"]}\``).join(" and ")} ${removed.length === 1 ? "is" : "are"} gone: \`onNodesChange\` and \`onEdgesChange\` get a changeset, and \`changes.applyTo(nodes)\` applies it.`,
+          statement.start,
+          statement.end,
+          kept.length > 0
+            ? `import ${typeOnly}{ ${kept.join(", ")} } from ${literal("@xyflow/react")};`
+            : "",
+        );
+      }
+    }
+    if (source === "shiki" || source.startsWith("shiki/")) {
+      for (const specifier of specifiers) {
+        if (specifier.type !== "ImportSpecifier") continue;
+        const imported = (specifier["imported"] as Node)["name"] as string;
+        if (imported !== "getHighlighter") continue;
+        const local = (specifier["local"] as Node)["name"] as string;
+        lint.report(
+          "Shiki",
+          "`getHighlighter` is gone since Shiki 3: `createHighlighter` takes the same options.",
+          specifier.start,
+          specifier.end,
+          `createHighlighter as ${local}`,
+        );
+      }
+    }
+    if (source === "codemirror/lib/codemirror.css") {
+      lint.report(
+        "CodeMirror 6",
+        "CodeMirror 6 has no stylesheet to import: its editor (`EditorView` from `codemirror`, or the kit's `CodeEditor`) styles itself.",
+        statement.start,
+        statement.end,
+        "",
+      );
+    }
+    const moved = MOVED_PACKAGES[source];
+    if (moved !== undefined) {
+      lint.report(moved.rule, moved.why, sourceNode.start, sourceNode.end, literal(moved.now));
+    }
     if (source === "framer-motion") {
       lint.report(
         "Motion",
@@ -364,14 +465,6 @@ function lintScript(lint: FileLint, program: Node, base: "base" | "radix"): void
         sourceNode.start,
         sourceNode.end,
         literal("react-router"),
-      );
-    } else if (source === "reactflow/dist/style.css") {
-      lint.report(
-        "React Flow",
-        "React Flow 12 is `@xyflow/react`, its stylesheet `@xyflow/react/dist/style.css`.",
-        sourceNode.start,
-        sourceNode.end,
-        literal("@xyflow/react/dist/style.css"),
       );
     } else if (source === "reactflow") {
       // React Flow 12 has no default export: `ReactFlow` is named.
@@ -393,7 +486,7 @@ function lintScript(lint: FileLint, program: Node, base: "base" | "radix"): void
         : `import ${typeOnly}{ ${named.join(", ")} } from ${literal("@xyflow/react")};`;
       lint.report(
         "React Flow",
-        "React Flow 12 is `@xyflow/react`, and `ReactFlow` is a named export.",
+        "React Flow is `@xyflow/react` since version 12, and `ReactFlow` is a named export.",
         statement.start,
         statement.end,
         replacement,
@@ -493,6 +586,25 @@ function lintScript(lint: FileLint, program: Node, base: "base" | "radix"): void
           );
         }
       }
+      // React Flow 13: `applyNodeChanges(changes, nodes)` is `changes.applyTo(nodes)`.
+      const args = node["arguments"] as Node[];
+      if (
+        callee.type === "Identifier" &&
+        flowApply.has(callee["name"] as string) &&
+        args.length === 2 &&
+        args.every((arg) => arg.type !== "SpreadElement")
+      ) {
+        const [changes, list] = args as [Node, Node];
+        const target = lint.text.slice(changes.start, changes.end);
+        const simple = changes.type === "Identifier" || changes.type === "MemberExpression";
+        lint.report(
+          "React Flow 13",
+          "a change handler gets a changeset: `changes.applyTo(nodes)` applies it.",
+          node.start,
+          node.end,
+          `${simple ? target : `(${target})`}.applyTo(${lint.text.slice(list.start, list.end)})`,
+        );
+      }
       // Class lists in `cn(…)`, `cva(…)` and the like.
       if (callee.type === "Identifier" && CLASS_CALLS.has(callee["name"] as string)) {
         for (const argument of node["arguments"] as Node[]) classStrings(argument);
@@ -507,7 +619,32 @@ function lintScript(lint: FileLint, program: Node, base: "base" | "radix"): void
           classStrings(value["expression"] as Node);
       }
     }
-    if (node.type === "JSXElement") wrongBase(node);
+    if (node.type === "JSXElement") {
+      wrongBase(node);
+      // React Flow 13 follows the page's light or dark itself; `forceColorMode` forces one.
+      const opening = node["openingElement"] as Node;
+      const name = opening["name"] as Node;
+      if (name.type === "JSXIdentifier" && flowComponents.has(name["name"] as string)) {
+        for (const attribute of opening["attributes"] as Node[]) {
+          if (attribute.type !== "JSXAttribute") continue;
+          if ((attribute["name"] as Node)["name"] !== "colorMode") continue;
+          const value = attribute["value"] as Node | null;
+          const system = value?.type === "Literal" && value["value"] === "system";
+          // An attribute removed takes the space before it.
+          let start = attribute.start;
+          while (start > 0 && /\s/.test(lint.text[start - 1] ?? "")) start--;
+          lint.report(
+            "React Flow 13",
+            "`colorMode` is gone: the flow follows the page's light or dark (its `.dark` class or `data-theme`), and `forceColorMode` forces one.",
+            system ? start : attribute.start,
+            attribute.end,
+            system
+              ? ""
+              : `forceColorMode${value === null ? "" : `=${lint.text.slice(value.start, value.end)}`}`,
+          );
+        }
+      }
+    }
     each(node, (child) => visit(child));
   };
 

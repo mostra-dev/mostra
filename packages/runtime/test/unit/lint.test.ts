@@ -54,7 +54,38 @@ const RULES: readonly {
     rule: "React Flow",
     file: "index.tsx",
     before: `import Flow, { Background } from "reactflow";\nimport "reactflow/dist/style.css";\nexport const A = () => <Flow nodes={[]}><Background /></Flow>;\n`,
-    after: `import { ReactFlow as Flow, Background } from "@xyflow/react";\nimport "@xyflow/react/dist/style.css";\nexport const A = () => <Flow nodes={[]}><Background /></Flow>;\n`,
+    // React Flow 13's stylesheet path (M105: the kit is on 13).
+    after: `import { ReactFlow as Flow, Background } from "@xyflow/react";\nimport "@xyflow/react/style.css";\nexport const A = () => <Flow nodes={[]}><Background /></Flow>;\n`,
+  },
+  {
+    rule: "React Flow 13",
+    file: "flow.tsx",
+    before: `import { useState } from "react";\nimport { ReactFlow, applyNodeChanges, applyEdgeChanges, type Node, type Edge } from "@xyflow/react";\nexport function F() {\n  const [nodes, setNodes] = useState<Node[]>([]);\n  const [edges, setEdges] = useState<Edge[]>([]);\n  return (\n    <ReactFlow\n      nodes={nodes}\n      edges={edges}\n      colorMode="dark"\n      onNodesChange={(changes) => setNodes((nds) => applyNodeChanges(changes, nds))}\n      onEdgesChange={(changes) => setEdges((eds) => applyEdgeChanges(changes, eds))}\n    />\n  );\n}\nexport const G = () => <ReactFlow nodes={[]} colorMode="system" />;\n`,
+    after: `import { useState } from "react";\nimport { ReactFlow, type Node, type Edge } from "@xyflow/react";\nexport function F() {\n  const [nodes, setNodes] = useState<Node[]>([]);\n  const [edges, setEdges] = useState<Edge[]>([]);\n  return (\n    <ReactFlow\n      nodes={nodes}\n      edges={edges}\n      forceColorMode="dark"\n      onNodesChange={(changes) => setNodes((nds) => changes.applyTo(nds))}\n      onEdgesChange={(changes) => setEdges((eds) => changes.applyTo(eds))}\n    />\n  );\n}\nexport const G = () => <ReactFlow nodes={[]} />;\n`,
+  },
+  {
+    rule: "Shiki",
+    file: "code.ts",
+    before: `import { getHighlighter } from "shiki";\nexport const h = await getHighlighter({ themes: ["nord"], langs: ["ts"] });\n`,
+    after: `import { createHighlighter as getHighlighter } from "shiki";\nexport const h = await getHighlighter({ themes: ["nord"], langs: ["ts"] });\n`,
+  },
+  {
+    rule: "CodeMirror 6",
+    file: "editor.ts",
+    before: `import { EditorView, basicSetup } from "codemirror";\nimport "codemirror/lib/codemirror.css";\nexport const v = new EditorView({ extensions: [basicSetup] });\n`,
+    after: `import { EditorView, basicSetup } from "codemirror";\n\nexport const v = new EditorView({ extensions: [basicSetup] });\n`,
+  },
+  {
+    rule: "MapLibre",
+    file: "map.tsx",
+    before: `import mapboxgl from "mapbox-gl";\nimport "mapbox-gl/dist/mapbox-gl.css";\nimport Map from "react-map-gl";\nexport const m = [mapboxgl, Map];\n`,
+    after: `import mapboxgl from "maplibre-gl";\nimport "maplibre-gl/dist/maplibre-gl.css";\nimport Map from "react-map-gl/maplibre";\nexport const m = [mapboxgl, Map];\n`,
+  },
+  {
+    rule: "react-three-fiber",
+    file: "scene.tsx",
+    before: `import { Canvas } from "react-three-fiber";\nimport { OrbitControls } from "drei";\nexport const S = () => <Canvas><OrbitControls /></Canvas>;\n`,
+    after: `import { Canvas } from "@react-three/fiber";\nimport { OrbitControls } from "@react-three/drei";\nexport const S = () => <Canvas><OrbitControls /></Canvas>;\n`,
   },
   {
     rule: "TanStack Table 9",
@@ -114,7 +145,15 @@ describe("write this, not that (KT-08)", () => {
       `import { motion } from "motion/react";
 import * as z from "zod";
 import { createColumnHelper, useTable } from "@tanstack/react-table";
+import { ReactFlow } from "@xyflow/react";
+import "@xyflow/react/style.css";
+import { createHighlighter } from "shiki";
+import maplibregl from "maplibre-gl";
+import { Canvas } from "@react-three/fiber";
 const string = { email: () => 1 };
+const applyNodeChanges = (a: unknown, b: unknown) => [a, b];
+export const f = [ReactFlow, createHighlighter, maplibregl, Canvas, applyNodeChanges(1, 2)];
+export const B = () => <ReactFlow nodes={[]} forceColorMode="dark" />;
 export const s = [z.email(), z.string().min(1).email(), string.email(), useTable, createColumnHelper];
 export const A = () => <div className="shrink-0 grow bg-linear-to-r bg-(--brand) shadow-sm">The flex-grow is fine in prose</div>;
 `,
