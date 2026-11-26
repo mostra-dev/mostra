@@ -884,6 +884,20 @@ export function createDependencies(options: DependenciesOptions): Dependencies {
         const pin = pins.get(name);
         if (pin !== undefined) needs.set(name, pin);
       }
+      // A kit module's registry item names everything it needs, its libraries' own on-demand
+      // peers too (three.js for react-three-fiber), which its imports don't show.
+      const module = /[\\/]components[\\/]mostra[\\/]([a-z][a-z0-9-]*)\.tsx$/.exec(file)?.[1];
+      const item = module === undefined ? undefined : join(registry, `mostra-${module}.json`);
+      if (item === undefined || !existsSync(item)) continue;
+      const { dependencies = [] } = JSON.parse(await readFile(item, "utf8")) as {
+        dependencies?: string[];
+      };
+      for (const entry of dependencies) {
+        const at = entry.lastIndexOf("@");
+        const name = at > 0 ? entry.slice(0, at) : entry;
+        const pin = pins.get(name);
+        if (pin !== undefined) needs.set(name, pin);
+      }
     }
     return { needs, pins };
   };

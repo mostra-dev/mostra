@@ -165,6 +165,8 @@ const POSIX_GROUPS = [
   "conformance",
   // Its other modes, apart since WP-20's review ports brought Windows arm64 past its deadline.
   "conformance-adapters",
+  // The kit's on-demand libraries (WP-19): real installs from a mirror and WebGL pages in verify.
+  "kit",
 ] as const;
 const WINDOWS_GROUPS = [
   "windows",
@@ -178,6 +180,7 @@ const WINDOWS_GROUPS = [
   "windows-clients",
   "windows-conformance",
   "windows-conformance-adapters",
+  "windows-kit",
 ] as const;
 
 /**
@@ -332,12 +335,14 @@ export function ciMatrix(scope: CiScope, plan: Plan, runners: Runners): CiMatrix
   // macOS legs in the order they are kept: the suites through real processes, Safari's engine,
   // then the remote server's suites and the plugins', packs' and dependencies' (platform-neutral
   // network and install code Linux and Windows still run, WP-29, WP-16, WP-17), the conformance
-  // kit's TypeScript reference host (a host's view, the same on every platform, WP-18), the Rust
-  // crate and the conformance kit (POSIX like Linux, where they still run).
+  // kit's TypeScript reference host (a host's view, the same on every platform, WP-18), the kit's
+  // on-demand libraries (installs and pages, the same on every platform, WP-19), the Rust crate and
+  // the conformance kit (POSIX like Linux, where they still run).
   const remoteGroup = (leg: Leg): boolean =>
     String(leg["group"]).startsWith("remote") ||
     leg["group"] === "extensions" ||
-    String(leg["group"]).startsWith("conformance");
+    String(leg["group"]).startsWith("conformance") ||
+    leg["group"] === "kit";
   const macos: { readonly list: string; readonly leg: Leg }[] = [
     ...integration.filter((leg) => !remoteGroup(leg)).map((leg) => ({ list: "integration", leg })),
     ...e2e.map((leg) => ({ list: "e2e", leg })),

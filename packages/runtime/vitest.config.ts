@@ -76,12 +76,25 @@ const EXTENSIONS = [
 // WP-18: the kit through verify (KT-03 to KT-10), which `core` has no room for either (macOS `core`
 // reached its deadline with it on WP-18's `ci:full` run 44793555343).
 const KIT_PARTS = "test/integration/kit-parts.test.ts";
+// WP-19: the kit's on-demand libraries, each a real install of hundreds of packages from a local
+// mirror and a verify of a page with WebGL: a group of its own on every platform.
+const KIT_LIBRARIES = "test/integration/kit-libraries.test.ts";
 const CORE_OVERFLOW = ["test/integration/deps.test.ts", KIT_PARTS];
 export const INTEGRATION_GROUPS: Record<string, { include: string[]; exclude: string[] }> = {
   core: {
     include: ["test/integration/**/*.test.ts"],
-    exclude: [VERIFY_SUITES, DEV, ...FAULTS, HEARTBEAT, ...REMOTE, ...EXTENSIONS, ...CORE_OVERFLOW],
+    exclude: [
+      VERIFY_SUITES,
+      DEV,
+      ...FAULTS,
+      HEARTBEAT,
+      ...REMOTE,
+      ...EXTENSIONS,
+      ...CORE_OVERFLOW,
+      KIT_LIBRARIES,
+    ],
   },
+  kit: { include: [KIT_LIBRARIES], exclude: [] },
   extensions: { include: [...EXTENSIONS, ...CORE_OVERFLOW], exclude: [] },
   remote: { include: [...REMOTE_HOSTING, HEARTBEAT], exclude: [] },
   // `mostra dev`'s suite (66 to 106 s) runs beside remote-access's, the lightest group (350 s):
@@ -170,6 +183,7 @@ export const INTEGRATION_GROUPS: Record<string, { include: string[]; exclude: st
   "windows-verify": { include: ["test/integration/verify.test.ts"], exclude: [] },
   // WP-18: the kit through verify, a suite of its own, in the lighter of the verify groups.
   "windows-verify-failures": { include: [VERIFY_FAILURES, KIT_PARTS], exclude: [] },
+  "windows-kit": { include: [KIT_LIBRARIES], exclude: [] },
   "windows-extensions": { include: [...EXTENSIONS, DEV, ANONYMOUS_VOLUME], exclude: [] },
   "windows-clients": { include: [], exclude: [] },
   // The conformance kit's TypeScript reference host, apart from the other clients (WP-18, #225).

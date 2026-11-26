@@ -122,9 +122,9 @@ describe("what runs when (D152)", () => {
     const matrix = ciMatrix(pr, everything, github);
     expect(matrix.windows.map((leg) => leg["os"])).not.toContain("windows-arm64");
     expect(matrix.e2e.map((leg) => leg["os"])).not.toContain("windows-arm64");
-    // unit, hygiene and eleven integration groups (WP-18 gave the conformance kit its own, #225,
-    // and WP-20 its other modes theirs).
-    expect(matrix.windows.length).toBe(13);
+    // unit, hygiene and twelve integration groups (WP-18 gave the conformance kit its own, #225,
+    // WP-20 its other modes theirs, and WP-19 the kit's on-demand libraries theirs).
+    expect(matrix.windows.length).toBe(14);
     expect(matrix.e2e.filter((leg) => leg["os"] === "macos").map((leg) => leg["browser"])).toEqual([
       "webkit",
     ]);
@@ -150,6 +150,7 @@ describe("what runs when (D152)", () => {
       "integration (macos, extensions)",
       "integration (macos, conformance)",
       "integration (macos, conformance-adapters)",
+      "integration (macos, kit)",
       "rust (macos)",
       "conformance (macos)",
     ]);
@@ -208,7 +209,7 @@ describe("what runs when (D152)", () => {
     ]) {
       const matrix = ciMatrix(scope, everything, github);
       expect(matrix.legs).toBe("all");
-      expect(matrix.windows.filter((leg) => leg["os"] === "windows-arm64").length).toBe(13);
+      expect(matrix.windows.filter((leg) => leg["os"] === "windows-arm64").length).toBe(14);
       // Windows' slowest engines run in parts, together every test once: Firefox on x64 in two,
       // emulated Chromium on arm64 in three (WP-18).
       const parts = (os: string, browser: string): (string | undefined)[] =>

@@ -178,6 +178,26 @@ function packagesOf(content: string): string[] {
     const parts = specifier.split("/");
     names.add(specifier.startsWith("@") ? parts.slice(0, 2).join("/") : (parts[0] as string));
   }
+  // An on-demand library's own peers that are on-demand libraries too come with it at the kit's pins
+  // (react-three-fiber's three.js, a deck.gl layer package's core), so no install picks another
+  // version of them for it.
+  const pending = [...names].filter((name) => ON_DEMAND[name] !== undefined);
+  while (pending.length > 0) {
+    const name = pending.pop() as string;
+    const manifest = join(ROOT, "node_modules", name, "package.json");
+    const { peerDependencies = {}, peerDependenciesMeta = {} } = JSON.parse(
+      readFileSync(manifest, "utf8"),
+    ) as {
+      peerDependencies?: Record<string, string>;
+      peerDependenciesMeta?: Record<string, { optional?: boolean }>;
+    };
+    for (const peer of Object.keys(peerDependencies)) {
+      if (ON_DEMAND[peer] === undefined || names.has(peer)) continue;
+      if (peerDependenciesMeta[peer]?.optional === true) continue;
+      names.add(peer);
+      pending.push(peer);
+    }
+  }
   return [...names]
     .filter((name) => name !== "react" && name !== "react-dom")
     .sort()
