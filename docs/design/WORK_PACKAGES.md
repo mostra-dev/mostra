@@ -1,11 +1,11 @@
 # Mostra work packages
 
-**Status:** Accepted (D73, [DESIGN_ACCEPTANCE.md](DESIGN_ACCEPTANCE.md)); the plan update of 2026-10-16 (D116 to D127) added WP-28 to WP-32 and the order below, D146 (2026-10-22) replaced WP-32 with the Windows packages WP-W1 to WP-W3, built before WP-13, and D170 (2026-11-12) added WP-33 to WP-35, homes an organization owns, after the first release. Each package's full specification is [work-packages/WP-NN.md](work-packages/), generated from this file by `tools/design/wp_specs.py`, and every session follows [work-packages/README.md](work-packages/README.md). Edit this summary or the generator, then regenerate.
+**Status:** Accepted (D73, [DESIGN_ACCEPTANCE.md](DESIGN_ACCEPTANCE.md)); the plan update of 2026-10-16 (D116 to D127) added WP-28 to WP-32 and the order below, D146 (2026-10-22) replaced WP-32 with the Windows packages WP-W1 to WP-W3, built before WP-13, D170 (2026-11-12) added WP-33 to WP-35, homes an organization owns, after the first release, and D184 (2026-11-26) moved WP-21 (motion and decks) and WP-27 (the evaluation suite) there too. Each package's full specification is [work-packages/WP-NN.md](work-packages/), generated from this file by `tools/design/wp_specs.py`, and every session follows [work-packages/README.md](work-packages/README.md). Edit this summary or the generator, then regenerate.
 
 ## How the sequence was built
 
-- **Scope.** 37 packages: 32 deliver all of v1 (D16, as amended by D116, D121, D122 and D146) without shrinking it, and the 5 under [After the first release](#after-the-first-release) deliver the `v1.1` follow-up: homes an organization owns (D170) and the terminal modes (D122). Every v1 and v1.1 requirement has exactly one primary owner here, and [EVIDENCE_MATRIX.md](EVIDENCE_MATRIX.md) checks it. Other packages may *contribute* to a requirement (for example, adding a lint rule to `verify`), but only the owner closes it with evidence. Maintenance units (`MT-NN`: MT-01, MT-02 and MT-02b, D152 to D156, and MT-03 to MT-07 below) own no requirement: each is scoped by what it fixes or completes, and the checks it adds extend their owners' rows. The design unit UX-01 (every surface a person meets, from sign-in to answer) owns none either: it is scoped by the surfaces it designs, and its checks extend their owners' rows.
-- **Order.** Packages run in the order of this file (D125, D146): WP-01 to WP-12, then WP-W1 to WP-W3, then WP-13 to WP-15, then WP-28 to WP-31, then the maintenance unit MT-03, then the design unit UX-01, then WP-16 to WP-21, WP-24, WP-25, WP-26 and WP-27, with the maintenance unit MT-04 after WP-16, beside the packages from WP-17 on (D174), the maintenance unit MT-05 (who signs in, and what an idle home writes) beside any of them, on the released `main` it starts from, and after it the maintenance unit MT-06 (signing out), beside any of them likewise, and the maintenance unit MT-07 (a plugin the Claude directory can list) after WP-18, beside WP-19 and WP-20; after the first release, WP-33 to WP-35 (organization homes, D170), then WP-22 and WP-23. The numbers are identities, not positions: new packages took the next free numbers (D125), and the Windows packages carry their own W series (D146). The Windows packages follow the Rust crate and conformance kit, so every package after them is built and checked on macOS, Linux and Windows from its start. D17's interface priority explains the first part: the CLI, Skill and `verify` with the host protocol and Rust crate (WP-01 to WP-14, which together also give Jcode everything C03-B needs), then the local MCP server (WP-15). The remote server comes next (WP-28 to WP-30), because MCP Apps export (WP-17) persists through it in cloud chat hosts, and the team package (WP-31) needs its viewer identity. The remaining v1 features follow in dependency order. Two packages sit earlier than D17 alone would put them, because a prioritized interface depends on them:
+- **Scope.** 37 packages: 30 deliver v1 (D16, as amended by D116, D121, D122, D146 and D184), and the 7 under [After the first release](#after-the-first-release) deliver the `v1.1` follow-up: motion and decks and the evaluation suite (D184), homes an organization owns (D170) and the terminal modes (D122). Every v1 and v1.1 requirement has exactly one primary owner here, and [EVIDENCE_MATRIX.md](EVIDENCE_MATRIX.md) checks it. Other packages may *contribute* to a requirement (for example, adding a lint rule to `verify`), but only the owner closes it with evidence. Maintenance units (`MT-NN`: MT-01, MT-02 and MT-02b, D152 to D156, and MT-03 to MT-07 below) own no requirement: each is scoped by what it fixes or completes, and the checks it adds extend their owners' rows. The design unit UX-01 (every surface a person meets, from sign-in to answer) owns none either: it is scoped by the surfaces it designs, and its checks extend their owners' rows.
+- **Order.** Packages run in the order of this file (D125, D146): WP-01 to WP-12, then WP-W1 to WP-W3, then WP-13 to WP-15, then WP-28 to WP-31, then the maintenance unit MT-03, then the design unit UX-01, then WP-16 to WP-18 and WP-20, then WP-19 beside WP-24, then WP-25 beside WP-26 (D184), with the maintenance unit MT-04 after WP-16, beside the packages from WP-17 on (D174), the maintenance unit MT-05 (who signs in, and what an idle home writes) beside any of them, on the released `main` it starts from, and after it the maintenance unit MT-06 (signing out), beside any of them likewise, and the maintenance unit MT-07 (a plugin the Claude directory can list) after WP-18, beside WP-19 and WP-20; after the first release, WP-33 to WP-35 (organization homes, D170), WP-21 and WP-27 (D184), then WP-22 and WP-23. The numbers are identities, not positions: new packages took the next free numbers (D125), and the Windows packages carry their own W series (D146). The Windows packages follow the Rust crate and conformance kit, so every package after them is built and checked on macOS, Linux and Windows from its start. D17's interface priority explains the first part: the CLI, Skill and `verify` with the host protocol and Rust crate (WP-01 to WP-14, which together also give Jcode everything C03-B needs), then the local MCP server (WP-15). The remote server comes next (WP-28 to WP-30), because MCP Apps export (WP-17) persists through it in cloud chat hosts, and the team package (WP-31) needs its viewer identity. The remaining v1 features follow in dependency order. Two packages sit earlier than D17 alone would put them, because a prioritized interface depends on them:
   - WP-08 (actions) comes before `verify`, whose smoke test exercises action dry-runs;
   - WP-16 (extension contracts) comes before MCP Apps export, which ships as the first-party exporter plugin.
 - **Specification depth.** From WP-28 on, a specification fixes the outcome, the architecture at the surface, constraints, useful libraries and references, and the real options with a recommendation; the session settles finer details and records them as delegated decisions. Choices a specification leaves open are labelled *Deferred decision* with the package that owns them (D123).
@@ -16,7 +16,7 @@
   - extends the diagnostic catalog, docs pages, playbooks and `AGENTS.md` files for what it adds;
   - updates the Skill's reference files when it adds author-facing API or an author command (the prose is reviewed with Mirza); the Skill's checks (`packages/cli/test/unit/skill.test.ts`, D162) fail on an export of `@mostra/react` or `@mostra/server`, or a command, that no reference documents, and on a `mostra …` a reference shows that doesn't parse;
   - closes with evidence for its owned requirements, then Mirza's acceptance and publication (D36).
-- **Release points.** Packages publish as they're accepted. **C03-B can begin after WP-14**: protocol, Rust crate, interaction core, shell trusted controls, results, events, outbox, identity, tailnet sharing, CLI and Skill are all in place. Later packages add features additively, so Jcode moves to newer minor releases without changes (D01, D32). The phase closeout follows WP-27; the packages after the first release follow it.
+- **Release points.** Packages publish as they're accepted. **C03-B can begin after WP-14**: protocol, Rust crate, interaction core, shell trusted controls, results, events, outbox, identity, tailnet sharing, CLI and Skill are all in place. Later packages add features additively, so Jcode moves to newer minor releases without changes (D01, D32). The phase closeout follows WP-26 (D184); the packages after the first release follow it.
 
 ```mermaid
 flowchart LR
@@ -32,15 +32,19 @@ flowchart LR
   W18-->W20-->W21
   W20-->W24
   W17-->W25
-  W21-->W25
+  W20-->W25
   W24-->W26
-  W25-->W26-->W27
   subgraph After["After the first release"]
+    W21
+    W27
     W33-->W34-->W35
     W22-->W23
   end
-  W27-->W33
-  W27-->W22
+  W25-->W21
+  W26-->W21
+  W26-->W27
+  W26-->W33
+  W26-->W22
   W20-->W22
   W16-->W23
 ```
@@ -515,12 +519,6 @@ Each entry lists the requirements the package owns, then what it builds, what it
   - mobile touch flows on WebKit and Chromium emulation, and on a real phone over tailnet (external);
   - Mirza's design review.
 
-### WP-21. Motion and decks
-- **Owns:** KT-06, KT-07, RV-06.
-- **Builds:** `@mostra/kit/motion` (`Timeline`, `Clip`, `useFrame`, `interpolate`, `spring`; play, scrub, loop, poster; reduced motion; time-and-region review anchors); `@mostra/kit/deck` (Slidev-style MDX grammar, layouts, clicks, notes, presenter view, print to PDF; Shiki, KaTeX and Mermaid blocks).
-- **Depends on:** WP-20.
-- **Evidence:** deterministic frame screenshots; a deck fixture in three browsers; a printed PDF has one slide per page; presenter view syncs; Mirza reviews a representative deck.
-
 ### WP-24. Web demos and exports
 - **Owns:** TM-08, VR-07.
 - **Builds:**
@@ -540,33 +538,23 @@ Each entry lists the requirements the package owns, then what it builds, what it
 
 ### WP-25. First-party plugins
 - **Owns:** EX-05.
-- **Builds:** the Remotion adapter and the GSAP adapter (user-installed, with the license flow), the chart datum anchor provider (from WP-20, packaged), and the filesystem connector; and the contract proofs for every first-party plugin, including the WP-17 exporter. `mostra term record` and the xterm.js engine's proof belong to the terminal packages (D122).
-- **Depends on:** WP-17, WP-21.
-- **Evidence:** each plugin passes its baselines through `mostra plugin verify`; the license audit shows no non-OSI code in the core bundle; the license acknowledgment is recorded in the lockfile.
+- **Builds:** the chart datum anchor provider (from WP-20, packaged) and the filesystem connector; and the contract proofs for every first-party plugin, including the WP-17 exporter. The Remotion and GSAP adapters build on WP-21's motion kit, so they move with it (D184). `mostra term record` and the xterm.js engine's proof belong to the terminal packages (D122).
+- **Depends on:** WP-17, WP-20.
+- **Evidence:** each plugin passes its baselines through `mostra plugin verify`; the license audit shows no non-OSI code in the core bundle.
 
 ### WP-26. Templates, gallery and documentation site
 - **Owns:** AU-06, AX-07, EN-03, KT-09, RS-02, LL-06.
 - **Builds:**
-  - `mostra new` templates for every family, one-off and long-lived (questionnaire, proposal, prototype or review, dashboard, deck, demo, inbox, tasks, custom), each with AGENTS.md, including a team (roster) form and a hosted-sharing example;
+  - `mostra new` templates for every family, one-off and long-lived (questionnaire, proposal, prototype or review, dashboard, demo, inbox, tasks, custom; the deck template comes with WP-21, D184), each with AGENTS.md, including a team (roster) form and a hosted-sharing example;
   - the gallery (prompt, source and result side by side, including the launch demos), on the docs site, with a selection on the project site; each entry can be copied by an agent to use as is or build on;
   - the docs site, built with a standard static docs generator (generated references, per-page Markdown, `llms.txt`) and served at `docs.mostradev.com` by its own Cloudflare Worker from the release workflow, covering remote servers, the relay, teams and the telemetry event list;
   - an SPA first-class review across the codebase.
-- **Depends on:** WP-24, WP-25.
+- **Depends on:** WP-24. It runs beside WP-25 and documents WP-25's plugins once WP-25 merges (D184).
 - **Evidence:** every template and example passes `verify` in CI with committed baselines; the docs site builds and deploys; Mirza's review of the gallery for "beautiful by default"; long-lived scenarios present in templates, conformance and gallery.
-
-### WP-27. Agent evaluation suite
-- **Owns:** AX-08.
-- **Builds:**
-  - an opt-in, paced evaluation harness (D34, D64) that grows from the C03-A harness: scenarios over templates and journeys (one-off and long-lived, team, hosted and relay), first-pass `verify` success, turns to pass, and retention across turns;
-  - per-run recording of provider, model, date and tokens;
-  - small-batch pacing;
-  - reports.
-- **Depends on:** WP-26.
-- **Evidence:** a pilot batch (announced to Mirza, GPT-only first) produces a report; the harness reproduces EVAL-01's base comparison; runs with Claude models only after Mirza approves them.
 
 ## After the first release
 
-These packages follow the first release, v1.0 (D122, D170). Their requirements carry the release label `v1.1` and follow the same rules: one owner each, a concrete check and evidence in the progress report. Windows is no longer among them: it ships in v1.0 (D146). Homes an organization owns (WP-33 to WP-35) come first: they are additive, nothing in v1's scope needs them, and they build on the finished remote MCP surface (WP-17), the shell's design pass (WP-20) and the docs site (WP-26).
+These packages follow the first release, v1.0 (D122, D170, D184). Their requirements carry the release label `v1.1` and follow the same rules: one owner each, a concrete check and evidence in the progress report. Windows is no longer among them: it ships in v1.0 (D146). Homes an organization owns (WP-33 to WP-35) come first: they are additive, nothing in v1's scope needs them, and they build on the finished remote MCP surface (WP-17), the shell's design pass (WP-20) and the docs site (WP-26).
 
 ### WP-33. Organization homes I: the server and the operator contract
 - **Owns:** RM-10, RM-12, HO-12, HY-10, MC-05.
@@ -607,6 +595,22 @@ These packages follow the first release, v1.0 (D122, D170). Their requirements c
 - **Depends on:** WP-34.
 - **Evidence:** RM-13's and RM-14's checks: reads from an instance that holds nothing of the artifact; a page adopted with and without its source, with a pending delivery and a waiting run arriving once; two adopters racing; a server stopped mid-commit and finished after its restart; the previous owner returning.
 
+
+### WP-21. Motion and decks
+- **Owns:** KT-06, KT-07, RV-06.
+- **Builds:** `@mostra/kit/motion` (`Timeline`, `Clip`, `useFrame`, `interpolate`, `spring`; play, scrub, loop, poster; reduced motion; time-and-region review anchors); `@mostra/kit/deck` (Slidev-style MDX grammar, layouts, clicks, notes, presenter view, print to PDF; Shiki, KaTeX and Mermaid blocks); the Remotion and GSAP adapters, user-installed with the license flow, as first-party plugins proven through `mostra plugin verify` (moved from WP-25, D184); the deck template and its gallery entry (moved from WP-26, D184).
+- **Depends on:** WP-20, WP-25, WP-26.
+- **Evidence:** deterministic frame screenshots; a deck fixture in three browsers; a printed PDF has one slide per page; presenter view syncs; Mirza reviews a representative deck; each adapter passes its baselines through `mostra plugin verify`, and the license acknowledgment of its engine is recorded in the lockfile.
+
+### WP-27. Agent evaluation suite
+- **Owns:** AX-08.
+- **Builds:**
+  - an opt-in, paced evaluation harness (D34, D64) that grows from the C03-A harness: scenarios over templates and journeys (one-off and long-lived, team, hosted and relay), first-pass `verify` success, turns to pass, and retention across turns;
+  - per-run recording of provider, model, date and tokens;
+  - small-batch pacing;
+  - reports.
+- **Depends on:** WP-26.
+- **Evidence:** a pilot batch (announced to Mirza, GPT-only first) produces a report; the harness reproduces EVAL-01's base comparison; runs with Claude models only after Mirza approves them.
 
 ### WP-22. Terminals I: frames, renderer, recordings and capture
 - **Owns:** TM-01, TM-03, TM-06.

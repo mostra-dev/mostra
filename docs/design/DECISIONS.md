@@ -108,6 +108,7 @@
 | M101 | 2026-11-24T04:53:43Z | After WP-20's review was posted and the candidate's pictures seen ("they look excellent"): a crop of the commented component showed light on the dark theme; on a phone nothing in comment mode said to tap what to comment on; and "people should also be able to select a piece of text and comment on it -- as a convenience", including on the agent's own words, "not to request changes but to, say, answer/comment on a statement made by the agent". Recorded under D183 item 15. |
 | M102 | 2026-11-24T13:29:08Z | After the phone check over a public tunnel ("It looks excellent"): pins stuck to the top of the screen when scrolled past ("they should just disappear"); a crop of selected words boxed whole lines ("a highlight mechanism"); comment mode couldn't be scrolled on a phone; existing comments popped up over the whole screen in comment mode, and a place picked with the panel closed showed nothing ("Big problem!"); of a peeking panel or a drawer, "I lean onto 1" (the panel peeks, expandable, gone with comment mode unless expanded). Also: "you can completely delete the scratch files of the previous, now-complete WPs." Recorded under D183 item 15. |
 | M103 | 2026-11-24 | Accepted WP-20 after the review's fixes and his notes (M101): "This looks incredible! I absolutely accept", with one more note, the hosted footer on a phone, which took two rows (fixed before the merge), and a question about the phone check, which he then ran (M102). Recorded under D183. |
+| M104 | 2026-11-26T11:18:05Z | Chose the order of the remaining packages: WP-21 (motion and decks) and WP-27 (the evaluation suite) follow the first release; WP-19 and WP-24 run now, side by side; then WP-25, without the Remotion and GSAP adapters that build on WP-21's motion kit, beside WP-26, without the deck template. Recorded as D184. |
 | M38 | 2026-10-24T18:18:49Z | Accepted WP-W2 after its release, and delegated the three open points of its closeout ("I trust you to make the most robust, high-quality, well-thought decisions on all the points you mentioned"): Firefox on Windows arm64, the slow-flush hypothesis of #66, and the Mostra HQ roadmap update. Recorded under D151. |
 | M37 | 2026-10-24T09:53:18Z | Accepted the WP-W2 candidate and D151 ("Approved!"), and started its Claude Opus review; the review's ten findings were fixed under D151 before the merge (D149, D151). Recorded as D151. |
 | M36 | 2026-10-23T17:08:27Z | Accepted WP-W1 after its Claude Opus review: "100% approved", D150 and the package's agent-facing prose with it (D149), and allowed the matching Mostra HQ update. Recorded as D150. |
@@ -1809,6 +1810,19 @@ WP-28 designs and WP-30 builds, in the hosted shell on its trusted origin and ne
 *Rejected:* comments as viewer-only draft fields (a mention could reach nobody, and replies from others would have nowhere to live); a crop taken by the page itself through SVG `foreignObject` (fails on cross-origin content and in WebKit, and a page could forge it); a pixel diff rendered on the server for in-page candidates (seconds per change, against a live CSS blend the viewer can scroll in sync); refusing a submission while a crop is pending (a capture failure would block answers).
 
 *Source:* M100 to M103.
+
+## The order before the first release
+
+### D184. Motion, decks and the evaluation suite follow the first release (M104)
+*Status:* decided by Mirza (M104). Amends D16 as D122 did, D125's order, and the dependencies of WP-25, WP-26 and WP-21.
+1. **WP-21 (motion and decks) and WP-27 (the agent evaluation suite) move under "After the first release".** Their requirements, KT-06, KT-07, RV-06 and AX-08, take the release label `v1.1`, unchanged in content, and keep their owners. Neither is needed for v1's core loop (an agent writes a page, a person answers or reviews it, the answers come back): the review layer, the kit's forms, data and diagrams, web demos and the docs carry it, and the evaluation suite measures agents rather than changing what they or people see.
+2. **The order before the first release:** WP-19 (Kit II) beside WP-24 (web demos and exports), then WP-25 (first-party plugins) beside WP-26 (templates, gallery and docs site). The phase closeout follows WP-26.
+3. **WP-25 without the motion adapters.** The Remotion and GSAP adapters build on WP-21's motion kit, so they move with it into WP-21, which now depends on WP-20, WP-25 and WP-26 and proves them through `mostra plugin verify` with their license acknowledgment. WP-25 keeps the chart datum anchor provider, the filesystem connector, `mostra plugin verify` and the contract proofs (EX-05, amended), and depends on WP-17 and WP-20.
+4. **WP-26 beside WP-25.** WP-26 depends on WP-24 and documents WP-25's plugins once WP-25 merges. Its template families leave out the deck (AU-06, amended), which arrives with WP-21 with its gallery entry; long-lived scenarios in the agent evaluations arrive with AX-08 (LL-06, amended).
+
+*Rejected:* building WP-21 before the first release with a smaller scope (motion without decks, or decks without presenter view), since half a motion kit would need a second pass under the same requirements; starting WP-26 before WP-24 (its gallery and templates show charts and demos, so it would come back to them).
+
+*Source:* M104.
 
 ## Research consensus adopted
 
