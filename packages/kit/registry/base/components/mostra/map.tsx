@@ -177,6 +177,20 @@ function markerLayers(markers: readonly MapMarker[], tokens: Tokens): Layer[] {
   ];
 }
 
+/** Whether this browser draws WebGL, asked once. */
+let webgl: boolean | undefined;
+function canDrawWebGL(): boolean {
+  if (webgl === undefined) {
+    try {
+      const canvas = document.createElement("canvas");
+      webgl = (canvas.getContext("webgl2") ?? canvas.getContext("webgl")) !== null;
+    } catch {
+      webgl = false;
+    }
+  }
+  return webgl;
+}
+
 const NO_MARKERS: readonly MapMarker[] = [];
 const NO_LAYERS: readonly Layer[] = [];
 
@@ -222,7 +236,7 @@ export function MapView({
   // layers follow below.
   React.useEffect(() => {
     const element = host.current;
-    if (!element) return;
+    if (!element || !canDrawWebGL()) return;
     const ground = latest.current.style;
     const created = new maplibregl.Map({
       container: element,
@@ -283,7 +297,13 @@ export function MapView({
         ref={host}
         style={{ height }}
         className="relative w-full min-w-0 overflow-hidden rounded-card shadow-card [&_.maplibregl-ctrl-group]:rounded-control! [&_.maplibregl-ctrl-group]:bg-card! [&_.maplibregl-ctrl-group]:shadow-card!"
-      />
+      >
+        {typeof document !== "undefined" && !canDrawWebGL() && (
+          <p className="grid h-full place-items-center bg-card p-4 text-center text-sm text-muted-foreground">
+            This browser can't draw maps: WebGL is turned off.
+          </p>
+        )}
+      </div>
       {named.length > 0 && (
         <ul className="sr-only">
           {named.map((marker) => (

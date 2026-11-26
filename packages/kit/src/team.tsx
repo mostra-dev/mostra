@@ -122,7 +122,7 @@ function AvatarsView({
     <div
       data-slot="presence-avatars"
       data-status={presence.status}
-      className={cn("flex items-center", className)}
+      className={cn("flex w-fit items-center", className)}
       {...props}
     >
       <span className="sr-only">{label}</span>

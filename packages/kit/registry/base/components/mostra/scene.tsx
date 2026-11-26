@@ -38,6 +38,20 @@ export interface SceneProps extends Omit<React.ComponentProps<"figure">, "title"
   readonly autoRotate?: boolean;
 }
 
+/** Whether this browser draws WebGL, asked once. */
+let webgl: boolean | undefined;
+function canDrawWebGL(): boolean {
+  if (webgl === undefined) {
+    try {
+      const canvas = document.createElement("canvas");
+      webgl = (canvas.getContext("webgl2") ?? canvas.getContext("webgl")) !== null;
+    } catch {
+      webgl = false;
+    }
+  }
+  return webgl;
+}
+
 /**
  * A three.js scene in the page's theme.
  *
@@ -74,41 +88,47 @@ export function Scene({
         className="w-full min-w-0 overflow-hidden rounded-card bg-card shadow-card"
         {...(typeof title === "string" ? { role: "img", "aria-label": title } : {})}
       >
-        <Canvas
-          camera={{ position: [camera[0], camera[1], camera[2]], fov: 45 }}
-          dpr={[1, 2]}
-          gl={{ antialias: true, preserveDrawingBuffer: true }}
-          frameloop={autoRotate && !reduce ? "always" : "demand"}
-        >
-          <ambientLight intensity={0.6} />
-          <directionalLight position={[5, 8, 5]} intensity={1.2} />
-          <directionalLight position={[-4, 2, -3]} intensity={0.35} />
-          {fit ? (
-            <Bounds fit clip observe margin={1.2}>
-              {children}
-            </Bounds>
-          ) : (
-            children
-          )}
-          {grid && (
-            <Grid
-              position={[0, -0.001, 0]}
-              args={[20, 20]}
-              cellColor={tokens.border}
-              sectionColor={tokens.input}
-              fadeDistance={18}
-              infiniteGrid
-            />
-          )}
-          {controls && (
-            <OrbitControls
-              makeDefault
-              enableDamping={!reduce}
-              autoRotate={autoRotate && !reduce}
-              autoRotateSpeed={0.6}
-            />
-          )}
-        </Canvas>
+        {typeof document !== "undefined" && !canDrawWebGL() ? (
+          <p className="grid h-full place-items-center p-4 text-center text-sm text-muted-foreground">
+            This browser can't draw 3D scenes: WebGL is turned off.
+          </p>
+        ) : (
+          <Canvas
+            camera={{ position: [camera[0], camera[1], camera[2]], fov: 45 }}
+            dpr={[1, 2]}
+            gl={{ antialias: true, preserveDrawingBuffer: true }}
+            frameloop={autoRotate && !reduce ? "always" : "demand"}
+          >
+            <ambientLight intensity={0.6} />
+            <directionalLight position={[5, 8, 5]} intensity={1.2} />
+            <directionalLight position={[-4, 2, -3]} intensity={0.35} />
+            {fit ? (
+              <Bounds fit clip observe margin={1.2}>
+                {children}
+              </Bounds>
+            ) : (
+              children
+            )}
+            {grid && (
+              <Grid
+                position={[0, -0.001, 0]}
+                args={[20, 20]}
+                cellColor={tokens.border}
+                sectionColor={tokens.input}
+                fadeDistance={18}
+                infiniteGrid
+              />
+            )}
+            {controls && (
+              <OrbitControls
+                makeDefault
+                enableDamping={!reduce}
+                autoRotate={autoRotate && !reduce}
+                autoRotateSpeed={0.6}
+              />
+            )}
+          </Canvas>
+        )}
       </div>
     </figure>
   );

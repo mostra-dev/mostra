@@ -26,6 +26,7 @@ export const SPEC_SECONDS: Readonly<Record<string, number>> = {
   "gateway.spec.ts": 45,
   "kit.spec.ts": 44,
   "live-chart.spec.ts": 60,
+  "kit-libraries.spec.ts": 420,
   "actions.spec.ts": 35,
   "worker-mode.spec.ts": 18,
   "team.spec.ts": 18,
