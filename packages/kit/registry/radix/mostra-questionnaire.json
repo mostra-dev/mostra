@@ -9,6 +9,9 @@
     "cn",
     "lucide-react"
   ],
+  "registryDependencies": [
+    "mostra-layout"
+  ],
   "files": [
     {
       "path": "components/mostra/questionnaire.tsx",

@@ -12,6 +12,7 @@
  * into the artifact for editing, where the copy then wins (D68, KT-10).
  */
 
+import { useInsidePage } from "@mostra/kit/layout";
 import { useField } from "@mostra/react";
 import { cn } from "cn";
 import { ArrowDown, ArrowUp, Check, X } from "lucide-react";
@@ -88,6 +89,8 @@ function Questionnaire({
   const [step, setStep] = React.useState(0);
   const current = Math.min(step, Math.max(steps.length - 1, 0));
   const count = ids.filter((question) => answered.has(question)).length;
+  // Inside a page, the page has the title: the questionnaire's is a section's (#242).
+  const Title = useInsidePage() ? "h2" : "h1";
 
   return (
     <QuestionnaireContext.Provider value={context}>
@@ -99,7 +102,7 @@ function Questionnaire({
       >
         {(title !== undefined || description !== undefined || progress) && (
           <header data-slot="questionnaire-header" className="flex flex-col gap-3">
-            {title !== undefined && <h1>{title}</h1>}
+            {title !== undefined && <Title>{title}</Title>}
             {description !== undefined && (
               <p className="max-w-prose text-pretty text-muted-foreground">{description}</p>
             )}

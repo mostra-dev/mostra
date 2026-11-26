@@ -230,7 +230,6 @@
     "@react-three/drei": "catalog:",
     "@react-three/fiber": "catalog:",
     "@size-limit/preset-small-lib": "catalog:",
-    "@types/geojson": "catalog:",
     "@types/node": "catalog:",
     "@types/react": "catalog:",
     "@types/react-dom": "catalog:",
@@ -269,7 +268,8 @@
         "react-dom",
         "@mostra/react",
         "lucide-react",
-        "cn"
+        "cn",
+        "@mostra/kit/layout"
       ],
       "limit": "5 kB"
     },
@@ -298,6 +298,231 @@
         "react-dom"
       ],
       "limit": "2.5 kB"
+    },
+    {
+      "name": "@mostra/kit/tokens (React, the client runtime, the kit's other modules excluded)",
+      "path": "dist/tokens.js",
+      "import": "*",
+      "ignore": [
+        "react",
+        "react-dom",
+        "@mostra/react",
+        "cn",
+        "lucide-react",
+        "@mostra/kit/layout"
+      ],
+      "limit": "2 kB"
+    },
+    {
+      "name": "@mostra/kit/live-chart (React, the client runtime, the kit's other modules and the library it wraps excluded)",
+      "path": "dist/live-chart.js",
+      "import": "*",
+      "ignore": [
+        "react",
+        "react-dom",
+        "@mostra/react",
+        "cn",
+        "lucide-react",
+        "@mostra/kit/tokens",
+        "@mostra/kit/layout",
+        "uplot"
+      ],
+      "limit": "2.5 kB"
+    },
+    {
+      "name": "@mostra/kit/charts (React, the client runtime, the kit's other modules and the library it wraps excluded)",
+      "path": "dist/charts.js",
+      "import": "*",
+      "ignore": [
+        "react",
+        "react-dom",
+        "@mostra/react",
+        "cn",
+        "lucide-react",
+        "@mostra/kit/tokens",
+        "@mostra/kit/layout",
+        "recharts"
+      ],
+      "limit": "2 kB"
+    },
+    {
+      "name": "@mostra/kit/echarts (React, the client runtime, the kit's other modules and the library it wraps excluded)",
+      "path": "dist/echarts.js",
+      "import": "*",
+      "ignore": [
+        "react",
+        "react-dom",
+        "@mostra/react",
+        "cn",
+        "lucide-react",
+        "@mostra/kit/tokens",
+        "@mostra/kit/layout",
+        "echarts"
+      ],
+      "limit": "1.5 kB"
+    },
+    {
+      "name": "@mostra/kit/data-table (React, the client runtime, the kit's other modules and the library it wraps excluded)",
+      "path": "dist/data-table.js",
+      "import": "*",
+      "ignore": [
+        "react",
+        "react-dom",
+        "@mostra/react",
+        "cn",
+        "lucide-react",
+        "@mostra/kit/tokens",
+        "@mostra/kit/layout",
+        "@tanstack/react-table"
+      ],
+      "limit": "2 kB"
+    },
+    {
+      "name": "@mostra/kit/mermaid (React, the client runtime, the kit's other modules and the library it wraps excluded)",
+      "path": "dist/mermaid.js",
+      "import": "*",
+      "ignore": [
+        "react",
+        "react-dom",
+        "@mostra/react",
+        "cn",
+        "lucide-react",
+        "@mostra/kit/tokens",
+        "@mostra/kit/layout",
+        "mermaid"
+      ],
+      "limit": "1.5 kB"
+    },
+    {
+      "name": "@mostra/kit/flow (React, the client runtime, the kit's other modules and the library it wraps excluded)",
+      "path": "dist/flow.js",
+      "import": "*",
+      "ignore": [
+        "react",
+        "react-dom",
+        "@mostra/react",
+        "cn",
+        "lucide-react",
+        "@mostra/kit/tokens",
+        "@mostra/kit/layout",
+        "@xyflow/react"
+      ],
+      "limit": "1.5 kB"
+    },
+    {
+      "name": "@mostra/kit/code (React, the client runtime, the kit's other modules and the library it wraps excluded)",
+      "path": "dist/code.js",
+      "import": "*",
+      "ignore": [
+        "react",
+        "react-dom",
+        "@mostra/react",
+        "cn",
+        "lucide-react",
+        "@mostra/kit/tokens",
+        "@mostra/kit/layout",
+        "shiki",
+        "codemirror",
+        "@codemirror/state",
+        "@codemirror/view",
+        "@codemirror/commands",
+        "@codemirror/language",
+        "@codemirror/autocomplete",
+        "@codemirror/lang-javascript",
+        "@codemirror/lang-json",
+        "@codemirror/lang-markdown",
+        "@codemirror/lang-css",
+        "@codemirror/lang-html",
+        "@codemirror/lang-python",
+        "@lezer/highlight"
+      ],
+      "limit": "3.5 kB"
+    },
+    {
+      "name": "@mostra/kit/math (React, the client runtime, the kit's other modules and the library it wraps excluded)",
+      "path": "dist/math.js",
+      "import": "*",
+      "ignore": [
+        "react",
+        "react-dom",
+        "@mostra/react",
+        "cn",
+        "lucide-react",
+        "@mostra/kit/tokens",
+        "@mostra/kit/layout",
+        "katex"
+      ],
+      "limit": "1 kB"
+    },
+    {
+      "name": "@mostra/kit/map (React, the client runtime, the kit's other modules and the library it wraps excluded)",
+      "path": "dist/map.js",
+      "import": "*",
+      "ignore": [
+        "react",
+        "react-dom",
+        "@mostra/react",
+        "cn",
+        "lucide-react",
+        "@mostra/kit/tokens",
+        "@mostra/kit/layout",
+        "maplibre-gl",
+        "@deck.gl/core",
+        "@deck.gl/layers",
+        "@deck.gl/mapbox",
+        "world-atlas",
+        "topojson-client"
+      ],
+      "limit": "2 kB"
+    },
+    {
+      "name": "@mostra/kit/scene (React, the client runtime, the kit's other modules and the library it wraps excluded)",
+      "path": "dist/scene.js",
+      "import": "*",
+      "ignore": [
+        "react",
+        "react-dom",
+        "@mostra/react",
+        "cn",
+        "lucide-react",
+        "@mostra/kit/tokens",
+        "@mostra/kit/layout",
+        "three",
+        "@react-three/fiber",
+        "@react-three/drei"
+      ],
+      "limit": "1 kB"
+    },
+    {
+      "name": "@mostra/kit/whiteboard (React, the client runtime, the kit's other modules and the library it wraps excluded)",
+      "path": "dist/whiteboard.js",
+      "import": "*",
+      "ignore": [
+        "react",
+        "react-dom",
+        "@mostra/react",
+        "cn",
+        "lucide-react",
+        "@mostra/kit/tokens",
+        "@mostra/kit/layout",
+        "@excalidraw/excalidraw"
+      ],
+      "limit": "1.5 kB"
+    },
+    {
+      "name": "@mostra/kit/team (React, the client runtime, the kit's other modules excluded)",
+      "path": "dist/team.js",
+      "import": "*",
+      "ignore": [
+        "react",
+        "react-dom",
+        "@mostra/react",
+        "cn",
+        "lucide-react",
+        "@mostra/kit/tokens",
+        "@mostra/kit/layout"
+      ],
+      "limit": "6 kB"
     }
   ]
 }

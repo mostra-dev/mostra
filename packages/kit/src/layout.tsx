@@ -1,3 +1,5 @@
+"use client";
+
 /**
  * The page's frame (KT-10's "a beautiful result without design skill"): the page with its title,
  * its sections and a row of figures, each drawn from the theme's tokens (`--page-width`,
@@ -8,7 +10,19 @@
  */
 
 import { cn } from "cn";
-import type * as React from "react";
+import * as React from "react";
+
+/** Whether a part renders inside a {@link Page}, whose title is the page's one `<h1>`. */
+const InsidePage = React.createContext(false);
+
+/**
+ * Whether the calling part renders inside a {@link Page}: a part with a title of its own (a
+ * questionnaire's) then titles itself as a section does, an `<h2>` at the section heading's size,
+ * so the page keeps one title (#242).
+ */
+export function useInsidePage(): boolean {
+  return React.useContext(InsidePage);
+}
 
 /* -------------------------------------------------------------------------------------------- */
 /* The page                                                                                      */
@@ -52,6 +66,8 @@ export function Page({
       data-slot="page"
       className={cn(
         "mx-auto flex w-full flex-col gap-(--stack-gap) px-5 py-(--page-pad) sm:px-8",
+        // Blocks span the column; a control keeps its own width (#242).
+        "[&>:is(button,a,[data-slot=button],[data-slot=badge],[data-slot=button-group])]:self-start",
         WIDTHS[width],
         className,
       )}
@@ -60,7 +76,7 @@ export function Page({
       {(title !== undefined || description !== undefined || meta !== undefined) && (
         <PageHeader title={title} description={description} meta={meta} />
       )}
-      {children}
+      <InsidePage.Provider value={true}>{children}</InsidePage.Provider>
     </main>
   );
 }

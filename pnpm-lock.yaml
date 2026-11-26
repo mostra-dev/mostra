@@ -281,9 +281,6 @@ catalogs:
     '@types/better-sqlite3':
       specifier: 9.6.0
       version: 9.6.0
-    '@types/geojson':
-      specifier: 7946.0.16
-      version: 7946.0.16
     '@types/node':
       specifier: 24.19.2
       version: 24.19.2
@@ -969,9 +966,6 @@ importers:
       '@size-limit/preset-small-lib':
         specifier: 'catalog:'
         version: 14.2.0(size-limit@14.2.0)
-      '@types/geojson':
-        specifier: 'catalog:'
-        version: 7946.0.16
       '@types/node':
         specifier: 'catalog:'
         version: 24.19.2
