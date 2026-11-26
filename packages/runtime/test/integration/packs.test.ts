@@ -529,7 +529,12 @@ describe("the kit's parts by name (D181 item 7, KT-03)", () => {
         specs: ["mostra-questionnaire", "fixture-engine@2.0.0"],
       }),
     );
-    expect(result.items.map((item) => item.name)).toEqual(["mostra-questionnaire"]);
+    // The questionnaire comes with the layout it reads (inside a Page it titles itself as a
+    // section, #242), as shadcn adds an item's registry dependencies.
+    expect(result.items.map((item) => item.name)).toEqual([
+      "mostra-layout",
+      "mostra-questionnaire",
+    ]);
     expect(existsSync(join(dir, "components/mostra/questionnaire.tsx"))).toBe(true);
     expect(result.packages.map((pkg) => pkg.name)).toContain("fixture-engine");
   });

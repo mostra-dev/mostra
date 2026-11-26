@@ -132,6 +132,39 @@ function seriesOf(series: LiveChartProps["series"]): LiveChartSeries[] {
 /** A visually hidden element's classes: read by screen readers, never seen. */
 const HIDDEN = "sr-only";
 
+/** How often the legend and the summary follow the newest point. */
+const TEXT_INTERVAL_MS = 250;
+
+/** The summary screen readers read: how many points, and the newest. */
+function summaryOf(
+  newest: LivePoint | undefined,
+  count: number,
+  chart: {
+    readonly x: string;
+    readonly timeAxis: boolean;
+    readonly series: readonly LiveChartSeries[];
+    readonly format: ((value: number) => string) | undefined;
+  },
+): string {
+  if (newest === undefined) return "No data yet.";
+  const array = Array.isArray(newest);
+  const xValue = xOf(newest, chart.x);
+  const at = chart.timeAxis ? new Date(xValue).toLocaleTimeString() : String(xValue);
+  const values = chart.series.map((entry) => {
+    const value = toNumber(
+      array
+        ? newest[typeof entry.key === "number" ? entry.key : Number(entry.key)]
+        : (newest as Record<string, unknown>)[String(entry.key)],
+    );
+    return `${entry.label ?? entry.key} ${chart.format ? chart.format(value) : value}`;
+  });
+  return `${count} points, the newest at ${at}: ${values.join(", ")}.`;
+}
+
+/** A point's x, as a number. */
+const xOf = (point: LivePoint, x: string): number =>
+  toNumber(Array.isArray(point) ? point[0] : (point as Record<string, unknown>)[x]);
+
 /**
  * A chart of points that keep arriving: a live source in append mode, or points the page holds.
  *
@@ -297,6 +330,13 @@ function PointsChart({
     };
   }, [tokens, series, height, yMin, yMax, timeAxis, x]);
 
+  // Text that follows the points (the legend's newest values, the summary screen readers read)
+  // changes a few times a second, not on every frame: people read it no faster, and laying text out
+  // again 60 times a second costs a browser drawing in software most of its frame.
+  const summaryRef = React.useRef<HTMLParagraphElement>(null);
+  const textAt = React.useRef(Number.NEGATIVE_INFINITY);
+  const drawn = React.useRef(0);
+
   // Each render with new points appends them and draws once, before the frame is painted.
   React.useLayoutEffect(() => {
     absorb(points);
@@ -304,28 +344,31 @@ function PointsChart({
     const current = plot.current;
     if (!current || !state) return;
     current.setData(state.columns.data(), true);
+    drawn.current += 1;
+    const newest = points.at(-1);
+    // What the chart drew, for whoever measures it (a test, a host): the draws so far and the x
+    // of the newest point, on the plot's own element, which no style reads.
+    host.current?.setAttribute(
+      "data-drawn",
+      `${drawn.current} ${newest === undefined ? "" : String(xOf(newest, x))}`,
+    );
+    const now = performance.now();
+    if (now - textAt.current < TEXT_INTERVAL_MS) return;
+    textAt.current = now;
     // Without a pointer over the plot, the legend names the newest values.
     if (current.cursor.left === undefined || current.cursor.left < 0) {
       current.setLegend({ idx: Math.max(0, state.columns.length - 1) });
     }
-  }, [points, absorb]);
+    if (summaryRef.current) {
+      summaryRef.current.textContent = summaryOf(newest, state.columns.length, {
+        x,
+        timeAxis,
+        series,
+        format: formatRef.current,
+      });
+    }
+  }, [points, absorb, x, timeAxis, series]);
 
-  const newest = points.at(-1);
-  const summary = (): string => {
-    if (newest === undefined) return "No data yet.";
-    const array = Array.isArray(newest);
-    const xValue = toNumber(array ? newest[0] : (newest as Record<string, unknown>)[x]);
-    const at = timeAxis ? new Date(xValue).toLocaleTimeString() : String(xValue);
-    const values = series.map((entry) => {
-      const value = toNumber(
-        array
-          ? newest[typeof entry.key === "number" ? entry.key : Number(entry.key)]
-          : (newest as Record<string, unknown>)[String(entry.key)],
-      );
-      return `${entry.label ?? entry.key} ${format ? format(value) : value}`;
-    });
-    return `${points.length} points, the newest at ${at}: ${values.join(", ")}.`;
-  };
   return (
     <figure
       data-slot="live-chart"
@@ -345,8 +388,9 @@ function PointsChart({
         </figcaption>
       )}
       <div ref={host} style={{ minHeight: height }} aria-hidden="true" />
-      <p className={HIDDEN} data-slot="live-chart-summary">
-        {summary()}
+      {/* Written in place a few times a second (above), not by React on every frame. */}
+      <p ref={summaryRef} className={HIDDEN} data-slot="live-chart-summary">
+        No data yet.
       </p>
     </figure>
   );

@@ -165,9 +165,7 @@
     "vaul": "catalog:"
   },
   "peerDependencies": {
-    "@deck.gl/aggregation-layers": "9.4.1",
     "@deck.gl/core": "9.4.1",
-    "@deck.gl/geo-layers": "9.4.1",
     "@deck.gl/layers": "9.4.1",
     "@deck.gl/mapbox": "9.4.1",
     "@excalidraw/excalidraw": "0.18.1",
@@ -181,13 +179,7 @@
     "world-atlas": "2.0.2"
   },
   "peerDependenciesMeta": {
-    "@deck.gl/aggregation-layers": {
-      "optional": true
-    },
     "@deck.gl/core": {
-      "optional": true
-    },
-    "@deck.gl/geo-layers": {
       "optional": true
     },
     "@deck.gl/layers": {
@@ -256,7 +248,11 @@
           "Xiaolai"
         ]
       }
-    ]
+    ],
+    "pins": {
+      "@deck.gl/aggregation-layers": "9.4.1",
+      "@deck.gl/geo-layers": "9.4.1"
+    }
   },
   "size-limit": [
     {

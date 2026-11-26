@@ -9,8 +9,9 @@
  *   the same browser), the live page drops no more than the budget, so a dropped frame is the
  *   live data's cost and not the machine's.
  *
- * The chart's own summary for screen readers ("10000 points, the newest at 12345: …") is what the
- * test reads, so it measures what the page shows, through no hook of its own.
+ * The chart marks each draw on its plot element (`data-drawn`: the draws so far and the newest
+ * point's x), which the test reads, so it measures what the page draws through the chart's own
+ * public mark; the summary screen readers read follows a few times a second.
  */
 import { expect, type Page, test } from "@playwright/test";
 import { linkFor, openInShell, publishOwn } from "../support/client.ts";
@@ -50,22 +51,19 @@ interface Measure {
   readonly p95: number;
 }
 
-/** Watches the chart's summary and the page's frames for `ms`. */
+/** Watches the chart's draws and the page's frames for `ms`. */
 async function measure(page: Page, ms: number): Promise<Measure> {
   const frame = page.frames().find((candidate) => candidate !== page.mainFrame());
   if (!frame) throw new Error("the artifact's frame is missing");
   return frame.evaluate(async (duration) => {
-    const summary = document.querySelector('[data-slot="live-chart-summary"]');
-    if (!summary) throw new Error("the chart has no summary");
-    const newest = (): number =>
-      Number(/the newest at (\d+)/.exec(summary.textContent ?? "")?.[1] ?? Number.NaN);
-    let draws = 0;
-    const observer = new MutationObserver(() => {
-      draws += 1;
-    });
-    observer.observe(summary, { childList: true, characterData: true, subtree: true });
+    const plot = document.querySelector('[data-slot="live-chart"] [data-drawn]');
+    if (!plot) throw new Error("the chart has drawn nothing");
+    const mark = (): [number, number] => {
+      const [count = "", x = ""] = (plot.getAttribute("data-drawn") ?? "").split(" ");
+      return [Number(count), Number(x)];
+    };
     const intervals: number[] = [];
-    const first = newest();
+    const [firstDraws, first] = mark();
     const start = performance.now();
     await new Promise<void>((done) => {
       let last = start;
@@ -77,15 +75,15 @@ async function measure(page: Page, ms: number): Promise<Measure> {
       };
       requestAnimationFrame(tick);
     });
-    observer.disconnect();
+    const [lastDraws, last] = mark();
     const elapsed = (performance.now() - start) / 1000;
     intervals.shift();
     const sorted = [...intervals].sort((a, b) => a - b);
     const at = (q: number): number =>
       sorted[Math.min(sorted.length - 1, Math.floor(q * sorted.length))] ?? 0;
     return {
-      pointsPerSecond: (newest() - first) / elapsed,
-      draws: draws / elapsed,
+      pointsPerSecond: (last - first) / elapsed,
+      draws: (lastDraws - firstDraws) / elapsed,
       frames: intervals.length / elapsed,
       longFrames:
         intervals.filter((interval) => interval > 41.7).length / Math.max(1, intervals.length),
@@ -100,7 +98,8 @@ async function open(page: Page, url: string): Promise<number> {
   const opened = performance.now();
   const frame = await openInShell(page, url);
   await expect(frame.locator('[data-slot="live-chart-summary"]')).toContainText(/^10000 points/, {
-    timeout: 60_000,
+    // Windows arm64 runs an emulated Chromium, which takes the 10,000 points in slowly.
+    timeout: 120_000,
   });
   return (performance.now() - opened) / 1000;
 }
@@ -111,7 +110,7 @@ test.describe("high-rate live data stays smooth (AC-08)", () => {
   test("the live chart keeps 10,000 points and 60 new ones a second, and drops no more frames than its budget", async ({
     browser,
   }, info) => {
-    test.setTimeout(180_000);
+    test.setTimeout(300_000);
     const client = await Client.connect(run.socket);
     try {
       const live = await publishOwn(client, run.home, info, { fixture: "live-chart" });

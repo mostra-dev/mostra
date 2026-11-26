@@ -88,7 +88,12 @@ const errors = (verdict: VerifyVerdict): string[] =>
 const PINS = kitPeers(KIT);
 
 beforeAll(async () => {
-  mirror = await startMirror(installedClosure(KIT, [...PINS.keys()]));
+  // Every pinned library the kit installs for its own tests (deck.gl's other layers are pinned
+  // without being installed, so a page that adds one gets the version its map needs).
+  const installed = [...PINS.keys()].filter((name) =>
+    existsSync(join(KIT, "node_modules", name, "package.json")),
+  );
+  mirror = await startMirror(installedClosure(KIT, installed));
   home = verifiedHome();
   // The registry is the mirror's (the variable wins over any user's `.npmrc`); the user's home
   // stays, since verify's browser is found there.

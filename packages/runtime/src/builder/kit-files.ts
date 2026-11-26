@@ -97,10 +97,17 @@ export function kitPeers(kitDir: string): ReadonlyMap<string, string> {
     const manifest = JSON.parse(readFileSync(join(kitDir, "package.json"), "utf8")) as {
       peerDependencies?: Record<string, string>;
       peerDependenciesMeta?: Record<string, { optional?: boolean }>;
+      "mostra-kit"?: { pins?: Record<string, string> };
     };
     const peers = new Map<string, string>();
     for (const [name, version] of Object.entries(manifest.peerDependencies ?? {})) {
       if (manifest.peerDependenciesMeta?.[name]?.optional === true) peers.set(name, version);
+    }
+    // Libraries no kit module imports, which a page adds beside one (deck.gl's other layer
+    // packages): pinned so they match what the module's libraries need, never installed with the
+    // kit.
+    for (const [name, version] of Object.entries(manifest["mostra-kit"]?.pins ?? {})) {
+      if (!peers.has(name)) peers.set(name, version);
     }
     return peers;
   } catch {
