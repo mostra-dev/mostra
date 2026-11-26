@@ -17,6 +17,8 @@
 export const SPEC_SECONDS: Readonly<Record<string, number>> = {
   "client.spec.ts": 336,
   "surfaces.spec.ts": 327,
+  // WP-24, measured on a laptop with its builds cached: three demos built through their spec.
+  "demos.spec.ts": 150,
   "controls.spec.ts": 106,
   "versions.spec.ts": 70,
   "mcp-apps.spec.ts": 62,
