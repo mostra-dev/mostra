@@ -194,6 +194,15 @@ describe("license audit", () => {
     expect(spdxAllowed("SEE LICENSE IN LICENSE")).toBe(false);
     expect(spdxAllowed("Apache-2.0 WITH LLVM-exception")).toBe(true);
   });
+
+  it("accepts a public-domain dedication and nothing else beside the allowlist (WP-19)", () => {
+    expect(spdxAllowed("CC0-1.0")).toBe(true);
+    expect(spdxAllowed("MIT AND CC0-1.0")).toBe(true);
+    // Attribution and share-alike Creative Commons licenses restrict use; they stay refused.
+    expect(spdxAllowed("CC-BY-4.0")).toBe(false);
+    expect(spdxAllowed("CC-BY-SA-4.0")).toBe(false);
+    expect(spdxAllowed("CC-BY-NC-4.0")).toBe(false);
+  });
 });
 
 /** An `ee/sso` package (commercial license) beside the fixture workspace, with its own deps. */

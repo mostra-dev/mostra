@@ -62,6 +62,16 @@ export const OSI_ALLOWLIST: ReadonlySet<string> = new Set([
   "Zlib",
 ]);
 
+/**
+ * Public-domain dedications accepted beside the allowlist: they grant everything and ask nothing,
+ * so they can't restrict what users of Mostra do. The ASF treats CC0 as similar to the public
+ * domain and includes such works (ASF 3rd Party License Policy, checked 2026-11-26), and Mostra's
+ * plugin classes count it as `public-domain`, which needs no acknowledgment (D172 item 7).
+ * fractional-indexing, which Excalidraw (an on-demand D26 kit default) depends on, ships under it
+ * (VERIFIED_FACTS, WP-19). Extending this list is a reviewed change.
+ */
+const PUBLIC_DOMAIN: ReadonlySet<string> = new Set(["CC0-1.0"]);
+
 /** License texts that must never ship, whatever a package's `license` field says. */
 const FORBIDDEN_TEXTS: readonly [RegExp, string][] = [
   [/PolyForm/i, "PolyForm"],
@@ -80,6 +90,9 @@ const FORBIDDEN_TEXTS: readonly [RegExp, string][] = [
 const VERIFIED_LICENSES: ReadonlyMap<string, string> = new Map([
   // `license` file: "The MIT License (MIT)"; no `license` field (VERIFIED_FACTS, WP-04).
   ["khroma@2.1.0", "MIT"],
+  // `LICENSE`: "MIT License"; no `license` field. react-three-fiber's drei reaches it through
+  // detect-gpu (VERIFIED_FACTS, WP-19).
+  ["webgl-constants@1.1.1", "MIT"],
 ]);
 
 /** Packages that belong to pnpm's PolyForm-licensed pnpr subsystem (D20). */
@@ -113,7 +126,7 @@ export function spdxAllowed(expression: string): boolean {
   }
   const allowed = (node: Spdx): boolean =>
     "license" in node
-      ? OSI_ALLOWLIST.has(node.license)
+      ? OSI_ALLOWLIST.has(node.license) || PUBLIC_DOMAIN.has(node.license)
       : node.conjunction === "or"
         ? allowed(node.left) || allowed(node.right)
         : allowed(node.left) && allowed(node.right);
