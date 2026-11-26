@@ -28,7 +28,7 @@ url = "2.5.8"
 
 # POSIX: signals and process liveness, the disk's free space.
 [target.'cfg(unix)'.dependencies]
-nix = { version = "0.31.3", features = ["fs", "signal"] }
+nix = { version = "0.32.0", features = ["fs", "signal"] }
 
 # Windows (WP-W3, D153): the control pipe's owner, process liveness and free space, in one module
 # (`src/windows.rs`), the crate's only `unsafe`.
