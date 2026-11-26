@@ -26,7 +26,13 @@ import {
   STAGING_FILES,
   type VersionRegistry,
 } from "../types.ts";
-import { entryStylesheet, hostTokensElement, kitResolvePlugin, themeAttributes } from "./kit.ts";
+import {
+  entryStylesheet,
+  hostTokensElement,
+  kitPeersPlugin,
+  kitResolvePlugin,
+  themeAttributes,
+} from "./kit.ts";
 import {
   type BuildInputs,
   confinePlugin,
@@ -216,7 +222,13 @@ export function baseConfig(
     // home, is loaded or run (VR-01). Tailwind is a plugin of its own.
     css: { postcss: {} },
     // `@/…` is the artifact's root, then the kit's registry for its base (ROUND-3 §1.1).
-    plugins: [...observers, kitResolvePlugin(sourceDir, request.kit), ...plugins],
+    // A kit module's on-demand libraries are the artifact's, from its lockfile (WP-19).
+    plugins: [
+      ...observers,
+      kitResolvePlugin(sourceDir, request.kit),
+      kitPeersPlugin(request.stagingDir),
+      ...plugins,
+    ],
   };
 }
 

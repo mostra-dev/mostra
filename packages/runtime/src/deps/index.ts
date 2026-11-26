@@ -33,6 +33,7 @@ import {
   RpcError,
 } from "@mostra/protocol";
 import semver from "semver";
+import { kitFilesUsed, kitPeers } from "../builder/index.ts";
 import { type Faults, noFaults } from "../faults.ts";
 import type { Gate } from "../gate.ts";
 import {
@@ -62,7 +63,7 @@ import {
   pinnedPackages,
   withExtras,
 } from "./lock.ts";
-import { scanImports } from "./scan.ts";
+import { scanFileImports, scanImports } from "./scan.ts";
 import { type PackageSpec, parseSpec } from "./specifier.ts";
 import type { WarmSet } from "./warm.ts";
 
@@ -149,6 +150,12 @@ export interface DependencyTarget {
   readonly artifactDir: string;
   /** The artifact's source path as callers name it, for the `mostra add` command in diagnostics. */
   readonly artifactPath: string;
+  /**
+   * The kit's base the artifact builds with (`kit.base`, default `base`): the kit modules it uses
+   * are read from that base's registry, and the on-demand libraries they import join its packages
+   * at the kit's pins (WP-19).
+   */
+  readonly kitBase?: "base" | "radix";
 }
 
 /** What gc collects of the dependency state (D140 item 14). */
@@ -855,6 +862,30 @@ export function createDependencies(options: DependenciesOptions): Dependencies {
     };
   };
 
+  /**
+   * The on-demand libraries the kit's modules the artifact uses import, by name, with the kit's
+   * pin: every kit file the artifact reaches (`@mostra/kit/<module>`, `@/…` it has no copy of), and
+   * of their imports the kit's optional peers (WP-19).
+   */
+  const kitLibraries = async (
+    sourceDir: string,
+    base: "base" | "radix",
+  ): Promise<ReadonlyMap<string, string>> => {
+    const kitDir = join(warm.nodeModules, "@mostra", "kit");
+    const peers = kitPeers(kitDir);
+    if (peers.size === 0) return new Map();
+    const registry = join(kitDir, "registry", base);
+    if (!existsSync(registry)) return new Map();
+    const needs = new Map<string, string>();
+    for (const file of kitFilesUsed(sourceDir, registry)) {
+      for (const name of await scanFileImports(file)) {
+        const pin = peers.get(name);
+        if (pin !== undefined) needs.set(name, pin);
+      }
+    }
+    return needs;
+  };
+
   return {
     warm,
 
@@ -866,10 +897,17 @@ export function createDependencies(options: DependenciesOptions): Dependencies {
     resolve: (target) =>
       byArtifact.run(target.key, async () => {
         const imports = await scanImports(target.sourceDir);
+        // The kit modules the artifact uses import their on-demand libraries (MapLibre, three.js,
+        // Excalidraw): those join its packages at the versions the kit pins (D65, WP-19).
+        const kitNeeds = await kitLibraries(target.sourceDir, target.kitBase ?? "base");
         const working = readWorking(target.key);
         const added = (working?.added ?? []).filter((name) => !(name in warm.packages));
         const needed = [
-          ...new Set([...[...imports.keys()].filter((name) => !(name in warm.packages)), ...added]),
+          ...new Set([
+            ...[...imports.keys()].filter((name) => !(name in warm.packages)),
+            ...added,
+            ...[...kitNeeds.keys()].filter((name) => !(name in warm.packages)),
+          ]),
         ].sort();
         const pinned = working?.lock.packages ?? {};
         const missing = needed.filter((name) => pinned[name] === undefined);
@@ -906,7 +944,12 @@ export function createDependencies(options: DependenciesOptions): Dependencies {
             key: target.key,
             artifactDir: target.artifactDir,
             pins,
-            additions: missing.map((name) => ({ name })),
+            additions: missing.map((name) => {
+              // A library a kit module needs, and the artifact doesn't import itself, comes at the
+              // version the kit was built and checked with.
+              const pin = imports.has(name) ? undefined : kitNeeds.get(name);
+              return (pin !== undefined ? parseSpec(`${name}@${pin}`) : undefined) ?? { name };
+            }),
             previous: working?.lock.pnpm,
           });
         }

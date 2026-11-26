@@ -3,39 +3,21 @@
  * first and the kit's registry for its base next, and the stylesheet the client entry imports,
  * which puts the theme stack inside the build's one Tailwind run.
  */
-import { existsSync, readdirSync, readFileSync, statSync } from "node:fs";
-import { extname, isAbsolute, join, relative } from "node:path";
+import { existsSync, realpathSync } from "node:fs";
+import { isAbsolute, join, relative } from "node:path";
 import { HOST_TOKENS } from "@mostra/themes";
 import type { Plugin } from "vite";
 import { isUnder, pathKey } from "../../platform/index.ts";
+import {
+  findUnder,
+  kitFilesUsed,
+  kitModulePath,
+  kitPeers,
+  packageOfSpecifier,
+} from "../kit-files.ts";
 import type { KitBuild } from "../types.ts";
 
-/** The extensions `@/…` tries, in the order Vite tries them for a relative import. */
-const EXTENSIONS = ["", ".tsx", ".ts", ".jsx", ".js", ".mjs", ".mts", ".json"];
-
-/** The file `@/<rest>` names inside `root`, as a bundler finds it, or `undefined`. */
-export function findUnder(root: string, rest: string): string | undefined {
-  const base = join(root, rest);
-  if (!isUnder(base, root)) return undefined;
-  for (const extension of EXTENSIONS) {
-    const candidate = `${base}${extension}`;
-    if (existsSync(candidate) && statSync(candidate).isFile()) return candidate;
-  }
-  for (const extension of EXTENSIONS.slice(1)) {
-    const candidate = join(base, `index${extension}`);
-    if (existsSync(candidate) && statSync(candidate).isFile()) return candidate;
-  }
-  return undefined;
-}
-
-/**
- * The kit module a specifier names (`@mostra/kit/questionnaire`), as the path its file has in an
- * artifact and in the kit's registry (`components/mostra/questionnaire`), or `undefined`.
- */
-export function kitModulePath(source: string): string | undefined {
-  const match = /^@mostra\/kit\/([a-z][a-z0-9-]*)$/.exec(source.split("?")[0] ?? "");
-  return match ? `components/mostra/${match[1] as string}` : undefined;
-}
+export { findUnder, kitFilesUsed, kitModulePath };
 
 /**
  * `@/…` as an artifact means it (ROUND-3 §1.1): the artifact's own file when it has one, else the
@@ -68,6 +50,41 @@ export function kitResolvePlugin(sourceDir: string, kit: KitBuild): Plugin {
 }
 
 /**
+ * The kit's on-demand libraries as the artifact has them (D65, WP-19): a kit module that imports
+ * MapLibre or three.js takes the copy the artifact's lockfile installed (the dependency module
+ * adds the kit's pin to it when the artifact uses the module), never one beside the kit, so the
+ * build is the same from the runtime bundle as from this repository, and the version's lockfile
+ * digest covers it. `buildRoot` is the build's root, whose `node_modules` is the artifact's layout.
+ */
+export function kitPeersPlugin(buildRoot: string): Plugin {
+  let kit: { readonly dir: string; readonly peers: ReadonlyMap<string, string> } | undefined;
+  const load = (): typeof kit => {
+    if (kit === undefined) {
+      const link = join(buildRoot, "node_modules", "@mostra", "kit");
+      const dir = existsSync(link) ? realpathSync(link) : "";
+      kit = { dir, peers: dir === "" ? new Map() : kitPeers(dir) };
+    }
+    return kit;
+  };
+  return {
+    name: "mostra:kit-peers",
+    enforce: "pre",
+    async resolveId(source, importer, options) {
+      if (importer === undefined || source.startsWith("\0")) return null;
+      const name = packageOfSpecifier(source);
+      if (name === undefined) return null;
+      const { dir, peers } = load() ?? { dir: "", peers: new Map() };
+      if (dir === "" || !peers.has(name)) return null;
+      const from = importer.split("?")[0] ?? importer;
+      const real = existsSync(from) ? realpathSync(from) : from;
+      if (!isUnder(real, dir)) return null;
+      // As if the artifact's own root imported it: from the layout its lockfile installed.
+      return this.resolve(source, join(buildRoot, "index.html"), { ...options, skipSelf: true });
+    },
+  };
+}
+
+/**
  * The artifact-relative path an import names under `@/…`: written so (`@/components/ui/button`),
  * as a kit module (`@mostra/kit/questionnaire`), or as the `@/` alias rewrote it, an absolute path
  * in the artifact's root (the alias is there for stylesheets, whose `@import` and `url()` Vite
@@ -88,50 +105,6 @@ const importPath = (from: string, to: string): string => {
   const path = relative(from, to).split("\\").join("/");
   return path.startsWith(".") ? path : `./${path}`;
 };
-
-/** The files whose imports can name `@/…`. */
-const CODE = new Set([".ts", ".tsx", ".js", ".jsx", ".mjs", ".mts", ".mdx"]);
-/** `@/…` or a kit module (`@mostra/kit/<name>`) in an import or export, static or dynamic. */
-const KIT_IMPORT = /(?:from|import)\s*\(?\s*["'](@\/[^"'\s]+|@mostra\/kit\/[a-z][a-z0-9-]*)["']/g;
-
-function codeFiles(dir: string): string[] {
-  const found: string[] = [];
-  for (const entry of readdirSync(dir, { withFileTypes: true })) {
-    if (entry.name === "node_modules" || entry.name.startsWith(".")) continue;
-    const path = join(dir, entry.name);
-    if (entry.isDirectory()) found.push(...codeFiles(path));
-    else if (CODE.has(extname(entry.name))) found.push(path);
-  }
-  return found;
-}
-
-/**
- * The kit's files a page uses: every `@/…` the artifact's code names that the artifact has no
- * copy of, and in turn the kit files those name. Only their classes are generated, so a page
- * carries the CSS of the parts it uses, never the whole registry's.
- */
-export function kitFilesUsed(sourceDir: string, registry: string): string[] {
-  const used = new Set<string>();
-  const visit = (file: string): void => {
-    let text: string;
-    try {
-      text = readFileSync(file, "utf8");
-    } catch {
-      return;
-    }
-    for (const match of text.matchAll(KIT_IMPORT)) {
-      const specifier = match[1] as string;
-      const rest = kitModulePath(specifier) ?? specifier.slice(2);
-      if (findUnder(sourceDir, rest) !== undefined) continue;
-      const kitFile = findUnder(registry, rest);
-      if (kitFile === undefined || used.has(kitFile)) continue;
-      used.add(kitFile);
-      visit(kitFile);
-    }
-  };
-  for (const file of codeFiles(sourceDir)) visit(file);
-  return [...used].sort();
-}
 
 /**
  * The stylesheet every client entry imports: Tailwind over the artifact's source and the kit's

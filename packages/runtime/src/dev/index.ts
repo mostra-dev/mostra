@@ -266,7 +266,10 @@ export function createDev(options: DevOptions): Dev {
     };
 
     /** Resolves the packages, and writes the lockfile the worker resolves server packages by. */
-    const resolve = async (manifestId: string | undefined): Promise<string> => {
+    const resolve = async (
+      manifestId: string | undefined,
+      kitBase: "base" | "radix" = "base",
+    ): Promise<string> => {
       // The lock is known to gc before the gate is released, so no gc can take its layout
       // between the resolution and the dev server's start.
       const resolution = await options.gate.shared(async () => {
@@ -278,6 +281,7 @@ export function createDev(options: DevOptions): Dev {
           sourceDir: join(root, "source"),
           artifactDir: source.root,
           artifactPath: path,
+          kitBase,
         });
         if (!closed) locksInUse.set(sessionId, resolved.lock);
         return resolved;
@@ -390,11 +394,13 @@ export function createDev(options: DevOptions): Dev {
           if (changed.length === 0 && !forceResolve) return;
           const described = await describe();
           const key = JSON.stringify(described.manifest);
-          const next = await resolve(described.manifest.id).catch((error: unknown) => {
-            if (error instanceof RpcError)
-              notify("diagnostics", { diagnostics: [error.diagnostic] });
-            return nodeModules;
-          });
+          const next = await resolve(described.manifest.id, described.manifest.kit?.base).catch(
+            (error: unknown) => {
+              if (error instanceof RpcError)
+                notify("diagnostics", { diagnostics: [error.diagnostic] });
+              return nodeModules;
+            },
+          );
           const files = changed.map((change) => change.file);
           if (next !== nodeModules || key !== manifestKey) {
             // Other packages or another manifest: a new dev server over the same mirror, its
@@ -476,7 +482,7 @@ export function createDev(options: DevOptions): Dev {
       const described = await describe();
       if (closed) throw abandoned();
       manifestKey = JSON.stringify(described.manifest);
-      nodeModules = await resolve(described.manifest.id);
+      nodeModules = await resolve(described.manifest.id, described.manifest.kit?.base);
       artifactId = described.artifactId;
       if (closed) throw abandoned();
       child = await startChild(described);
