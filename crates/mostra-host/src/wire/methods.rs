@@ -113,6 +113,16 @@ impl super::Method for ArtifactVerify {
     type Params = super::generated::ArtifactVerifyParams;
     type Result = super::generated::VerifyVerdict;
 }
+///`demo/build`.
+#[derive(Clone, Copy, Debug)]
+pub struct DemoBuild;
+impl super::Method for DemoBuild {
+    const NAME: &'static str = "demo/build";
+    const DIRECTION: super::Direction = super::Direction::ClientToInstance;
+    const MUTATING: bool = false;
+    type Params = super::generated::DemoBuildParams;
+    type Result = super::generated::DemoBuildResult;
+}
 ///`deps/add`.
 #[derive(Clone, Copy, Debug)]
 pub struct DepsAdd;
@@ -898,6 +908,11 @@ pub const METHODS: &[super::MethodInfo] = &[
     },
     super::MethodInfo {
         name: "artifact/verify",
+        direction: super::Direction::ClientToInstance,
+        mutating: false,
+    },
+    super::MethodInfo {
+        name: "demo/build",
         direction: super::Direction::ClientToInstance,
         mutating: false,
     },

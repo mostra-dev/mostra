@@ -11,7 +11,7 @@ import type { Dirent } from "node:fs";
 import { mkdir, readdir, readFile, realpath, rm, writeFile } from "node:fs/promises";
 import { join, relative } from "node:path";
 import { stripVTControlCharacters } from "node:util";
-import { createDiagnostic, type Diagnostic } from "@mostra/protocol";
+import { createDiagnostic, type Diagnostic, isDemoBuild } from "@mostra/protocol";
 import tailwind from "@tailwindcss/vite";
 import react from "@vitejs/plugin-react";
 import { build, type InlineConfig, type PluginOption } from "vite";
@@ -55,6 +55,21 @@ export const html = (title: string, versionId: string, attributes = "", head = "
   </body>
 </html>
 `;
+
+/**
+ * The version's demos for its page (D185 item 6): `<meta name="mostra-demos">` naming each demo
+ * built from its source and how it routes, so `useDemo` knows what the version holds and a demo
+ * it doesn't declare is `MOSTRA_DEMO_UNKNOWN`. Nothing for a version without demos.
+ */
+export function demosElement(demos: BuildRequest["manifest"]["demos"]): string {
+  const facts: Record<string, { routing: "history" | "hash" }> = {};
+  for (const [name, spec] of Object.entries(demos ?? {})) {
+    if (isDemoBuild(spec)) facts[name] = { routing: spec.routing ?? "history" };
+  }
+  if (Object.keys(facts).length === 0) return "";
+  const content = JSON.stringify(facts).replaceAll("&", "&amp;").replaceAll('"', "&quot;");
+  return `\n    <meta name="mostra-demos" content="${content}" />`;
+}
 
 /**
  * The client entry: hands the page, or the `pages/` routes inside the entry's layout (D57), to the
@@ -301,7 +316,7 @@ export async function buildSpa(input: BuildRequest): Promise<BuildResponse> {
       request.manifest.title,
       request.versionId,
       themeAttributes(request.kit),
-      hostTokensElement(request.kit),
+      hostTokensElement(request.kit) + demosElement(request.manifest.demos),
     ),
   );
   await writeFile(join(generated, "entry.js"), clientEntry(request, scan));
@@ -371,6 +386,8 @@ export async function buildSpa(input: BuildRequest): Promise<BuildResponse> {
     ? await injectReviewAgent(
         join(request.outDir, "client"),
         join(runtimeDir, "dist", "review-agent.js"),
+        // A version with demos keeps the agent's file for them (D185 item 5), page or not.
+        Object.keys(request.manifest.demos ?? {}).length > 0,
       )
     : undefined;
 
@@ -428,6 +445,7 @@ export async function buildSpa(input: BuildRequest): Promise<BuildResponse> {
 export async function injectReviewAgent(
   clientDir: string,
   agentFile: string,
+  keep = false,
 ): Promise<string | undefined> {
   const pages: string[] = [];
   const walk = async (dir: string): Promise<void> => {
@@ -439,7 +457,7 @@ export async function injectReviewAgent(
     }
   };
   await walk(clientDir);
-  if (pages.length === 0) return undefined;
+  if (pages.length === 0 && !keep) return undefined;
   let agent: Buffer;
   try {
     agent = await readFile(agentFile);
@@ -451,7 +469,7 @@ export async function injectReviewAgent(
   await writeFile(join(clientDir, name), agent);
   // Inline in each page: a frame the artifact sandboxes has an opaque origin, whose requests carry
   // no session, so it couldn't fetch the agent; its own document still loads, the agent with it.
-  // The file stays for what loads it by name (WP-24's proxied demos).
+  // The file stays for what carries it by name: a version's demos (D185 item 5).
   // An agent whose text an HTML parser would end early (never the case today) goes by name.
   const code = agent.toString("utf8");
   const tag = /<\/script|<!--/i.test(code)

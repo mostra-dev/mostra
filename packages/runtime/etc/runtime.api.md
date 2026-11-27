@@ -108,6 +108,7 @@ export interface SpawnSpec {
     readonly onStdout?: (line: string) => void;
     readonly ownerRef: string;
     readonly redact?: readonly string[];
+    readonly verbatim?: true;
 }
 
 // @public

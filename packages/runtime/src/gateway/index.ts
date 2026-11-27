@@ -2196,8 +2196,103 @@ export function createGateway(options: GatewayOptions): Gateway {
       );
     };
 
+    /**
+     * `GET /_mostra/demos/<name>/*` (D185 item 5): a demo the version keeps, behind the page's
+     * frame session, under the page's own headers. A path names its file, else its folder's
+     * `index.html` or its `.html` page; a navigation to any other path gets the demo's
+     * `index.html`, so deep links and client-side routing work.
+     */
+    const demoFiles = async (context: RouteContext): Promise<Response> => {
+      const session = context.session;
+      const url = new URL(context.request.url);
+      const meta = {
+        method: context.request.method,
+        path: url.pathname,
+        document: context.document,
+      };
+      const match = /^\/_mostra\/demos\/([a-z0-9][a-z0-9-]{0,63})(\/.*)?$/.exec(url.pathname);
+      if (!session?.versionId || !match) {
+        return refuse(checks, refusal("MOSTRA_HYGIENE_NOT_SERVED", "No demo at this path."), meta);
+      }
+      const name = match[1] as string;
+      // A quarantined version's demos are withheld as its page's files are, even from an open frame.
+      const withheld = hosted?.blocked?.(artifactId, session.versionId);
+      if (withheld) return refuse(checks, withheld, meta);
+      if (match[2] === undefined) {
+        return new Response(null, {
+          status: 308,
+          headers: {
+            ...BASE_HEADERS,
+            ...NO_STORE,
+            location: `/_mostra/demos/${name}/${url.search}`,
+          },
+        });
+      }
+      const rest = safePath(match[2]);
+      const root = join(
+        artifacts.versionDir(session.versionId),
+        "client",
+        "_mostra",
+        "demos",
+        name,
+      );
+      if (rest === undefined || !existsSync(join(root, "index.html"))) {
+        return refuse(
+          checks,
+          refusal(
+            "MOSTRA_HYGIENE_NOT_SERVED",
+            options.dev
+              ? "Demos are built at verify and publish: a development preview shows none."
+              : `This version keeps no demo "${name}".`,
+          ),
+          meta,
+        );
+      }
+      const candidates = rest.endsWith("/")
+        ? [`${rest}index.html`]
+        : [rest, `${rest}/index.html`, `${rest}.html`];
+      let file: Awaited<ReturnType<typeof findFile>>;
+      for (const candidate of candidates) {
+        file = await findFile(root, candidate);
+        if (file) break;
+      }
+      if (!file && context.document) file = await findFile(root, "/index.html");
+      if (!file) {
+        return refuse(
+          checks,
+          refusal("MOSTRA_HYGIENE_NOT_SERVED", "This demo has no file at this path."),
+          meta,
+        );
+      }
+      const damage = await integrity.serve(session.versionId, file);
+      if (damage !== undefined) {
+        const number = artifacts
+          .get({ artifactId })
+          .versions.find((v) => v.id === session.versionId)?.number;
+        return damaged(number, damage, context.document, shell() || "'none'");
+      }
+      return fileResponse(file, context.request, {
+        ...documentHeaders(kind(), ""),
+        "cache-control": "no-cache",
+      });
+    };
+
     return [
       { method: "GET", path: "/_mostra/enter", intent: "read", auth: "none", handler: enter },
+      {
+        method: "GET",
+        path: "/_mostra/demos/:name",
+        intent: "read",
+        auth: "session",
+        handler: demoFiles,
+      },
+      {
+        method: "GET",
+        path: "/_mostra/demos/:name/*",
+        intent: "read",
+        auth: "session",
+        handler: demoFiles,
+      },
       {
         method: "GET",
         path: `${THEME_BASE}*`,

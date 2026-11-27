@@ -36,6 +36,16 @@
       "types": "./dist/review.d.ts",
       "default": "./dist/review.js"
     },
+    "./demo": {
+      "@mostra/source": "./src/demo.tsx",
+      "types": "./dist/demo.d.ts",
+      "default": "./dist/demo.js"
+    },
+    "./action": {
+      "@mostra/source": "./src/action.tsx",
+      "types": "./dist/action.d.ts",
+      "default": "./dist/action.js"
+    },
     "./css/*": "./css/*",
     "./registry/*": "./registry/*",
     "./package.json": "./package.json"
@@ -136,6 +146,32 @@
         "react-dom"
       ],
       "limit": "2.5 kB"
+    },
+    {
+      "name": "@mostra/kit/demo (React and the client runtime excluded)",
+      "path": "dist/demo.js",
+      "import": "*",
+      "ignore": [
+        "@mostra/react",
+        "cn",
+        "lucide-react",
+        "react",
+        "react-dom"
+      ],
+      "limit": "3 kB"
+    },
+    {
+      "name": "@mostra/kit/action (React and the client runtime excluded)",
+      "path": "dist/action.js",
+      "import": "*",
+      "ignore": [
+        "@mostra/react",
+        "cn",
+        "lucide-react",
+        "react",
+        "react-dom"
+      ],
+      "limit": "1 kB"
     }
   ]
 }

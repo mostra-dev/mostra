@@ -48,6 +48,7 @@ import {
   readLiveSources,
   readServerFunctions,
 } from "../builder/index.ts";
+import { createDemos, recoverDemos } from "../demos/index.ts";
 import {
   createDependencies,
   type Dependencies,
@@ -56,6 +57,7 @@ import {
   runtimeRoot,
 } from "../deps/index.ts";
 import { createDev, type Dev, recoverDev } from "../dev/index.ts";
+import { createExports } from "../exports/index.ts";
 import { faultsFrom } from "../faults.ts";
 import { Gate } from "../gate.ts";
 import {
@@ -333,6 +335,7 @@ async function assemble(home: OwnedHome, options: StartInstanceOptions): Promise
   await recoverVerify(home.path, log);
   // And of `mostra dev`: its sessions' mirrors, builds and scratch ledgers (D140 item 12).
   await recoverDev(home.path, log);
+  await recoverDemos(home.path);
   // Building and serving go through the render mode (D19 seam 5): SPA, v1's only one. Made on
   // first use, like the publisher, so a runtime missing its build packages still starts.
   let spa: RenderMode | undefined;
@@ -433,8 +436,15 @@ async function assemble(home: OwnedHome, options: StartInstanceOptions): Promise
       homeTheme: () => readHomeSettings(home.path).look?.theme,
       verifier: getVerifier,
       unverified: unverifiedPublish,
+      demos: getDemos(),
     });
     return publisher;
+  };
+  // Web demos (D185): their builds, one at a time per demo folder, kept by their inputs' digest.
+  let demos: ReturnType<typeof createDemos> | undefined;
+  const getDemos = (): ReturnType<typeof createDemos> => {
+    demos ??= createDemos({ home: home.path, processes: manager, log, env: environment });
+    return demos;
   };
   // verify (WP-09, D138): the runner child with its warm browser, and the sandbox each run serves
   // its build from. Made on first use, like the publisher.
@@ -1138,6 +1148,25 @@ async function assemble(home: OwnedHome, options: StartInstanceOptions): Promise
       ...artifactMethods({
         registry,
         publisher: getPublisher,
+        // The page's front end as files (D185 items 7, 8), made in a plugin child.
+        // The whole export holds the instance's gate shared, as a bundle's does (D140 item 14):
+        // gc never collects the version or empties its scratch view under it (review of WP-24,
+        // finding 6).
+        exportFront: (params, signal) =>
+          getPublisher().withHome(() =>
+            createExports({
+              home: home.path,
+              ledger: home.ledger,
+              log,
+              env: environment,
+              runtimeVersion: runtimeVersion(),
+              exportable: (ref) => getPublisher().exportable(ref),
+              sourceOf: (artifactId) => registry.sourceOf(artifactId),
+              localViewer: () => interaction.viewerOf(undefined),
+              liveValues: (artifactId) => live.stored(artifactId),
+              demos: getDemos(),
+            }).run(params, signal),
+          ),
         link: (artifactId) => gateway.defaultLink(artifactId),
         // Any publish clears the artifact's park, a reused version too (FAILURE_MODEL §2): its
         // calls and its live producers both start again.

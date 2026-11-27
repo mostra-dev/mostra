@@ -119,7 +119,10 @@ export async function resolveSource(path: string): Promise<ResolvedSource> {
  * ones (DATA_MODEL §2) and those `.mostraignore` matches. Symbolic links are followed; a link
  * that loops back into its own ancestry is skipped.
  */
-export async function listSource(source: ResolvedSource): Promise<SourceFile[]> {
+export async function listSource(
+  source: ResolvedSource,
+  exclude: readonly string[] = [],
+): Promise<SourceFile[]> {
   if (source.kind === "file") {
     return [{ path: source.entry, absolute: source.bindingPath }];
   }
@@ -160,6 +163,8 @@ export async function listSource(source: ResolvedSource): Promise<SourceFile[]> 
       }
       if (kind === "dir") {
         if (IGNORED_DIRS.has(nameKey(entry.name)) || rules.ignores(`${path}/`)) continue;
+        // A demo's project inside the artifact is the demo's own source, digested apart (D185).
+        if (exclude.includes(path)) continue;
         let real: string;
         try {
           real = await realpath(absolute);

@@ -205,6 +205,60 @@ describe("every command, with --json and no terminal", () => {
     link = shown.url;
   });
 
+  it("export writes the page's front end as static, html or a snapshot; demo build builds its demos (VR-07, TM-08)", async () => {
+    const folder = join(home.root, "front-end");
+    const written = await run(["export", artifactId, "--as", "static", "--out", folder], {
+      code: 0,
+      ok: true,
+    });
+    expect(written.result).toMatchObject({ files: [folder], report: { as: "static" } });
+    expect(readFileSync(join(folder, "index.html"), "utf8")).toMatch(
+      /<meta name="mostra-target" content="static"\s*\/?>/,
+    );
+    const single = join(home.root, "front-end.html");
+    await run(["export", artifactId, "--as", "html", "--out", single], { code: 0, ok: true });
+    expect(statSync(single).isFile()).toBe(true);
+    const frozen = join(home.root, "front-end-snapshot");
+    const snapshot = await run(
+      ["export", artifactId, "--as", "snapshot", "--no-shared-state", "--out", frozen],
+      { code: 0, ok: true },
+    );
+    expect(snapshot.result).toMatchObject({
+      report: { snapshot: { sharedState: { included: false } } },
+    });
+    expect(existsSync(join(frozen, "snapshot.json"))).toBe(true);
+    // A flag that doesn't go with the class is a usage error, before anything is written.
+    await run(
+      ["export", artifactId, "--as", "html", "--base", "/sub/", "--out", join(home.root, "x.html")],
+      {
+        code: 2,
+        ok: false,
+        error: "MOSTRA_CLI_USAGE",
+      },
+    );
+    expect(existsSync(join(home.root, "x.html"))).toBe(false);
+    // Nor is a flag dropped for a plugin's exporter, or an exporter's option for a built-in class:
+    // a CI step relying on --strict never passes because the class ignores it (WP-24 review,
+    // finding 11).
+    for (const [args, out] of [
+      [["--as", "mcp-app", "--strict"], "app"],
+      [["--as", "mcp-app", "--base", "/sub/"], "app-base"],
+      [["--as", "mcp-app", "--no-shared-state"], "app-shared"],
+      [["--as", "bundle", "--strict"], "bundle.tar.zst"],
+      [["--as", "static", "--option", "prefersBorder=false"], "static-option"],
+    ] as const) {
+      await run(["export", artifactId, ...args, "--out", join(home.root, out)], {
+        code: 2,
+        ok: false,
+        error: "MOSTRA_CLI_USAGE",
+      });
+      expect(existsSync(join(home.root, out)), args.join(" ")).toBe(false);
+    }
+    // A page without demos builds none.
+    const built = await run(["demo", "build", artifactDir], { code: 0, ok: true });
+    expect(built.result).toMatchObject({ demos: [] });
+  });
+
   it("export writes a bundle and run makes it the same version in another home (RM-01)", async () => {
     const bundle = join(home.root, "review.tar.zst");
     const exported = await run(["export", artifactId, "--out", bundle], { code: 0, ok: true });

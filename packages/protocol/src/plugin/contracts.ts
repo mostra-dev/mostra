@@ -84,6 +84,7 @@ export const CORE_COMMANDS: readonly (readonly string[])[] = [
   ["daemon", "status"],
   ["daemon", "stop"],
   ["daemon", "uninstall"],
+  ["demo", "build"],
   ["dev"],
   ["docs"],
   ["doctor"],

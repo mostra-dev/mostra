@@ -23,6 +23,7 @@ import {
   type FieldOption,
   type FieldScope,
   isFieldId,
+  type LiveState,
   MutationId,
   type MutationResult,
   SIGNAL_NAME_PATTERN,
@@ -136,6 +137,15 @@ export interface StoreOptions {
   readonly exclusive?: <T>(fn: () => Promise<T>) => Promise<T>;
   /** Where `local` mode keeps values; `localStorage` by default. */
   readonly local?: Pick<Storage, "getItem" | "setItem" | "removeItem">;
+  /**
+   * What `local` mode's keys start with: `mostra.field.` by default, an export's own prefix so two
+   * exports opened from disk, which share an origin, never share answers (D185 item 7).
+   */
+  readonly localPrefix?: string;
+  /** A snapshot's page: every field shows its value and takes no edit (D185 item 7). */
+  readonly readOnly?: boolean;
+  /** An export's live values, frozen (D185 item 8). */
+  readonly frozenLive?: readonly LiveState[];
   /** The same-browser latency path (D22); never a source of truth. */
   readonly channel?: (name: string) => BroadcastChannel | undefined;
   /** Timers, replaceable in tests. */
@@ -277,6 +287,7 @@ export class Store {
   constructor(options: StoreOptions) {
     this.#options = options;
     this.server = new ServerClient({
+      ...(options.frozenLive ? { frozenLive: options.frozenLive } : {}),
       ...(options.mode === "live" && options.transport ? { transport: options.transport } : {}),
       ...(options.mode === "live" && options.view ? { viewId: options.view.viewId } : {}),
       ...(options.timers ? { timers: options.timers } : {}),
@@ -595,7 +606,7 @@ export class Store {
 
   /** Whether the field takes edits: not a closed draft, not a view-only link. */
   writable(key: FieldKey): boolean {
-    if (this.mode === "local") return true;
+    if (this.mode === "local") return this.#options.readOnly !== true;
     const { scope } = keyParts(key);
     if (!this.#canSave()) return false;
     return scope === "artifact" || !this.#closed;
@@ -803,6 +814,7 @@ export class Store {
       ...(choices !== undefined ? { options: choices } : {}),
     };
     if (this.mode === "local") {
+      if (this.#options.readOnly) return;
       this.#localWrite(key, op.delete ? undefined : op.value);
       this.#changed([key]);
       return;
@@ -1606,8 +1618,12 @@ export class Store {
     }
   }
 
+  get #localPrefix(): string {
+    return this.#options.localPrefix ?? "mostra.field.";
+  }
+
   #localRead(key: FieldKey): unknown {
-    const text = this.#localStorage()?.getItem(`mostra.field.${key}`);
+    const text = this.#localStorage()?.getItem(`${this.#localPrefix}${key}`);
     if (text === null || text === undefined) return undefined;
     try {
       return JSON.parse(text);
@@ -1619,8 +1635,8 @@ export class Store {
   #localWrite(key: FieldKey, value: unknown): void {
     const storage = this.#localStorage();
     try {
-      if (value === undefined) storage?.removeItem(`mostra.field.${key}`);
-      else storage?.setItem(`mostra.field.${key}`, JSON.stringify(value));
+      if (value === undefined) storage?.removeItem(`${this.#localPrefix}${key}`);
+      else storage?.setItem(`${this.#localPrefix}${key}`, JSON.stringify(value));
     } catch {
       // A full or refused localStorage keeps the value for this page only.
       this.#pending.set(key, {
@@ -1642,7 +1658,7 @@ export class Store {
   #localIds(scope: FieldScope): string[] {
     const storage = this.#localStorage() as Storage | undefined;
     if (!storage || typeof storage.length !== "number") return [];
-    const prefix = `mostra.field.${scope}:`;
+    const prefix = `${this.#localPrefix}${scope}:`;
     const ids: string[] = [];
     for (let index = 0; index < storage.length; index += 1) {
       const name = storage.key(index);

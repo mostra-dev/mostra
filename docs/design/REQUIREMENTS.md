@@ -51,7 +51,7 @@
 | VR-04 | A newer version shows a banner in open views; switching is the viewer's choice | v1 | D09 | B |
 | VR-05 | Drafts carry over between versions by stable field ID; unmatched inputs are kept as orphans, shown in a read-only "Not carried over" panel and delivered in a labelled `orphaned` section | v1 | D09, D42 | I, B |
 | VR-06 | Versions referenced by submissions, views or review sets are never garbage-collected | v1 | §3 | I |
-| VR-07 | Export: client-only artifacts to static files or a single HTML file; server artifacts to a runnable bundle; any artifact to a snapshot archive with actions marked unavailable | v1 | D07, §3 | I, B |
+| VR-07 | Export: client-only artifacts to static files or a single HTML file, with their demos, opening from disk; server artifacts to a runnable bundle; any artifact to a snapshot archive with actions marked unavailable; no server code in any export, and what an export loses named | v1 | D07, §3, D185 | I, B |
 | VR-08 | `mostra dev` offers optional hot reload for developers, clearly separate from viewing | v1 | D09 | I |
 
 ## Dependencies (DP)
@@ -174,7 +174,7 @@
 | TM-05 | A Rust capture crate turns a ratatui TestBackend buffer and scripted keys into frames, with zero cell diff against WASM mode for the same app | v1.1 | D28, D122 | M |
 | TM-06 | `term dump` (text, cells, ANSI) and terminal lint for agents | v1.1 | D28, D29, D122 | M |
 | TM-07 | Terminal compare with synchronized playback and cell diff; comments on cell rectangles | v1.1 | D23, D28, D122 | B |
-| TM-08 | Web demos: the project's own dev server proxied on its own origin with HTTP and WebSocket passthrough, device frames, viewport switching and screenshots | v1 | D28 | I, B |
+| TM-08 | Web demos: a project's own front end, built from its source into the version and shown in `<WebDemo>` with device frames, viewport switching and screenshots, the same locally, through any share, on a remote server and in every export | v1 | D28, D185 | I, B |
 
 ## Agent experience (AX)
 

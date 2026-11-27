@@ -29,6 +29,7 @@ import { ViewerKind } from '@mostra/protocol';
 
 // @public
 export interface ActionHandle<A extends unknown[], R> {
+    readonly available: boolean;
     cancel(): void;
     readonly data?: R;
     readonly error?: {
@@ -42,6 +43,7 @@ export interface ActionHandle<A extends unknown[], R> {
     run(...args: A): Promise<R>;
     readonly runId?: string;
     readonly status: "idle" | RunStatus;
+    readonly unavailable?: string;
 }
 
 export { ArtifactManifest }
@@ -82,6 +84,26 @@ export function createServerReference(id: string): ServerReference;
 
 // @public
 export function defineArtifact<const M extends ArtifactManifest>(manifest: M): M;
+
+// @public
+export interface DemoHandle {
+    loaded(): void;
+    readonly name: string;
+    readonly routing: DemoRouting;
+    readonly src?: string;
+    readonly status: DemoStatus;
+}
+
+// @public
+export interface DemoOptions {
+    readonly path?: string;
+}
+
+// @public
+export type DemoRouting = "history" | "hash";
+
+// @public
+export type DemoStatus = "ready" | "unknown" | "folder-only" | "unavailable";
 
 // @public
 export interface DiagnosticLike {
@@ -127,6 +149,7 @@ export interface LiveResult<T> {
     readonly at?: string;
     readonly data: T | undefined;
     readonly error?: Error;
+    readonly frozen?: boolean;
     readonly isLoading: boolean;
     readonly ownerOffline?: boolean;
     refresh(): void;
@@ -351,6 +374,9 @@ export function useChoice(reviewSetId: string, options?: {
     readonly choice?: string;
     choose(candidateId: string): Promise<void>;
 };
+
+// @public
+export function useDemo(name: string, options?: DemoOptions): DemoHandle;
 
 // @public
 export function useField<T>(id: string, initial: T, options?: FieldOptions<NoInfer<T>>): [T, (next: T | ((previous: T) => T)) => void, FieldMeta<T>];

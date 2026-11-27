@@ -2,7 +2,8 @@
 # seed red with its violation and green restored) on a Windows runner, where the Windows seeds
 # (RT-10, the helper and the process model) can run; nothing else can run them, since no Windows
 # machine is at hand (docs/agents/run-on-windows.md). Started by hand from the Actions tab or with
-# `gh workflow run windows-seeds.yml --ref <branch> -f only=RT-10`; a package that adds or moves a
+# `gh workflow run windows-seeds.yml --ref <branch> -f only=RT-10` (`-f name=<text>` for the seeds
+# whose name holds it); a package that adds or moves a
 # Windows seed replays it here and records the run in its report.
 name: Windows seeds
 
@@ -13,6 +14,10 @@ on:
         description: The requirement whose seeds to replay (RT-10, …)
         required: true
         default: RT-10
+      name:
+        description: Only the seeds whose name holds this text (prove-seeds' --name); all of them when empty
+        required: false
+        default: ""
       os:
         description: The runner
         type: choice
@@ -68,4 +73,5 @@ jobs:
       - name: prove-seeds --only ${{ inputs.only }}
         env:
           ONLY: ${{ inputs.only }}
-        run: node packages/runtime/scripts/prove-seeds.ts --only "$ONLY"
+          NAME: ${{ inputs.name }}
+        run: node packages/runtime/scripts/prove-seeds.ts --only "$ONLY" ${NAME:+--name "$NAME"}

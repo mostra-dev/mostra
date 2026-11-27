@@ -78,12 +78,14 @@ export async function inlineQuotedPaths(
   code: string,
   client: ClientFiles,
   skip: (urlPath: string) => boolean,
+  address: (urlPath: string, client: ClientFiles) => Promise<string> = async (urlPath, files) =>
+    dataUrl(urlPath, await files.read(urlPath)),
 ): Promise<{ readonly code: string; readonly inlined: readonly string[] }> {
   const found = new Map<string, string>();
   for (const match of code.matchAll(QUOTED_PATH)) {
     const path = match[2] as string;
     if (!client.paths.has(path) || skip(path) || found.has(path)) continue;
-    found.set(path, dataUrl(path, await client.read(path)));
+    found.set(path, await address(path, client));
   }
   if (found.size === 0) return { code, inlined: [] };
   const replaced = code.replace(QUOTED_PATH, (whole, quote: string, path: string) => {
@@ -125,6 +127,7 @@ export async function bundleEntry(
   entry: string,
   client: ClientFiles,
   skipInline: (urlPath: string) => boolean,
+  address?: (urlPath: string, client: ClientFiles) => Promise<string>,
 ): Promise<Bundled> {
   const modules: string[] = [];
   const inlined = new Set<string>();
@@ -157,11 +160,16 @@ export async function bundleEntry(
           const text = new TextDecoder().decode(await client.read(path));
           // The build's source map comment names a file the page won't have.
           const code = text.replace(/\n\/\/# sourceMappingURL=[^\n]*\s*$/, "\n");
-          const done = await inlineQuotedPaths(code, client, (urlPath) => {
-            if (skipInline(urlPath)) return true;
-            // A module of the build is joined into the bundle, never inlined as a string.
-            return extensionOf(urlPath) === ".js" || extensionOf(urlPath) === ".map";
-          });
+          const done = await inlineQuotedPaths(
+            code,
+            client,
+            (urlPath) => {
+              if (skipInline(urlPath)) return true;
+              // A module of the build is joined into the bundle, never inlined as a string.
+              return extensionOf(urlPath) === ".js" || extensionOf(urlPath) === ".map";
+            },
+            address,
+          );
           for (const path of done.inlined) inlined.add(path);
           return { code: done.code, moduleType: "js" };
         },

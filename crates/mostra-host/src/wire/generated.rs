@@ -1948,9 +1948,76 @@ pub struct ArtifactExportParams {
     pub artifact: ArtifactRef,
     #[serde(rename = "as")]
     pub as_: ExportClass,
+    #[serde(skip_serializing_if = "::std::option::Option::is_none")]
+    pub base: ::std::option::Option<ArtifactExportParamsBase>,
     pub out: ArtifactExportParamsOut,
+    #[serde(
+        rename = "sharedState",
+        skip_serializing_if = "::std::option::Option::is_none"
+    )]
+    pub shared_state: ::std::option::Option<bool>,
+    #[serde(skip_serializing_if = "::std::option::Option::is_none")]
+    pub strict: ::std::option::Option<bool>,
+    #[serde(skip_serializing_if = "::std::option::Option::is_none")]
+    pub submission: ::std::option::Option<ArtifactExportParamsSubmission>,
     #[serde(skip_serializing_if = "::std::option::Option::is_none")]
     pub version: ::std::option::Option<ArtifactExportParamsVersion>,
+}
+///`ArtifactExportParamsBase`
+#[derive(::serde::Serialize, Clone, Debug, Eq, Hash, Ord, PartialEq, PartialOrd)]
+#[serde(transparent)]
+pub struct ArtifactExportParamsBase(::std::string::String);
+impl ::std::ops::Deref for ArtifactExportParamsBase {
+    type Target = ::std::string::String;
+    fn deref(&self) -> &::std::string::String {
+        &self.0
+    }
+}
+impl ::std::convert::From<ArtifactExportParamsBase> for ::std::string::String {
+    fn from(value: ArtifactExportParamsBase) -> Self {
+        value.0
+    }
+}
+impl ::std::str::FromStr for ArtifactExportParamsBase {
+    type Err = self::error::ConversionError;
+    fn from_str(
+        value: &str,
+    ) -> ::std::result::Result<Self, self::error::ConversionError> {
+        static PATTERN: ::std::sync::LazyLock<::regress::Regex> = ::std::sync::LazyLock::new(||
+        { ::regress::Regex::new("^\\/([^/?#\\s]+\\/)*$").unwrap() });
+        if PATTERN.find(value).is_none() {
+            return Err("doesn't match pattern \"^\\/([^/?#\\s]+\\/)*$\"".into());
+        }
+        Ok(Self(value.to_string()))
+    }
+}
+impl ::std::convert::TryFrom<&str> for ArtifactExportParamsBase {
+    type Error = self::error::ConversionError;
+    fn try_from(
+        value: &str,
+    ) -> ::std::result::Result<Self, self::error::ConversionError> {
+        value.parse()
+    }
+}
+impl ::std::convert::TryFrom<::std::string::String> for ArtifactExportParamsBase {
+    type Error = self::error::ConversionError;
+    fn try_from(
+        value: ::std::string::String,
+    ) -> ::std::result::Result<Self, self::error::ConversionError> {
+        value.parse()
+    }
+}
+impl<'de> ::serde::Deserialize<'de> for ArtifactExportParamsBase {
+    fn deserialize<D>(deserializer: D) -> ::std::result::Result<Self, D::Error>
+    where
+        D: ::serde::Deserializer<'de>,
+    {
+        ::std::string::String::deserialize(deserializer)?
+            .parse()
+            .map_err(|e: self::error::ConversionError| {
+                <D::Error as ::serde::de::Error>::custom(e.to_string())
+            })
+    }
 }
 ///`ArtifactExportParamsOut`
 #[derive(::serde::Serialize, Clone, Debug, Eq, Hash, Ord, PartialEq, PartialOrd)]
@@ -1995,6 +2062,60 @@ impl ::std::convert::TryFrom<::std::string::String> for ArtifactExportParamsOut 
     }
 }
 impl<'de> ::serde::Deserialize<'de> for ArtifactExportParamsOut {
+    fn deserialize<D>(deserializer: D) -> ::std::result::Result<Self, D::Error>
+    where
+        D: ::serde::Deserializer<'de>,
+    {
+        ::std::string::String::deserialize(deserializer)?
+            .parse()
+            .map_err(|e: self::error::ConversionError| {
+                <D::Error as ::serde::de::Error>::custom(e.to_string())
+            })
+    }
+}
+///`ArtifactExportParamsSubmission`
+#[derive(::serde::Serialize, Clone, Debug, Eq, Hash, Ord, PartialEq, PartialOrd)]
+#[serde(transparent)]
+pub struct ArtifactExportParamsSubmission(::std::string::String);
+impl ::std::ops::Deref for ArtifactExportParamsSubmission {
+    type Target = ::std::string::String;
+    fn deref(&self) -> &::std::string::String {
+        &self.0
+    }
+}
+impl ::std::convert::From<ArtifactExportParamsSubmission> for ::std::string::String {
+    fn from(value: ArtifactExportParamsSubmission) -> Self {
+        value.0
+    }
+}
+impl ::std::str::FromStr for ArtifactExportParamsSubmission {
+    type Err = self::error::ConversionError;
+    fn from_str(
+        value: &str,
+    ) -> ::std::result::Result<Self, self::error::ConversionError> {
+        if value.chars().count() < 1usize {
+            return Err("shorter than 1 characters".into());
+        }
+        Ok(Self(value.to_string()))
+    }
+}
+impl ::std::convert::TryFrom<&str> for ArtifactExportParamsSubmission {
+    type Error = self::error::ConversionError;
+    fn try_from(
+        value: &str,
+    ) -> ::std::result::Result<Self, self::error::ConversionError> {
+        value.parse()
+    }
+}
+impl ::std::convert::TryFrom<::std::string::String> for ArtifactExportParamsSubmission {
+    type Error = self::error::ConversionError;
+    fn try_from(
+        value: ::std::string::String,
+    ) -> ::std::result::Result<Self, self::error::ConversionError> {
+        value.parse()
+    }
+}
+impl<'de> ::serde::Deserialize<'de> for ArtifactExportParamsSubmission {
     fn deserialize<D>(deserializer: D) -> ::std::result::Result<Self, D::Error>
     where
         D: ::serde::Deserializer<'de>,
@@ -2125,8 +2246,12 @@ impl<'de> ::serde::Deserialize<'de> for ArtifactExportParamsVersionString {
 #[derive(::serde::Deserialize, ::serde::Serialize, Clone, Debug)]
 pub struct ArtifactExportResult {
     pub files: ::std::vec::Vec<::std::string::String>,
+    #[serde(skip_serializing_if = "::std::option::Option::is_none")]
+    pub report: ::std::option::Option<ExportReport>,
     #[serde(rename = "versionId")]
     pub version_id: ::std::string::String,
+    #[serde(default, skip_serializing_if = "::std::vec::Vec::is_empty")]
+    pub warnings: ::std::vec::Vec<Diagnostic>,
 }
 ///`ArtifactGetParams`
 #[derive(::serde::Deserialize, ::serde::Serialize, Clone, Debug)]
@@ -2546,13 +2671,29 @@ pub enum ArtifactManifestDemosValue {
     Variant0 {
         #[serde(skip_serializing_if = "::std::option::Option::is_none")]
         bridge: ::std::option::Option<bool>,
+        build: ::std::vec::Vec<ArtifactManifestDemosValueVariant0BuildItem>,
+        #[serde(
+            default,
+            skip_serializing_if = ":: std :: collections :: BTreeMap::is_empty"
+        )]
+        env: ::std::collections::BTreeMap<::std::string::String, ::std::string::String>,
+        output: ArtifactManifestDemosValueVariant0Output,
+        #[serde(skip_serializing_if = "::std::option::Option::is_none")]
+        routing: ::std::option::Option<ArtifactManifestDemosValueVariant0Routing>,
+        source: ArtifactManifestDemosValueVariant0Source,
+        #[serde(skip_serializing_if = "::std::option::Option::is_none")]
+        timeout: ::std::option::Option<Duration>,
+    },
+    Variant1 {
+        #[serde(skip_serializing_if = "::std::option::Option::is_none")]
+        bridge: ::std::option::Option<bool>,
         command: ::std::vec::Vec<::std::string::String>,
         #[serde(skip_serializing_if = "::std::option::Option::is_none")]
         cwd: ::std::option::Option<::std::string::String>,
         #[serde(skip_serializing_if = "::std::option::Option::is_none")]
         ready: ::std::option::Option<::std::string::String>,
     },
-    Variant1 {
+    Variant2 {
         attach: ::std::num::NonZeroU64,
         #[serde(skip_serializing_if = "::std::option::Option::is_none")]
         bridge: ::std::option::Option<bool>,
@@ -2560,6 +2701,213 @@ pub enum ArtifactManifestDemosValue {
     /// A value a newer Mostra sends that this release doesn't know; it
     /// serializes back unchanged.
     Unknown(::serde_json::Value),
+}
+///`ArtifactManifestDemosValueVariant0BuildItem`
+#[derive(::serde::Serialize, Clone, Debug, Eq, Hash, Ord, PartialEq, PartialOrd)]
+#[serde(transparent)]
+pub struct ArtifactManifestDemosValueVariant0BuildItem(::std::string::String);
+impl ::std::ops::Deref for ArtifactManifestDemosValueVariant0BuildItem {
+    type Target = ::std::string::String;
+    fn deref(&self) -> &::std::string::String {
+        &self.0
+    }
+}
+impl ::std::convert::From<ArtifactManifestDemosValueVariant0BuildItem>
+for ::std::string::String {
+    fn from(value: ArtifactManifestDemosValueVariant0BuildItem) -> Self {
+        value.0
+    }
+}
+impl ::std::str::FromStr for ArtifactManifestDemosValueVariant0BuildItem {
+    type Err = self::error::ConversionError;
+    fn from_str(
+        value: &str,
+    ) -> ::std::result::Result<Self, self::error::ConversionError> {
+        if value.chars().count() < 1usize {
+            return Err("shorter than 1 characters".into());
+        }
+        Ok(Self(value.to_string()))
+    }
+}
+impl ::std::convert::TryFrom<&str> for ArtifactManifestDemosValueVariant0BuildItem {
+    type Error = self::error::ConversionError;
+    fn try_from(
+        value: &str,
+    ) -> ::std::result::Result<Self, self::error::ConversionError> {
+        value.parse()
+    }
+}
+impl ::std::convert::TryFrom<::std::string::String>
+for ArtifactManifestDemosValueVariant0BuildItem {
+    type Error = self::error::ConversionError;
+    fn try_from(
+        value: ::std::string::String,
+    ) -> ::std::result::Result<Self, self::error::ConversionError> {
+        value.parse()
+    }
+}
+impl<'de> ::serde::Deserialize<'de> for ArtifactManifestDemosValueVariant0BuildItem {
+    fn deserialize<D>(deserializer: D) -> ::std::result::Result<Self, D::Error>
+    where
+        D: ::serde::Deserializer<'de>,
+    {
+        ::std::string::String::deserialize(deserializer)?
+            .parse()
+            .map_err(|e: self::error::ConversionError| {
+                <D::Error as ::serde::de::Error>::custom(e.to_string())
+            })
+    }
+}
+///`ArtifactManifestDemosValueVariant0Output`
+#[derive(::serde::Serialize, Clone, Debug, Eq, Hash, Ord, PartialEq, PartialOrd)]
+#[serde(transparent)]
+pub struct ArtifactManifestDemosValueVariant0Output(::std::string::String);
+impl ::std::ops::Deref for ArtifactManifestDemosValueVariant0Output {
+    type Target = ::std::string::String;
+    fn deref(&self) -> &::std::string::String {
+        &self.0
+    }
+}
+impl ::std::convert::From<ArtifactManifestDemosValueVariant0Output>
+for ::std::string::String {
+    fn from(value: ArtifactManifestDemosValueVariant0Output) -> Self {
+        value.0
+    }
+}
+impl ::std::str::FromStr for ArtifactManifestDemosValueVariant0Output {
+    type Err = self::error::ConversionError;
+    fn from_str(
+        value: &str,
+    ) -> ::std::result::Result<Self, self::error::ConversionError> {
+        if value.chars().count() < 1usize {
+            return Err("shorter than 1 characters".into());
+        }
+        Ok(Self(value.to_string()))
+    }
+}
+impl ::std::convert::TryFrom<&str> for ArtifactManifestDemosValueVariant0Output {
+    type Error = self::error::ConversionError;
+    fn try_from(
+        value: &str,
+    ) -> ::std::result::Result<Self, self::error::ConversionError> {
+        value.parse()
+    }
+}
+impl ::std::convert::TryFrom<::std::string::String>
+for ArtifactManifestDemosValueVariant0Output {
+    type Error = self::error::ConversionError;
+    fn try_from(
+        value: ::std::string::String,
+    ) -> ::std::result::Result<Self, self::error::ConversionError> {
+        value.parse()
+    }
+}
+impl<'de> ::serde::Deserialize<'de> for ArtifactManifestDemosValueVariant0Output {
+    fn deserialize<D>(deserializer: D) -> ::std::result::Result<Self, D::Error>
+    where
+        D: ::serde::Deserializer<'de>,
+    {
+        ::std::string::String::deserialize(deserializer)?
+            .parse()
+            .map_err(|e: self::error::ConversionError| {
+                <D::Error as ::serde::de::Error>::custom(e.to_string())
+            })
+    }
+}
+///`ArtifactManifestDemosValueVariant0Routing`
+#[derive(
+    ::serde::Deserialize,
+    ::serde::Serialize,
+    Clone,
+    Debug,
+    Eq,
+    Hash,
+    Ord,
+    PartialEq,
+    PartialOrd
+)]
+pub enum ArtifactManifestDemosValueVariant0Routing {
+    #[serde(rename = "history")]
+    History,
+    #[serde(rename = "hash")]
+    Hash,
+    /// A value a newer Mostra sends that this release doesn't know; it
+    /// serializes back unchanged.
+    #[serde(untagged)]
+    Unknown(::std::string::String),
+}
+impl ::std::convert::TryFrom<&str> for ArtifactManifestDemosValueVariant0Routing {
+    type Error = self::error::ConversionError;
+    fn try_from(
+        value: &str,
+    ) -> ::std::result::Result<Self, self::error::ConversionError> {
+        value.parse()
+    }
+}
+impl ::std::convert::TryFrom<::std::string::String>
+for ArtifactManifestDemosValueVariant0Routing {
+    type Error = self::error::ConversionError;
+    fn try_from(
+        value: ::std::string::String,
+    ) -> ::std::result::Result<Self, self::error::ConversionError> {
+        value.parse()
+    }
+}
+///`ArtifactManifestDemosValueVariant0Source`
+#[derive(::serde::Serialize, Clone, Debug, Eq, Hash, Ord, PartialEq, PartialOrd)]
+#[serde(transparent)]
+pub struct ArtifactManifestDemosValueVariant0Source(::std::string::String);
+impl ::std::ops::Deref for ArtifactManifestDemosValueVariant0Source {
+    type Target = ::std::string::String;
+    fn deref(&self) -> &::std::string::String {
+        &self.0
+    }
+}
+impl ::std::convert::From<ArtifactManifestDemosValueVariant0Source>
+for ::std::string::String {
+    fn from(value: ArtifactManifestDemosValueVariant0Source) -> Self {
+        value.0
+    }
+}
+impl ::std::str::FromStr for ArtifactManifestDemosValueVariant0Source {
+    type Err = self::error::ConversionError;
+    fn from_str(
+        value: &str,
+    ) -> ::std::result::Result<Self, self::error::ConversionError> {
+        if value.chars().count() < 1usize {
+            return Err("shorter than 1 characters".into());
+        }
+        Ok(Self(value.to_string()))
+    }
+}
+impl ::std::convert::TryFrom<&str> for ArtifactManifestDemosValueVariant0Source {
+    type Error = self::error::ConversionError;
+    fn try_from(
+        value: &str,
+    ) -> ::std::result::Result<Self, self::error::ConversionError> {
+        value.parse()
+    }
+}
+impl ::std::convert::TryFrom<::std::string::String>
+for ArtifactManifestDemosValueVariant0Source {
+    type Error = self::error::ConversionError;
+    fn try_from(
+        value: ::std::string::String,
+    ) -> ::std::result::Result<Self, self::error::ConversionError> {
+        value.parse()
+    }
+}
+impl<'de> ::serde::Deserialize<'de> for ArtifactManifestDemosValueVariant0Source {
+    fn deserialize<D>(deserializer: D) -> ::std::result::Result<Self, D::Error>
+    where
+        D: ::serde::Deserializer<'de>,
+    {
+        ::std::string::String::deserialize(deserializer)?
+            .parse()
+            .map_err(|e: self::error::ConversionError| {
+                <D::Error as ::serde::de::Error>::custom(e.to_string())
+            })
+    }
 }
 ///`ArtifactManifestFamily`
 #[derive(::serde::Serialize, Clone, Debug, Eq, Hash, Ord, PartialEq, PartialOrd)]
@@ -5637,6 +5985,127 @@ impl<'de> ::serde::Deserialize<'de> for DeliveryStatusUpdatedAt {
             })
     }
 }
+///`DemoBuildOutcome`
+#[derive(::serde::Deserialize, ::serde::Serialize, Clone, Debug)]
+pub struct DemoBuildOutcome {
+    pub diagnostics: ::std::vec::Vec<Diagnostic>,
+    #[serde(skip_serializing_if = "::std::option::Option::is_none")]
+    pub digest: ::std::option::Option<::std::string::String>,
+    #[serde(skip_serializing_if = "::std::option::Option::is_none")]
+    pub files: ::std::option::Option<i64>,
+    #[serde(skip_serializing_if = "::std::option::Option::is_none")]
+    pub ms: ::std::option::Option<f64>,
+    pub name: ::std::string::String,
+    pub status: DemoBuildOutcomeStatus,
+}
+///`DemoBuildOutcomeStatus`
+#[derive(
+    ::serde::Deserialize,
+    ::serde::Serialize,
+    Clone,
+    Debug,
+    Eq,
+    Hash,
+    Ord,
+    PartialEq,
+    PartialOrd
+)]
+pub enum DemoBuildOutcomeStatus {
+    #[serde(rename = "built")]
+    Built,
+    #[serde(rename = "cached")]
+    Cached,
+    #[serde(rename = "failed")]
+    Failed,
+    /// A value a newer Mostra sends that this release doesn't know; it
+    /// serializes back unchanged.
+    #[serde(untagged)]
+    Unknown(::std::string::String),
+}
+impl ::std::convert::TryFrom<&str> for DemoBuildOutcomeStatus {
+    type Error = self::error::ConversionError;
+    fn try_from(
+        value: &str,
+    ) -> ::std::result::Result<Self, self::error::ConversionError> {
+        value.parse()
+    }
+}
+impl ::std::convert::TryFrom<::std::string::String> for DemoBuildOutcomeStatus {
+    type Error = self::error::ConversionError;
+    fn try_from(
+        value: ::std::string::String,
+    ) -> ::std::result::Result<Self, self::error::ConversionError> {
+        value.parse()
+    }
+}
+///`DemoBuildParams`
+#[derive(::serde::Deserialize, ::serde::Serialize, Clone, Debug)]
+pub struct DemoBuildParams {
+    #[serde(skip_serializing_if = "::std::option::Option::is_none")]
+    pub demo: ::std::option::Option<DemoBuildParamsDemo>,
+    #[serde(skip_serializing_if = "::std::option::Option::is_none")]
+    pub force: ::std::option::Option<bool>,
+    pub source: SourceRef,
+}
+///`DemoBuildParamsDemo`
+#[derive(::serde::Serialize, Clone, Debug, Eq, Hash, Ord, PartialEq, PartialOrd)]
+#[serde(transparent)]
+pub struct DemoBuildParamsDemo(::std::string::String);
+impl ::std::ops::Deref for DemoBuildParamsDemo {
+    type Target = ::std::string::String;
+    fn deref(&self) -> &::std::string::String {
+        &self.0
+    }
+}
+impl ::std::convert::From<DemoBuildParamsDemo> for ::std::string::String {
+    fn from(value: DemoBuildParamsDemo) -> Self {
+        value.0
+    }
+}
+impl ::std::str::FromStr for DemoBuildParamsDemo {
+    type Err = self::error::ConversionError;
+    fn from_str(
+        value: &str,
+    ) -> ::std::result::Result<Self, self::error::ConversionError> {
+        if value.chars().count() < 1usize {
+            return Err("shorter than 1 characters".into());
+        }
+        Ok(Self(value.to_string()))
+    }
+}
+impl ::std::convert::TryFrom<&str> for DemoBuildParamsDemo {
+    type Error = self::error::ConversionError;
+    fn try_from(
+        value: &str,
+    ) -> ::std::result::Result<Self, self::error::ConversionError> {
+        value.parse()
+    }
+}
+impl ::std::convert::TryFrom<::std::string::String> for DemoBuildParamsDemo {
+    type Error = self::error::ConversionError;
+    fn try_from(
+        value: ::std::string::String,
+    ) -> ::std::result::Result<Self, self::error::ConversionError> {
+        value.parse()
+    }
+}
+impl<'de> ::serde::Deserialize<'de> for DemoBuildParamsDemo {
+    fn deserialize<D>(deserializer: D) -> ::std::result::Result<Self, D::Error>
+    where
+        D: ::serde::Deserializer<'de>,
+    {
+        ::std::string::String::deserialize(deserializer)?
+            .parse()
+            .map_err(|e: self::error::ConversionError| {
+                <D::Error as ::serde::de::Error>::custom(e.to_string())
+            })
+    }
+}
+///`DemoBuildResult`
+#[derive(::serde::Deserialize, ::serde::Serialize, Clone, Debug)]
+pub struct DemoBuildResult {
+    pub demos: ::std::vec::Vec<DemoBuildOutcome>,
+}
 ///How packages enter an artifact's lockfile: auto installs what artifacts import; explicit only what deps/add adds (D43).
 #[derive(
     ::serde::Deserialize,
@@ -7669,6 +8138,12 @@ for EventsUnsubscribeResult {
 pub enum ExportClass {
     #[serde(rename = "bundle")]
     Bundle,
+    #[serde(rename = "static")]
+    Static,
+    #[serde(rename = "html")]
+    Html,
+    #[serde(rename = "snapshot")]
+    Snapshot,
     /// A value a newer Mostra sends that this release doesn't know; it
     /// serializes back unchanged.
     #[serde(untagged)]
@@ -7683,6 +8158,169 @@ impl ::std::convert::TryFrom<&str> for ExportClass {
     }
 }
 impl ::std::convert::TryFrom<::std::string::String> for ExportClass {
+    type Error = self::error::ConversionError;
+    fn try_from(
+        value: ::std::string::String,
+    ) -> ::std::result::Result<Self, self::error::ConversionError> {
+        value.parse()
+    }
+}
+///`ExportReport`
+#[derive(::serde::Deserialize, ::serde::Serialize, Clone, Debug)]
+pub struct ExportReport {
+    #[serde(rename = "as")]
+    pub as_: ExportClass,
+    pub demos: ::std::vec::Vec<ExportedDemo>,
+    #[serde(rename = "notInlined")]
+    pub not_inlined: ::std::vec::Vec<::std::string::String>,
+    #[serde(skip_serializing_if = "::std::option::Option::is_none")]
+    pub snapshot: ::std::option::Option<ExportReportSnapshot>,
+    pub unavailable: ExportReportUnavailable,
+}
+///`ExportReportSnapshot`
+#[derive(::serde::Deserialize, ::serde::Serialize, Clone, Debug)]
+pub struct ExportReportSnapshot {
+    pub answers: ExportReportSnapshotAnswers,
+    pub at: ::std::string::String,
+    #[serde(rename = "leftOut")]
+    pub left_out: ::std::vec::Vec<::std::string::String>,
+    pub live: ::std::vec::Vec<::std::string::String>,
+    #[serde(rename = "sharedState")]
+    pub shared_state: ExportReportSnapshotSharedState,
+    #[serde(skip_serializing_if = "::std::option::Option::is_none")]
+    pub submission: ::std::option::Option<::std::string::String>,
+}
+///`ExportReportSnapshotAnswers`
+#[derive(
+    ::serde::Deserialize,
+    ::serde::Serialize,
+    Clone,
+    Debug,
+    Eq,
+    Hash,
+    Ord,
+    PartialEq,
+    PartialOrd
+)]
+pub enum ExportReportSnapshotAnswers {
+    #[serde(rename = "viewer")]
+    Viewer,
+    #[serde(rename = "submission")]
+    Submission,
+    /// A value a newer Mostra sends that this release doesn't know; it
+    /// serializes back unchanged.
+    #[serde(untagged)]
+    Unknown(::std::string::String),
+}
+impl ::std::convert::TryFrom<&str> for ExportReportSnapshotAnswers {
+    type Error = self::error::ConversionError;
+    fn try_from(
+        value: &str,
+    ) -> ::std::result::Result<Self, self::error::ConversionError> {
+        value.parse()
+    }
+}
+impl ::std::convert::TryFrom<::std::string::String> for ExportReportSnapshotAnswers {
+    type Error = self::error::ConversionError;
+    fn try_from(
+        value: ::std::string::String,
+    ) -> ::std::result::Result<Self, self::error::ConversionError> {
+        value.parse()
+    }
+}
+///`ExportReportSnapshotSharedState`
+#[derive(::serde::Deserialize, ::serde::Serialize, Clone, Debug)]
+pub struct ExportReportSnapshotSharedState {
+    pub included: bool,
+    pub people: i64,
+}
+///`ExportReportUnavailable`
+#[derive(::serde::Deserialize, ::serde::Serialize, Clone, Debug)]
+pub struct ExportReportUnavailable {
+    pub actions: ::std::vec::Vec<::std::string::String>,
+    pub live: ::std::vec::Vec<::std::string::String>,
+    pub submit: bool,
+}
+///`ExportedDemo`
+#[derive(::serde::Deserialize, ::serde::Serialize, Clone, Debug)]
+pub struct ExportedDemo {
+    #[serde(skip_serializing_if = "::std::option::Option::is_none")]
+    pub base: ::std::option::Option<::std::string::String>,
+    pub carried: ExportedDemoCarried,
+    pub name: ::std::string::String,
+    pub routing: ExportedDemoRouting,
+}
+///`ExportedDemoCarried`
+#[derive(
+    ::serde::Deserialize,
+    ::serde::Serialize,
+    Clone,
+    Debug,
+    Eq,
+    Hash,
+    Ord,
+    PartialEq,
+    PartialOrd
+)]
+pub enum ExportedDemoCarried {
+    #[serde(rename = "full")]
+    Full,
+    #[serde(rename = "root")]
+    Root,
+    #[serde(rename = "folder-only")]
+    FolderOnly,
+    /// A value a newer Mostra sends that this release doesn't know; it
+    /// serializes back unchanged.
+    #[serde(untagged)]
+    Unknown(::std::string::String),
+}
+impl ::std::convert::TryFrom<&str> for ExportedDemoCarried {
+    type Error = self::error::ConversionError;
+    fn try_from(
+        value: &str,
+    ) -> ::std::result::Result<Self, self::error::ConversionError> {
+        value.parse()
+    }
+}
+impl ::std::convert::TryFrom<::std::string::String> for ExportedDemoCarried {
+    type Error = self::error::ConversionError;
+    fn try_from(
+        value: ::std::string::String,
+    ) -> ::std::result::Result<Self, self::error::ConversionError> {
+        value.parse()
+    }
+}
+///`ExportedDemoRouting`
+#[derive(
+    ::serde::Deserialize,
+    ::serde::Serialize,
+    Clone,
+    Debug,
+    Eq,
+    Hash,
+    Ord,
+    PartialEq,
+    PartialOrd
+)]
+pub enum ExportedDemoRouting {
+    #[serde(rename = "history")]
+    History,
+    #[serde(rename = "hash")]
+    Hash,
+    /// A value a newer Mostra sends that this release doesn't know; it
+    /// serializes back unchanged.
+    #[serde(untagged)]
+    Unknown(::std::string::String),
+}
+impl ::std::convert::TryFrom<&str> for ExportedDemoRouting {
+    type Error = self::error::ConversionError;
+    fn try_from(
+        value: &str,
+    ) -> ::std::result::Result<Self, self::error::ConversionError> {
+        value.parse()
+    }
+}
+impl ::std::convert::TryFrom<::std::string::String> for ExportedDemoRouting {
     type Error = self::error::ConversionError;
     fn try_from(
         value: ::std::string::String,
@@ -27321,6 +27959,36 @@ impl ::std::str::FromStr for AppRequestParamsRoute {
         )
     }
 }
+impl ArtifactManifestDemosValueVariant0Routing {
+    /// The value as it travels on the wire.
+    #[must_use]
+    pub fn as_str(&self) -> &str {
+        match self {
+            Self::History => "history",
+            Self::Hash => "hash",
+            Self::Unknown(value) => value.as_str(),
+        }
+    }
+}
+impl ::std::fmt::Display for ArtifactManifestDemosValueVariant0Routing {
+    fn fmt(&self, f: &mut ::std::fmt::Formatter<'_>) -> ::std::fmt::Result {
+        f.write_str(self.as_str())
+    }
+}
+impl ::std::str::FromStr for ArtifactManifestDemosValueVariant0Routing {
+    type Err = self::error::ConversionError;
+    fn from_str(
+        value: &str,
+    ) -> ::std::result::Result<Self, self::error::ConversionError> {
+        Ok(
+            match value {
+                "history" => Self::History,
+                "hash" => Self::Hash,
+                other => Self::Unknown(other.to_string()),
+            },
+        )
+    }
+}
 impl ArtifactManifestKitBase {
     /// The value as it travels on the wire.
     #[must_use]
@@ -27486,6 +28154,38 @@ impl ::std::str::FromStr for DeliveryStatusState {
                 "delivered" => Self::Delivered,
                 "rejected" => Self::Rejected,
                 "undeliverable" => Self::Undeliverable,
+                other => Self::Unknown(other.to_string()),
+            },
+        )
+    }
+}
+impl DemoBuildOutcomeStatus {
+    /// The value as it travels on the wire.
+    #[must_use]
+    pub fn as_str(&self) -> &str {
+        match self {
+            Self::Built => "built",
+            Self::Cached => "cached",
+            Self::Failed => "failed",
+            Self::Unknown(value) => value.as_str(),
+        }
+    }
+}
+impl ::std::fmt::Display for DemoBuildOutcomeStatus {
+    fn fmt(&self, f: &mut ::std::fmt::Formatter<'_>) -> ::std::fmt::Result {
+        f.write_str(self.as_str())
+    }
+}
+impl ::std::str::FromStr for DemoBuildOutcomeStatus {
+    type Err = self::error::ConversionError;
+    fn from_str(
+        value: &str,
+    ) -> ::std::result::Result<Self, self::error::ConversionError> {
+        Ok(
+            match value {
+                "built" => Self::Built,
+                "cached" => Self::Cached,
+                "failed" => Self::Failed,
                 other => Self::Unknown(other.to_string()),
             },
         )
@@ -27685,6 +28385,9 @@ impl ExportClass {
     pub fn as_str(&self) -> &str {
         match self {
             Self::Bundle => "bundle",
+            Self::Static => "static",
+            Self::Html => "html",
+            Self::Snapshot => "snapshot",
             Self::Unknown(value) => value.as_str(),
         }
     }
@@ -27702,6 +28405,101 @@ impl ::std::str::FromStr for ExportClass {
         Ok(
             match value {
                 "bundle" => Self::Bundle,
+                "static" => Self::Static,
+                "html" => Self::Html,
+                "snapshot" => Self::Snapshot,
+                other => Self::Unknown(other.to_string()),
+            },
+        )
+    }
+}
+impl ExportReportSnapshotAnswers {
+    /// The value as it travels on the wire.
+    #[must_use]
+    pub fn as_str(&self) -> &str {
+        match self {
+            Self::Viewer => "viewer",
+            Self::Submission => "submission",
+            Self::Unknown(value) => value.as_str(),
+        }
+    }
+}
+impl ::std::fmt::Display for ExportReportSnapshotAnswers {
+    fn fmt(&self, f: &mut ::std::fmt::Formatter<'_>) -> ::std::fmt::Result {
+        f.write_str(self.as_str())
+    }
+}
+impl ::std::str::FromStr for ExportReportSnapshotAnswers {
+    type Err = self::error::ConversionError;
+    fn from_str(
+        value: &str,
+    ) -> ::std::result::Result<Self, self::error::ConversionError> {
+        Ok(
+            match value {
+                "viewer" => Self::Viewer,
+                "submission" => Self::Submission,
+                other => Self::Unknown(other.to_string()),
+            },
+        )
+    }
+}
+impl ExportedDemoCarried {
+    /// The value as it travels on the wire.
+    #[must_use]
+    pub fn as_str(&self) -> &str {
+        match self {
+            Self::Full => "full",
+            Self::Root => "root",
+            Self::FolderOnly => "folder-only",
+            Self::Unknown(value) => value.as_str(),
+        }
+    }
+}
+impl ::std::fmt::Display for ExportedDemoCarried {
+    fn fmt(&self, f: &mut ::std::fmt::Formatter<'_>) -> ::std::fmt::Result {
+        f.write_str(self.as_str())
+    }
+}
+impl ::std::str::FromStr for ExportedDemoCarried {
+    type Err = self::error::ConversionError;
+    fn from_str(
+        value: &str,
+    ) -> ::std::result::Result<Self, self::error::ConversionError> {
+        Ok(
+            match value {
+                "full" => Self::Full,
+                "root" => Self::Root,
+                "folder-only" => Self::FolderOnly,
+                other => Self::Unknown(other.to_string()),
+            },
+        )
+    }
+}
+impl ExportedDemoRouting {
+    /// The value as it travels on the wire.
+    #[must_use]
+    pub fn as_str(&self) -> &str {
+        match self {
+            Self::History => "history",
+            Self::Hash => "hash",
+            Self::Unknown(value) => value.as_str(),
+        }
+    }
+}
+impl ::std::fmt::Display for ExportedDemoRouting {
+    fn fmt(&self, f: &mut ::std::fmt::Formatter<'_>) -> ::std::fmt::Result {
+        f.write_str(self.as_str())
+    }
+}
+impl ::std::str::FromStr for ExportedDemoRouting {
+    type Err = self::error::ConversionError;
+    fn from_str(
+        value: &str,
+    ) -> ::std::result::Result<Self, self::error::ConversionError> {
+        Ok(
+            match value {
+                "history" => Self::History,
+                "hash" => Self::Hash,
                 other => Self::Unknown(other.to_string()),
             },
         )

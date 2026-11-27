@@ -124,6 +124,15 @@ pub fn command_line(program: &OsStr, arguments: &[OsString]) -> OsString {
     OsString::from_wide(&line)
 }
 
+/// The command line of `program`, quoted, followed by `tail` exactly as given.
+pub fn verbatim_line(program: &OsStr, tail: &OsStr) -> OsString {
+    let mut line = Vec::new();
+    push_argument(&mut line, program);
+    line.push(u16::from(b' '));
+    line.extend(tail.encode_wide());
+    OsString::from_wide(&line)
+}
+
 fn report(lifeline: RawHandle, line: &serde_json::Value) {
     let mut text = line.to_string();
     text.push('\n');
@@ -150,8 +159,17 @@ fn read_line(lifeline: RawHandle) -> Option<String> {
     }
 }
 
-/// Runs the gate for `program` and `arguments`; returns the exit code.
-pub fn run(program: &OsStr, arguments: &[OsString]) -> i32 {
+/// The command line of `program` with `arguments`, or with `verbatim` its one argument as it stands.
+fn child_line(program: &OsStr, arguments: &[OsString], verbatim: bool) -> OsString {
+    match (verbatim, arguments) {
+        (true, [tail]) => verbatim_line(program, tail),
+        _ => command_line(program, arguments),
+    }
+}
+
+/// Runs the gate for `program` and `arguments` (with `verbatim`, the one argument is the rest of
+/// the command line as it stands); returns the exit code.
+pub fn run(program: &OsStr, arguments: &[OsString], verbatim: bool) -> i32 {
     sys::ignore_console_interrupts();
     let (table, standard) = sys::inherited_descriptors();
     let Some(lifeline) = table
@@ -174,7 +192,7 @@ pub fn run(program: &OsStr, arguments: &[OsString]) -> i32 {
 
     let (child_table, inherit) = child_descriptors(&table, standard);
 
-    let line = command_line(program, arguments);
+    let line = child_line(program, arguments, verbatim);
     // The child is created inside this unnamed kill-on-close job, so a gate that dies at any
     // moment from here on takes its child with it; the named job the reaper finds nests in it
     // once the child's creation time is known (Opus review of WP-W1).
