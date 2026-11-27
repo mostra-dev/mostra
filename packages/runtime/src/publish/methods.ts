@@ -59,7 +59,10 @@ export function artifactMethods(options: {
   readonly registry: Registry;
   readonly publisher: () => Publisher;
   /** `static`, `html` and `snapshot` (D185 items 7, 8): the instance's built-in exports. */
-  readonly exportFront?: (params: ArtifactExportParams) => Promise<ArtifactExportResult>;
+  readonly exportFront?: (
+    params: ArtifactExportParams,
+    signal?: AbortSignal,
+  ) => Promise<ArtifactExportResult>;
   /**
    * The artifact's default capability link (D90, D97 item 3), added to every receipt, replays
    * included. Recorded receipts never hold it: the ledger keeps no link's secret.
@@ -102,7 +105,7 @@ export function artifactMethods(options: {
           : undefined;
       return options.publisher().verify(params, progress);
     }),
-    handler(artifactExportMethod, (params) => {
+    handler(artifactExportMethod, (params, session) => {
       const canonical = { ...params, artifact: canonicalRef(params.artifact) };
       if (params.as === "bundle") return options.publisher().exportBundle(canonical);
       if (!options.exportFront) {
@@ -112,9 +115,12 @@ export function artifactMethods(options: {
           }),
         );
       }
-      return options.exportFront(canonical);
+      return options.exportFront(canonical, session.signal);
     }),
-    handler(demoBuildMethod, (params) => options.publisher().buildDemos(params)),
+    // A client that goes away (Ctrl-C) ends the builds it started (review of WP-24, finding 10).
+    handler(demoBuildMethod, (params, session) =>
+      options.publisher().buildDemos(params, session.signal),
+    ),
     handler(artifactImportMethod, async (params) => {
       const receipt = await options.publisher().importBundle(params);
       options.published?.(receipt.artifactId);

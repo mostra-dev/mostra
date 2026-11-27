@@ -370,10 +370,18 @@ export function manifestProblem(
         return { path: `demos.${name}.${key}`, message: `a demo's ${key} is a relative path` };
       }
     }
-    if (spec.output.replaceAll("\\", "/").split("/").includes("..")) {
+    const output = spec.output.replaceAll("\\", "/").split("/");
+    if (output.includes("..")) {
       return {
         path: `demos.${name}.output`,
         message: "a demo's output is a folder inside its source",
+      };
+    }
+    // `.` and `./` would publish the whole project, its `.env` too (review of WP-24, finding 1).
+    if (output.every((segment) => segment === "" || segment === ".")) {
+      return {
+        path: `demos.${name}.output`,
+        message: "a demo's output is the folder its build writes inside its source, such as dist",
       };
     }
   }

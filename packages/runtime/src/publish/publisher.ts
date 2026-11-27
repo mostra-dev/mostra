@@ -20,7 +20,6 @@ import { createReadStream, createWriteStream, existsSync, readFileSync } from "n
 import {
   chmod,
   copyFile,
-  cp,
   mkdir,
   mkdtemp,
   readdir,
@@ -182,7 +181,8 @@ export interface Publisher {
   /** `artifact/import`: makes a bundle a version of this home, with its identity (RM-01). */
   importBundle(params: ArtifactImportParams): Promise<PublishReceipt>;
   /** `demo/build`: builds an artifact's demos into the cache now (D185 item 4). */
-  buildDemos(params: DemoBuildParams): Promise<DemoBuildResult>;
+  /** `demo/build`; `signal` ends a running build with everything it started (Ctrl-C). */
+  buildDemos(params: DemoBuildParams, signal?: AbortSignal): Promise<DemoBuildResult>;
   /** A published version, checked whole, as an export reads it (`artifact/export`, `plugin/export`). */
   exportable(params: {
     readonly artifact: ArtifactRef;
@@ -707,11 +707,11 @@ export function createPublisher(options: PublisherOptions): Publisher {
         demoFailures.push(demo);
         continue;
       }
-      const outcome = await (options.demos as Demos).build(demo);
+      // Copied into the version while the cache keeps the build (review of WP-24, finding 2).
+      const kept = join(out, "client", "_mostra", "demos", demo.name);
+      const outcome = await (options.demos as Demos).build(demo, { into: kept });
       if (outcome.status === "failed") demoFailures.push(outcome.diagnostic);
       else {
-        const kept = join(out, "client", "_mostra", "demos", demo.name);
-        await cp(outcome.dir, kept, { recursive: true });
         // Comments anchor inside the demo (D183 item 7), unless it turned the bridge off.
         const agent = built.registry.reviewAgent;
         if (demo.spec.bridge !== false && agent !== undefined) {
@@ -1054,7 +1054,7 @@ export function createPublisher(options: PublisherOptions): Publisher {
     // gc removes files no kept version names: an export reads a version's files, and an import
     // writes them, so both hold the gate shared like a publish (D140 item 14).
     exportBundle: (params) => gated(() => exportBundle(params)),
-    buildDemos: (params) => gated(() => buildDemos(params)),
+    buildDemos: (params, signal) => gated(() => buildDemos(params, signal)),
     importBundle: (params) =>
       gated(() => idempotent(requestKey("artifact/import", params), () => importBundle(params))),
     exportable: (params) => gated(() => exportable(params)),
@@ -1121,7 +1121,10 @@ export function createPublisher(options: PublisherOptions): Publisher {
   }
 
   /** `demo/build` (D185 item 4): the source's demos, built or found built, one by one. */
-  async function buildDemos(params: DemoBuildParams): Promise<DemoBuildResult> {
+  async function buildDemos(
+    params: DemoBuildParams,
+    signal?: AbortSignal,
+  ): Promise<DemoBuildResult> {
     const source = await resolveSource(pathOf(params.source));
     const manifest = extractManifest(source.entry, await readEntry(source)).manifest;
     const builds = demoBuilds(manifest?.demos);
@@ -1159,7 +1162,7 @@ export function createPublisher(options: PublisherOptions): Publisher {
         outcomes.push({ name, status: "failed", diagnostics: [error.diagnostic] });
         continue;
       }
-      const built = await options.demos.build(inputs, { force: params.force === true });
+      const built = await options.demos.build(inputs, { force: params.force === true, signal });
       outcomes.push(
         built.status === "failed"
           ? { name, status: "failed", digest: inputs.digest, diagnostics: [built.diagnostic] }

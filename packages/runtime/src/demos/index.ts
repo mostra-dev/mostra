@@ -15,7 +15,7 @@
  */
 import { createHash, randomBytes } from "node:crypto";
 import { createReadStream } from "node:fs";
-import { cp, mkdir, readdir, readFile, rm, stat, writeFile } from "node:fs/promises";
+import { cp, mkdir, readdir, readFile, realpath, rm, stat, writeFile } from "node:fs/promises";
 import { join, relative, resolve } from "node:path";
 import {
   canonicalJson,
@@ -72,6 +72,8 @@ const SKIPPED_DIRS = new Set([
 ]);
 /** Files a demo's source digest never reads: editors' and Finder's own. */
 const SKIPPED_FILE = /^(?:\.DS_Store|\.#.*|#.*#|.*~|.*\.sw[a-px])$/;
+/** `.env` files, which builds read even where `.gitignore` names them (Vite's `VITE_` values). */
+const ENV_FILE = /^\.env(?:\..+)?$/;
 /** How many lines of a build's log a failure shows. */
 const LOG_LINES = 30;
 /** How many lines of a build's log are kept while it runs. */
@@ -91,6 +93,8 @@ export interface DemoInputs {
   readonly outputDir: string;
   /** The path it is built for (`MOSTRA_DEMO_BASE`). */
   readonly base: string;
+  /** The digest of its source's listing ({@link demoSourceDigest}) when the inputs were read. */
+  readonly source: string;
   /** SHA-256 of its source listing, command, settings and base. */
   readonly digest: string;
 }
@@ -119,10 +123,19 @@ export interface Demos {
     artifactDir: string,
     base?: string,
   ): Promise<DemoInputs>;
-  /** Builds a demo, or finds its build in the cache. */
+  /**
+   * Builds a demo, or finds its build in the cache, and copies it into `into` (a folder that
+   * doesn't exist yet) while the cache keeps the build: no other build, `--force` or pruning
+   * removes it during the copy. A `signal` that aborts ends a running build with everything it
+   * started.
+   */
   build(
     inputs: DemoInputs,
-    options?: { readonly force?: boolean; readonly signal?: AbortSignal },
+    options: {
+      readonly into?: string | undefined;
+      readonly force?: boolean;
+      readonly signal?: AbortSignal | undefined;
+    },
   ): Promise<BuiltDemo | FailedDemo>;
 }
 
@@ -178,24 +191,39 @@ async function rulesOf(path: string): Promise<string> {
 
 /**
  * The canonical listing digest of a demo's source (DATA_MODEL §2's form): every file under it but
- * installs, caches, its own output and what its `.gitignore` and `.mostraignore` name.
+ * installs, build tools' caches, its own output and what its `.gitignore` and `.mostraignore`
+ * name, which are a project's generated and local files. `.env` files count whatever ignores
+ * them, since builds read them (Vite builds their `VITE_` values in). Symbolic links are
+ * followed, as the build follows them, and a link back into its own ancestry is skipped.
  */
 export async function demoSourceDigest(sourceDir: string, outputDir: string): Promise<string> {
-  const rules = ignore()
-    .add(await rulesOf(join(sourceDir, ".gitignore")))
-    .add(await rulesOf(join(sourceDir, ".mostraignore")));
+  const git = ignore().add(await rulesOf(join(sourceDir, ".gitignore")));
+  const own = ignore().add(await rulesOf(join(sourceDir, ".mostraignore")));
+  const ignored = (path: string, name: string, dir: boolean): boolean =>
+    own.ignores(dir ? `${path}/` : path) ||
+    (git.ignores(dir ? `${path}/` : path) && (dir || !ENV_FILE.test(name)));
   const output = relative(sourceDir, outputDir).replaceAll("\\", "/");
   const files: { path: string; executable: boolean; sha256: string }[] = [];
-  const walk = async (dir: string, rel: string): Promise<void> => {
+  const walk = async (dir: string, rel: string, ancestry: ReadonlySet<string>): Promise<void> => {
     const entries = await readdir(dir, { withFileTypes: true });
     for (const entry of entries) {
       const path = (rel ? `${rel}/${entry.name}` : entry.name).normalize("NFC");
       const absolute = join(dir, entry.name);
-      if (entry.isDirectory()) {
-        if (SKIPPED_DIRS.has(entry.name) || path === output || rules.ignores(`${path}/`)) continue;
-        await walk(absolute, path);
-      } else if (entry.isFile()) {
-        if (SKIPPED_FILE.test(entry.name) || rules.ignores(path)) continue;
+      let kind: "dir" | "file" | undefined;
+      if (entry.isDirectory()) kind = "dir";
+      else if (entry.isFile()) kind = "file";
+      else if (entry.isSymbolicLink()) {
+        const target = await stat(absolute).catch(() => undefined);
+        kind = target?.isDirectory() ? "dir" : target?.isFile() ? "file" : undefined;
+      }
+      if (kind === "dir") {
+        if (SKIPPED_DIRS.has(entry.name) || path === output || ignored(path, entry.name, true))
+          continue;
+        const real = await realpath(absolute);
+        if (ancestry.has(real)) continue;
+        await walk(absolute, path, new Set([...ancestry, real]));
+      } else if (kind === "file") {
+        if (SKIPPED_FILE.test(entry.name) || ignored(path, entry.name, false)) continue;
         const info = await stat(absolute);
         files.push({
           path,
@@ -205,7 +233,7 @@ export async function demoSourceDigest(sourceDir: string, outputDir: string): Pr
       }
     }
   };
-  await walk(sourceDir, "");
+  await walk(sourceDir, "", new Set([await realpath(sourceDir)]));
   return listingDigest(files);
 }
 
@@ -273,10 +301,19 @@ export async function injectDemoAgent(
     : `<script>${agent}</script>`;
   for (const file of (await filesUnder(dir)).filter((path) => /\.html?$/i.test(path))) {
     const html = await readFile(join(dir, file), "utf8");
-    const head = /<head\b[^>]*>/i.exec(html);
-    const at = head ? head.index + head[0].length : 0;
-    await writeFile(join(dir, file), `${html.slice(0, at)}${tag}${html.slice(at)}`);
+    await writeFile(join(dir, file), withHeadTag(html, tag));
   }
+}
+
+/**
+ * `html` with `tag` written first in its head: after `<head>`, else after `<html>`, else after its
+ * doctype, never before the doctype, which would put the document in quirks mode.
+ */
+export function withHeadTag(html: string, tag: string): string {
+  const after =
+    /<head\b[^>]*>/i.exec(html) ?? /<html\b[^>]*>/i.exec(html) ?? /<!doctype\b[^>]*>/i.exec(html);
+  const at = after ? after.index + after[0].length : 0;
+  return `${html.slice(0, at)}${tag}${html.slice(at)}`;
 }
 
 /** Options for {@link createDemos}. */
@@ -322,16 +359,13 @@ export function createDemos(options: DemosOptions): Demos {
     return run;
   };
 
-  const cached = async (digest: string): Promise<BuiltDemo | undefined> => {
+  /** A cached build's marker, or none. */
+  const markerOf = async (
+    digest: string,
+  ): Promise<{ files?: number; usedAt?: string; [key: string]: unknown } | undefined> => {
     try {
-      const marker = JSON.parse(await readFile(join(cacheDir, digest, "demo.json"), "utf8")) as {
+      return JSON.parse(await readFile(join(cacheDir, digest, "demo.json"), "utf8")) as {
         files?: number;
-      };
-      return {
-        status: "cached",
-        dir: join(cacheDir, digest, "out"),
-        files: marker.files ?? 0,
-        ms: 0,
       };
     } catch {
       return undefined;
@@ -339,24 +373,55 @@ export function createDemos(options: DemosOptions): Demos {
   };
 
   /**
+   * Copies a cached build into `into` and marks it used now, so pruning keeps the builds in use;
+   * only within the digest's turn, where nothing removes the entry.
+   */
+  const copyOut = async (
+    digest: string,
+    marker: { files?: number; [key: string]: unknown },
+    into: string | undefined,
+  ): Promise<void> => {
+    if (into !== undefined)
+      await cp(join(cacheDir, digest, "out"), into, { recursive: true, errorOnExist: true });
+    await writeFile(
+      join(cacheDir, digest, "demo.json"),
+      `${JSON.stringify({ ...marker, usedAt: new Date().toISOString() }, null, 2)}\n`,
+    ).catch(() => undefined);
+  };
+
+  /** Runs `task` in a digest's turn: the cache entry's commit, copies out of it and removal. */
+  const inEntry = <T>(digest: string, task: () => Promise<T>): Promise<T> =>
+    inTurn(`digest\0${digest}`, task);
+
+  /**
    * Keeps a demo's {@link KEPT_BUILDS} newest builds and removes the older ones, so the cache
    * holds what the next verify of a recent source reuses and never grows without bound: a version
    * keeps its own copy of its demos, so nothing needs an older build.
    */
   const prune = async (inputs: DemoInputs): Promise<void> => {
-    const mine: { digest: string; builtAt: string }[] = [];
+    const mine: { digest: string; at: string }[] = [];
     for (const entry of await readdir(cacheDir)) {
       if (entry.startsWith(".")) continue;
       const marker = await readFile(join(cacheDir, entry, "demo.json"), "utf8")
-        .then((text) => JSON.parse(text) as { name?: string; folder?: string; builtAt?: string })
+        .then(
+          (text) =>
+            JSON.parse(text) as {
+              name?: string;
+              folder?: string;
+              builtAt?: string;
+              usedAt?: string;
+            },
+        )
         .catch(() => undefined);
       if (marker?.name !== inputs.name || marker.folder !== inputs.sourceDir) continue;
-      mine.push({ digest: entry, builtAt: marker.builtAt ?? "" });
+      // The last time a build was made or copied into a version: one in use is the newest.
+      const at = [marker.builtAt ?? "", marker.usedAt ?? ""].sort().at(-1) ?? "";
+      mine.push({ digest: entry, at });
     }
-    mine.sort((a, b) => (a.builtAt < b.builtAt ? 1 : a.builtAt > b.builtAt ? -1 : 0));
+    mine.sort((a, b) => (a.at < b.at ? 1 : a.at > b.at ? -1 : 0));
     for (const old of mine.slice(KEPT_BUILDS)) {
       if (old.digest === inputs.digest) continue;
-      await inTurn(`digest\0${old.digest}`, () =>
+      await inEntry(old.digest, () =>
         removeTree(join(cacheDir, old.digest)).catch(() => undefined),
       );
     }
@@ -368,7 +433,7 @@ export function createDemos(options: DemosOptions): Demos {
   ): Promise<{ ok: true; ms: number } | FailedDemo> => {
     const { name, spec } = inputs;
     const env = demoEnvironment(options.env, spec.env ?? {}, inputs.base);
-    const program = programCommand(spec.build, env);
+    const program = programCommand(spec.build, env, inputs.sourceDir);
     if (program === undefined) {
       return {
         status: "failed",
@@ -392,6 +457,7 @@ export function createDemos(options: DemosOptions): Demos {
         ownerRef: name,
         command: program.command,
         args: program.args,
+        ...(program.verbatim ? { verbatim: true as const } : {}),
         cwd: inputs.sourceDir,
         env,
         onStdout: keep,
@@ -467,6 +533,15 @@ export function createDemos(options: DemosOptions): Demos {
         );
       }
       const outputDir = resolve(sourceDir, spec.output);
+      // Built into its source folder itself, a demo would carry the whole project (its `.env`
+      // too): the manifest refuses such an output, and so does this, whatever spelling reached it.
+      if (outputDir === sourceDir) {
+        throw new RpcError(
+          createDiagnostic("MOSTRA_MANIFEST_INVALID", {
+            message: `The demo "${name}"'s output is its source folder itself; name the folder its build writes, such as "dist".`,
+          }),
+        );
+      }
       const source = await demoSourceDigest(sourceDir, outputDir);
       const digest = sha256Hex(
         canonicalJson({
@@ -477,21 +552,42 @@ export function createDemos(options: DemosOptions): Demos {
           base,
         }),
       );
-      return { name, spec, sourceDir, outputDir, base, digest };
+      return { name, spec, sourceDir, outputDir, base, source, digest };
     },
 
-    build(inputs, how = {}) {
+    build(inputs, how) {
       // One build per digest at a time: two folders holding the same source (a copy, a second
       // checkout) build the same output, so the second waits and takes the first's from the cache.
       // Then one build per folder at a time, since a build writes its output folder.
       return inTurn(`digest-build\0${inputs.digest}`, () =>
         inTurn(`${inputs.sourceDir}\0${inputs.outputDir}`, async () => {
           if (!how.force) {
-            const found = await cached(inputs.digest);
+            const found = await inEntry(inputs.digest, async () => {
+              const marker = await markerOf(inputs.digest);
+              if (!marker) return undefined;
+              await copyOut(inputs.digest, marker, how.into);
+              return {
+                status: "cached" as const,
+                dir: how.into ?? join(cacheDir, inputs.digest, "out"),
+                files: marker.files ?? 0,
+                ms: 0,
+              };
+            });
             if (found) return found;
           }
           const ran = await runBuild(inputs, how.signal);
           if (!("ok" in ran)) return ran;
+          // The output must be of the source the digest names: an edit made after the inputs were
+          // read, or while the build ran, would be kept under a digest that doesn't describe it.
+          const now = await demoSourceDigest(inputs.sourceDir, inputs.outputDir).catch(() => "");
+          if (now !== inputs.source) {
+            return {
+              status: "failed",
+              diagnostic: createDiagnostic("MOSTRA_DEMO_BUILD_FAILED", {
+                message: `The demo "${inputs.name}"'s source changed while it was being built, so its output can't be kept for the source this version names; build it again.`,
+              }),
+            };
+          }
           let problem: Diagnostic | undefined;
           try {
             problem = await checkDemoOutput(inputs.name, inputs.outputDir, inputs.base);
@@ -515,11 +611,17 @@ export function createDemos(options: DemosOptions): Demos {
           // output, and a publish may be copying out of the entry now: an entry, once there, is never
           // removed under a reader. The build that finds one already kept leaves its own; a forced
           // build sets the old one aside first, so a reader holds either whole.
-          return inTurn(`digest\0${inputs.digest}`, async () => {
-            const there = await cached(inputs.digest);
+          const committed = await inEntry(inputs.digest, async () => {
+            const there = await markerOf(inputs.digest);
             if (there && !how.force) {
               await rm(scratch, { recursive: true, force: true });
-              return { ...there, status: "built" as const, ms: ran.ms };
+              await copyOut(inputs.digest, there, how.into);
+              return {
+                status: "built" as const,
+                dir: how.into ?? join(target, "out"),
+                files: there.files ?? 0,
+                ms: ran.ms,
+              };
             }
             const aside = there
               ? join(cacheDir, `.old-${randomBytes(6).toString("hex")}`)
@@ -527,11 +629,19 @@ export function createDemos(options: DemosOptions): Demos {
             if (aside !== undefined) await renamePath(target, aside);
             await renamePath(scratch, target);
             if (aside !== undefined) await rm(aside, { recursive: true, force: true });
-            await prune(inputs).catch((error: unknown) =>
-              log.warn("demos.prune_failed", { name: inputs.name, error }),
-            );
-            return { status: "built" as const, dir: join(target, "out"), files, ms: ran.ms };
+            await copyOut(inputs.digest, (await markerOf(inputs.digest)) ?? { files }, how.into);
+            return {
+              status: "built" as const,
+              dir: how.into ?? join(target, "out"),
+              files,
+              ms: ran.ms,
+            };
           });
+          // Pruning takes each older build's own turn, after this one's is released.
+          await prune(inputs).catch((error: unknown) =>
+            log.warn("demos.prune_failed", { name: inputs.name, error }),
+          );
+          return committed;
         }),
       );
     },
