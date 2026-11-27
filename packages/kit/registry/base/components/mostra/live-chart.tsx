@@ -62,10 +62,11 @@ const DEFAULT_WINDOW = 1000;
 const MAX_WINDOW = 100_000;
 
 /**
+ * @internal
  * Columns of the newest `window` points, in buffers twice as long: a point is written once, and
  * the buffers move back once every `window` points, so appending is constant time.
  */
-class Columns {
+export class Columns {
   readonly #window: number;
   #xs: Float64Array;
   #ys: Float64Array[];
@@ -108,6 +109,62 @@ class Columns {
     return [
       this.#xs.subarray(this.#start, end),
       ...this.#ys.map((column) => column.subarray(this.#start, end)),
+    ] as uPlot.AlignedData;
+  }
+
+  #drawnXs = new Float64Array(0);
+  #drawnYs: Float64Array[] = [];
+
+  /**
+   * The points to draw on a plot `columns` device pixels wide: every point while there are no more
+   * than two a column, else, for each run of points a column holds, its first and last and each
+   * series' lowest and highest, in order. A line through them looks exactly like one through all
+   * the points, every peak and dip kept, and costs the browser a few thousand segments a frame
+   * however many points the window keeps (WebKit drawing in software spent a frame's time on
+   * ten thousand, WP-19's AC-08 measurement).
+   */
+  drawn(columns: number): uPlot.AlignedData {
+    const length = this.#length;
+    if (columns < 1 || length <= columns * 2) return this.data();
+    const series = this.#ys.length;
+    const size = (2 * series + 2) * columns;
+    if (this.#drawnXs.length < size) {
+      this.#drawnXs = new Float64Array(size);
+      this.#drawnYs = this.#ys.map(() => new Float64Array(size));
+    }
+    const per = Math.ceil(length / columns);
+    const picked: number[] = [];
+    let out = 0;
+    for (let from = this.#start; from < this.#start + length; from += per) {
+      const to = Math.min(from + per, this.#start + length);
+      picked.length = 0;
+      picked.push(from, to - 1);
+      for (const column of this.#ys) {
+        let low = -1;
+        let high = -1;
+        for (let index = from; index < to; index++) {
+          const value = column[index] as number;
+          if (Number.isNaN(value)) continue;
+          if (low === -1 || value < (column[low] as number)) low = index;
+          if (high === -1 || value > (column[high] as number)) high = index;
+        }
+        if (low !== -1) picked.push(low, high);
+      }
+      picked.sort((a, b) => a - b);
+      let previous = -1;
+      for (const index of picked) {
+        if (index === previous) continue;
+        previous = index;
+        this.#drawnXs[out] = this.#xs[index] as number;
+        for (let s = 0; s < series; s++) {
+          (this.#drawnYs[s] as Float64Array)[out] = (this.#ys[s] as Float64Array)[index] as number;
+        }
+        out += 1;
+      }
+    }
+    return [
+      this.#drawnXs.subarray(0, out),
+      ...this.#drawnYs.map((column) => column.subarray(0, out)),
     ] as uPlot.AlignedData;
   }
 }
@@ -321,6 +378,9 @@ function PointsChart({
     plot.current = created;
     const resize = new ResizeObserver(() => {
       created.setSize({ width: Math.max(1, element.clientWidth), height });
+      // The points to draw depend on the plot's width.
+      const state = columns.current;
+      if (state) created.setData(state.columns.drawn(Math.round(created.bbox.width)), true);
     });
     resize.observe(element);
     return () => {
@@ -343,7 +403,8 @@ function PointsChart({
     const state = columns.current;
     const current = plot.current;
     if (!current || !state) return;
-    current.setData(state.columns.data(), true);
+    const drawnData = state.columns.drawn(Math.round(current.bbox.width));
+    current.setData(drawnData, true);
     drawn.current += 1;
     const newest = points.at(-1);
     // What the chart drew, for whoever measures it (a test, a host): the draws so far and the x
@@ -357,7 +418,7 @@ function PointsChart({
     textAt.current = now;
     // Without a pointer over the plot, the legend names the newest values.
     if (current.cursor.left === undefined || current.cursor.left < 0) {
-      current.setLegend({ idx: Math.max(0, state.columns.length - 1) });
+      current.setLegend({ idx: Math.max(0, (drawnData[0]?.length ?? 1) - 1) });
     }
     if (summaryRef.current) {
       summaryRef.current.textContent = summaryOf(newest, state.columns.length, {

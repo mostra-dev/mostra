@@ -92,6 +92,22 @@ export function packageOfSpecifier(specifier: string): string | undefined {
  * which a kit module imports and an artifact that uses the module gets installed, at that version,
  * as if it had imported them itself.
  */
+/**
+ * The overrides the kit names for an installation of its on-demand libraries (`mostra-kit.overrides`
+ * in its `package.json`, pnpm's `overrides`): a dependency of one of them with a known advisory,
+ * taken at its fixed release, as the workspace that checks the kit takes it (WP-19).
+ */
+export function kitOverrides(kitDir: string): Readonly<Record<string, string>> {
+  try {
+    const manifest = JSON.parse(readFileSync(join(kitDir, "package.json"), "utf8")) as {
+      "mostra-kit"?: { overrides?: Record<string, string> };
+    };
+    return Object.fromEntries(Object.entries(manifest["mostra-kit"]?.overrides ?? {}).sort());
+  } catch {
+    return {};
+  }
+}
+
 export function kitPeers(kitDir: string): ReadonlyMap<string, string> {
   try {
     const manifest = JSON.parse(readFileSync(join(kitDir, "package.json"), "utf8")) as {

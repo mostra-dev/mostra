@@ -7,7 +7,9 @@
     "types": ["node"],
     "isolatedDeclarations": false,
     "rewriteRelativeImportExtensions": false,
-    "allowImportingTsExtensions": true
+    "allowImportingTsExtensions": true,
+    "jsx": "react-jsx",
+    "lib": ["es2024", "dom", "dom.iterable"]
   },
   "include": ["test", "*.config.ts"],
   "references": [

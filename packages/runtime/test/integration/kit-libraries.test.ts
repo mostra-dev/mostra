@@ -13,6 +13,7 @@ import { VerifyVerdict } from "@mostra/protocol";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
 import { kitPeers } from "../../src/builder/index.ts";
 import { parseLock } from "../../src/deps/index.ts";
+import { overridesOf, pinnedPackages } from "../../src/deps/lock.ts";
 import { installedClosure, type Mirror, startMirror } from "../mirror.ts";
 import {
   connectTo,
@@ -205,6 +206,15 @@ export default function Page() {
     expect(errors(verdict)).toEqual([]);
     const { versionId } = await publish(dir);
     expect(pinned(versionId)["@excalidraw/excalidraw"]).toBe(PINS.get("@excalidraw/excalidraw"));
+    // With the kit's overrides: the lodash-es its Mermaid parser pins exactly has an advisory,
+    // so the version installs the fixed release, as the kit was checked with.
+    const lock = parseLock(
+      readFileSync(join(home.home, "versions", versionId, "lock.yaml"), "utf8"),
+    ).pnpm as string;
+    expect(overridesOf(lock)).toEqual({ "lodash-es@4.17.21": "4.18.1" });
+    expect(pinnedPackages(lock).filter((pkg) => pkg.name === "lodash-es")).toEqual([
+      { name: "lodash-es", version: "4.18.1" },
+    ]);
     const fonts = clientFiles(versionId).filter((file) =>
       file.startsWith("kit-assets/excalidraw/fonts/"),
     );

@@ -36,7 +36,7 @@ import {
 } from "./types.ts";
 
 export { coverageMatcher, type FieldCoverage, type FieldEntry } from "./coverage.ts";
-export { kitFilesUsed, kitPeers } from "./kit-files.ts";
+export { kitFilesUsed, kitOverrides, kitPeers } from "./kit-files.ts";
 export {
   type BuildRequest,
   type BuildResponse,

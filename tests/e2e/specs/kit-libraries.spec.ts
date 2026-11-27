@@ -102,8 +102,19 @@ test.describe("the kit's library wrappers (KT-01)", () => {
       // TanStack Table: four rows, sorted by a header, searched.
       const table = frame.locator("[data-slot='data-table']");
       await expect(table.locator("tbody tr")).toHaveCount(4);
-      await table.getByRole("button", { name: /amount/i }).click();
+      // A number column sorts largest first, as TanStack Table does, then smallest first.
+      const amount = table.getByRole("button", { name: /amount/i });
+      await amount.click();
+      await expect(table.locator("tbody tr td:first-child")).toHaveText([
+        "Acme",
+        "Umbrella",
+        "Globex",
+        "Initech",
+      ]);
+      await expect(table.locator("th[aria-sort='descending']")).toHaveCount(1);
+      await amount.click();
       await expect(table.locator("tbody tr").first()).toContainText("Initech");
+      await expect(table.locator("th[aria-sort='ascending']")).toHaveCount(1);
       await table.getByRole("searchbox").fill("Glo");
       await expect(table.locator("tbody tr")).toHaveCount(1);
       await expect(table.locator("tbody tr").first()).toContainText("Globex");
@@ -178,11 +189,13 @@ test.describe("the kit's library wrappers (KT-01)", () => {
       // Excalidraw: a rectangle drawn is saved as the field and comes back after a reload.
       const board = frame.locator("[data-slot='whiteboard']");
       await expect(board.locator(".excalidraw")).toBeVisible({ timeout: 60_000 });
+      // Excalidraw's canvas sits under its own layers, so it is drawn on as a person does: the
+      // pointer at its place, the rectangle tool by its key.
       const canvas = board.locator("canvas.interactive");
-      await canvas.click({ position: { x: 40, y: 40 } });
-      await frame.locator("html").press("r");
       const box = await canvas.boundingBox();
       expect(box).not.toBeNull();
+      await page.mouse.click((box?.x ?? 0) + 40, (box?.y ?? 0) + 40);
+      await page.keyboard.press("r");
       const at = { x: (box?.x ?? 0) + 120, y: (box?.y ?? 0) + 110 };
       await page.mouse.move(at.x, at.y);
       await page.mouse.down();
@@ -214,7 +227,8 @@ async function parts(page: Page, frame: FrameLocator): Promise<{ slot: string; p
   const boxes = await frame.locator("[data-slot]").evaluateAll((elements) =>
     elements.flatMap((element) => {
       const box = element.getBoundingClientRect();
-      if (!(box.width >= 1 && box.height >= 1 && element.checkVisibility())) return [];
+      // A visually hidden element (`sr-only`, one pixel square, clipped) is no visible part.
+      if (!(box.width > 1 && box.height > 1 && element.checkVisibility())) return [];
       return [
         {
           slot: element.getAttribute("data-slot") ?? "",

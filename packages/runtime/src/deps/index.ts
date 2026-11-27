@@ -33,7 +33,7 @@ import {
   RpcError,
 } from "@mostra/protocol";
 import semver from "semver";
-import { kitFilesUsed, kitPeers } from "../builder/index.ts";
+import { kitFilesUsed, kitOverrides, kitPeers } from "../builder/index.ts";
 import { type Faults, noFaults } from "../faults.ts";
 import type { Gate } from "../gate.ts";
 import {
@@ -59,6 +59,7 @@ import {
   layoutKey,
   lockDigest,
   lockText,
+  overridesOf,
   parseLock,
   pinnedPackages,
   withExtras,
@@ -394,7 +395,10 @@ export function createDependencies(options: DependenciesOptions): Dependencies {
   const warmLinks = Object.fromEntries(
     Object.keys(warm.packages).map((name) => [name, `link:warm/${name}`]),
   );
-  const manifestOf = (packages: Readonly<Record<string, string>>): string =>
+  const manifestOf = (
+    packages: Readonly<Record<string, string>>,
+    overrides: Readonly<Record<string, string>> = {},
+  ): string =>
     `${JSON.stringify(
       {
         name: "mostra-artifact-dependencies",
@@ -402,6 +406,9 @@ export function createDependencies(options: DependenciesOptions): Dependencies {
         dependencies: Object.fromEntries(
           Object.entries({ ...warmLinks, ...packages }).sort(([a], [b]) => (a < b ? -1 : 1)),
         ),
+        // The kit's overrides for its on-demand libraries (WP-19), which pnpm records in the
+        // lockfile, so a layout installs from it again only with the same ones.
+        ...(Object.keys(overrides).length > 0 ? { pnpm: { overrides } } : {}),
       },
       null,
       2,
@@ -447,6 +454,8 @@ export function createDependencies(options: DependenciesOptions): Dependencies {
     readonly pins: Readonly<Record<string, string>>;
     readonly additions: readonly PackageSpec[];
     readonly previous: string | undefined;
+    /** pnpm's overrides for the resolution: the kit's, for an artifact using its libraries. */
+    readonly overrides?: Readonly<Record<string, string>>;
   }): Promise<Lock> => {
     const isOff = offline();
     const additions = input.additions;
@@ -470,7 +479,7 @@ export function createDependencies(options: DependenciesOptions): Dependencies {
     await mkdir(work);
     try {
       await linkDirectory(warm.nodeModules, join(work, "warm"));
-      await writeFile(join(work, "package.json"), manifestOf(input.pins));
+      await writeFile(join(work, "package.json"), manifestOf(input.pins, input.overrides));
       if (input.previous !== undefined)
         await writeFile(join(work, "pnpm-lock.yaml"), input.previous);
       const outcome = await install().run({
@@ -582,7 +591,7 @@ export function createDependencies(options: DependenciesOptions): Dependencies {
       await mkdir(dir, { recursive: true });
       try {
         await linkDirectory(warm.nodeModules, join(dir, "warm"));
-        await writeFile(join(dir, "package.json"), manifestOf(lock.packages));
+        await writeFile(join(dir, "package.json"), manifestOf(lock.packages, overridesOf(pnpm)));
         await writeFile(join(dir, "pnpm-lock.yaml"), pnpm);
         const outcome = await install().run({
           command: ["install", "--frozen-lockfile"],
@@ -678,6 +687,9 @@ export function createDependencies(options: DependenciesOptions): Dependencies {
                   a < b ? -1 : 1,
                 ),
               ),
+              ...(Object.keys(overridesOf(lock.pnpm)).length > 0
+                ? { pnpm: { overrides: overridesOf(lock.pnpm) } }
+                : {}),
             },
             null,
             2,
@@ -873,12 +885,14 @@ export function createDependencies(options: DependenciesOptions): Dependencies {
   ): Promise<{
     readonly needs: ReadonlyMap<string, string>;
     readonly pins: ReadonlyMap<string, string>;
+    readonly overrides: Readonly<Record<string, string>>;
   }> => {
     const kitDir = join(warm.nodeModules, "@mostra", "kit");
     const pins = kitPeers(kitDir);
+    const overrides = kitOverrides(kitDir);
     const needs = new Map<string, string>();
     const registry = join(kitDir, "registry", base);
-    if (pins.size === 0 || !existsSync(registry)) return { needs, pins };
+    if (pins.size === 0 || !existsSync(registry)) return { needs, pins, overrides };
     for (const file of kitFilesUsed(sourceDir, registry)) {
       for (const name of await scanFileImports(file)) {
         const pin = pins.get(name);
@@ -899,7 +913,7 @@ export function createDependencies(options: DependenciesOptions): Dependencies {
         if (pin !== undefined) needs.set(name, pin);
       }
     }
-    return { needs, pins };
+    return { needs, pins, overrides };
   };
 
   return {
@@ -927,6 +941,9 @@ export function createDependencies(options: DependenciesOptions): Dependencies {
         ].sort();
         const pinned = working?.lock.packages ?? {};
         const missing = needed.filter((name) => pinned[name] === undefined);
+        // An artifact using a kit module's on-demand libraries installs them with the kit's
+        // overrides (WP-19); any other keeps none.
+        const overrides = kitNeeds.needs.size > 0 ? kitNeeds.overrides : {};
         if (missing.length > 0 && options.policy() === "explicit") {
           const first = missing[0] as string;
           const site = imports.get(first);
@@ -951,7 +968,8 @@ export function createDependencies(options: DependenciesOptions): Dependencies {
           missing.length === 0 &&
           working?.lock.pnpm !== undefined &&
           sameRecord(pins, pinned) &&
-          sameRecord(working.lock.warm, warm.packages)
+          sameRecord(working.lock.warm, warm.packages) &&
+          sameRecord(overridesOf(working.lock.pnpm), overrides)
         ) {
           // Exactly the working lockfile: nothing to resolve, and it works offline.
           lock = working.lock;
@@ -968,6 +986,7 @@ export function createDependencies(options: DependenciesOptions): Dependencies {
               return (pin !== undefined ? parseSpec(`${name}@${pin}`) : undefined) ?? { name };
             }),
             previous: working?.lock.pnpm,
+            overrides,
           });
         }
         // Plugins and acknowledgments (WP-16) are carried as they are; a lockfile that names
@@ -1234,6 +1253,8 @@ export function createDependencies(options: DependenciesOptions): Dependencies {
               pins,
               additions,
               previous: working?.lock.pnpm,
+              // A change keeps the overrides the working lockfile was resolved with (the kit's).
+              overrides: overridesOf(working?.lock.pnpm),
             });
     lock = withExtras(lock, working?.lock);
     const resolved = await settle(lock, target, scripts);

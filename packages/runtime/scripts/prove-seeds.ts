@@ -701,6 +701,14 @@ const SEEDS: readonly Seed[] = [
     check: integration("plugins.test.ts", "a theme a plugin carries"),
   },
   {
+    requirement: "KT-01",
+    name: "a whiteboard's Excalidraw installs without the kit's overrides, lodash-es 4.17.21 with it",
+    file: "src/deps/index.ts",
+    from: "        const overrides = kitNeeds.needs.size > 0 ? kitNeeds.overrides : {};",
+    to: "        const overrides = kitNeeds.needs.size > 0 ? {} : kitNeeds.overrides;",
+    check: integration("kit-libraries.test.ts", "Excalidraw"),
+  },
+  {
     requirement: "EX-03",
     name: "#219: a base-nova item is placed as shadcn's registry serves it, placeholders and markers kept",
     file: "src/packs/packs.ts",
