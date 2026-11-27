@@ -54,8 +54,9 @@ const BUDGET = {
  * - Chromium on macOS: GitHub's macOS runners have no GPU, so the still control itself drops 37 to
  *   40% of its frames, and the live page's rate against the paint control's ran from 0.65 to 1.01
  *   across runs, while Chromium on Linux and Windows keeps the paint control's 60 frames.
- * There the page keeps the source's rate and at least half the paint control's frames and draws;
- * the long frames are reported, not asserted.
+ * There the page keeps the source's rate and at least half the frames and draws of the fewer of the
+ * two controls (on macOS Chromium the still page itself kept 22.7 frames a second against the paint
+ * control's 37.9 in one run); the long frames are reported, not asserted.
  */
 const SOFTWARE = { frames: 0.5, drawsPerFrame: 0.5 } as const;
 /**
@@ -139,13 +140,21 @@ async function open(page: Page, url: string): Promise<number> {
 
 const round = (value: number): number => Math.round(value * 100) / 100;
 
-/** Whether a live measurement meets the frame budgets against the paint control. */
-function within(live: Measure, paint: Measure, engine: string): boolean {
+/**
+ * The frames a page gets at all on a machine that draws in software: the fewer of the two controls'
+ * (the still page dropped 40% of its frames on macOS Chromium, below the paint control).
+ */
+const softwareBase = (still: Measure, paint: Measure): number =>
+  Math.min(still.frames, paint.frames);
+
+/** Whether a live measurement meets the frame budgets against the controls. */
+function within(live: Measure, paint: Measure, still: Measure, engine: string): boolean {
   if (softwareEngine(engine)) {
+    const base = softwareBase(still, paint);
     return (
       live.pointsPerSecond >= RATE * BUDGET.rate &&
-      live.frames >= paint.frames * SOFTWARE.frames &&
-      live.draws >= Math.min(RATE, paint.frames) * SOFTWARE.drawsPerFrame
+      live.frames >= base * SOFTWARE.frames &&
+      live.draws >= Math.min(RATE, base) * SOFTWARE.drawsPerFrame
     );
   }
   return (
@@ -188,7 +197,7 @@ test.describe("high-rate live data stays smooth (AC-08)", () => {
       // Chromium dropped 40% of its frames in one run) can sink one measurement: a second is taken
       // when the first misses the budget, and the better of the two counts, both reported.
       const first = await measure(page, SECONDS * 1000);
-      const second = within(first, paint, info.project.name)
+      const second = within(first, paint, baseline, info.project.name)
         ? undefined
         : await measure(page, SECONDS * 1000);
       const result = second !== undefined && second.frames > first.frames ? second : first;
@@ -225,16 +234,18 @@ test.describe("high-rate live data stays smooth (AC-08)", () => {
       if (softwareEngine(info.project.name)) {
         info.annotations.push({
           type: "AC-08 software raster",
-          description: "half the paint control's frames and draws; long frames reported",
+          description:
+            "half the frames and draws of the fewer of the controls; long frames reported",
         });
+        const base = softwareBase(baseline, paint);
         expect(
           result.frames,
-          "frames in an engine CI draws in software, against the paint control's",
-        ).toBeGreaterThanOrEqual(paint.frames * SOFTWARE.frames);
+          "frames in an engine CI draws in software, against the fewer of the controls'",
+        ).toBeGreaterThanOrEqual(base * SOFTWARE.frames);
         expect(
           result.draws,
-          "new points shown in an engine CI draws in software, against the paint control's frames",
-        ).toBeGreaterThanOrEqual(Math.min(RATE, paint.frames) * SOFTWARE.drawsPerFrame);
+          "new points shown in an engine CI draws in software, against the fewer of the controls' frames",
+        ).toBeGreaterThanOrEqual(Math.min(RATE, base) * SOFTWARE.drawsPerFrame);
         return;
       }
       expect(
