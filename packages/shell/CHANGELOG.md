@@ -1,5 +1,13 @@
 # @mostra/shell
 
+## 0.21.0
+
+### Patch Changes
+
+- Updated dependencies [[`b6384f2`](https://github.com/mostra-dev/mostra/commit/b6384f2a200c1c552a2f94e79466a0899580db50)]:
+  - @mostra/protocol@0.21.0
+  - @mostra/themes@0.21.0
+
 ## 0.20.0
 
 ### Minor Changes
