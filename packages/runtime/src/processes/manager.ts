@@ -74,6 +74,8 @@ export interface SpawnSpec {
    * The two exclude each other.
    */
   readonly channel?: true;
+  /** Windows: `args` is the rest of the command line as it stands (`ProgramCommand.verbatim`). */
+  readonly verbatim?: true;
 }
 
 /** A running child. */
@@ -241,6 +243,7 @@ function createManager({
         cwd: spec.cwd,
         env: spec.env ?? process.env,
         extra: spec.ipc ? "ipc" : spec.channel ? "channel" : undefined,
+        verbatim: spec.verbatim === true,
       },
       warn,
     );

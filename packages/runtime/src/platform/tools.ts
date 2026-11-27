@@ -5,7 +5,7 @@
  * environment variable names one outright. How to install each is said here too, per system.
  */
 import { accessSync, constants, statSync } from "node:fs";
-import { delimiter, join } from "node:path";
+import { delimiter, join, resolve as resolvePath } from "node:path";
 import { OS, WINDOWS } from "./directories.ts";
 
 /** A tunnel tool. */
@@ -148,6 +148,25 @@ export function installHint(tool: TunnelTool): string {
 export interface ProgramCommand {
   readonly command: string;
   readonly args: readonly string[];
+  /**
+   * On Windows: `args` is one argument, the rest of `cmd.exe`'s command line as it stands, which
+   * the gate passes unquoted (`mostra-win gate --verbatim`).
+   */
+  readonly verbatim?: true;
+}
+
+/** What `cmd.exe` reads as special in a command line, escaped with `^` (as cross-spawn does). */
+const CMD_META = /([()\][%!^"`<>&|;, *?])/g;
+
+/**
+ * One argument of a `cmd.exe /s /c "…"` line: quoted as the C runtime reads it, then every
+ * character `cmd.exe` treats as special escaped, twice for npm's `node_modules\.bin` shims, which
+ * hand their arguments through a second `cmd.exe`.
+ */
+function cmdArgument(argument: string, twice: boolean): string {
+  let quoted = argument.replace(/(\\*)"/g, '$1$1\\"').replace(/(\\*)$/, "$1$1");
+  quoted = `"${quoted}"`.replace(CMD_META, "^$1");
+  return twice ? quoted.replace(CMD_META, "^$1") : quoted;
 }
 
 /**
@@ -160,6 +179,7 @@ export interface ProgramCommand {
 export function programCommand(
   line: readonly string[],
   env: Readonly<Record<string, string | undefined>>,
+  cwd?: string,
 ): ProgramCommand | undefined {
   const [program, ...args] = line;
   if (program === undefined) return undefined;
@@ -177,7 +197,9 @@ export function programCommand(
   const hasExtension = /\.[^\\/.]+$/.test(program);
   let found: string | undefined;
   for (const dir of dirs) {
-    const base = dir === "" ? program : join(dir, program);
+    // A path the line names (`node_modules\.bin\vite.cmd`) is the project's, read from the
+    // folder the command runs in, as a shell there reads it (review of WP-24, finding 9).
+    const base = dir === "" ? resolvePath(cwd ?? process.cwd(), program) : join(dir, program);
     const candidates = hasExtension
       ? [base, ...extensions.map((extension) => base + extension)]
       : extensions.map((extension) => base + extension);
@@ -186,10 +208,13 @@ export function programCommand(
   }
   if (found === undefined) return undefined;
   if (/\.(cmd|bat)$/i.test(found)) {
-    // Each word stays its own argument, which the gate quotes as the C runtime reads them; without
-    // `/s`, `cmd.exe` keeps the quotes of a script path that holds a space.
+    // `cmd.exe` reads its own quoting, not the C runtime's: the line is one string it takes as it
+    // stands after `/s /c`, each word escaped for it, so a path or an argument with a space or a
+    // `&` reaches the script whole (review of WP-24, finding 9; cross-spawn's rules).
     const comspec = value("COMSPEC") ?? "C:\\Windows\\System32\\cmd.exe";
-    return { command: comspec, args: ["/d", "/c", found, ...args] };
+    const shim = /node_modules[\\/]\.bin[\\/][^\\/]+\.cmd$/i.test(found);
+    const words = [found.replace(CMD_META, "^$1"), ...args.map((arg) => cmdArgument(arg, shim))];
+    return { command: comspec, args: [`/d /s /c "${words.join(" ")}"`], verbatim: true };
   }
   return { command: found, args };
 }
