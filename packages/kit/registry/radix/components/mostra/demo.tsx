@@ -56,9 +56,15 @@ export interface WebDemoProps extends Omit<React.ComponentProps<"figure">, "onMe
   readonly height?: number;
   /** The frame's accessible name. Default the demo's name. */
   readonly title?: string;
-  /** Values the demo receives on load and on every change, as `{ "mostra/demo.values": values }`. */
+  /**
+   * Values the demo receives on load and on every change, as `{ "mostra/demo.values": values }`;
+   * the message carries the demo's own channel to its page as `event.ports[0]`.
+   */
   readonly values?: unknown;
-  /** What the demo posts to its parent window. */
+  /**
+   * What the demo sends its page: on the channel its first message carries (`event.ports[0]`),
+   * or with `parent.postMessage`.
+   */
   readonly onMessage?: (data: unknown) => void;
 }
 
@@ -113,21 +119,55 @@ export function WebDemo({
   const box = React.useRef<HTMLDivElement>(null);
   const width = useWidth(box);
   const frame = React.useRef<HTMLIFrameElement>(null);
+  // The demo's own origin (the page's live; opaque from disk or inside one file, a `file:` or
+  // `blob:` address, where no origin can be named and browsers spell it `null` or `file://`):
+  // values go there only, and only its messages count, so a frame that followed a link to another
+  // site neither receives the page's values nor speaks for the demo.
+  const address = handle.src !== undefined ? new URL(handle.src, window.location.href) : undefined;
+  const opaque = address !== undefined && !/^https?:$/.test(address.protocol);
+  const origin = address === undefined ? "" : opaque ? "null" : address.origin;
+  const target = origin === "null" ? "*" : origin;
+  // The latest `onMessage`, for the demo's channel, which lives as long as the frame's document.
+  const listening = React.useRef(onMessage);
+  React.useEffect(() => {
+    listening.current = onMessage;
+  });
+  const channel = React.useRef<MessageChannel | undefined>(undefined);
+  React.useEffect(() => () => channel.current?.port1.close(), []);
 
   const post = React.useCallback(() => {
-    if (values === undefined) return;
-    frame.current?.contentWindow?.postMessage({ "mostra/demo.values": values }, "*");
-  }, [values]);
+    if (values === undefined || origin === "") return;
+    frame.current?.contentWindow?.postMessage({ "mostra/demo.values": values }, target);
+  }, [values, origin, target]);
   React.useEffect(post, [post]);
+  /**
+   * Each document the frame loads gets a channel of its own to this page, sent with a first
+   * values message (`event.ports[0]`): what arrives on it is the demo's in every browser. Safari
+   * reports a same-origin module script's `parent.postMessage` as the page's own message, never
+   * the frame's (WebKit, observed 2026-11-27), so a page can't tell such a message's sender.
+   */
+  const connect = React.useCallback(() => {
+    const window_ = frame.current?.contentWindow;
+    if (!window_ || origin === "") return;
+    channel.current?.port1.close();
+    const opened = new MessageChannel();
+    channel.current = opened;
+    opened.port1.onmessage = (event: MessageEvent) => listening.current?.(event.data);
+    window_.postMessage({ "mostra/demo.values": values ?? null }, target, [opened.port2]);
+  }, [values, origin, target]);
   React.useEffect(() => {
     if (!onMessage) return;
     const listener = (event: MessageEvent): void => {
-      if (event.source !== frame.current?.contentWindow) return;
+      const from =
+        origin === "null"
+          ? event.origin === "null" || event.origin === "file://"
+          : event.origin === origin;
+      if (event.source !== frame.current?.contentWindow || !from) return;
       onMessage(event.data);
     };
     window.addEventListener("message", listener);
     return () => window.removeEventListener("message", listener);
-  }, [onMessage]);
+  }, [onMessage, origin]);
 
   const spec = current === "none" ? undefined : DEMO_DEVICES[current];
   const bezel = spec ? BEZEL[spec.frame] : 0;
@@ -170,7 +210,7 @@ export function WebDemo({
         src={handle.src}
         onLoad={() => {
           handle.loaded();
-          post();
+          connect();
         }}
         className="block border-0 bg-white"
         style={

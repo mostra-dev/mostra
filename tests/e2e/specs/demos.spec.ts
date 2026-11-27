@@ -140,6 +140,7 @@ async function exportAs(
 test.describe("web demos built into the version (TM-08)", () => {
   test("a Vite and a Next.js demo are fully interactive, move between pages, and open from a deep link", async ({
     page,
+    browserName,
   }, info) => {
     test.setTimeout(300_000);
     const client = await Client.connect(run.socket);
@@ -161,6 +162,17 @@ test.describe("web demos built into the version (TM-08)", () => {
       await expect(hash.locator("#title")).toHaveText("Inventory", { timeout: 30_000 });
       await hash.locator("#item-1").click();
       await expect(hash.locator("#title")).toHaveText("Walnut desk");
+      // The page's values reach the demo, and what the demo tells its page reaches `onMessage`,
+      // each from the other's own origin only (review of WP-24, finding 14).
+      await expect(hash.locator("#greeting")).toHaveText("Hello from the page");
+      await hash.locator("#tell").click();
+      await expect(frame.getByTestId("heard")).toHaveText("walnut");
+      // `parent.postMessage` reaches it too where the browser names the frame as its sender;
+      // Safari names the page itself for a same-origin module script, so there it is the channel.
+      if (browserName !== "webkit") {
+        await hash.locator("#tell-parent").click();
+        await expect(frame.getByTestId("heard")).toHaveText("oak");
+      }
     } finally {
       client.close();
     }
@@ -287,6 +299,10 @@ test.describe("exports carry the page and its demos (VR-07)", () => {
         await expect(hash.locator("#title")).toHaveText("Inventory", { timeout: 15_000 });
         await hash.locator("#item-2").click();
         await expect(hash.locator("#title")).toHaveText("Linen lamp");
+        // From disk too, where neither side's origin can be named.
+        await expect(hash.locator("#greeting")).toHaveText("Hello from the page");
+        await hash.locator("#tell").click();
+        await expect(page.getByTestId("heard")).toHaveText("walnut");
         if (entry.endsWith(".html") && !entry.endsWith("index.html")) {
           // The single file names the demo it couldn't carry, in the page's own words.
           await expect(page.locator('[data-testid="next"]')).toContainText("single file");

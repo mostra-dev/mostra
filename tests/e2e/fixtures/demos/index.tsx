@@ -1,5 +1,6 @@
 import { WebDemo } from "@mostra/kit/demo";
 import { defineArtifact } from "@mostra/react";
+import { useState } from "react";
 
 /**
  * Three demos built from their source into the version (D185): a Vite app and a Next.js static
@@ -20,6 +21,7 @@ export const artifact = defineArtifact({
 });
 
 export default function Page() {
+  const [heard, setHeard] = useState("nothing yet");
   return (
     <main className="space-y-8 p-6">
       <h1 className="text-2xl">The demos</h1>
@@ -30,7 +32,18 @@ export default function Page() {
         <WebDemo demo="next" device="laptop" devices={false} title="Next.js demo" />
       </section>
       <section data-testid="hash">
-        <WebDemo demo="hash" device="laptop" devices={false} title="Hash demo" />
+        <WebDemo
+          demo="hash"
+          device="laptop"
+          devices={false}
+          title="Hash demo"
+          values={{ greeting: "Hello from the page" }}
+          onMessage={(data) => {
+            const told = (data as { "demo/told"?: string } | null)?.["demo/told"];
+            if (told !== undefined) setHeard(told);
+          }}
+        />
+        <p data-testid="heard">{heard}</p>
       </section>
     </main>
   );

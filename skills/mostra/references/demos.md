@@ -25,7 +25,7 @@ export default function Page() {
 - `source` is the project's folder, relative to the artifact; `build` runs there; `output` is the folder the build writes, relative to `source`.
 - Build for the path Mostra serves the demo at, which the build reads from `MOSTRA_DEMO_BASE` (`/_mostra/demos/shop/`): Vite's `base: process.env.MOSTRA_DEMO_BASE`, Next.js's `basePath` (without the last `/`, with `output: "export"`), a router's `basename`.
 - `env` adds settings the build reads (never secrets: a demo holds none); `routing: "hash"` says the demo moves between its pages by the address's fragment; `bridge: false` leaves Mostra's review agent out of its pages; `timeout` (`"10m"` by default, `"60m"` at most) bounds the build.
-- `<WebDemo>` takes `demo`, `path` (the page it opens at), `device` (`iphone-15`, `pixel-8`, `ipad`, `laptop`, `desktop` or `none`), `devices` (the switcher's choices, `false` for none), `values` (sent to the demo with `postMessage`) and `onMessage` (what the demo posts back).
+- `<WebDemo>` takes `demo`, `path` (the page it opens at), `device` (`iphone-15`, `pixel-8`, `ipad`, `laptop`, `desktop` or `none`), `devices` (the switcher's choices, `false` for none), `values` (sent to the demo with `postMessage` as `{ "mostra/demo.values": values }`, the first with the demo's channel to the page as `event.ports[0]`) and `onMessage` (what the demo sends on that channel; Safari doesn't say which frame a `parent.postMessage` came from, so answer on the channel).
 
 To frame a demo your own way, `useDemo(name, { path })` from `@mostra/react` gives what `<WebDemo>` uses: its `status` (`ready`, `unknown`, `folder-only` in one HTML file that couldn't hold it, `unavailable` inline in a chat app), its `src` and how it routes.
 
