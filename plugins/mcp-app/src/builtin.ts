@@ -109,28 +109,45 @@ async function rewriteStylesheet(
   };
 }
 
-/** The module entry and stylesheets a built document loads, and the document without them. */
+/** Whether a URL is another site's: absolute (`https:`) or scheme-relative (`//`). */
+function elsewhere(url: string): boolean {
+  return /^(?:[a-z][a-z0-9+.-]*:|\/\/)/i.test(url);
+}
+
+/**
+ * The module entry and stylesheets a built document loads, and the document without them. Only
+ * the build's own files are taken out, since the export carries them inline; a stylesheet of
+ * another site stays as it is, and loads when the page is opened with a network (review of WP-24,
+ * finding 8), named in `external` for the report.
+ */
 function splitDocument(html: string): {
   readonly entry: string | undefined;
   readonly stylesheets: readonly string[];
+  readonly external: readonly string[];
   readonly rest: string;
 } {
   const entry = /<script\b[^>]*\btype="module"[^>]*\bsrc="([^"]+)"[^>]*><\/script>/i.exec(
     html,
   )?.[1];
-  const stylesheets = [
+  const linked = [
     ...html.matchAll(/<link\b[^>]*\brel="stylesheet"[^>]*\bhref="([^"]+)"[^>]*>/gi),
   ].map((match) => match[1] as string);
+  const stylesheets = linked.filter((href) => !elsewhere(href));
+  const external = linked.filter(elsewhere);
+  const own = (tag: string): string => {
+    const href = /\b(?:href|src)="([^"]+)"/i.exec(tag)?.[1] ?? "";
+    return elsewhere(href) ? tag : "";
+  };
   // The tags go until none is left: a removal that joins two halves into a new tag removes that
   // one too, so the document never loads a file the export inlined.
   let rest = html;
   for (let before = ""; before !== rest; ) {
     before = rest;
     rest = rest
-      .replace(/<script\b[^>]*\btype="module"[^>]*\bsrc="[^"]+"[^>]*><\/script>\s*/gi, "")
-      .replace(/<link\b[^>]*\brel="(?:stylesheet|modulepreload)"[^>]*>\s*/gi, "");
+      .replace(/<script\b[^>]*\btype="module"[^>]*\bsrc="[^"]+"[^>]*><\/script>\s*/gi, own)
+      .replace(/<link\b[^>]*\brel="(?:stylesheet|modulepreload)"[^>]*>\s*/gi, own);
   }
-  return { entry, stylesheets, rest };
+  return { entry, stylesheets, external, rest };
 }
 
 /** `html` with `head` written right after its `<head>`, and `body` right before its `</body>`. */
@@ -259,7 +276,8 @@ async function demoDocument(
   const html = text(await files.read(page));
   // A classic script of the build is one Mostra can't join into a module.
   if (/<script\b(?![^>]*\btype="module")[^>]*\bsrc="(?!https?:)/i.test(html)) return undefined;
-  const { entry, stylesheets, rest } = splitDocument(html);
+  const { entry, stylesheets, external: linked, rest } = splitDocument(html);
+  for (const sheet of linked) external.add(sheet);
   if (
     entry === undefined ||
     !files.paths.has(new URL(entry, `http://demo.invalid${base}`).pathname)
@@ -313,13 +331,15 @@ async function relativeDemo(
       continue;
     }
     const depth = path.split("/").length - 1;
-    // HTML and CSS resolve from where they are; scripts from the document they run in.
-    const up = extension === ".html" || extension === ".htm" || extension === ".css" ? depth : 0;
-    const prefix = up > 0 ? "../".repeat(up) : "./";
+    const html = extension === ".html" || extension === ".htm";
+    // A stylesheet's URLs resolve from where it is. Everything else (a document, a script, the
+    // data files a script fetches) resolves from the document it runs in, so every document is
+    // made to resolve from the demo's root: one below it says so with `<base>` (review of WP-24,
+    // finding 15), and the demo's root needs none.
+    const prefix = extension === ".css" && depth > 0 ? "../".repeat(depth) : "./";
     let content = text(bytes).replaceAll(base, prefix);
-    if ((extension === ".html" || extension === ".htm") && routing === "history") {
-      content = insert(content, historyGuard(), "");
-    }
+    if (html && depth > 0) content = insert(content, `<base href="${"../".repeat(depth)}">`, "");
+    if (html && routing === "history") content = insert(content, historyGuard(), "");
     out.push({ path, content });
   }
   return out;
@@ -337,9 +357,9 @@ async function pageOf(
   readonly external: readonly string[];
 }> {
   const built = text(await client.read("/index.html"));
-  const { entry, stylesheets, rest } = splitDocument(built);
+  const { entry, stylesheets, external: linked, rest } = splitDocument(built);
   if (entry === undefined) throw new Error("the build's index.html names no module script");
-  const external = new Set<string>();
+  const external = new Set<string>(linked);
   const css: string[] = [];
   const sheets = [
     ...stylesheets,

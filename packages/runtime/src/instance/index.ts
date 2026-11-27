@@ -1149,19 +1149,24 @@ async function assemble(home: OwnedHome, options: StartInstanceOptions): Promise
         registry,
         publisher: getPublisher,
         // The page's front end as files (D185 items 7, 8), made in a plugin child.
-        exportFront: (params) =>
-          createExports({
-            home: home.path,
-            ledger: home.ledger,
-            log,
-            env: environment,
-            runtimeVersion: runtimeVersion(),
-            exportable: (ref) => getPublisher().exportable(ref),
-            sourceOf: (artifactId) => registry.sourceOf(artifactId),
-            localViewer: () => interaction.viewerOf(undefined),
-            liveValues: (artifactId) => live.stored(artifactId),
-            demos: getDemos(),
-          }).run(params),
+        // The whole export holds the instance's gate shared, as a bundle's does (D140 item 14):
+        // gc never collects the version or empties its scratch view under it (review of WP-24,
+        // finding 6).
+        exportFront: (params, signal) =>
+          getPublisher().withHome(() =>
+            createExports({
+              home: home.path,
+              ledger: home.ledger,
+              log,
+              env: environment,
+              runtimeVersion: runtimeVersion(),
+              exportable: (ref) => getPublisher().exportable(ref),
+              sourceOf: (artifactId) => registry.sourceOf(artifactId),
+              localViewer: () => interaction.viewerOf(undefined),
+              liveValues: (artifactId) => live.stored(artifactId),
+              demos: getDemos(),
+            }).run(params, signal),
+          ),
         link: (artifactId) => gateway.defaultLink(artifactId),
         // Any publish clears the artifact's park, a reused version too (FAILURE_MODEL §2): its
         // calls and its live producers both start again.

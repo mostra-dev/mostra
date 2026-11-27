@@ -7,11 +7,23 @@
  * nothing; a snapshot's report says whose answers it holds and how many people the shared state
  * covers, and leaves the shared state out when asked.
  */
-import { existsSync, mkdirSync, readdirSync, readFileSync, writeFileSync } from "node:fs";
+import {
+  existsSync,
+  mkdirSync,
+  readdirSync,
+  readFileSync,
+  symlinkSync,
+  writeFileSync,
+} from "node:fs";
 import { join } from "node:path";
+import { MutationId } from "@mostra/protocol";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
+import { Browser, openLink } from "../browser-client.ts";
 import { GatewayHome, ok, type Receipt, refused } from "../gateway-home.ts";
-import { tempDir } from "../support.ts";
+import { connectTo, initializeParams, tempDir } from "../support.ts";
+
+/** The browser protocol's revision the suites speak. */
+const REVISION = "2026-10-15";
 
 interface Diagnostic {
   readonly code: string;
@@ -23,7 +35,12 @@ interface Verdict {
 }
 
 /** An artifact whose one demo builds with `build` (a Node.js script given as its argument). */
-function demoArtifact(name: string, script: string, output = "dist"): string {
+function demoArtifact(
+  name: string,
+  script: string,
+  output = "dist",
+  build: readonly string[] = ["node", "build.mjs"],
+): string {
   const dir = join(tempDir(`demos-${name}`), name);
   mkdirSync(join(dir, "app"), { recursive: true });
   writeFileSync(join(dir, "app", "build.mjs"), script);
@@ -32,7 +49,7 @@ function demoArtifact(name: string, script: string, output = "dist"): string {
     `import { defineArtifact } from "@mostra/react";
 export const artifact = defineArtifact({
   title: "Demo ${name}",
-  demos: { app: { source: "./app", build: ["node", "build.mjs"], output: ${JSON.stringify(output)} } },
+  demos: { app: { source: "./app", build: ${JSON.stringify(build)}, output: ${JSON.stringify(output)} } },
 });
 export default function Page() {
   return <main><h1>Demo ${name}</h1></main>;
@@ -41,6 +58,17 @@ export default function Page() {
   );
   return dir;
 }
+
+/** A build that writes its output from the files it reads: `<p>` holds each named file's text. */
+function readingBuild(...files: string[]): string {
+  return `import { mkdirSync, readFileSync, writeFileSync } from "node:fs";
+mkdirSync("dist", { recursive: true });
+const text = ${JSON.stringify(files)}.map((file) => readFileSync(file, "utf8").trim()).join("|");
+writeFileSync("dist/index.html", "<!doctype html><p>" + text + "</p>");
+`;
+}
+
+type Built = { demos: { name: string; status: string; diagnostics: Diagnostic[] }[] };
 
 /** Every file under `dir` (or `dir` itself, when it is one file), with its text. */
 function textsUnder(dir: string): { path: string; text: string }[] {
@@ -182,6 +210,255 @@ writeFileSync("dist/index.html", "<!doctype html><p>" + readFileSync("round.txt"
         .sort(),
     ).toEqual(["2", "3", "4"]);
   }, 300_000);
+
+  it("keeps a build a version just took over an older one never used since (review finding 2)", async () => {
+    const dir = demoArtifact("used", readingBuild("round.txt"));
+    const build = async (round: string): Promise<string | undefined> => {
+      writeFileSync(join(dir, "app", "round.txt"), round);
+      const built = ok<Built>(
+        await gateway.client.call("demo/build", { source: { path: dir } }, 240_000),
+      );
+      return built.demos[0]?.status;
+    };
+    for (const round of ["1", "2", "3"]) expect(await build(round)).toBe("built");
+    // Round 1 again: found in the cache and taken, as a publish copies it into its version.
+    expect(await build("1")).toBe("cached");
+    expect(await build("4")).toBe("built");
+    // The build taken last is kept; the one nothing took since round 2 is the one removed.
+    expect(await build("1")).toBe("cached");
+    expect(await build("2")).toBe("built");
+  }, 300_000);
+
+  it("a source changed while its demo builds is never kept under the digest it had (review finding 3)", async () => {
+    const dir = demoArtifact(
+      "edited",
+      `import { mkdirSync, writeFileSync } from "node:fs";
+mkdirSync("dist", { recursive: true });
+writeFileSync("dist/index.html", "<!doctype html><p>built</p>");
+// An edit of the source that lands while the build runs.
+writeFileSync("src.txt", String(Date.now()));
+`,
+    );
+    const built = ok<Built>(
+      await gateway.client.call("demo/build", { source: { path: dir } }, 240_000),
+    );
+    expect(built.demos[0]?.status).toBe("failed");
+    expect(built.demos[0]?.diagnostics[0]?.message).toContain("changed while it was being built");
+  }, 300_000);
+
+  it("a file a demo reads through a link counts, and so does a .env its .gitignore names (review findings 4, 12)", async () => {
+    const dir = demoArtifact("linked", readingBuild("shared/item.txt", ".env"));
+    const shared = join(dir, "shared-outside");
+    mkdirSync(shared, { recursive: true });
+    writeFileSync(join(shared, "item.txt"), "walnut");
+    // A junction on Windows, which needs no privilege; a symbolic link elsewhere.
+    symlinkSync(shared, join(dir, "app", "shared"), "junction");
+    writeFileSync(join(dir, "app", ".gitignore"), ".env\n");
+    writeFileSync(join(dir, "app", ".env"), "VITE_TITLE=one");
+    const status = async (): Promise<string | undefined> =>
+      ok<Built>(await gateway.client.call("demo/build", { source: { path: dir } }, 240_000))
+        .demos[0]?.status;
+    expect(await status()).toBe("built");
+    expect(await status()).toBe("cached");
+    writeFileSync(join(shared, "item.txt"), "oak");
+    expect(await status()).toBe("built");
+    writeFileSync(join(dir, "app", ".env"), "VITE_TITLE=two");
+    expect(await status()).toBe("built");
+  }, 300_000);
+
+  it("an output that is the source folder itself is refused, and nothing of the folder is kept (review finding 1)", async () => {
+    for (const output of [".", "./"]) {
+      const dir = demoArtifact(
+        `whole${output.length}`,
+        `import { writeFileSync } from "node:fs";
+writeFileSync("index.html", "<!doctype html><p>the project</p>");
+`,
+        output,
+      );
+      writeFileSync(join(dir, "app", ".env"), "API_KEY=whole-folder-secret");
+      const verdict = await verify(dir);
+      expect(verdict.status).toBe("fail");
+      expect(verdict.diagnostics.map((one) => one.code)).toContain("MOSTRA_MANIFEST_INVALID");
+    }
+  }, 300_000);
+
+  it("a client that goes away ends the demo build it asked for, and frees its folder (review finding 10)", async () => {
+    const dir = demoArtifact(
+      "cancelled",
+      `import { existsSync, mkdirSync, writeFileSync } from "node:fs";
+if (existsSync("started.txt")) {
+  mkdirSync("dist", { recursive: true });
+  writeFileSync("dist/index.html", "<!doctype html><p>built</p>");
+} else {
+  writeFileSync("started.txt", String(process.pid));
+  setTimeout(() => undefined, 600_000);
+}
+`,
+    );
+    // A client of its own, as `mostra demo build` is, which goes away (Ctrl-C) mid-build.
+    const client = await connectTo(gateway.daemon.status.socket as string);
+    ok(await client.call("mostra/initialize", initializeParams()));
+    void client.call("demo/build", { source: { path: dir } }, 240_000).catch(() => undefined);
+    const started = join(dir, "app", "started.txt");
+    for (let waited = 0; !existsSync(started); waited += 100) {
+      if (waited > 60_000) throw new Error("the build never started");
+      await new Promise((resolve) => setTimeout(resolve, 100));
+    }
+    const pid = Number(readFileSync(started, "utf8"));
+    client.close();
+    const alive = (): boolean => {
+      try {
+        process.kill(pid, 0);
+        return true;
+      } catch {
+        return false;
+      }
+    };
+    for (let waited = 0; alive(); waited += 100) {
+      if (waited > 20_000) throw new Error(`the build ${pid} still runs after its client left`);
+      await new Promise((resolve) => setTimeout(resolve, 100));
+    }
+    // The folder is free again: the next build runs at once.
+    const again = ok<Built>(
+      await gateway.client.call("demo/build", { source: { path: dir } }, 60_000),
+    );
+    expect(again.demos[0]?.status).toBe("built");
+  }, 300_000);
+
+  it("an export names --base to its page only when its demos were built for it (review finding 7)", async () => {
+    const dir = demoArtifact(
+      "based",
+      `import { mkdirSync, readFileSync, writeFileSync } from "node:fs";
+const base = process.env.MOSTRA_DEMO_BASE;
+mkdirSync("dist", { recursive: true });
+writeFileSync("dist/app.js", "document.title = " + JSON.stringify(readFileSync("round.txt", "utf8")) + ";");
+writeFileSync("dist/index.html", '<!doctype html><script src="' + base + 'app.js"></script>');
+`,
+    );
+    writeFileSync(join(dir, "app", "round.txt"), "1");
+    const receipt = ok<Receipt>(
+      await gateway.client.call("artifact/publish", { source: { path: dir } }, 240_000),
+    );
+    const out = tempDir("based-exports", true);
+    const facts = (path: string): { base?: string } =>
+      JSON.parse(
+        /<script type="application\/json" id="mostra-export">(.*?)<\/script>/s.exec(
+          readFileSync(join(path, "index.html"), "utf8"),
+        )?.[1] ?? "{}",
+      ) as { base?: string };
+    const exported = async (name: string) =>
+      ok<{ warnings?: Diagnostic[] }>(
+        await gateway.client.call(
+          "artifact/export",
+          {
+            artifact: { artifactId: receipt.artifactId },
+            as: "static",
+            out: join(out, name),
+            base: "/sub/",
+          },
+          240_000,
+        ),
+      );
+    // Its source as published: built again for /sub/, and the page is told so.
+    const rebuilt = await exported("rebuilt");
+    expect((rebuilt.warnings ?? []).map((one) => one.code)).not.toContain(
+      "MOSTRA_DEMO_NOT_REBUILT",
+    );
+    expect(facts(join(out, "rebuilt")).base).toBe("/sub/");
+    expect(
+      readFileSync(join(out, "rebuilt", "_mostra", "demos", "app", "index.html"), "utf8"),
+    ).toContain("/sub/_mostra/demos/app/app.js");
+    // Its source changed since: carried as built, for a host's root, and the page isn't told /sub/.
+    writeFileSync(join(dir, "app", "round.txt"), "2");
+    const carried = await exported("carried");
+    expect((carried.warnings ?? []).map((one) => one.code)).toContain("MOSTRA_DEMO_NOT_REBUILT");
+    expect(facts(join(out, "carried")).base).toBeUndefined();
+  }, 300_000);
+
+  it("gc waits for an export under way, which holds the instance's gate as a bundle's does (review finding 6)", async () => {
+    const dir = demoArtifact(
+      "gated",
+      `import { mkdirSync, writeFileSync } from "node:fs";
+const base = process.env.MOSTRA_DEMO_BASE;
+mkdirSync("dist", { recursive: true });
+writeFileSync("dist/index.html", '<!doctype html><p>' + base + '</p>');
+// Rebuilt for an export's --base: slow, and says when it started, outside its own source.
+if (base.startsWith("/sub/")) {
+  writeFileSync("../export-started.txt", "yes");
+  await new Promise((resolve) => setTimeout(resolve, 3000));
+}
+`,
+    );
+    const receipt = ok<Receipt>(
+      await gateway.client.call("artifact/publish", { source: { path: dir } }, 240_000),
+    );
+    const order: string[] = [];
+    const exporting = gateway.client
+      .call(
+        "artifact/export",
+        {
+          artifact: { artifactId: receipt.artifactId },
+          as: "static",
+          out: join(tempDir("gated-export", true), "page"),
+          base: "/sub/",
+        },
+        240_000,
+      )
+      .then((answer) => {
+        order.push("export");
+        return answer;
+      });
+    for (let waited = 0; !existsSync(join(dir, "export-started.txt")); waited += 100) {
+      if (waited > 60_000) throw new Error("the export's rebuild never started");
+      await new Promise((resolve) => setTimeout(resolve, 100));
+    }
+    const collecting = gateway.client.call("gc/run", { dryRun: true }, 240_000).then((answer) => {
+      order.push("gc");
+      return answer;
+    });
+    ok(await exporting);
+    ok(await collecting);
+    expect(order).toEqual(["export", "gc"]);
+  }, 300_000);
+
+  it.runIf(process.platform === "win32")(
+    "a .cmd build the line names by its path from the demo's folder runs, its words whole (review finding 9)",
+    async () => {
+      const dir = demoArtifact(
+        "cmd script",
+        `import { mkdirSync, writeFileSync } from "node:fs";
+mkdirSync("dist", { recursive: true });
+writeFileSync("dist/index.html", "<!doctype html><p>" + JSON.stringify(process.argv.slice(2)) + "</p>");
+`,
+        "dist",
+        ["tools\\make site.cmd", "a b", "x&y", 'say "hi"'],
+      );
+      mkdirSync(join(dir, "app", "tools"), { recursive: true });
+      writeFileSync(join(dir, "app", "tools", "make site.cmd"), "@node build.mjs %*\r\n");
+      const built = ok<Built>(
+        await gateway.client.call("demo/build", { source: { path: dir } }, 240_000),
+      );
+      expect(built.demos[0]?.status, JSON.stringify(built.demos[0]?.diagnostics)).toBe("built");
+      const receipt = ok<Receipt>(
+        await gateway.client.call("artifact/publish", { source: { path: dir } }, 240_000),
+      );
+      const page = readFileSync(
+        join(
+          gateway.home.home,
+          "versions",
+          receipt.versionId,
+          "client",
+          "_mostra",
+          "demos",
+          "app",
+          "index.html",
+        ),
+        "utf8",
+      );
+      expect(page).toContain(JSON.stringify(["a b", "x&y", 'say "hi"']));
+    },
+    300_000,
+  );
 });
 
 describe("an export carries the page's front end and nothing of its server (D185 item 8)", () => {
@@ -323,5 +600,86 @@ describe("an export carries the page's front end and nothing of its server (D185
       (without.result["report"] as { snapshot: { sharedState: { included: boolean } } }).snapshot
         .sharedState.included,
     ).toBe(false);
+  }, 300_000);
+
+  it("a submission's snapshot counts the people whose answers its own frozen state holds (review finding 5)", async () => {
+    const artifactId = published.artifactId;
+    // A colleague writes the shared state through a link of their own.
+    const colleague = new Browser();
+    const theirs = await openLink(
+      colleague,
+      (await gateway.link(artifactId, { viewer: { ref: "colleague", name: "Colleague" } })).url,
+    );
+    const wrote = await colleague.fetchJson(theirs.frameOrigin, `/_mostra/v/${REVISION}/fields`, {
+      body: {
+        mutationId: MutationId.create(),
+        scope: "artifact",
+        baseRevision: "0",
+        viewId: theirs.viewId,
+        ops: [{ id: "notes.colleague", value: "Their answer" }],
+      },
+      csrf: theirs.frameCsrf,
+    });
+    expect(wrote.status, wrote.body).toBe(200);
+    // The home's own user answers and submits, freezing that state with their answer.
+    const me = new Browser();
+    const mine = await openLink(me, (await gateway.link(artifactId)).url);
+    const answered = await me.fetchJson(mine.frameOrigin, `/_mostra/v/${REVISION}/fields`, {
+      body: {
+        mutationId: MutationId.create(),
+        scope: "viewer",
+        baseRevision: "0",
+        viewId: mine.viewId,
+        ops: [{ id: "mine", value: "yes" }],
+      },
+      csrf: mine.frameCsrf,
+    });
+    expect(answered.status, answered.body).toBe(200);
+    const submitted = await me.fetchJson(
+      mine.link.shell,
+      `/a/${artifactId}/_mostra/v/${REVISION}/submit`,
+      {
+        body: {
+          viewId: mine.viewId,
+          expectedRevision: answered.json<{ revision: string }>().revision,
+        },
+        csrf: mine.shellCsrf,
+      },
+    );
+    expect(submitted.status, submitted.body).toBe(200);
+    const submission = submitted.json<{ id: string }>().id;
+    // Their field is overwritten since: the state as it is now names only the agent.
+    ok(
+      await gateway.client.call("state/patch", {
+        artifact: { artifactId },
+        ops: [{ id: "notes.colleague", value: "Replaced" }],
+        mutationId: MutationId.create(),
+        as: "agent",
+      }),
+    );
+    const { path, result } = await exportAs("snapshot", "submission-people", { submission });
+    const frozen = JSON.parse(readFileSync(join(path, "snapshot.json"), "utf8")) as {
+      state?: Record<string, unknown>;
+    };
+    expect(frozen.state?.["notes.colleague"]).toBe("Their answer");
+    const report = result["report"] as { snapshot: { sharedState: { people: number } } };
+    expect(report.snapshot.sharedState.people).toBe(1);
+    expect(((result["warnings"] ?? []) as Diagnostic[]).map((one) => one.code)).toContain(
+      "MOSTRA_TARGET_SHARED_STATE",
+    );
+    const strict = refused(
+      await gateway.client.call(
+        "artifact/export",
+        {
+          artifact: { artifactId },
+          as: "snapshot",
+          out: join(out, "submission-strict"),
+          submission,
+          strict: true,
+        },
+        240_000,
+      ),
+    );
+    expect(strict).toBe("MOSTRA_TARGET_EXPORT_STRICT");
   }, 300_000);
 });

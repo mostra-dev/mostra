@@ -334,7 +334,8 @@ export const exportCommand: CommandDef = defineCommand({
     {
       name: "strict",
       kind: "boolean",
-      summary: "Fail, writing nothing, when the export would lose anything its warnings name.",
+      summary:
+        "With --as static, html or snapshot: fail, writing nothing, when the export would lose anything its warnings name.",
     },
     {
       name: "submission",
@@ -377,7 +378,15 @@ export const exportCommand: CommandDef = defineCommand({
     if (out === undefined) throw usage('"mostra export" needs --out <path>.');
     const version = flag(context, "version");
     const as = flag(context, "as") ?? "bundle";
-    if (!BUILT_IN_CLASSES.has(as)) return exportWithPlugin(context, as, out, version);
+    const builtIn = BUILT_IN_CLASSES.has(as);
+    const front = as === "static" || as === "html" || as === "snapshot";
+    // A flag the class doesn't take is a usage error, never dropped: a CI step that relies on
+    // --strict must not pass because its exporter ignores it (review of WP-24, finding 11).
+    const options = Array.isArray(context.flags["option"]) ? context.flags["option"] : [];
+    if (builtIn && options.length > 0)
+      throw usage(`--option goes with a plugin's exporter; --as ${as} takes none.`);
+    if (context.flags["strict"] === true && !front)
+      throw usage("--strict goes with --as static, html or snapshot.");
     const base = flag(context, "base");
     if (base !== undefined && as !== "static" && as !== "snapshot")
       throw usage("--base goes with --as static or --as snapshot.");
@@ -389,6 +398,7 @@ export const exportCommand: CommandDef = defineCommand({
     const noShared = context.flags["no-shared-state"] === true;
     if ((submission !== undefined || noShared) && as !== "snapshot")
       throw usage("--submission and --no-shared-state go with --as snapshot.");
+    if (!builtIn) return exportWithPlugin(context, as, out, version);
     const result = await context.call(artifactExportMethod, {
       artifact: artifactRef(arg(context, "artifact"), context.cwd),
       as: as as "bundle" | "static" | "html" | "snapshot",

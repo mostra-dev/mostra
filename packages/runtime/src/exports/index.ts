@@ -76,7 +76,8 @@ export interface ExportsOptions {
 
 /** The built-in exports of one instance. */
 export interface Exports {
-  run(params: ArtifactExportParams): Promise<ArtifactExportResult>;
+  /** Writes an export; `signal` ends a `--base` rebuild of its demos (the client went away). */
+  run(params: ArtifactExportParams, signal?: AbortSignal): Promise<ArtifactExportResult>;
 }
 
 interface VersionManifest {
@@ -161,6 +162,44 @@ export function createExports(options: ExportsOptions): Exports {
     return people.size;
   };
 
+  /**
+   * The other people whose writes made the artifact state up to `revision`: every viewer a
+   * `state.changed` event names, the home's own user aside. Compaction removes events, so the
+   * authors the state's rows name now count too: the report may count more people, never fewer.
+   */
+  const peopleUpTo = (artifactId: string, revision: number, local: string): number => {
+    const people = new Set<string>();
+    const events = ledger.read((db) =>
+      db.all<{ actor_json: string | null; payload_json: string }>(
+        "SELECT actor_json, payload_json FROM event WHERE artifact_id = ? AND type = 'state.changed'",
+        artifactId,
+      ),
+    );
+    for (const event of events) {
+      try {
+        const actor = JSON.parse(event.actor_json ?? "{}") as { kind?: string; id?: string };
+        const payload = JSON.parse(event.payload_json) as { revision?: string };
+        if (Number(payload.revision ?? Number.NaN) > revision) continue;
+        if (actor.kind === "viewer" && actor.id !== undefined && actor.id !== local) {
+          people.add(actor.id);
+        }
+      } catch {
+        // An unreadable event names nobody.
+      }
+    }
+    for (const row of fieldsOf(artifactId, "artifact")) {
+      try {
+        const actor = JSON.parse(row.updated_by_json ?? "{}") as { kind?: string; id?: string };
+        if (actor.kind === "viewer" && actor.id !== undefined && actor.id !== local) {
+          people.add(actor.id);
+        }
+      } catch {
+        // As above.
+      }
+    }
+    return people.size;
+  };
+
   /** A snapshot's frozen answers and state (D185 item 7), and what its report says of them. */
   const snapshotOf = (
     artifactId: string,
@@ -176,6 +215,9 @@ export function createExports(options: ExportsOptions): Exports {
     const leftOut: string[] = [];
     const answers: Record<string, unknown> = {};
     const state: Record<string, unknown> = {};
+    // Whose answers the frozen shared state holds: of the submission's own state when the
+    // snapshot freezes a submission (review of WP-24, finding 5), else of the state now.
+    let people = included ? peopleIn(stateRows, local) : 0;
     if (params.submission !== undefined) {
       const row = ledger.read((db) =>
         db.get<{ snapshot_json: string }>(
@@ -196,9 +238,14 @@ export function createExports(options: ExportsOptions): Exports {
           readonly fields: Record<string, { value: unknown; sensitive?: boolean }>;
         };
         readonly state?: {
+          readonly revision: string;
           readonly fields: Record<string, { value: unknown; sensitive?: boolean }>;
         };
       };
+      people =
+        included && snapshot.state !== undefined && Object.keys(snapshot.state.fields).length > 0
+          ? peopleUpTo(artifactId, Number(snapshot.state.revision), local)
+          : 0;
       for (const [id, field] of Object.entries(snapshot.draft.fields)) {
         if (field.sensitive) leftOut.push(id);
         else answers[id] = field.value;
@@ -221,7 +268,6 @@ export function createExports(options: ExportsOptions): Exports {
         }
       }
     }
-    const people = included ? peopleIn(stateRows, local) : 0;
     return {
       data: { at, answers, ...(included ? { state } : {}) },
       report: {
@@ -244,6 +290,7 @@ export function createExports(options: ExportsOptions): Exports {
     view: string,
     base: string,
     agent: string | undefined,
+    signal: AbortSignal | undefined,
   ): Promise<{ readonly rebuilt: boolean; readonly why?: string }> => {
     const builds = demoBuilds(manifest.manifest?.demos);
     if (builds.length === 0) return { rebuilt: true };
@@ -268,11 +315,11 @@ export function createExports(options: ExportsOptions): Exports {
     }
     for (const [name, spec] of builds) {
       const inputs = await options.demos.inputs(name, spec, root, `${base}_mostra/demos/${name}/`);
-      const built = await options.demos.build(inputs);
-      if (built.status === "failed") return { rebuilt: false, why: built.diagnostic.message };
       const target = join(view, "client", "_mostra", "demos", name);
       await removeTree(target);
-      await cp(built.dir, target, { recursive: true });
+      // Copied while the cache keeps the build (review of WP-24, finding 2).
+      const built = await options.demos.build(inputs, { into: target, signal });
+      if (built.status === "failed") return { rebuilt: false, why: built.diagnostic.message };
       if (spec.bridge !== false && agent !== undefined) {
         const code = await readFile(join(view, "client", agent), "utf8").catch(() => undefined);
         if (code !== undefined) await injectDemoAgent(target, code, agent);
@@ -331,7 +378,7 @@ export function createExports(options: ExportsOptions): Exports {
   };
 
   return {
-    async run(params) {
+    async run(params, signal) {
       const as = params.as;
       if (as !== "static" && as !== "html" && as !== "snapshot") {
         throw new Error(`the built-in exports make static, html and snapshot, not ${as}`);
@@ -380,7 +427,13 @@ export function createExports(options: ExportsOptions): Exports {
           as !== "html" &&
           demoSpecs.length > 0
         ) {
-          const outcome = await rebuildDemos(manifest, scratch, params.base, registry.reviewAgent);
+          const outcome = await rebuildDemos(
+            manifest,
+            scratch,
+            params.base,
+            registry.reviewAgent,
+            signal,
+          );
           rebuilt = outcome.rebuilt;
           if (!outcome.rebuilt) {
             // Carried as the version built them: the scratch view still holds those files.
@@ -410,7 +463,9 @@ export function createExports(options: ExportsOptions): Exports {
           exportedAt: new Date().toISOString(),
           unavailable: { actions, live: liveKeys, submit },
           live,
-          ...(params.base !== undefined ? { base: params.base } : {}),
+          // The base the demos were built for, only when they were (review of WP-24, finding 7):
+          // demos carried as built resolve at a host's root.
+          ...(params.base !== undefined && rebuilt && as !== "html" ? { base: params.base } : {}),
         };
         const exporter = await builtinExporter(
           options.env,

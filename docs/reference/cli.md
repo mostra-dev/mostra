@@ -1055,7 +1055,7 @@ Arguments:
 Flags:
   --as <exporter>              What to write: `static`, the page as a folder that opens from disk and on any static host; `html`, the page as one file; `snapshot`, the page with its answers and state frozen; `bundle`, the version's builds, manifest, lockfile and source; or the ID of an exporter a plugin of the artifact or the home contributes. Default: bundle.
   --base <path>                `static` and `snapshot`: the path the folder will be served from (`/my-repo/`); each demo is built again under it, so it works fully there.
-  --strict                     Fail, writing nothing, when the export would lose anything its warnings name.
+  --strict                     With --as static, html or snapshot: fail, writing nothing, when the export would lose anything its warnings name.
   --submission <id>            `snapshot`: freeze this submission's answers and state instead of your own answers now.
   --no-shared-state            `snapshot`: leave the artifact's shared state out, which may hold other people's answers.
   --option <name=value>        An option for a plugin's exporter; its value is read as JSON when it parses.

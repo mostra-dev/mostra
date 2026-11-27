@@ -237,6 +237,23 @@ describe("every command, with --json and no terminal", () => {
       },
     );
     expect(existsSync(join(home.root, "x.html"))).toBe(false);
+    // Nor is a flag dropped for a plugin's exporter, or an exporter's option for a built-in class:
+    // a CI step relying on --strict never passes because the class ignores it (WP-24 review,
+    // finding 11).
+    for (const [args, out] of [
+      [["--as", "mcp-app", "--strict"], "app"],
+      [["--as", "mcp-app", "--base", "/sub/"], "app-base"],
+      [["--as", "mcp-app", "--no-shared-state"], "app-shared"],
+      [["--as", "bundle", "--strict"], "bundle.tar.zst"],
+      [["--as", "static", "--option", "prefersBorder=false"], "static-option"],
+    ] as const) {
+      await run(["export", artifactId, ...args, "--out", join(home.root, out)], {
+        code: 2,
+        ok: false,
+        error: "MOSTRA_CLI_USAGE",
+      });
+      expect(existsSync(join(home.root, out)), args.join(" ")).toBe(false);
+    }
     // A page without demos builds none.
     const built = await run(["demo", "build", artifactDir], { code: 0, ok: true });
     expect(built.result).toMatchObject({ demos: [] });
