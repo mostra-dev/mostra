@@ -25,7 +25,10 @@ import type * as React from "react";
 export interface ActionButtonProps<A extends unknown[]>
   extends Omit<React.ComponentProps<"button">, "onClick"> {
   /** The action to run: what `useAction` gave. */
-  readonly action: Pick<ActionHandle<A, unknown>, "run" | "isPending" | "available" | "unavailable">;
+  readonly action: Pick<
+    ActionHandle<A, unknown>,
+    "run" | "isPending" | "available" | "unavailable"
+  >;
   /** The arguments it runs with. */
   readonly args?: A;
 }

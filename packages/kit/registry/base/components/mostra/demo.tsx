@@ -167,7 +167,7 @@ export function WebDemo({
         ref={frame}
         title={title ?? demo}
         data-mostra-demo={demo}
-        {...(handle.srcdoc !== undefined ? { srcDoc: handle.srcdoc } : { src: handle.src })}
+        src={handle.src}
         onLoad={() => {
           handle.loaded();
           post();
