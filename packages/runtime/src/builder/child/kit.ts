@@ -3,7 +3,7 @@
  * first and the kit's registry for its base next, and the stylesheet the client entry imports,
  * which puts the theme stack inside the build's one Tailwind run.
  */
-import { existsSync, readdirSync, readFileSync, realpathSync } from "node:fs";
+import { existsSync, readdirSync, readFileSync, realpathSync, statSync } from "node:fs";
 import { isAbsolute, join, relative } from "node:path";
 import { HOST_TOKENS } from "@mostra/themes";
 import type { Plugin } from "vite";
@@ -160,18 +160,26 @@ export function kitAssetsPlugin(buildRoot: string): Plugin {
     },
     configureServer(server) {
       server.middlewares.use((request, response, next) => {
-        const path = decodeURIComponent((request.url ?? "").split("?")[0] ?? "");
+        let path: string;
+        try {
+          path = decodeURIComponent((request.url ?? "").split("?")[0] ?? "");
+        } catch {
+          return next();
+        }
         if (!path.startsWith("/kit-assets/")) return next();
         for (const { asset, dir } of load()) {
           const prefix = `/kit-assets/${asset.to}/`;
           if (!path.startsWith(prefix)) continue;
           const file = join(dir, path.slice(prefix.length));
+          // Only a file inside the asset's directory, as its real path says (no link out of it).
           if (!isUnder(file, dir) || !existsSync(file)) break;
+          const real = realpathSync(file);
+          if (!isUnder(real, realpathSync(dir)) || !statSync(real).isFile()) break;
           response.setHeader(
             "content-type",
-            file.endsWith(".woff2") ? "font/woff2" : "application/octet-stream",
+            real.endsWith(".woff2") ? "font/woff2" : "application/octet-stream",
           );
-          response.end(readFileSync(file));
+          response.end(readFileSync(real));
           return;
         }
         next();
