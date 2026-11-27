@@ -148,15 +148,18 @@ function insert(html: string, head: string, body: string): string {
 function historyGuard(): string {
   const sentence = JSON.stringify(SERVER_SENTENCE);
   return `<script>(function () {
-  // Only where the browser refuses moving to another path: a page opened from disk, or a
-  // single file's demo at its own blob: address. Over a web server this does nothing.
+  // Only on a page opened from disk, or a single file's demo at its own blob: address: over a web
+  // server this does nothing.
+  if (location.protocol !== "file:" && location.protocol !== "blob:") return;
+  // Whether this browser refuses moving to another path here (Chromium and WebKit do): then a
+  // link to another page is stopped before it is followed. Where it doesn't, a move it refuses
+  // all the same (Firefox on Windows) is still caught below, at the history API.
   var refused = false;
   try {
     var here = location.href;
     history.replaceState(history.state, "", here.replace(/[^/]*$/, "mostra-probe"));
     history.replaceState(history.state, "", here);
   } catch (error) { refused = true; }
-  if (!refused) return;
   function notice() {
     try { if (sessionStorage.getItem("mostra-demo-notice")) return; sessionStorage.setItem("mostra-demo-notice", "1"); } catch (error) {}
     var bar = document.createElement("div");
@@ -183,6 +186,7 @@ function historyGuard(): string {
     };
   });
   addEventListener("click", function (event) {
+    if (!refused) return;
     var link = event.target && event.target.closest ? event.target.closest("a[href]") : null;
     if (!link || link.target === "_blank" || link.hasAttribute("download")) return;
     var href = link.getAttribute("href") || "";
