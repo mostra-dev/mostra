@@ -44,15 +44,22 @@ const BUDGET = {
 } as const;
 
 /**
- * WebKit on Linux, the one exception: CI's runner draws its canvases in software, where the live
- * page keeps 27 frames a second against the paint control's 48 (the chart's own draw takes 0.7 ms;
- * the rest is the engine's raster), while WebKit on macOS, the engine Safari's people use, keeps
- * the paint control's rate (56 against 54). There the frame budgets against the paint control are
- * reported and not asserted, and the page must still keep 20 frames and 20 new points a second
- * with the source's rate (M106: a limit of a test's engine that no person meets may be worked
- * around for that engine).
+ * Two engines CI draws in software, below what the people who use them meet (M106: a limit of a
+ * test's engine that no person meets may be worked around for that engine):
+ * - WebKit on Linux: the live page kept 27 frames a second against the paint control's 48 in one
+ *   run, and 11.6 against 19.7 on a slower runner (the chart's own draw takes 0.7 ms; the rest is
+ *   the engine's raster), while WebKit on macOS, the engine Safari's people use, keeps the paint
+ *   control's rate (56 against 54);
+ * - Chromium on macOS: GitHub's macOS runners have no GPU, so the still control itself drops 37 to
+ *   40% of its frames, and the live page's rate against the paint control's ran from 0.65 to 1.01
+ *   across runs, while Chromium on Linux and Windows keeps the paint control's 60 frames.
+ * There the page keeps the source's rate and at least half the paint control's frames and draws;
+ * the long frames are reported, not asserted.
  */
-const SOFTWARE_WEBKIT = { frames: 20, draws: 20 } as const;
+const SOFTWARE = { frames: 0.5, drawsPerFrame: 0.5 } as const;
+const softwareEngine = (engine: string): boolean =>
+  (engine === "webkit" && process.platform === "linux") ||
+  (engine === "chromium" && process.platform === "darwin");
 
 interface Measure {
   /** The chart's newest point's advance, points a second. */
@@ -127,7 +134,14 @@ async function open(page: Page, url: string): Promise<number> {
 const round = (value: number): number => Math.round(value * 100) / 100;
 
 /** Whether a live measurement meets the frame budgets against the paint control. */
-function within(live: Measure, paint: Measure): boolean {
+function within(live: Measure, paint: Measure, engine: string): boolean {
+  if (softwareEngine(engine)) {
+    return (
+      live.pointsPerSecond >= RATE * BUDGET.rate &&
+      live.frames >= paint.frames * SOFTWARE.frames &&
+      live.draws >= Math.min(RATE, paint.frames) * SOFTWARE.drawsPerFrame
+    );
+  }
   return (
     live.pointsPerSecond >= RATE * BUDGET.rate &&
     live.draws >= Math.min(RATE, paint.frames) * BUDGET.drawsPerFrame &&
@@ -168,7 +182,9 @@ test.describe("high-rate live data stays smooth (AC-08)", () => {
       // Chromium dropped 40% of its frames in one run) can sink one measurement: a second is taken
       // when the first misses the budget, and the better of the two counts, both reported.
       const first = await measure(page, SECONDS * 1000);
-      const second = within(first, paint) ? undefined : await measure(page, SECONDS * 1000);
+      const second = within(first, paint, info.project.name)
+        ? undefined
+        : await measure(page, SECONDS * 1000);
       const result = second !== undefined && second.frames > first.frames ? second : first;
       await page.close();
 
@@ -196,17 +212,19 @@ test.describe("high-rate live data stays smooth (AC-08)", () => {
         result.pointsPerSecond,
         "the chart's newest point keeps the source's rate",
       ).toBeGreaterThanOrEqual(RATE * BUDGET.rate);
-      if (info.project.name === "webkit" && process.platform === "linux") {
+      if (softwareEngine(info.project.name)) {
         info.annotations.push({
-          type: "AC-08 software WebKit",
-          description: "frame budgets against the paint control reported, not asserted",
+          type: "AC-08 software raster",
+          description: "half the paint control's frames and draws; long frames reported",
         });
-        expect(result.frames, "frames in Linux's software WebKit").toBeGreaterThanOrEqual(
-          SOFTWARE_WEBKIT.frames,
-        );
-        expect(result.draws, "new points shown in Linux's software WebKit").toBeGreaterThanOrEqual(
-          SOFTWARE_WEBKIT.draws,
-        );
+        expect(
+          result.frames,
+          "frames in an engine CI draws in software, against the paint control's",
+        ).toBeGreaterThanOrEqual(paint.frames * SOFTWARE.frames);
+        expect(
+          result.draws,
+          "new points shown in an engine CI draws in software, against the paint control's frames",
+        ).toBeGreaterThanOrEqual(Math.min(RATE, paint.frames) * SOFTWARE.drawsPerFrame);
         return;
       }
       expect(

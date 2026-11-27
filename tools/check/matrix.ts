@@ -319,7 +319,9 @@ export function ciMatrix(scope: CiScope, plan: Plan, runners: Runners): CiMatrix
         // third took the job's whole 25 minutes with WP-20's review suites (merge queue 45463515020,
         // 17.5 minutes of tests after 7 of setup), as its second of two had with WP-18's kit suite.
         // Each part takes whole spec files dealt by their length (tests/e2e/support/parts.ts).
-        { os: "windows-x64", runner: runners.windows.x64, browser: "chromium" },
+        // Chromium on x64 in two parts too: with WP-19's kit suites (its library pages and AC-08's
+        // live chart) it reached the job's 25 minutes in one (PR #255's run 45982399448).
+        ...shards({ os: "windows-x64", runner: runners.windows.x64, browser: "chromium" }, 2),
         ...shards({ os: "windows-x64", runner: runners.windows.x64, browser: "firefox" }, 2),
         ...(all
           ? shards({ os: "windows-arm64", runner: runners.windows.arm64, browser: "chromium" }, 4)
