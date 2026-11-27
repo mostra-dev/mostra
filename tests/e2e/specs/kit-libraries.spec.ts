@@ -151,6 +151,11 @@ test.describe("the kit's library wrappers (KT-01)", () => {
       await expect(frame.locator("[data-slot='code-editor'] .cm-content")).toContainText(
         "print('hi')  # edited",
       );
+      // The page as it looks, for the review of the kit's design (D68).
+      await info.attach("kit-libraries.png", {
+        body: await frame.locator("[data-slot='page']").screenshot({ animations: "disabled" }),
+        contentType: "image/png",
+      });
     } finally {
       client.close();
     }
@@ -214,6 +219,10 @@ test.describe("the kit's library wrappers (KT-01)", () => {
       await reopenInShell(page, HEAVY_READY_MS);
       await expect(frame.locator("[data-slot='whiteboard'] .excalidraw")).toBeVisible({
         timeout: 60_000,
+      });
+      await info.attach("kit-on-demand.png", {
+        body: await frame.locator("[data-slot='page']").screenshot({ animations: "disabled" }),
+        contentType: "image/png",
       });
     } finally {
       client.close();

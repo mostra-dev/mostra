@@ -1,4 +1,12 @@
+import { BarChart, DonutChart } from "@mostra/kit/charts";
+import { Code } from "@mostra/kit/code";
+import { DataTable } from "@mostra/kit/data-table";
+import { EChart } from "@mostra/kit/echarts";
+import { Flow } from "@mostra/kit/flow";
 import { Figure, Figures, Page, Section } from "@mostra/kit/layout";
+import { LiveChart } from "@mostra/kit/live-chart";
+import { Formula } from "@mostra/kit/math";
+import { Mermaid } from "@mostra/kit/mermaid";
 import { Choice, Question, Questionnaire, Scale, TextAnswer } from "@mostra/kit/questionnaire";
 import { defineArtifact } from "@mostra/react";
 import { BellIcon, ChevronDownIcon, PlusIcon } from "lucide-react";
@@ -88,6 +96,20 @@ const deploys = [
   { service: "payments-worker", version: "1.18.2", status: "Rolled back", duration: "2m 05s" },
   { service: "search", version: "0.9.14", status: "Deploying", duration: "–" },
 ];
+
+const hires = [
+  { quarter: "Q1", engineering: 3, design: 1 },
+  { quarter: "Q2", engineering: 2, design: 2 },
+  { quarter: "Q3", engineering: 4, design: 1 },
+];
+const roles = [
+  { role: "Platform engineer", office: "Lisbon", candidates: 14 },
+  { role: "Product designer", office: "Berlin", candidates: 9 },
+];
+const requests = Array.from({ length: 240 }, (_, t) => ({
+  t,
+  rps: 120 + Math.round(30 * Math.sin(t / 12) + 10 * Math.cos(t / 5)),
+}));
 
 export default function Specimen() {
   return (
@@ -303,6 +325,73 @@ export default function Specimen() {
             <AccordionContent>The first two in January, the others in March.</AccordionContent>
           </AccordionItem>
         </Accordion>
+      </Section>
+
+      <Section title="Data, diagrams, code and math">
+        <Figures>
+          <BarChart
+            title="Hires by quarter"
+            data={hires}
+            x="quarter"
+            series={[
+              { key: "engineering", label: "Engineering" },
+              { key: "design", label: "Design" },
+            ]}
+            height={200}
+          />
+          <DonutChart
+            title="Offices"
+            data={[
+              { label: "Lisbon", value: 7 },
+              { label: "Berlin", value: 4 },
+            ]}
+            height={200}
+          />
+        </Figures>
+        <LiveChart
+          title="Requests a second"
+          values={requests}
+          x="t"
+          series={[{ key: "rps", label: "Requests" }]}
+          window={240}
+          height={160}
+        />
+        <EChart
+          title="Load by hour"
+          height={200}
+          option={{
+            xAxis: { type: "category", data: ["9", "10", "11", "12", "13"] },
+            yAxis: { type: "value" },
+            series: [{ type: "line", data: [12, 18, 24, 21, 15], smooth: true }],
+          }}
+        />
+        <DataTable
+          caption="Open roles"
+          data={roles}
+          columns={[
+            { key: "role", header: "Role" },
+            { key: "office", header: "Office" },
+            { key: "candidates", header: "Candidates", align: "right" },
+          ]}
+        />
+        <Mermaid title="Hiring" chart={"flowchart LR\n  Apply --> Interview --> Offer"} />
+        <Flow
+          title="Teams"
+          height={200}
+          nodes={[
+            { id: "product", position: { x: 0, y: 40 }, data: { label: "Product" } },
+            { id: "platform", position: { x: 220, y: 0 }, data: { label: "Platform" } },
+            { id: "growth", position: { x: 220, y: 100 }, data: { label: "Growth" } },
+          ]}
+          edges={[
+            { id: "product-platform", source: "product", target: "platform" },
+            { id: "product-growth", source: "product", target: "growth" },
+          ]}
+        />
+        <Code lang="ts" code={"export const offices = ['Lisbon', 'Berlin'];"} />
+        <p>
+          A team of <Formula tex="n" /> people has <Formula tex="\tbinom{n}{2}" /> pairs.
+        </p>
       </Section>
 
       <Questionnaire id="specimen" title="A questionnaire" description="Each answer is a field.">
