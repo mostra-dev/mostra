@@ -45,11 +45,36 @@ Taken inside the package: the built-in exporters live in the carried `@mostra/pl
 
 | ID | State | Check | Command | Result |
 |---|---|---|---|---|
-| TM-08 | validated | A Vite app and a Next.js static export, each with client-side routing and mock data, and a hash-routed app, build through the demo spec and pass verify; each is fully interactive in `<WebDemo>`, moves between its pages and opens from a deep link; a comment inside a demo anchors there (its review ID, a served frame) and survives a reload; through a share on another site the demos work the same; a broken build fails verify with its last log lines and publish refuses it; an output missing or loading files from outside its base fails; a good build is kept with the version and cached | e2e `demos.spec.ts` "web demos built into the version"; `vitest --project integration test/integration/demos.test.ts`; seeds `prove-seeds.ts --only TM-08` (four) | e2e passes in Chromium on this Mac (Firefox and WebKit to CI's legs); integration passes; each seed red, then green |
-| VR-07 | validated | Each export class (static, html, snapshot) opens the page and every demo from disk in the three engines; a hash demo moves between pages from disk, a history demo shows its notice in Chromium and WebKit and moves in Firefox; a static export served at a host's root and, with `--base /sub/`, at `/sub/` moves and deep-links; the static target routes by hash on a host with no fallback, from the real exporter's output (AU-09); an export of a page with actions, a live producer and a secret holds none of their server code, values or environment, names what it loses, and writes nothing under `--strict`; a snapshot freezes the live value and the shared state and leaves the state out when asked; the bundle case is WP-29's `bundle` class and `mostra run` | e2e `demos.spec.ts` "exports carry the page and its demos", `pages.spec.ts` static case; `test/integration/demos.test.ts` (exports); WP-29's `test/integration/bundle.test.ts`; seeds `--only VR-07` (three) | passes in Chromium here; integration passes; each seed red, then green |
+| TM-08 | verified | A Vite app and a Next.js static export, each with client-side routing and mock data, and a hash-routed app, build through the demo spec and pass verify; each is fully interactive in `<WebDemo>`, moves between its pages and opens from a deep link; a comment inside a demo anchors there (its review ID, a served frame) and survives a reload; through a share on another site the demos work the same; on a remote server's hosted page the demo is served from its label, deep links too, and withheld under quarantine; a broken build fails verify with its last log lines and publish refuses it; an output missing or loading files from outside its base fails; a good build is kept with the version and cached, and the cache keeps a demo's three newest builds | e2e `demos.spec.ts` "web demos built into the version"; `vitest --project integration test/integration/demos.test.ts`, `tenancy.test.ts` "hosted page's demo"; CLI `contract.test.ts` (`demo build`); seeds `prove-seeds.ts --only TM-08` (six) | passes in Chromium, Firefox and WebKit on Linux and macOS and in Chromium and Firefox on Windows (CI run 45922733884, `ci:full`); integration passes; each seed red, then green |
+| VR-07 | verified | Each export class (static, html, snapshot) opens the page and every demo from disk in the three engines; a hash demo moves between pages from disk, a history demo shows its notice in Chromium and WebKit and moves in Firefox; a static export served at a host's root and, with `--base /sub/`, at `/sub/` moves and deep-links; the static target routes by hash on a host with no fallback, from the real exporter's output (AU-09); an export of a page with actions, a live producer and a secret holds none of their server code, values or environment, names what it loses, and writes nothing under `--strict`; a snapshot freezes the live value and the shared state, leaves the state out when asked, and keeps an answer's markup as text; the CLI writes each class and refuses a flag the class doesn't take; the bundle case is WP-29's `bundle` class and `mostra run` | e2e `demos.spec.ts` "exports carry the page and its demos", `pages.spec.ts` static case; `test/integration/demos.test.ts` (exports); CLI `contract.test.ts`; WP-29's `test/integration/bundle.test.ts`; seeds `--only VR-07` (four) | passes in the three engines on every system CI runs them (run 45922733884); integration passes; each seed red, then green |
 
 ## Untested boundaries
 
-- **Firefox and WebKit on this Mac**: the browser suites passed there in isolation, but whole runs timed out under the machine's load (a load average of 89 to 141 from other sessions); CI's legs are the record.
 - **A Next.js demo inside a single HTML file**: its runtime loads classic chunks by address, so one file can't hold it; the file names it and the folder export carries it (D185 item 7).
 - **A real static host at a subpath** (GitHub Pages): proven with a local server with no fallback at `/sub/`.
+- **Real Safari and a phone**: WebKit only.
+- **A demo build on a machine without the project's tools**: the build runs with the user's `PATH`; a missing tool fails the build with its own words (`MOSTRA_DEMO_BUILD_FAILED`), proven with a failing script, not a missing toolchain.
+
+## Found while building
+
+- **A quarantined hosted version's demos were still served** to a frame that entered before; the demo route now withholds them as the page's files are (`tenancy.test.ts`, seed TM-08 "quarantined hosted").
+- **The demo cache grew without bound**: every source change kept a build forever. It keeps each demo's three newest; a version keeps its own copy, so nothing needs an older one (seed TM-08 "demo cache").
+- **On Windows, Firefox refused a history-routed demo's move from disk silently**: its probe passed, so nothing caught the refusal. The guard now wraps the history API on every disk page and shows the notice for any refusal; the e2e check accepts a move or the notice in Firefox, and fails on silence.
+- **Two publishes of one source raced on the cache's commit**; one build per digest at a time, and an entry once kept is never removed under a reader.
+- **A sealed version couldn't be edited for `--base`**: the export's scratch copy is made writable first.
+- **A single file's demo documents**: a `srcdoc` frame resolved a demo's `#` links against the page around it, so they are `blob:` addresses, with a script for Chromium's refusal of fragment navigation in them (VERIFIED_FACTS, WP-24).
+- **`publish` and `demos` imported each other** (dependency-cruiser): the demos module keeps its own digest helpers.
+- **CodeQL**: two time-of-check reads in a test helper, and the removal of the build's own tags from a document, now repeated until none is left.
+
+## Review
+
+- **Copilot** couldn't review: "the user who requested the review has insufficient remaining quota" (#253, every push).
+- **The model review** (D172 item 0): pending Mirza's run or approval (D34).
+- **The issue met**: #227 (two property tests reach 30 s on a loaded machine) recurred in the local pre-push check, `gc.test.ts`, three times; it passed in every CI unit leg and alone in 9.6 s; the sighting is on the issue.
+
+## CI
+
+- **The baseline** (run on `e0f9f68a`, `ci:full`): green.
+- **The first full run on the package** (45917138049, `d82da40e`): every job green but the Rust crate's wire types (regenerated), the CLI's contract test (`demo build` covered), and the history demo from disk on Windows Firefox (above).
+- **The second** (45922733884, `caa7c987`, `ci:full`): green on every job and leg, Windows arm64 and the six-platform release rehearsal included.
+
