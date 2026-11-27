@@ -69,7 +69,26 @@ Taken inside the package: the built-in exporters live in the carried `@mostra/pl
 ## Review
 
 - **Copilot** couldn't review: "the user who requested the review has insufficient remaining quota" (#253, every push).
-- **The model review** (D172 item 0): pending Mirza's run or approval (D34).
+- **The model review** (D172 item 0): Claude Opus, approved and run by Mirza (M108), posted on #253 on 2026-11-27 with 15 findings, graded "important" or "nit" and mapped onto P1 to P3 by him. Each is fixed with a test that fails on the old code and a seed planted where the fix holds (`node packages/runtime/scripts/prove-seeds.ts --name "WP-24 review"`), red when planted and green restored; the two Windows seeds run on Windows only (`windows-seeds.yml`). D185 item 10 records the outcomes.
+
+| Finding | Severity | What was done | Test, and its seed |
+|---|---|---|---|
+| 1. `output: "."` publishes the whole source folder, `.env` too | P1 | The manifest refuses an output that is the source folder itself, and so does the builder, whatever spelling reaches it | `artifact.test.ts` "source folder itself"; `demos.test.ts` "source folder itself"; two seeds |
+| 2. Pruning or `--force` removes a build a publish is copying | P1 | `build()` copies into the version or export inside the build's own turn, which pruning and `--force` take too; a copy marks the build used, so pruning keeps what versions just took | `demos.test.ts` "never used since"; seed |
+| 3. A demo built from a source edited after its digest | P2 | The source is read again after the build; a change fails the build ("build it again"), never kept under the old digest | `demos.test.ts` "changed while its demo builds"; seed |
+| 4. Symbolic links left out of the digest | P2 | The digest follows links as the build does, a link back into its ancestry skipped | `demos.test.ts` "through a link" (a junction on Windows); seed |
+| 5. A submission's snapshot counts today's authors | P2 | Counted from the `state.changed` events up to the submission's state revision, with today's authors as a floor | `demos.test.ts` "counts the people"; seed |
+| 6. gc can collect what an export is reading | P2 | The whole export holds the instance's gate shared, as a bundle's does | `demos.test.ts` "gc waits for an export"; seed |
+| 7. `--base` told to the page though the demos weren't rebuilt | P2 | Told only when they were | `demos.test.ts` "names --base"; seed |
+| 8. Exports drop another site's stylesheet | P2 | Kept in the page and named in the report | `plugins/mcp-app` `builtin.test.ts` "another site's stylesheet"; seed |
+| 9. Windows: a relative `.cmd` path, and `cmd /c` quoting | P2 | A named program is found from the demo's folder; a `.cmd` runs as one `cmd.exe /d /s /c "…"` line escaped as cross-spawn escapes it, which the gate passes as it stands (`mostra-win gate --verbatim`) | `demos.test.ts` ".cmd build" (Windows legs: a script in a folder with a space, words with a space, `&` and quotes); two Windows seeds |
+| 10. Cancelling a build does nothing | P2 | `demo/build` ends its build when its client goes away; an export's `--base` rebuilds likewise | `demos.test.ts` "goes away"; seed |
+| 11. `mostra export` drops flags that don't fit | P2 | Usage error for `--strict`, `--base`, `--submission`, `--no-shared-state` with a plugin's exporter or a bundle, `--option` with a built-in class | CLI `contract.test.ts`; seed |
+| 12. A gitignored `.env` left out of the digest | P2 | `.env` files count whatever `.gitignore` says; `.mostraignore` still excludes them | `demos.test.ts` "through a link"; seed |
+| 13. The review agent before the doctype | P3 | After `<head>`, else `<html>`, else the doctype | unit `demo-agent.test.ts`; seed |
+| 14. Values posted to `*` | P3 | Posted to the demo's own origin and heard only from it (`*` and `null` from disk). The new e2e check found that `onMessage` never heard a demo in WebKit: it names the page itself as a same-origin module script's sender (VERIFIED_FACTS, WP-24). Each demo document now gets its own `MessagePort` with its first values message, which every engine delivers | e2e `demos.spec.ts` live and from disk in three engines; seed |
+| 15. Nested demo pages from disk resolve from the wrong place | P3 | A page below the demo's root gets `<base>` to the root | `builtin.test.ts` "below its root"; seed |
+
 - **The issue met**: #227 (two property tests reach 30 s on a loaded machine) recurred in the local pre-push check, `gc.test.ts`, three times; it passed in every CI unit leg and alone in 9.6 s; the sighting is on the issue.
 
 ## CI
