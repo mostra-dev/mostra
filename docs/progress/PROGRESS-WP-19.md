@@ -78,6 +78,8 @@ Pending: one Claude Opus review of `git diff origin/main...wp/19-kit-ii` (M105, 
 - **Runs 45973679747 and 45982399448:** `nanoid` 4.0.2 (mermaid-to-excalidraw's), the kit's suite outliving the shared clean-up on Windows arm64, Windows x64's Chromium leg reaching the job's 25 minutes with the kit's suites (now in two parts), and AC-08 on slow runners: Linux WebKit's paint control at 19.7 frames a second, macOS Chromium at 0.84 of the paint control after two samples. Once each, in suites this package doesn't touch: Windows Firefox's `controls.spec.ts` (a Choose swapped under the pointer took a click) and Linux Chromium's `mcp-apps.spec.ts` (the inline page's target not found).
 - **Run 45927471452** (AC-08's paint control): the whiteboard's test drew below the viewport (the board scrolled into view now), the specimen's restyle met the live chart's summary, Firefox on Windows has no WebGL 2, `nanoid` 3.3.3, and Linux WebKit's software canvas (M106). Windows arm64's `surfaces.spec.ts` once waited past its time for a frame to be ready (UX-01's suite, a slow runner; passed on its other runs).
 
+- **Run 45993765050** (`ci:full`, on `7c5d7988`): green on every job and leg, Windows arm64, both Windows x64 Chromium parts and the six-platform release rehearsal included.
+
 ## Deviations
 
 - **AC-08's frame budget is against a paint control, not the chart at rest:** the chart at rest measures the machine's idle paint, which differs by engine and platform; the paint control draws the same picture by hand on every frame, so what's left is the chart's and its data's cost (D185 item 7). The engines CI draws in software are held to half its rate (M106).
