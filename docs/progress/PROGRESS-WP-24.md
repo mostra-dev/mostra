@@ -96,4 +96,6 @@ Taken inside the package: the built-in exporters live in the carried `@mostra/pl
 - **The baseline** (run on `e0f9f68a`, `ci:full`): green.
 - **The first full run on the package** (45917138049, `d82da40e`): every job green but the Rust crate's wire types (regenerated), the CLI's contract test (`demo build` covered), and the history demo from disk on Windows Firefox (above).
 - **The second** (45922733884, `caa7c987`, `ci:full`): green on every job and leg, Windows arm64 and the six-platform release rehearsal included.
+- **After the review's fixes** (45989822156, `aeb2b8bc`): every job green but two browser tests outside this package, each at a step it doesn't touch (`kit.spec.ts`'s className test, its page load past 30 s on Linux WebKit; `surfaces.spec.ts`'s dark pass, a checkbox click on macOS Chromium); the Windows seeds of finding 9 on `windows-latest` (45989850569), each red when planted and green restored.
+- **The final head** (45999914332, `3367999f`, `ci:full`): green on every job and leg, Windows arm64 and the six-platform release rehearsal included.
 
