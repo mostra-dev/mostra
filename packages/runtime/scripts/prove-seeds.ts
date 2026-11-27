@@ -4901,8 +4901,8 @@ const SEEDS: readonly Seed[] = [
     requirement: "EN-07",
     name: "core runs the dependency installs again, at its deadline on slow macOS runners (#197)",
     file: "vitest.config.ts",
-    from: "      ...EXTENSIONS,\n      ...CORE_OVERFLOW,\n      KIT_LIBRARIES,",
-    to: "      ...EXTENSIONS,\n      KIT_LIBRARIES,",
+    from: "      ...EXTENSIONS,\n      ...CORE_OVERFLOW,\n      KIT_PARTS,",
+    to: "      ...EXTENSIONS,\n      KIT_PARTS,",
     check: unit("windows-groups.test.ts", "not in `core`"),
   },
   {
@@ -9402,8 +9402,8 @@ const SEEDS: readonly Seed[] = [
     requirement: "EN-07",
     name: "the dependency suite rebalanced into extensions runs in core too",
     file: "vitest.config.ts",
-    from: "      ...EXTENSIONS,\n      ...CORE_OVERFLOW,\n      KIT_LIBRARIES,",
-    to: "      ...EXTENSIONS,\n      KIT_LIBRARIES,",
+    from: "      ...EXTENSIONS,\n      ...CORE_OVERFLOW,\n      KIT_PARTS,",
+    to: "      ...EXTENSIONS,\n      KIT_PARTS,",
     check: unit("windows-groups.test.ts", "macOS and Linux"),
   },
   {

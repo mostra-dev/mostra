@@ -77,9 +77,11 @@ const EXTENSIONS = [
 // reached its deadline with it on WP-18's `ci:full` run 44793555343).
 const KIT_PARTS = "test/integration/kit-parts.test.ts";
 // WP-19: the kit's on-demand libraries, each a real install of hundreds of packages from a local
-// mirror and a verify of a page with WebGL: a group of its own on every platform.
+// mirror and a verify of a page with WebGL: a group of its own on every platform. On macOS and
+// Linux the kit's parts join it: `extensions` reached its 10 minutes on macOS with WP-19's review
+// fixes (PR #255's run 46032095129, after 522 s in the run before), while `kit` takes about 5.
 const KIT_LIBRARIES = "test/integration/kit-libraries.test.ts";
-const CORE_OVERFLOW = ["test/integration/deps.test.ts", KIT_PARTS];
+const CORE_OVERFLOW = ["test/integration/deps.test.ts"];
 export const INTEGRATION_GROUPS: Record<string, { include: string[]; exclude: string[] }> = {
   core: {
     include: ["test/integration/**/*.test.ts"],
@@ -91,10 +93,11 @@ export const INTEGRATION_GROUPS: Record<string, { include: string[]; exclude: st
       ...REMOTE,
       ...EXTENSIONS,
       ...CORE_OVERFLOW,
+      KIT_PARTS,
       KIT_LIBRARIES,
     ],
   },
-  kit: { include: [KIT_LIBRARIES], exclude: [] },
+  kit: { include: [KIT_LIBRARIES, KIT_PARTS], exclude: [] },
   extensions: { include: [...EXTENSIONS, ...CORE_OVERFLOW], exclude: [] },
   remote: { include: [...REMOTE_HOSTING, HEARTBEAT], exclude: [] },
   // `mostra dev`'s suite (66 to 106 s) runs beside remote-access's, the lightest group (350 s):
