@@ -60,6 +60,12 @@ const REMOTE_ACCESS = [
   OPERATOR_RELAY,
 ];
 const REMOTE = [...REMOTE_HOSTING, ...REMOTE_ACCESS];
+// WP-24: demos built through their spec, and the page's exports (D185), about two minutes. Listed
+// with the extensions (so `core` leaves it out), but run elsewhere: `extensions` reached its 10
+// minutes on macOS without it (nightly 46001082762) and took 485 of its 600 s with it (merge queue
+// 46032373378), so it runs in `remote` (392 s there), and on Windows in `windows-workers`, the
+// lightest of its groups (212 s).
+const DEMOS = "test/integration/demos.test.ts";
 // Plugins and source packs (WP-16): real installs from a local registry, plugin children and
 // local registry servers, a group of their own, since `core` has no room for them.
 const EXTENSIONS = [
@@ -67,8 +73,7 @@ const EXTENSIONS = [
   "test/integration/packs.test.ts",
   // WP-17: the app channel and the MCP App exporter, a bundled plugin (D175).
   "test/integration/mcp-apps.test.ts",
-  // WP-24: demos built through their spec, and the page's exports (D185), on plugin children too.
-  "test/integration/demos.test.ts",
+  DEMOS,
 ];
 // Suites `core` has no room for on macOS and Linux, which `extensions` runs there (REPO_STANDARDS
 // §6: a group near its deadline is rebalanced). macOS `core` reached its 10 minutes on `main` (10 min
@@ -100,8 +105,8 @@ export const INTEGRATION_GROUPS: Record<string, { include: string[]; exclude: st
     ],
   },
   kit: { include: [KIT_LIBRARIES, KIT_PARTS], exclude: [] },
-  extensions: { include: [...EXTENSIONS, ...CORE_OVERFLOW], exclude: [] },
-  remote: { include: [...REMOTE_HOSTING, HEARTBEAT], exclude: [] },
+  extensions: { include: [...EXTENSIONS, ...CORE_OVERFLOW], exclude: [DEMOS] },
+  remote: { include: [...REMOTE_HOSTING, HEARTBEAT, DEMOS], exclude: [] },
   // `mostra dev`'s suite (66 to 106 s) runs beside remote-access's, the lightest group (350 s):
   // macOS `verify` took 508 and 562 of its 600 s with it once every build carried its theme, and
   // passed its deadline once (WP-18, CI run 44947318007).
@@ -178,6 +183,7 @@ export const INTEGRATION_GROUPS: Record<string, { include: string[]; exclude: st
       "test/integration/producers.test.ts",
       "test/integration/seams.test.ts",
       "test/integration/server-packages.test.ts",
+      DEMOS,
     ],
     exclude: [],
   },
@@ -189,7 +195,10 @@ export const INTEGRATION_GROUPS: Record<string, { include: string[]; exclude: st
   // WP-18: the kit through verify, a suite of its own, in the lighter of the verify groups.
   "windows-verify-failures": { include: [VERIFY_FAILURES, KIT_PARTS], exclude: [] },
   "windows-kit": { include: [KIT_LIBRARIES], exclude: [] },
-  "windows-extensions": { include: [...EXTENSIONS, DEV, ANONYMOUS_VOLUME], exclude: [] },
+  "windows-extensions": {
+    include: [...EXTENSIONS.filter((file) => file !== DEMOS), DEV, ANONYMOUS_VOLUME],
+    exclude: [],
+  },
   "windows-clients": { include: [], exclude: [] },
   // The conformance kit's TypeScript reference host, apart from the other clients (WP-18, #225).
   "windows-conformance": { include: [], exclude: [] },
