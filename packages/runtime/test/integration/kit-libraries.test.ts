@@ -207,15 +207,22 @@ export default function Page() {
     expect(errors(verdict)).toEqual([]);
     const { versionId } = await publish(dir);
     expect(pinned(versionId)["@excalidraw/excalidraw"]).toBe(PINS.get("@excalidraw/excalidraw"));
-    // With the kit's overrides: the lodash-es its Mermaid parser pins exactly has an advisory,
-    // so the version installs the fixed release, as the kit was checked with.
+    // With the kit's overrides: the lodash-es its Mermaid parser pins exactly, and the nanoid it
+    // pins itself, have advisories, so the version installs the fixed releases the kit was checked
+    // with.
     const lock = parseLock(
       readFileSync(join(home.home, "versions", versionId, "lock.yaml"), "utf8"),
     ).pnpm as string;
-    expect(overridesOf(lock)).toEqual({ "lodash-es@4.17.21": "4.18.1" });
+    expect(overridesOf(lock)).toEqual({
+      "lodash-es@4.17.21": "4.18.1",
+      "nanoid@3.3.3": "3.3.20",
+    });
     expect(pinnedPackages(lock).filter((pkg) => pkg.name === "lodash-es")).toEqual([
       { name: "lodash-es", version: "4.18.1" },
     ]);
+    expect(
+      pinnedPackages(lock).filter((pkg) => pkg.name === "nanoid" && pkg.version.startsWith("3.")),
+    ).toEqual([{ name: "nanoid", version: "3.3.20" }]);
     const fonts = clientFiles(versionId).filter((file) =>
       file.startsWith("kit-assets/excalidraw/fonts/"),
     );
