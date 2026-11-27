@@ -76,6 +76,8 @@ const SKIPPED_FILE = /^(?:\.DS_Store|\.#.*|#.*#|.*~|.*\.sw[a-px])$/;
 const LOG_LINES = 30;
 /** How many lines of a build's log are kept while it runs. */
 const LOG_KEPT = 400;
+/** How many of a demo's builds the cache keeps, newest first. */
+const KEPT_BUILDS = 3;
 /** How long a stopped build gets before its group is killed. */
 const STOP_GRACE_MS = 3000;
 
@@ -297,7 +299,9 @@ export async function recoverDemos(home: string): Promise<void> {
     return;
   }
   for (const entry of entries) {
-    if (entry.startsWith(".tmp-")) await removeTree(join(dir, entry)).catch(() => undefined);
+    if (entry.startsWith(".tmp-") || entry.startsWith(".old-")) {
+      await removeTree(join(dir, entry)).catch(() => undefined);
+    }
   }
 }
 
@@ -331,6 +335,30 @@ export function createDemos(options: DemosOptions): Demos {
       };
     } catch {
       return undefined;
+    }
+  };
+
+  /**
+   * Keeps a demo's {@link KEPT_BUILDS} newest builds and removes the older ones, so the cache
+   * holds what the next verify of a recent source reuses and never grows without bound: a version
+   * keeps its own copy of its demos, so nothing needs an older build.
+   */
+  const prune = async (inputs: DemoInputs): Promise<void> => {
+    const mine: { digest: string; builtAt: string }[] = [];
+    for (const entry of await readdir(cacheDir)) {
+      if (entry.startsWith(".")) continue;
+      const marker = await readFile(join(cacheDir, entry, "demo.json"), "utf8")
+        .then((text) => JSON.parse(text) as { name?: string; folder?: string; builtAt?: string })
+        .catch(() => undefined);
+      if (marker?.name !== inputs.name || marker.folder !== inputs.sourceDir) continue;
+      mine.push({ digest: entry, builtAt: marker.builtAt ?? "" });
+    }
+    mine.sort((a, b) => (a.builtAt < b.builtAt ? 1 : a.builtAt > b.builtAt ? -1 : 0));
+    for (const old of mine.slice(KEPT_BUILDS)) {
+      if (old.digest === inputs.digest) continue;
+      await inTurn(`digest\0${old.digest}`, () =>
+        removeTree(join(cacheDir, old.digest)).catch(() => undefined),
+      );
     }
   };
 
@@ -480,7 +508,7 @@ export function createDemos(options: DemosOptions): Demos {
           const files = (await filesUnder(join(scratch, "out"))).length;
           await writeFile(
             join(scratch, "demo.json"),
-            `${JSON.stringify({ name: inputs.name, digest: inputs.digest, base: inputs.base, files, builtAt: new Date().toISOString() }, null, 2)}\n`,
+            `${JSON.stringify({ name: inputs.name, folder: inputs.sourceDir, digest: inputs.digest, base: inputs.base, files, builtAt: new Date().toISOString() }, null, 2)}\n`,
           );
           const target = join(cacheDir, inputs.digest);
           // One commit per digest at a time. Two folders with the same content build the same
@@ -499,6 +527,9 @@ export function createDemos(options: DemosOptions): Demos {
             if (aside !== undefined) await renamePath(target, aside);
             await renamePath(scratch, target);
             if (aside !== undefined) await rm(aside, { recursive: true, force: true });
+            await prune(inputs).catch((error: unknown) =>
+              log.warn("demos.prune_failed", { name: inputs.name, error }),
+            );
             return { status: "built" as const, dir: join(target, "out"), files, ms: ran.ms };
           });
         }),

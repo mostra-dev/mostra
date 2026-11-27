@@ -46,6 +46,8 @@
   logs/                        rotated supervisor and child logs, capability URLs redacted
   cache/dev/<session>/         a `mostra dev` session's scratch state; deleted when the session ends, and at every start
                                (D140 item 12)
+  cache/demos/<digest>/        a web demo's build (D185 item 4): `out/` and `demo.json`, by the digest of its source,
+                               command, settings and base; a demo's three newest kept, unfinished `.tmp-*` removed at every start
 <runtime dir>/<home-hash>.sock control socket (ARCHITECTURE §4, D82): runtime dir is MOSTRA_RUNTIME_DIR, else ~/.mostra/run (macOS),
                                $XDG_RUNTIME_DIR/mostra when owned and 0700, else ${XDG_STATE_HOME:-~/.local/state}/mostra/run (Linux);
                                home-hash is 16 Crockford base32 characters of SHA-256(realpath(home)).

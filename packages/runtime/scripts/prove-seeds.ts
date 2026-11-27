@@ -9258,6 +9258,14 @@ const SEEDS: readonly Seed[] = [
     check: integration("tenancy.test.ts", "hosted page's demo"),
   },
   {
+    requirement: "TM-08",
+    name: "WP-24 review: the demo cache keeps every build it ever made",
+    file: "src/demos/index.ts",
+    from: "            await prune(inputs).catch(",
+    to: "            await Promise.resolve(inputs).catch(",
+    check: integration("demos.test.ts", "three newest builds"),
+  },
+  {
     requirement: "VR-07",
     name: "WP-24: an export carries the version's server build",
     file: "src/exports/index.ts",

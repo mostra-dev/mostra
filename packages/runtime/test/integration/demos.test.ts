@@ -144,6 +144,41 @@ writeFileSync("dist/index.html", '<!doctype html><title>Good</title><script type
     );
     expect(again.demos).toEqual([expect.objectContaining({ name: "app", status: "cached" })]);
   }, 300_000);
+
+  it("keeps a demo's three newest builds in the cache and removes the older ones", async () => {
+    const dir = demoArtifact(
+      "kept",
+      `import { mkdirSync, readFileSync, writeFileSync } from "node:fs";
+mkdirSync("dist", { recursive: true });
+writeFileSync("dist/index.html", "<!doctype html><p>" + readFileSync("round.txt", "utf8") + "</p>");
+`,
+    );
+    const cache = join(gateway.home.home, "cache", "demos");
+    const mine = (): { digest: string; round: string }[] =>
+      readdirSync(cache)
+        .filter((entry) => !entry.startsWith(".") && existsSync(join(cache, entry, "demo.json")))
+        .map((entry) => ({
+          digest: entry,
+          marker: JSON.parse(readFileSync(join(cache, entry, "demo.json"), "utf8")) as {
+            folder: string;
+          },
+          html: readFileSync(join(cache, entry, "out", "index.html"), "utf8"),
+        }))
+        .filter((one) => one.marker.folder === join(dir, "app"))
+        .map((one) => ({ digest: one.digest, round: /<p>(.*)<\/p>/.exec(one.html)?.[1] ?? "" }));
+    for (const round of ["1", "2", "3", "4"]) {
+      writeFileSync(join(dir, "app", "round.txt"), round);
+      const built = ok<{ demos: { name: string; status: string }[] }>(
+        await gateway.client.call("demo/build", { source: { path: dir } }, 240_000),
+      );
+      expect(built.demos).toEqual([expect.objectContaining({ name: "app", status: "built" })]);
+    }
+    expect(
+      mine()
+        .map((one) => one.round)
+        .sort(),
+    ).toEqual(["2", "3", "4"]);
+  }, 300_000);
 });
 
 describe("an export carries the page's front end and nothing of its server (D185 item 8)", () => {
