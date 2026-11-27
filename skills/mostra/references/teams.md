@@ -65,6 +65,34 @@ function SharedNotes() {
 - `usePresence({ cursor, selection })` gives `others`, the people here now, each with `key`, `name` and what they share. `cursor` is the pointer in document coordinates; `selection` names the focused element by its `data-presence-id`, `id` or `name`. Nothing is shared without the hook, and nothing is ever stored.
 - A person's `key` is the same in `useRespondents`, `usePresence` and a shared field's `meta.updatedBy`, so the page can match them.
 
+The kit draws the same in the page's theme:
+
+```tsx
+import { useField } from "@mostra/react";
+import { Attribution, LiveCursors, PresenceAvatars, RespondentTracker } from "@mostra/kit/team";
+
+function TeamPlan() {
+  const [plan, setPlan, meta] = useField("team.plan", "", { scope: "artifact", label: "Plan" });
+  return (
+    <div className="grid gap-4">
+      <div className="flex items-start justify-between gap-6">
+        <RespondentTracker title="Answers" />
+        <PresenceAvatars />
+      </div>
+      <label className="grid gap-1 text-sm">
+        Plan
+        <textarea value={plan} onChange={(e) => setPlan(e.target.value)} />
+      </label>
+      <Attribution by={meta.updatedBy} />
+      <LiveCursors />
+    </div>
+  );
+}
+```
+
+- `RespondentTracker` shows how many answered and, under `names`, who, with each one's status; `PresenceAvatars` who is here (a count under `counts`); `LiveCursors` the others' named pointers, sharing this viewer's while mounted; `Attribution` who changed a shared field, and when.
+- Each reads its hook, or takes the hook's value as a prop (`respondents`, `presence`), shows only what the visibility allows, and says what it would show where there is no team (in verify, or a page opened alone). Each takes `className`.
+
 ## What people see of each other
 
 The manifest's `team: { visibility }` decides what a viewer sees of the others:

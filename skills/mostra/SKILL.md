@@ -79,10 +79,11 @@ Each step ends when its check holds. Don't hand a link out before step 4 passes.
 | Secrets for that code | `mostra secret set NAME`, then `secret("NAME")` in server code | [server.md](references/server.md) |
 | Data that updates by itself | `defineLive` in `live.ts`, `useLive(key)` in the page, `mostra push` from you | [long-lived.md](references/long-lived.md) |
 | State everyone shares and you can edit | `useField(id, initial, { scope: "artifact" })`, `mostra state set` | [long-lived.md](references/long-lived.md) |
-| Show who answered, who is here, who changed what | `useRespondents()`, `usePresence({ cursor })`, a shared field's `meta.updatedBy` | [teams.md](references/teams.md) |
+| Show who answered, who is here, who changed what | `RespondentTracker`, `PresenceAvatars`, `LiveCursors`, `Attribution` from `@mostra/kit/team`, or the hooks `useRespondents()`, `usePresence({ cursor })`, a shared field's `meta.updatedBy` | [teams.md](references/teams.md) |
 | Several pages, packages, MDX, images | `pages/`, any npm import, `index.mdx`, `public/` | [page.md](references/page.md) |
 | A look: a theme, buttons, cards, dialogs, a page's frame | `kit: { theme }`, `@/components/ui/<name>`, `@mostra/kit/layout` | [design.md](references/design.md) |
-| Charts, tables, animation, UI primitives | the preinstalled libraries | [libraries.md](references/libraries.md) |
+| Charts, live charts, tables, diagrams, code, math, maps, 3D, whiteboards | the kit's library parts (`@mostra/kit/charts`, `/live-chart`, `/data-table`, `/mermaid`, `/flow`, `/code`, `/math`, `/map`, `/scene`, `/whiteboard`, `/echarts`) | [libraries.md](references/libraries.md) |
+| Animation, UI primitives, any other library | the preinstalled libraries | [libraries.md](references/libraries.md) |
 | Someone else's component, theme, exporter or command | `mostra add <item>` (shadcn registry items), `mostra plugin add <package>` | [plugins.md](references/plugins.md) |
 | Show what Mostra can do ("Should I use Mostra?") | one live page for the person's own work, published, answered and grown with them | [walkthrough.md](references/walkthrough.md) |
 
@@ -126,7 +127,7 @@ Read the one you need when you need it.
 | [references/sharing.md](references/sharing.md) | Someone other than the person at this machine opens it, or on another device |
 | [references/review.md](references/review.md) | The person compares candidates and chooses one, or comments on the page, and you act on the comments |
 | [references/teams.md](references/teams.md) | Several people answer it or work on it together: personal links, waiting for everyone, who is here |
-| [references/libraries.md](references/libraries.md) | Using charts, tables, motion or UI primitives, or an import fails |
+| [references/libraries.md](references/libraries.md) | Showing data, diagrams, code, math, a map, 3D or a whiteboard, using motion or UI primitives, or an import fails |
 | [references/plugins.md](references/plugins.md) | Adding a shadcn registry item or a plugin, a license asks for an acknowledgment, or you write a plugin |
 | [references/mcp.md](references/mcp.md) | You work through Mostra's tools (`artifact_create` and the rest) instead of the `mostra` command |
 | [references/walkthrough.md](references/walkthrough.md) | Show what Mostra can do: the person asks whether to use Mostra, or what it can do |

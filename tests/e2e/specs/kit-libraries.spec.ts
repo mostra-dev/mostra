@@ -31,6 +31,9 @@ import { Client, readRun } from "../support/mostra.ts";
 
 const run = readRun();
 
+/** How long a page with the kit's on-demand libraries may take to come up: several megabytes. */
+const HEAVY_READY_MS = 90_000;
+
 /** How many distinct colours an element shows: a drawn canvas has many, a blank one one or two. */
 async function colours(locator: Locator): Promise<number> {
   const png = PNG.sync.read(await locator.screenshot({ animations: "disabled" }));
@@ -164,6 +167,7 @@ test.describe("the kit's library wrappers (KT-01)", () => {
       const frame = await openInShell(
         page,
         await linkFor(client, own.artifactId, viewerName(info)),
+        { readyMs: HEAVY_READY_MS },
       );
       const map = frame.locator("[data-slot='map']");
       const scene = frame.locator("[data-slot='scene']");
@@ -207,7 +211,7 @@ test.describe("the kit's library wrappers (KT-01)", () => {
       };
       const sketch = JSON.stringify(answers);
       expect(sketch).toContain('"type":"rectangle"');
-      await reopenInShell(page);
+      await reopenInShell(page, HEAVY_READY_MS);
       await expect(frame.locator("[data-slot='whiteboard'] .excalidraw")).toBeVisible({
         timeout: 60_000,
       });
@@ -271,7 +275,9 @@ test.describe("a token change restyles every library wrapper (KT-04, KT-10)", ()
         const shots = async (viewer: string) => {
           const context = await browser.newContext({ viewport: { width: 1280, height: 5200 } });
           const page = await context.newPage();
-          const frame = await openInShell(page, await linkFor(host, own.artifactId, viewer));
+          const frame = await openInShell(page, await linkFor(host, own.artifactId, viewer), {
+            readyMs: HEAVY_READY_MS,
+          });
           await frame.locator("[data-slot='page']").waitFor();
           // Each library drew: its canvas, diagram or editor is there before the picture.
           await frame

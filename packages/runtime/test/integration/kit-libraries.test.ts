@@ -15,6 +15,7 @@ import { kitPeers } from "../../src/builder/index.ts";
 import { parseLock } from "../../src/deps/index.ts";
 import { overridesOf, pinnedPackages } from "../../src/deps/lock.ts";
 import { installedClosure, type Mirror, startMirror } from "../mirror.ts";
+import { skillSampleArtifact } from "../skill-samples.ts";
 import {
   connectTo,
   type DaemonStatus,
@@ -249,5 +250,13 @@ export default function Page() {
     const { versionId } = await publish(dir);
     expect(pinned(versionId)["three"]).toBe(PINS.get("three"));
     expect(existsSync(join(home.home, "versions", versionId, "client", "index.html"))).toBe(true);
+  }, 900_000);
+
+  it("type-checks, builds and renders the Skill's samples of the on-demand parts (WP-14's check)", async () => {
+    // The samples of `references/libraries.md` that import a map, a scene or a whiteboard: the
+    // warm ones are verify.test.ts's; these need the packages only this suite's mirror serves.
+    const verdict = await verify(artifact("skill-on-demand", skillSampleArtifact("on-demand")));
+    expect(errors(verdict)).toEqual([]);
+    expect(verdict.status).not.toBe("fail");
   }, 900_000);
 });

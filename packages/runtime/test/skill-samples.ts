@@ -10,6 +10,9 @@
  * - Every other block is a module of components (`sample-<reference>-<n>.tsx`); a first line
  *   `// index.tsx` is dropped. The entry renders every top-level function it declares, with the
  *   props of `SAMPLE_PROPS`.
+ * - A module that imports a kit part whose libraries install on demand (`@mostra/kit/map`,
+ *   `/scene`, `/whiteboard`, WP-19) goes into a second artifact, `skillSampleArtifact("on-demand")`,
+ *   which the kit's on-demand suite verifies with the packages its mirror serves.
  */
 import { readdirSync, readFileSync } from "node:fs";
 import { join } from "node:path";
@@ -24,8 +27,11 @@ export const SAMPLE_PROPS: Readonly<Record<string, string>> = {
     'data={[{ id: "INV-1", customer: "Acme", amount: 1200 }, { id: "INV-2", customer: "Bolt", amount: 300 }]}',
 };
 
+/** The kit's modules whose libraries install on demand (`KIT_ON_DEMAND_MODULES`). */
+const ON_DEMAND = /from "@mostra\/kit\/(map|scene|whiteboard)"/;
+
 /** The artifact's files, by path. */
-export function skillSampleArtifact(): Record<string, string> {
+export function skillSampleArtifact(which: "warm" | "on-demand" = "warm"): Record<string, string> {
   const live: string[] = [];
   const actions: string[] = [];
   const modules: { path: string; names: string[] }[] = [];
@@ -53,6 +59,7 @@ export function skillSampleArtifact(): Record<string, string> {
         continue;
       }
       index += 1;
+      if (ON_DEMAND.test(code) !== (which === "on-demand")) continue;
       const path = `sample-${reference.replace(/\.md$/, "")}-${index}.tsx`;
       const body = code.replace(/^\s*\/\/ index\.tsx\n/, "");
       const names = [...body.matchAll(/^function (\w+)/gm)].map((found) => found[1] as string);
@@ -65,8 +72,12 @@ export function skillSampleArtifact(): Record<string, string> {
     }
   }
   if (live.length > 1) throw new Error("more than one live.ts sample");
-  if (live[0] !== undefined) files["live.ts"] = live[0];
-  if (actions.length > 0) files["actions.ts"] = `"use server";\n${actions.join("\n")}`;
+  if (which === "on-demand" && modules.length === 0)
+    throw new Error("no sample imports a kit part whose libraries install on demand");
+  // The warm artifact carries the samples' server code and live sources.
+  if (which === "warm" && live[0] !== undefined) files["live.ts"] = live[0];
+  if (which === "warm" && actions.length > 0)
+    files["actions.ts"] = `"use server";\n${actions.join("\n")}`;
   const imports = modules.map(
     ({ path, names }) => `import { ${names.join(", ")} } from "./${path.replace(/\.tsx$/, "")}";`,
   );

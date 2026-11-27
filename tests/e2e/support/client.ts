@@ -85,6 +85,7 @@ export async function linkFor(
  * and a second one, fails the test as before. Randomization stays on (D157 item 3).
  */
 export async function gotoShell(page: Page, url: string): Promise<void> {
+  recordSaves(page);
   try {
     await page.goto(url);
   } catch (error) {
@@ -97,10 +98,17 @@ export async function gotoShell(page: Page, url: string): Promise<void> {
   }
 }
 
-/** Opens a link in the shell and waits until the page rendered; returns the frame. */
-export async function openInShell(page: Page, url: string): Promise<FrameLocator> {
+/**
+ * Opens a link in the shell and waits until the page rendered; returns the frame. `readyMs` is for
+ * a page whose first load is long (the kit's maps, scenes and whiteboards bring several megabytes).
+ */
+export async function openInShell(
+  page: Page,
+  url: string,
+  options: { readonly readyMs?: number } = {},
+): Promise<FrameLocator> {
   await gotoShell(page, url);
-  await shellReady(page);
+  await shellReady(page, options.readyMs);
   const frame = page.frameLocator("iframe.mostra-frame");
   // The shell is ready once its frame greeted it, so the frame's content is there. Playwright's
   // Firefox on Windows has not reached it, after the worker-mode bootstrap's navigation, even to
@@ -129,11 +137,11 @@ export async function openInShell(page: Page, url: string): Promise<FrameLocator
  * tracks from their start, where `page.reload()` reloads the documents it lost track of (#135).
  * It loads the page's own address, as a reload would, so a hosted link isn't exchanged again.
  */
-export async function reopenInShell(page: Page): Promise<void> {
+export async function reopenInShell(page: Page, readyMs?: number): Promise<void> {
   const here = page.url();
   await page.goto("about:blank");
   await gotoShell(page, here);
-  await shellReady(page);
+  await shellReady(page, readyMs);
 }
 
 /**
@@ -177,9 +185,9 @@ async function freshPageReaches(page: Page): Promise<string> {
 }
 
 /** Waits until the shell says it is ready, or fails saying what each document renders (#39). */
-export async function shellReady(page: Page): Promise<void> {
+export async function shellReady(page: Page, timeout = 20_000): Promise<void> {
   try {
-    await expect(page.locator("html")).toHaveAttribute("data-shell", "ready", { timeout: 20_000 });
+    await expect(page.locator("html")).toHaveAttribute("data-shell", "ready", { timeout });
   } catch (error) {
     // The page says it is ready from an animation frame, which a browser runs only for a document
     // it renders: say what each document's visibility was and whether a frame ran (#39).
@@ -277,8 +285,68 @@ export async function settled(locator: Locator): Promise<void> {
 
 /** Waits until the shell says every answer is saved. */
 export async function saved(page: Page): Promise<void> {
-  await expect(page.locator("[data-mostra-save]")).toHaveAttribute("data-mostra-save", "saved", {
-    timeout: 10_000,
+  try {
+    await expect(page.locator("[data-mostra-save]")).toHaveAttribute("data-mostra-save", "saved", {
+      timeout: 10_000,
+    });
+  } catch (error) {
+    // Whether the page sent its writes and what each got (#148: once on Linux Firefox the shell
+    // kept "saving" while every write the gateway saw was answered).
+    const writes = (saveLog.get(page) ?? [])
+      .slice(-12)
+      .map((write) => `  ${write.at} ${write.ops} -> ${write.outcome ?? "no answer yet"}`);
+    throw new Error(
+      `${(error as Error).message}\nThe page's field writes, newest last:\n${writes.join("\n") || "  none"}`,
+      { cause: error },
+    );
+  }
+}
+
+/** One field write (`POST …/fields`) a page's frame sent, and what it got. */
+interface SaveWrite {
+  readonly at: string;
+  readonly ops: string;
+  outcome?: string;
+}
+
+/** Each page's field writes, newest last (at most 200). */
+const saveLog = new WeakMap<Page, SaveWrite[]>();
+
+function recordSaves(page: Page): void {
+  if (saveLog.has(page)) return;
+  const log: SaveWrite[] = [];
+  saveLog.set(page, log);
+  const entries = new WeakMap<object, SaveWrite>();
+  page.on("request", (request) => {
+    if (request.method() !== "POST" || !/\/_mostra\/v\/[^/]+\/fields$/.test(request.url())) return;
+    let ops = "?";
+    try {
+      const body = JSON.parse(request.postData() ?? "{}") as {
+        ops?: { id: string }[];
+        scope?: string;
+      };
+      ops = `${body.scope ?? "?"}:${(body.ops ?? []).map((op) => op.id).join(",")}`;
+    } catch {
+      // A body that isn't JSON is the gateway's to refuse.
+    }
+    const entry: SaveWrite = { at: new Date().toISOString(), ops };
+    entries.set(request, entry);
+    log.push(entry);
+    if (log.length > 200) log.shift();
+  });
+  page.on("requestfinished", (request) => {
+    const entry = entries.get(request);
+    if (!entry) return;
+    void request
+      .response()
+      .then((response) => {
+        entry.outcome = `${response?.status() ?? "?"} at ${new Date().toISOString()}`;
+      })
+      .catch(() => undefined);
+  });
+  page.on("requestfailed", (request) => {
+    const entry = entries.get(request);
+    if (entry) entry.outcome = `failed: ${request.failure()?.errorText ?? "?"}`;
   });
 }
 
