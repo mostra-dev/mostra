@@ -113,6 +113,7 @@
 | M106 | 2026-11-26T13:30:59Z | Agreed to the export wording (from disk, a demo opens and is interactive on its opening route; history navigation there needs a web server in Chromium and WebKit), with three additions: an in-frame notice when the browser refuses a history-routed demo's navigation from disk, once per session and dismissible ("Moving between pages needs this export to be opened through a web server, for example npx serve <folder> or any static host. This page works as is."); a `README.txt` in a `static` export that holds a history-routed demo, and the same sentence in the single-file page's export notice; the Skill's routing guidance as a choice, not a rule. Recorded as D185. |
 | M107 | 2026-11-26T14:09:30Z | Agreed that `html` carries the demos it can re-bundle into one module and names the others in its report, with the viewer's words in the page ("This demo can't run inside a single file. It's included in the folder version of this export; ask the sender for that.") and the command for the author in the report; and added `--base <path>` to the `static` export, which rebuilds each demo under that path so it works fully at a subpath (GitHub Pages project sites), the report saying so when the flag is missing and when a demo's source isn't there to rebuild, the README naming both ways. Recorded as D185. |
 | M108 | 2026-11-27T08:57:58Z | Approved WP-24's model review (D34, D172 item 0), run as a background Claude Opus review and posted on #253 with 15 findings: "You have my approval. And, the review is done!" Recorded under D185 item 10. |
+| M109 | 2026-11-27T14:50:02Z | Accepted WP-24 after the review's fixes and the green CI run on its final head, its agent-facing and viewer-facing prose with it (D149): "You have my absolute acceptance, including the prose. Excellent work." Recorded under D185. |
 | M38 | 2026-10-24T18:18:49Z | Accepted WP-W2 after its release, and delegated the three open points of its closeout ("I trust you to make the most robust, high-quality, well-thought decisions on all the points you mentioned"): Firefox on Windows arm64, the slow-flush hypothesis of #66, and the Mostra HQ roadmap update. Recorded under D151. |
 | M37 | 2026-10-24T09:53:18Z | Accepted the WP-W2 candidate and D151 ("Approved!"), and started its Claude Opus review; the review's ten findings were fixed under D151 before the merge (D149, D151). Recorded as D151. |
 | M36 | 2026-10-23T17:08:27Z | Accepted WP-W1 after its Claude Opus review: "100% approved", D150 and the package's agent-facing prose with it (D149), and allowed the matching Mostra HQ update. Recorded as D150. |
@@ -1830,7 +1831,7 @@ WP-28 designs and WP-30 builds, in the hosted shell on its trusted origin and ne
 
 ## Web demos and exports (WP-24)
 
-### D185. A demo is a built front end, and exports carry it (M105 to M108)
+### D185. A demo is a built front end, and exports carry it (M105 to M109)
 *Status:* decided by Mirza (M105, M106, M107), before WP-24 was built. *Amends* D28's web demos, D65's ROUND-3 §5.4 (the dev-server proxy, its Host rewriting, framing-header stripping and WebSocket passthrough), ARCHITECTURE §1, §3, §4 and §9, INTERFACES §2.2 and §15, FAILURE_MODEL §2, PRODUCT's J5, the requirements TM-08 and VR-07, and WP-24's Builds and Evidence. Every interface change is additive.
 
 1. **A demo is a built front end.** A web demo is a fully functional front end: the built output of Vite, a Next.js static export, or any framework that emits static files. It ships inside the artifact as part of its version and shows in `<WebDemo>` with device frames and viewports. It behaves the same wherever a Mostra page is seen (locally, through any share or tunnel, on a remote server, in every export class), and nothing about it depends on the machine that made it still running. Whatever the front end needs ships with it (fixtures, mock data, local storage), and its requests leave it only under the page's own rules. There is no hot reload and no live update inside a demo: a change is a rebuild and a new version, which viewers reach through the version banner like any other change.
@@ -1871,7 +1872,7 @@ WP-28 designs and WP-30 builds, in the hosted shell on its trusted origin and ne
 
 *Rejected:* the dev-server proxy of D28 and ROUND-3 §5.4, and with it a stated limit or tailnet faces for demos through shares (M105, item 2); worker-mode frames for a demo listener (an app's own WebSocket can't carry the frame session cross-site); carrying a Next.js export inside one file through blob URLs and hooks on script `src` and `fetch` (tried on 2026-11-26: it rendered its first page and never hydrated, in all three engines); relative-only bases, which break deep links under the SPA fallback; requiring hash routing for every demo, which rules out Next.js's App Router.
 
-*Source:* M105, M106, M107, M108.
+*Source:* M105, M106, M107, M108, M109.
 
 ## Research consensus adopted
 

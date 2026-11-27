@@ -1,6 +1,6 @@
 # WP-24 progress: Web demos and exports
 
-**Status:** in progress. Owns TM-08 and VR-07 ([specification](../design/work-packages/WP-24.md)); the
+**Status:** accepted by Mirza on 2026-11-27 (M109: "You have my absolute acceptance, including the prose"). Owns TM-08 and VR-07 ([specification](../design/work-packages/WP-24.md)); the
 `WP-24` milestone holds no open issue.
 
 ## Baseline
