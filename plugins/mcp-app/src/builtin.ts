@@ -121,9 +121,15 @@ function splitDocument(html: string): {
   const stylesheets = [
     ...html.matchAll(/<link\b[^>]*\brel="stylesheet"[^>]*\bhref="([^"]+)"[^>]*>/gi),
   ].map((match) => match[1] as string);
-  const rest = html
-    .replace(/<script\b[^>]*\btype="module"[^>]*\bsrc="[^"]+"[^>]*><\/script>\s*/gi, "")
-    .replace(/<link\b[^>]*\brel="(?:stylesheet|modulepreload)"[^>]*>\s*/gi, "");
+  // The tags go until none is left: a removal that joins two halves into a new tag removes that
+  // one too, so the document never loads a file the export inlined.
+  let rest = html;
+  for (let before = ""; before !== rest; ) {
+    before = rest;
+    rest = rest
+      .replace(/<script\b[^>]*\btype="module"[^>]*\bsrc="[^"]+"[^>]*><\/script>\s*/gi, "")
+      .replace(/<link\b[^>]*\brel="(?:stylesheet|modulepreload)"[^>]*>\s*/gi, "");
+  }
   return { entry, stylesheets, rest };
 }
 

@@ -7,7 +7,7 @@
  * nothing; a snapshot's report says whose answers it holds and how many people the shared state
  * covers, and leaves the shared state out when asked.
  */
-import { existsSync, mkdirSync, readdirSync, readFileSync, statSync, writeFileSync } from "node:fs";
+import { existsSync, mkdirSync, readdirSync, readFileSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
 import { GatewayHome, ok, type Receipt, refused } from "../gateway-home.ts";
@@ -42,18 +42,21 @@ export default function Page() {
   return dir;
 }
 
-/** Every file under `dir`, with its text. */
+/** Every file under `dir` (or `dir` itself, when it is one file), with its text. */
 function textsUnder(dir: string): { path: string; text: string }[] {
   const found: { path: string; text: string }[] = [];
   const walk = (at: string): void => {
-    for (const name of readdirSync(at)) {
-      const path = join(at, name);
-      if (statSync(path).isDirectory()) walk(path);
-      else found.push({ path, text: readFileSync(path, "latin1") });
+    for (const entry of readdirSync(at, { withFileTypes: true })) {
+      const path = join(at, entry.name);
+      if (entry.isDirectory()) walk(path);
+      else if (entry.isFile()) found.push({ path, text: readFileSync(path, "latin1") });
     }
   };
-  if (statSync(dir).isDirectory()) walk(dir);
-  else found.push({ path: dir, text: readFileSync(dir, "latin1") });
+  try {
+    found.push({ path: dir, text: readFileSync(dir, "latin1") });
+  } catch {
+    walk(dir);
+  }
   return found;
 }
 
