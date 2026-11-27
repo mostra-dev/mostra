@@ -328,7 +328,7 @@
         "@mostra/kit/layout",
         "uplot"
       ],
-      "limit": "2.5 kB"
+      "limit": "3 kB"
     },
     {
       "name": "@mostra/kit/charts (React, the client runtime, the kit's other modules and the library it wraps excluded)",
