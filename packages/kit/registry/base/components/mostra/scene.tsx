@@ -38,13 +38,15 @@ export interface SceneProps extends Omit<React.ComponentProps<"figure">, "title"
   readonly autoRotate?: boolean;
 }
 
-/** Whether this browser draws WebGL, asked once. */
+/**
+ * Whether this browser draws WebGL 2, asked once: three.js (since r163) draws with nothing older, and a browser
+ * may offer WebGL 1 alone (Firefox on a machine its graphics policy holds back does).
+ */
 let webgl: boolean | undefined;
 function canDrawWebGL(): boolean {
   if (webgl === undefined) {
     try {
-      const canvas = document.createElement("canvas");
-      webgl = (canvas.getContext("webgl2") ?? canvas.getContext("webgl")) !== null;
+      webgl = document.createElement("canvas").getContext("webgl2") !== null;
     } catch {
       webgl = false;
     }
@@ -90,7 +92,7 @@ export function Scene({
       >
         {typeof document !== "undefined" && !canDrawWebGL() ? (
           <p className="grid h-full place-items-center p-4 text-center text-sm text-muted-foreground">
-            This browser can't draw 3D scenes: WebGL is turned off.
+            This browser can't draw 3D scenes: WebGL 2 is turned off or missing.
           </p>
         ) : (
           <Canvas

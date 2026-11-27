@@ -162,7 +162,7 @@ function Places() {
 - `useTokens()` gives the theme's values a canvas or WebGL library takes (each colour resolved, `chart` in series order, the faces), current as the theme or its light or dark changes.
 - These three install their libraries the first time a page imports them, which takes a minute; later builds reuse them.
 - The map draws on a world outline in the theme, which needs no tile server and works offline and inline in chat hosts; `basemap` takes any MapLibre style URL (one with streets comes with its provider's terms, often a key), and `layers` takes deck.gl layers.
-- `Whiteboard` saves the drawing as the field `id`. Without WebGL, the map and the scene say so in words.
+- `Whiteboard` saves the drawing as the field `id`. Without WebGL 2, the map and the scene say so in words.
 
 ## Write this, not that
 

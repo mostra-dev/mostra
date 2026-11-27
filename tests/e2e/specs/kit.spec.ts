@@ -140,11 +140,12 @@ test.describe("a token change restyles every kit visual (KT-04, KT-10)", () => {
           style.textContent = "html, body { background: rgb(128, 128, 128) !important; }";
           document.head.append(style);
         });
-        // Each visible part, in document order (the same parts in both builds), and its box.
+        // Each visible part, in document order (the same parts in both builds), and its box: a
+        // part for screen readers only (a 1 px box, the live chart's summary) shows nothing.
         const boxes = await frame.locator("[data-slot]").evaluateAll((elements) =>
           elements.flatMap((element) => {
             const box = element.getBoundingClientRect();
-            if (!(box.width >= 1 && box.height >= 1 && element.checkVisibility())) return [];
+            if (!(box.width > 1 && box.height > 1 && element.checkVisibility())) return [];
             return [
               {
                 slot: element.getAttribute("data-slot") ?? "",

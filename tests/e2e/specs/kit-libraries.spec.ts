@@ -45,12 +45,14 @@ async function colours(locator: Locator): Promise<number> {
   return seen.size;
 }
 
-/** Whether the artifact's frame can draw WebGL in this browser (some CI engines can't). */
+/**
+ * Whether the artifact's frame can draw WebGL 2 in this browser, which MapLibre 6 and three.js
+ * need: some CI engines offer none, Firefox on Windows' runners WebGL 1 alone.
+ */
 function webgl(frame: FrameLocator): Promise<boolean> {
-  return frame.locator("html").evaluate(() => {
-    const canvas = document.createElement("canvas");
-    return (canvas.getContext("webgl2") ?? canvas.getContext("webgl")) !== null;
-  });
+  return frame
+    .locator("html")
+    .evaluate(() => document.createElement("canvas").getContext("webgl2") !== null);
 }
 
 test.describe("the kit's library wrappers (KT-01)", () => {
@@ -195,8 +197,8 @@ test.describe("the kit's library wrappers (KT-01)", () => {
       } else {
         // A browser without WebGL is told so in words, never a blank box.
         info.annotations.push({ type: "webgl", description: "unavailable in this browser" });
-        await expect(map).toContainText("WebGL is turned off");
-        await expect(scene).toContainText("WebGL is turned off");
+        await expect(map).toContainText("WebGL 2 is turned off or missing");
+        await expect(scene).toContainText("WebGL 2 is turned off or missing");
       }
       // Its markers' names are in the page for screen readers.
       await expect(map.locator("li")).toHaveText([/^Berlin/, /^Paris/]);
@@ -207,11 +209,15 @@ test.describe("the kit's library wrappers (KT-01)", () => {
       // Excalidraw's canvas sits under its own layers, so it is drawn on as a person does: the
       // pointer at its place, the rectangle tool by its key.
       const canvas = board.locator("canvas.interactive");
+      // The pointer acts where the viewport shows the board, so the board is brought into it.
+      await canvas.scrollIntoViewIfNeeded();
       const box = await canvas.boundingBox();
       expect(box).not.toBeNull();
-      await page.mouse.click((box?.x ?? 0) + 40, (box?.y ?? 0) + 40);
+      const { x, y, width, height } = box ?? { x: 0, y: 0, width: 0, height: 0 };
+      // A click on the empty middle of the board gives it the keyboard, clear of its menus.
+      await page.mouse.click(x + width * 0.75, y + height * 0.55);
       await page.keyboard.press("r");
-      const at = { x: (box?.x ?? 0) + 120, y: (box?.y ?? 0) + 110 };
+      const at = { x: x + width * 0.25, y: y + height * 0.35 };
       await page.mouse.move(at.x, at.y);
       await page.mouse.down();
       await page.mouse.move(at.x + 160, at.y + 90, { steps: 8 });

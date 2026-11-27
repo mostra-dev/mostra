@@ -177,13 +177,15 @@ function markerLayers(markers: readonly MapMarker[], tokens: Tokens): Layer[] {
   ];
 }
 
-/** Whether this browser draws WebGL, asked once. */
+/**
+ * Whether this browser draws WebGL 2, asked once: MapLibre 6 draws with nothing older, and a browser
+ * may offer WebGL 1 alone (Firefox on a machine its graphics policy holds back does).
+ */
 let webgl: boolean | undefined;
 function canDrawWebGL(): boolean {
   if (webgl === undefined) {
     try {
-      const canvas = document.createElement("canvas");
-      webgl = (canvas.getContext("webgl2") ?? canvas.getContext("webgl")) !== null;
+      webgl = document.createElement("canvas").getContext("webgl2") !== null;
     } catch {
       webgl = false;
     }
@@ -300,7 +302,7 @@ export function MapView({
       >
         {typeof document !== "undefined" && !canDrawWebGL() && (
           <p className="grid h-full place-items-center bg-card p-4 text-center text-sm text-muted-foreground">
-            This browser can't draw maps: WebGL is turned off.
+            This browser can't draw maps: WebGL 2 is turned off or missing.
           </p>
         )}
       </div>
