@@ -841,6 +841,7 @@ const SEEDS: readonly Seed[] = [
     from: "    if (api === null) return;",
     to: "    return;",
     check: e2e("install on demand and draw"),
+    e2e: true,
   },
   {
     requirement: "KT-05",
@@ -849,6 +850,7 @@ const SEEDS: readonly Seed[] = [
     from: '"[&>:is(button,[data-slot=button],[data-slot=button-group])]:self-start",',
     to: '"[&>:is(button,a,[data-slot=button],[data-slot=badge],[data-slot=button-group])]:self-start",',
     check: e2e("inside a Page"),
+    e2e: true,
   },
   {
     requirement: "KT-05",

@@ -198,11 +198,8 @@ test.describe("the kit's library wrappers (KT-01)", () => {
     const client = await Client.connect(run.socket);
     try {
       const own = await publishOwn(client, run.home, info, { fixture: "kit-on-demand" });
-      const frame = await openInShell(
-        page,
-        await linkFor(client, own.artifactId, viewerName(info)),
-        { readyMs: HEAVY_READY_MS },
-      );
+      const link = await linkFor(client, own.artifactId, viewerName(info));
+      const frame = await openInShell(page, link, { readyMs: HEAVY_READY_MS });
       const map = frame.locator("[data-slot='map']");
       const scene = frame.locator("[data-slot='scene']");
       if (await webgl(frame)) {
@@ -226,15 +223,10 @@ test.describe("the kit's library wrappers (KT-01)", () => {
 
       // Excalidraw: a drawing is saved as the field and comes back after a reload. A second tab
       // of the same viewer, open before the first draws, shows the first tab's rectangle, and its
-      // own stroke adds to it rather than saving over it (Opus review of WP-19, finding 2).
+      // own stroke adds to it rather than saving over it (Opus review of WP-19, finding 2). The same
+      // link opens both, so both tabs share the one session.
       const second = await page.context().newPage();
-      const otherFrame = await openInShell(
-        second,
-        await linkFor(client, own.artifactId, viewerName(info)),
-        {
-          readyMs: HEAVY_READY_MS,
-        },
-      );
+      const otherFrame = await openInShell(second, link, { readyMs: HEAVY_READY_MS });
       await expect(otherFrame.locator("[data-slot='whiteboard'] .excalidraw")).toBeVisible({
         timeout: 60_000,
       });
