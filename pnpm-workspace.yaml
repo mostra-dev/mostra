@@ -31,13 +31,16 @@ permissions:
   '@tanstack/react-table':
     skills: false
 
-# Two exact pins in Excalidraw's tree have advisories GitHub's dependency review reports: lodash-es
+# Three exact pins in Excalidraw's tree have advisories GitHub's dependency review reports: lodash-es
 # 4.17.21 (its Mermaid parser's, through langium 3 and chevrotain 11.0.3; code injection in
-# `_.template`) and nanoid 3.3.3 (its own; generators that loop or overflow). The workspace takes the
-# fixed releases of the same lines, as the kit's on-demand installs do (`mostra-kit.overrides`, WP-19).
+# `_.template`), nanoid 3.3.3 (its own) and nanoid 4.0.2 (mermaid-to-excalidraw's; generators that
+# loop or overflow). The workspace takes the fixed releases, of the same line where one exists (the
+# 4 line has none: 5.1.16, whose `nanoid()` mermaid-to-excalidraw imports alone), as the kit's
+# on-demand installs do (`mostra-kit.overrides`, WP-19).
 overrides:
   lodash-es@4.17.21: 4.18.1
   nanoid@3.3.3: 3.3.20
+  nanoid@4.0.2: 5.1.16
 
 # dependency-cruiser loads TypeScript's compiler API but doesn't declare it, so pnpm would hand it
 # the hoisted TypeScript 7, which has no such API. Declaring the peer makes it resolve tools/ts6's.

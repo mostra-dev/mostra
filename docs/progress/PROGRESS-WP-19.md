@@ -58,7 +58,8 @@ Every check runs through the real interface: a real daemon over the host protoco
 ## Found while building
 
 - **WebGL 2, not WebGL.** Firefox on GitHub's Windows runner offers WebGL 1 alone, and MapLibre 6 and three.js (since r163) need WebGL 2: the map and the scene now ask for WebGL 2 and say so in words without it, where they showed an empty box.
-- **Two advisories in Excalidraw's tree** (`lodash-es` 4.17.21, `nanoid` 3.3.3, both pinned exactly beneath it): the workspace and every on-demand install take the fixed releases (D185 item 12).
+- **Three advisories in Excalidraw's tree** (`lodash-es` 4.17.21, `nanoid` 3.3.3 and 4.0.2, each pinned exactly beneath it): the workspace and every on-demand install take the fixed releases (D185 item 12).
+- **The kit's suite outlived the shared clean-up on Windows arm64:** its installed libraries are tens of thousands of files, which the suite now removes itself, with a time of its own.
 - **MapLibre 6 in a bundle** needs its worker's URL set (`setWorkerUrl`), and deck.gl's interleaved mode broke with it; country outlines needed their rings rewound (grey patches).
 - **A field written from Excalidraw's `onChange`** would save on every pointer move: the whiteboard writes only when the scene's version changed, without deleted elements or unused images.
 - **Points reach a page in groups**, so a chart can't draw on every frame even when no frame is lost; AC-08's draws budget allows it (D185 item 7).

@@ -14,6 +14,7 @@ import { afterAll, beforeAll, describe, expect, it } from "vitest";
 import { kitPeers } from "../../src/builder/index.ts";
 import { parseLock } from "../../src/deps/index.ts";
 import { overridesOf, pinnedPackages } from "../../src/deps/lock.ts";
+import { removeTree } from "../../src/platform/index.ts";
 import { installedClosure, type Mirror, startMirror } from "../mirror.ts";
 import { skillSampleArtifact } from "../skill-samples.ts";
 import {
@@ -108,7 +109,11 @@ afterAll(async () => {
   await client?.call("mostra/shutdown", {});
   await daemon?.exited;
   await mirror?.close();
-});
+  // The installed libraries are tens of thousands of files, which Windows arm64 removes in more
+  // than the minute the shared clean-up has: they go here, with a time of their own, first.
+  // A file still held is left to the shared clean-up, which names it.
+  if (home !== undefined) await removeTree(join(home.home, "deps")).catch(() => {});
+}, 600_000);
 
 describe("the kit's on-demand libraries (WP-19, D65)", () => {
   it("installs three.js, react-three-fiber and drei at the kit's pins for a scene, whose elements are typed", async () => {
@@ -216,13 +221,17 @@ export default function Page() {
     expect(overridesOf(lock)).toEqual({
       "lodash-es@4.17.21": "4.18.1",
       "nanoid@3.3.3": "3.3.20",
+      "nanoid@4.0.2": "5.1.16",
     });
     expect(pinnedPackages(lock).filter((pkg) => pkg.name === "lodash-es")).toEqual([
       { name: "lodash-es", version: "4.18.1" },
     ]);
     expect(
-      pinnedPackages(lock).filter((pkg) => pkg.name === "nanoid" && pkg.version.startsWith("3.")),
-    ).toEqual([{ name: "nanoid", version: "3.3.20" }]);
+      pinnedPackages(lock)
+        .filter((pkg) => pkg.name === "nanoid")
+        .map((pkg) => pkg.version)
+        .sort(),
+    ).toEqual(["3.3.20", "5.1.16"]);
     const fonts = clientFiles(versionId).filter((file) =>
       file.startsWith("kit-assets/excalidraw/fonts/"),
     );
