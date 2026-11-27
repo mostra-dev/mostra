@@ -5,12 +5,14 @@
  * - the burst of 10,000 points the source starts with reaches the chart;
  * - the page keeps up: the chart's newest point advances at the source's rate, and the chart
  *   draws again on nearly every frame;
- * - its frames: against the same chart over the same points with none arriving (the control, in
- *   the same browser), the live page drops no more than the budget, so a dropped frame is the
- *   live data's cost and not the machine's.
+ * - its frames: against the paint control, a page that draws the same picture by hand on every
+ *   frame (a line of two points a pixel over the plot's size, with no live data, React or chart
+ *   library), the live page drops no more than the budget, so a dropped frame is the chart's and
+ *   its data's cost, not what this browser on this machine can draw. The still control (the same
+ *   chart over the same points, none arriving) is measured too, the page at rest, and reported.
  *
- * The chart marks each draw on its plot element (`data-drawn`: the draws so far and the newest
- * point's x), which the test reads, so it measures what the page draws through the chart's own
+ * The chart marks each draw on its plot element (`data-drawn`: the draws so far, the newest
+ * point's x and a draw's smoothed time), which the test reads, so it measures what the page draws through the chart's own
  * public mark; the summary screen readers read follows a few times a second.
  */
 import { expect, type Page, test } from "@playwright/test";
@@ -26,10 +28,10 @@ const SECONDS = 10;
 
 /**
  * The targets, set from the measured baseline (PROGRESS-WP-19, AC-08): the chart's newest point
- * keeps within 5% of the source's rate; it draws on at least 85% of the frames the control draws
- * (each frame has a new point to show at 60 a second); and the live page's frame rate is at least
- * 85% of the control's, its long frames (two or more frames dropped at 60 Hz) at most 5 percentage
- * points more than the control's.
+ * keeps within 5% of the source's rate; it draws on at least 85% of the frames the paint control
+ * draws, to at most 60 a second (each frame has a new point to show at 60 a second); and the live
+ * page's frame rate is at least 85% of the paint control's, its long frames (two or more frames
+ * dropped at 60 Hz) at most 5 percentage points more than the paint control's.
  */
 const BUDGET = {
   rate: 0.95,
@@ -49,6 +51,8 @@ interface Measure {
   readonly longFrames: number;
   readonly p50: number;
   readonly p95: number;
+  /** A draw's smoothed time, milliseconds, as the chart reports it (0 for the paint control). */
+  readonly drawMs: number;
 }
 
 /** Watches the chart's draws and the page's frames for `ms`. */
@@ -58,9 +62,9 @@ async function measure(page: Page, ms: number): Promise<Measure> {
   return frame.evaluate(async (duration) => {
     const plot = document.querySelector('[data-slot="live-chart"] [data-drawn]');
     if (!plot) throw new Error("the chart has drawn nothing");
-    const mark = (): [number, number] => {
-      const [count = "", x = ""] = (plot.getAttribute("data-drawn") ?? "").split(" ");
-      return [Number(count), Number(x)];
+    const mark = (): [number, number, number] => {
+      const [count = "", x = "", ms = "0"] = (plot.getAttribute("data-drawn") ?? "").split(" ");
+      return [Number(count), Number(x), Number(ms)];
     };
     const intervals: number[] = [];
     const [firstDraws, first] = mark();
@@ -75,7 +79,7 @@ async function measure(page: Page, ms: number): Promise<Measure> {
       };
       requestAnimationFrame(tick);
     });
-    const [lastDraws, last] = mark();
+    const [lastDraws, last, drawMs] = mark();
     const elapsed = (performance.now() - start) / 1000;
     intervals.shift();
     const sorted = [...intervals].sort((a, b) => a - b);
@@ -89,6 +93,7 @@ async function measure(page: Page, ms: number): Promise<Measure> {
         intervals.filter((interval) => interval > 41.7).length / Math.max(1, intervals.length),
       p50: at(0.5),
       p95: at(0.95),
+      drawMs,
     };
   }, ms);
 }
@@ -115,13 +120,20 @@ test.describe("high-rate live data stays smooth (AC-08)", () => {
     try {
       const live = await publishOwn(client, run.home, info, { fixture: "live-chart" });
       const still = await publishOwn(client, run.home, info, { fixture: "live-chart-still" });
+      const painted = await publishOwn(client, run.home, info, { fixture: "live-chart-paint" });
       const viewer = `ac08-${info.project.name}`;
 
-      // The control first: the same chart, the same points, none arriving.
+      // The controls first, each in a page of its own: the same chart at rest, and the same picture
+      // drawn by hand on every frame.
       const control = await browser.newPage({ viewport: { width: 1280, height: 800 } });
       await open(control, await linkFor(client, still.artifactId, viewer));
       const baseline = await measure(control, SECONDS * 1000);
       await control.close();
+      const painter = await browser.newPage({ viewport: { width: 1280, height: 800 } });
+      await open(painter, await linkFor(client, painted.artifactId, viewer));
+      await painter.waitForTimeout(1000);
+      const paint = await measure(painter, SECONDS * 1000);
+      await painter.close();
 
       const page = await browser.newPage({ viewport: { width: 1280, height: 800 } });
       const loaded = await open(page, await linkFor(client, live.artifactId, viewer));
@@ -137,6 +149,7 @@ test.describe("high-rate live data stays smooth (AC-08)", () => {
         control: Object.fromEntries(
           Object.entries(baseline).map(([key, value]) => [key, round(value)]),
         ),
+        paint: Object.fromEntries(Object.entries(paint).map(([key, value]) => [key, round(value)])),
         live: Object.fromEntries(Object.entries(result).map(([key, value]) => [key, round(value)])),
       };
       info.annotations.push({ type: "AC-08", description: JSON.stringify(report) });
@@ -148,14 +161,14 @@ test.describe("high-rate live data stays smooth (AC-08)", () => {
       ).toBeGreaterThanOrEqual(RATE * BUDGET.rate);
       expect(
         result.draws,
-        "the chart draws a new point on nearly every frame the control draws",
-      ).toBeGreaterThanOrEqual(Math.min(RATE, baseline.frames) * BUDGET.drawsPerFrame);
+        "the chart draws a new point on nearly every frame the paint control draws",
+      ).toBeGreaterThanOrEqual(Math.min(RATE, paint.frames) * BUDGET.drawsPerFrame);
       expect(
         result.frames,
-        "the live page's frame rate against the control's",
-      ).toBeGreaterThanOrEqual(baseline.frames * BUDGET.frames);
-      expect(result.longFrames, "long frames beyond the control's").toBeLessThanOrEqual(
-        baseline.longFrames + BUDGET.longFrames,
+        "the live page's frame rate against the paint control's",
+      ).toBeGreaterThanOrEqual(paint.frames * BUDGET.frames);
+      expect(result.longFrames, "long frames beyond the paint control's").toBeLessThanOrEqual(
+        paint.longFrames + BUDGET.longFrames,
       );
     } finally {
       client.close();

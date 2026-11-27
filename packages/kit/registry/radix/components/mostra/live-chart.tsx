@@ -274,6 +274,8 @@ function PointsChart({
   const series = React.useMemo(() => JSON.parse(seriesKey) as LiveChartSeries[], [seriesKey]);
   const host = React.useRef<HTMLDivElement>(null);
   const plot = React.useRef<uPlot | null>(null);
+  // How long a draw takes, smoothed (milliseconds), for whoever measures the chart (AC-08).
+  const drawMs = React.useRef(0);
   const columns = React.useRef<{ columns: Columns; last: unknown; key: string } | null>(null);
   const titleId = React.useId();
   const formatRef = React.useRef(format);
@@ -327,6 +329,7 @@ function PointsChart({
   React.useLayoutEffect(() => {
     const element = host.current;
     if (!element) return;
+    let drawStart = 0;
     const axis: uPlot.Axis = {
       stroke: tokens.mutedForeground,
       font: `11px ${tokens.fontSans}`,
@@ -353,6 +356,19 @@ function PointsChart({
         },
       ],
       cursor: { points: { size: 6 } },
+      hooks: {
+        drawClear: [
+          () => {
+            drawStart = performance.now();
+          },
+        ],
+        draw: [
+          () => {
+            const ms = performance.now() - drawStart;
+            drawMs.current = drawMs.current === 0 ? ms : drawMs.current * 0.9 + ms * 0.1;
+          },
+        ],
+      },
       legend: { live: true },
       series: [
         { label: timeAxis ? "Time" : x },
@@ -407,11 +423,12 @@ function PointsChart({
     current.setData(drawnData, true);
     drawn.current += 1;
     const newest = points.at(-1);
-    // What the chart drew, for whoever measures it (a test, a host): the draws so far and the x
-    // of the newest point, on the plot's own element, which no style reads.
+    // What the chart drew, for whoever measures it (a test, a host): the draws so far, the x of
+    // the newest point and a draw's smoothed time in milliseconds, on the plot's own element,
+    // which no style reads.
     host.current?.setAttribute(
       "data-drawn",
-      `${drawn.current} ${newest === undefined ? "" : String(xOf(newest, x))}`,
+      `${drawn.current} ${newest === undefined ? "" : String(xOf(newest, x))} ${drawMs.current.toFixed(2)}`,
     );
     const now = performance.now();
     if (now - textAt.current < TEXT_INTERVAL_MS) return;
