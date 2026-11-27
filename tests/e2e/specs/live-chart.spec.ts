@@ -58,9 +58,14 @@ const BUDGET = {
  * the long frames are reported, not asserted.
  */
 const SOFTWARE = { frames: 0.5, drawsPerFrame: 0.5 } as const;
+/**
+ * On CI's runners only: a Mac with its GPU, or a Linux desktop, meets the full budget (Opus review
+ * of WP-19, finding 9).
+ */
 const softwareEngine = (engine: string): boolean =>
-  (engine === "webkit" && process.platform === "linux") ||
-  (engine === "chromium" && process.platform === "darwin");
+  process.env["CI"] !== undefined &&
+  ((engine === "webkit" && process.platform === "linux") ||
+    (engine === "chromium" && process.platform === "darwin"));
 
 interface Measure {
   /** The chart's newest point's advance, points a second. */

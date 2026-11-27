@@ -196,6 +196,16 @@ class FileLint {
     };
   }
 
+  /** A finding whose change a fix can't make alone: it names it, and changes nothing. */
+  note(rule: string, message: string, start: number): void {
+    this.out.diagnostics.push(
+      createDiagnostic("MOSTRA_LINT_API_CHANGED", {
+        message: `${rule}: ${message}`,
+        location: { file: this.file, ...lineColumn(this.text, start) },
+      }),
+    );
+  }
+
   report(rule: string, message: string, start: number, end: number, replacement: string): void {
     this.out.diagnostics.push(
       createDiagnostic("MOSTRA_LINT_API_CHANGED", {
@@ -373,6 +383,15 @@ function lintScript(lint: FileLint, program: Node, base: "base" | "radix"): void
   // React Flow: its change helpers as the page names them, and its flow component's local names.
   const flowApply = new Set<string>();
   const flowComponents = new Set<string>();
+  // The import of the helpers, fixed once every use of them is: a use the fix can't rewrite keeps
+  // it, so the fixed page still type-checks (Opus review of WP-19, finding 7).
+  let flowImport: { statement: Node; removed: Node[]; replacement: string } | undefined;
+  let flowUses = 0;
+  let flowRewritten = 0;
+  // Mapbox GL's import as the page names it, and react-map-gl's map component's: MapLibre needs
+  // no access token, so the token's line and prop go with the move (Opus review of WP-19, 7).
+  const mapbox = new Set<string>();
+  const reactMaps = new Set<string>();
 
   for (const statement of program["body"] as Node[]) {
     if (statement.type !== "ImportDeclaration") continue;
@@ -411,15 +430,14 @@ function lintScript(lint: FileLint, program: Node, base: "base" | "radix"): void
           .filter((specifier) => !removed.includes(specifier))
           .map((specifier) => lint.text.slice(specifier.start, specifier.end));
         const typeOnly = statement["importKind"] === "type" ? "type " : "";
-        lint.report(
-          "React Flow 13",
-          `${removed.map((specifier) => `\`${(specifier["imported"] as Node)["name"]}\``).join(" and ")} ${removed.length === 1 ? "is" : "are"} gone: \`onNodesChange\` and \`onEdgesChange\` get a changeset, and \`changes.applyTo(nodes)\` applies it.`,
-          statement.start,
-          statement.end,
-          kept.length > 0
-            ? `import ${typeOnly}{ ${kept.join(", ")} } from ${literal("@xyflow/react")};`
-            : "",
-        );
+        flowImport = {
+          statement,
+          removed,
+          replacement:
+            kept.length > 0
+              ? `import ${typeOnly}{ ${kept.join(", ")} } from ${literal("@xyflow/react")};`
+              : "",
+        };
       }
     }
     if (source === "shiki" || source.startsWith("shiki/")) {
@@ -445,6 +463,27 @@ function lintScript(lint: FileLint, program: Node, base: "base" | "radix"): void
         statement.end,
         "",
       );
+    }
+    if (source === "mapbox-gl") {
+      for (const specifier of specifiers) {
+        if (
+          specifier.type === "ImportDefaultSpecifier" ||
+          specifier.type === "ImportNamespaceSpecifier"
+        ) {
+          mapbox.add((specifier["local"] as Node)["name"] as string);
+        }
+      }
+    }
+    if (source === "react-map-gl" || source === "react-map-gl/mapbox") {
+      for (const specifier of specifiers) {
+        const imported =
+          specifier.type === "ImportSpecifier"
+            ? ((specifier["imported"] as Node)["name"] as string)
+            : undefined;
+        if (specifier.type === "ImportDefaultSpecifier" || imported === "Map") {
+          reactMaps.add((specifier["local"] as Node)["name"] as string);
+        }
+      }
     }
     const moved = MOVED_PACKAGES[source];
     if (moved !== undefined) {
@@ -524,7 +563,43 @@ function lintScript(lint: FileLint, program: Node, base: "base" | "radix"): void
     }
   }
 
+  /** `[start, end)` of a statement with the line it stands on, when nothing else is on it. */
+  const wholeLine = (node: Node): [number, number] => {
+    let start = node.start;
+    while (start > 0 && /[ \t]/.test(lint.text[start - 1] ?? "")) start--;
+    let end = node.end;
+    while (end < lint.text.length && /[ \t]/.test(lint.text[end] ?? "")) end++;
+    const alone =
+      (start === 0 || lint.text[start - 1] === "\n") &&
+      (end === lint.text.length || lint.text[end] === "\n");
+    return alone ? [start, Math.min(end + 1, lint.text.length)] : [node.start, node.end];
+  };
+
   const visit = (node: Node): void => {
+    // The imports are read above; a name in them isn't a use.
+    if (node.type === "ImportDeclaration") return;
+    if (node.type === "Identifier" && flowApply.has(node["name"] as string)) flowUses += 1;
+    // `mapboxgl.accessToken = …`: MapLibre has no token to set.
+    if (node.type === "ExpressionStatement") {
+      const expression = node["expression"] as Node;
+      const left = expression.type === "AssignmentExpression" ? (expression["left"] as Node) : null;
+      if (
+        left?.type === "MemberExpression" &&
+        !left["computed"] &&
+        ((left["property"] as Node)["name"] as string) === "accessToken" &&
+        (left["object"] as Node).type === "Identifier" &&
+        mapbox.has((left["object"] as Node)["name"] as string)
+      ) {
+        const [start, end] = wholeLine(node);
+        lint.report(
+          "MapLibre",
+          "MapLibre GL needs no access token, and has none to set: the line goes.",
+          start,
+          end,
+          "",
+        );
+      }
+    }
     if (node.type === "CallExpression") {
       const callee = node["callee"] as Node;
       if (callee.type === "MemberExpression" && !callee["computed"]) {
@@ -597,6 +672,7 @@ function lintScript(lint: FileLint, program: Node, base: "base" | "radix"): void
         const [changes, list] = args as [Node, Node];
         const target = lint.text.slice(changes.start, changes.end);
         const simple = changes.type === "Identifier" || changes.type === "MemberExpression";
+        flowRewritten += 1;
         lint.report(
           "React Flow 13",
           "a change handler gets a changeset: `changes.applyTo(nodes)` applies it.",
@@ -624,6 +700,22 @@ function lintScript(lint: FileLint, program: Node, base: "base" | "radix"): void
       // React Flow 13 follows the page's light or dark itself; `forceColorMode` forces one.
       const opening = node["openingElement"] as Node;
       const name = opening["name"] as Node;
+      // react-map-gl on MapLibre takes no `mapboxAccessToken`.
+      if (name.type === "JSXIdentifier" && reactMaps.has(name["name"] as string)) {
+        for (const attribute of opening["attributes"] as Node[]) {
+          if (attribute.type !== "JSXAttribute") continue;
+          if ((attribute["name"] as Node)["name"] !== "mapboxAccessToken") continue;
+          let start = attribute.start;
+          while (start > 0 && /\s/.test(lint.text[start - 1] ?? "")) start--;
+          lint.report(
+            "MapLibre",
+            "react-map-gl on MapLibre needs no access token: `mapboxAccessToken` goes.",
+            start,
+            attribute.end,
+            "",
+          );
+        }
+      }
       if (name.type === "JSXIdentifier" && flowComponents.has(name["name"] as string)) {
         for (const attribute of opening["attributes"] as Node[]) {
           if (attribute.type !== "JSXAttribute") continue;
@@ -702,6 +794,22 @@ function lintScript(lint: FileLint, program: Node, base: "base" | "radix"): void
   };
 
   visit(program);
+
+  if (flowImport !== undefined) {
+    const { statement, removed, replacement } = flowImport;
+    const names = removed.map((specifier) => `\`${(specifier["imported"] as Node)["name"]}\``);
+    const gone = `${names.join(" and ")} ${removed.length === 1 ? "is" : "are"} gone: \`onNodesChange\` and \`onEdgesChange\` get a changeset, and \`changes.applyTo(nodes)\` applies it.`;
+    // A call the fix rewrites is the one use of its name it makes; any other use stays the page's.
+    if (flowUses === flowRewritten) {
+      lint.report("React Flow 13", gone, statement.start, statement.end, replacement);
+    } else {
+      lint.note(
+        "React Flow 13",
+        `${gone} A use the fix can't rewrite (the helper passed on, or called another way) is left to change by hand.`,
+        statement.start,
+      );
+    }
+  }
 }
 
 /**

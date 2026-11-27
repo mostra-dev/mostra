@@ -207,8 +207,13 @@ export async function startMirror(packages: readonly Found[]): Promise<Mirror> {
       response.writeHead(200, { "content-type": "application/json" });
       response.end(JSON.stringify({ name: path, "dist-tags": { latest }, versions, time }));
     } catch (error) {
+      // The failure goes to the test's own output; the client is told only that it failed
+      // (CodeQL: no stack trace in a response).
+      process.stderr.write(
+        `mirror: ${path}: ${error instanceof Error ? error.stack : String(error)}\n`,
+      );
       response.writeHead(500, { "content-type": "text/plain" });
-      response.end(String(error));
+      response.end("The mirror couldn't serve this package.");
     }
   });
   await new Promise<void>((resolve) => server.listen(0, "127.0.0.1", resolve));

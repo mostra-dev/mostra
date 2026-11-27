@@ -210,7 +210,14 @@ function CursorsView({
             color: personColor(peer.key),
           }}
         >
-          <svg width="16" height="20" viewBox="0 0 16 20" fill="none" aria-hidden="true">
+          <svg
+            width="16"
+            height="20"
+            viewBox="0 0 16 20"
+            fill="none"
+            aria-hidden="true"
+            className="block"
+          >
             <path
               d="M1 1 L1 16 L5 12 L8 19 L11 18 L8 11 L14 11 Z"
               fill="currentColor"
@@ -220,7 +227,8 @@ function CursorsView({
             />
           </svg>
           <span
-            className="mt-1 ml-3 inline-block rounded-full border-2 bg-card px-2 py-0.5 text-xs font-medium whitespace-nowrap text-foreground"
+            // The name sits at the arrow's tail, close enough to read as the same person's (M107).
+            className="absolute top-3.5 left-2.5 rounded-full border-2 bg-card px-2 py-0.5 text-xs font-medium whitespace-nowrap text-foreground"
             style={{ borderColor: personColor(peer.key) }}
           >
             {nameOf(peer)}

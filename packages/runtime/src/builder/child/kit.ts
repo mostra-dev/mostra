@@ -3,7 +3,16 @@
  * first and the kit's registry for its base next, and the stylesheet the client entry imports,
  * which puts the theme stack inside the build's one Tailwind run.
  */
-import { existsSync, readdirSync, readFileSync, realpathSync, statSync } from "node:fs";
+import {
+  closeSync,
+  constants,
+  existsSync,
+  fstatSync,
+  openSync,
+  readdirSync,
+  readFileSync,
+  realpathSync,
+} from "node:fs";
 import { isAbsolute, join, relative } from "node:path";
 import { HOST_TOKENS } from "@mostra/themes";
 import type { Plugin } from "vite";
@@ -110,7 +119,7 @@ export function kitPeersPlugin(
 }
 
 /** One set of files a kit peer loads at run time from the page's origin (`mostra-kit.assets`). */
-interface KitAsset {
+export interface KitAsset {
   /** The package whose files they are (`@excalidraw/excalidraw`). */
   readonly package: string;
   /** Their directory in the package (`dist/prod/fonts`). */
@@ -131,6 +140,62 @@ function assetFiles(dir: string, skip: ReadonlySet<string>, prefix = ""): string
     } else if (entry.isFile()) files.push(path);
   }
   return files.sort();
+}
+
+/**
+ * The file `mostra dev` serves for a request's `/kit-assets/…` path: exactly a file the build would
+ * carry (`assetFiles`), so the directories the kit leaves out (`skip`, Excalidraw's CJK face) are
+ * left out in dev too (Opus review of WP-19, finding 10), and only a file whose real path is inside
+ * its set's directory (no `..`, no link out of it). Its real path, or `undefined`.
+ */
+export function devAssetFile(
+  sets: readonly { readonly asset: KitAsset; readonly dir: string }[],
+  url: string,
+): string | undefined {
+  let path: string;
+  try {
+    path = decodeURIComponent(url.split("?")[0] ?? "");
+  } catch {
+    return undefined;
+  }
+  for (const { asset, dir } of sets) {
+    const prefix = `/kit-assets/${asset.to}/`;
+    if (!path.startsWith(prefix)) continue;
+    const rest = path.slice(prefix.length);
+    const parts = rest.split("/");
+    const skip = new Set(asset.skip ?? []);
+    for (let count = 1; count < parts.length; count++) {
+      if (skip.has(parts.slice(0, count).join("/"))) return undefined;
+    }
+    const file = join(dir, rest);
+    if (!isUnder(file, dir)) return undefined;
+    try {
+      const real = realpathSync(file);
+      return isUnder(real, realpathSync(dir)) ? real : undefined;
+    } catch {
+      return undefined;
+    }
+  }
+  return undefined;
+}
+
+/**
+ * A file's bytes, read through one descriptor that also says it is a regular file, so nothing can
+ * change between the check and the read (CodeQL's file-system race); a link put in its place isn't
+ * followed where the platform can refuse it. `undefined` for anything else.
+ */
+function readRegularFile(real: string): Buffer | undefined {
+  let descriptor: number;
+  try {
+    descriptor = openSync(real, constants.O_RDONLY | (constants.O_NOFOLLOW ?? 0));
+  } catch {
+    return undefined;
+  }
+  try {
+    return fstatSync(descriptor).isFile() ? readFileSync(descriptor) : undefined;
+  } finally {
+    closeSync(descriptor);
+  }
 }
 
 /**
@@ -185,29 +250,15 @@ export function kitAssetsPlugin(buildRoot: string): Plugin {
     },
     configureServer(server) {
       server.middlewares.use((request, response, next) => {
-        let path: string;
-        try {
-          path = decodeURIComponent((request.url ?? "").split("?")[0] ?? "");
-        } catch {
-          return next();
-        }
-        if (!path.startsWith("/kit-assets/")) return next();
-        for (const { asset, dir } of load()) {
-          const prefix = `/kit-assets/${asset.to}/`;
-          if (!path.startsWith(prefix)) continue;
-          const file = join(dir, path.slice(prefix.length));
-          // Only a file inside the asset's directory, as its real path says (no link out of it).
-          if (!isUnder(file, dir) || !existsSync(file)) break;
-          const real = realpathSync(file);
-          if (!isUnder(real, realpathSync(dir)) || !statSync(real).isFile()) break;
-          response.setHeader(
-            "content-type",
-            real.endsWith(".woff2") ? "font/woff2" : "application/octet-stream",
-          );
-          response.end(readFileSync(real));
-          return;
-        }
-        next();
+        if (!(request.url ?? "").startsWith("/kit-assets/")) return next();
+        const real = devAssetFile(load(), request.url ?? "");
+        const body = real === undefined ? undefined : readRegularFile(real);
+        if (real === undefined || body === undefined) return next();
+        response.setHeader(
+          "content-type",
+          real.endsWith(".woff2") ? "font/woff2" : "application/octet-stream",
+        );
+        response.end(body);
       });
     },
   };

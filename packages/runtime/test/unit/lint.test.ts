@@ -78,8 +78,9 @@ const RULES: readonly {
   {
     rule: "MapLibre",
     file: "map.tsx",
-    before: `import mapboxgl from "mapbox-gl";\nimport "mapbox-gl/dist/mapbox-gl.css";\nimport Map from "react-map-gl";\nexport const m = [mapboxgl, Map];\n`,
-    after: `import mapboxgl from "maplibre-gl";\nimport "maplibre-gl/dist/maplibre-gl.css";\nimport Map from "react-map-gl/maplibre";\nexport const m = [mapboxgl, Map];\n`,
+    // The access token goes with the move: MapLibre has none to set (Opus review of WP-19, 7).
+    before: `import mapboxgl from "mapbox-gl";\nimport "mapbox-gl/dist/mapbox-gl.css";\nimport Map from "react-map-gl";\nmapboxgl.accessToken = "pk.example";\nexport const m = [mapboxgl, Map];\nexport const M = () => <Map mapboxAccessToken="pk.example" initialViewState={{ zoom: 2 }} />;\n`,
+    after: `import mapboxgl from "maplibre-gl";\nimport "maplibre-gl/dist/maplibre-gl.css";\nimport Map from "react-map-gl/maplibre";\nexport const m = [mapboxgl, Map];\nexport const M = () => <Map initialViewState={{ zoom: 2 }} />;\n`,
   },
   {
     rule: "react-three-fiber",
@@ -126,6 +127,17 @@ const RULES: readonly {
 ];
 
 describe("write this, not that (KT-08)", () => {
+  it("React Flow 13: keeps the helpers' import while a use the fix can't rewrite remains, and says so (Opus review of WP-19, finding 7)", async () => {
+    const before = `import { applyNodeChanges, ReactFlow } from "@xyflow/react";\nconst apply = applyNodeChanges;\nexport const F = ({ set }: { set: (f: unknown) => void }) => <ReactFlow onNodesChange={(c) => set((n: never[]) => applyNodeChanges(c, n))} />;\nexport { apply };\n`;
+    const result = await fixed("flow.tsx", before);
+    // The call is rewritten; the import stays, since \`apply\` still names the helper.
+    expect(result.text).toContain(`import { applyNodeChanges, ReactFlow } from "@xyflow/react";`);
+    expect(result.text).toContain("c.applyTo(n)");
+    const note = result.found.find((d) => d.message.includes("is gone"));
+    expect(note?.fix).toBeUndefined();
+    expect(note?.message).toMatch(/left to change by hand/);
+  });
+
   for (const { rule, file, before, after } of RULES) {
     it(`${rule}: the fix writes the new form, and the lint then finds nothing`, async () => {
       const result = await fixed(file, before);
