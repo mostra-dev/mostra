@@ -126,7 +126,7 @@ function AvatarsView({
       {...props}
     >
       <span className="sr-only">{label}</span>
-      <ul aria-hidden="true" className="flex items-center -space-x-2">
+      <ul aria-hidden="true" className="flex items-center -space-x-1">
         {shown.map((peer) => (
           <li
             key={peer.key}

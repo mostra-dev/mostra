@@ -726,6 +726,15 @@ const SEEDS: readonly Seed[] = [
     e2e: true,
   },
   {
+    requirement: "KT-01",
+    name: "the theme's colours in CSS's space-separated form, which ECharts paints black",
+    file: "../kit/registry/base/components/mostra/tokens.tsx",
+    from: "    ? `rgb(${r}, ${g}, ${b})`",
+    to: "    ? `rgb(${r} ${g} ${b})`",
+    check: e2e("every warm library draws"),
+    e2e: true,
+  },
+  {
     requirement: "AC-08",
     name: "the live chart draws a column's first point alone, losing its peaks",
     file: "../kit/src/live-chart.tsx",

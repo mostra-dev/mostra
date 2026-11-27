@@ -34,6 +34,23 @@ const run = readRun();
 /** How long a page with the kit's on-demand libraries may take to come up: several megabytes. */
 const HEAVY_READY_MS = 90_000;
 
+/**
+ * The share of an element's pixels that are black or nearly: a light page's chart has only its
+ * thin text that dark, while a colour a library can't parse paints black (ECharts' heat map did,
+ * from colours in CSS's space-separated form).
+ */
+async function blackShare(locator: Locator): Promise<number> {
+  const png = PNG.sync.read(await locator.screenshot({ animations: "disabled" }));
+  let black = 0;
+  let all = 0;
+  for (let index = 0; index < png.data.length; index += 4) {
+    all += 1;
+    const [r = 0, g = 0, b = 0] = [png.data[index], png.data[index + 1], png.data[index + 2]];
+    if (r < 24 && g < 24 && b < 24) black += 1;
+  }
+  return black / Math.max(1, all);
+}
+
 /** How many distinct colours an element shows: a drawn canvas has many, a blank one one or two. */
 async function colours(locator: Locator): Promise<number> {
   const png = PNG.sync.read(await locator.screenshot({ animations: "disabled" }));
@@ -103,6 +120,10 @@ test.describe("the kit's library wrappers (KT-01)", () => {
       const echart = frame.locator("[data-slot='echart']");
       await expect(echart.locator("canvas").first()).toBeVisible({ timeout: 20_000 });
       expect(await colours(echart.locator("canvas").first())).toBeGreaterThan(3);
+      // Every ECharts chart on the page, the heat map's cells included, in the theme's colours.
+      for (const canvas of await echart.locator("canvas").all()) {
+        expect(await blackShare(canvas), "an ECharts canvas painted black").toBeLessThan(0.1);
+      }
 
       // TanStack Table: four rows, sorted by a header, searched.
       const table = frame.locator("[data-slot='data-table']");

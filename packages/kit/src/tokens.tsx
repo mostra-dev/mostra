@@ -14,7 +14,7 @@ import { useSyncExternalStore } from "react";
 /** The theme's six series colours, in their fixed order (D141): never cycled, never reordered. */
 export type ChartColors = readonly [string, string, string, string, string, string];
 
-/** The page's theme, resolved: every colour as `rgb(r g b)` or `rgb(r g b / a)`. */
+/** The page's theme, resolved: every colour as `rgb(r, g, b)` or `rgba(r, g, b, a)`. */
 export interface Tokens {
   /** Whether the page shows its light or its dark colours now. */
   readonly appearance: "light" | "dark";
@@ -79,31 +79,31 @@ type ColorToken = keyof typeof COLOR_VARIABLES;
 const FALLBACK: Tokens = {
   appearance: "light",
   chart: [
-    "rgb(37 99 235)",
-    "rgb(220 38 38)",
-    "rgb(124 58 237)",
-    "rgb(22 163 74)",
-    "rgb(202 138 4)",
-    "rgb(219 39 119)",
+    "rgb(37, 99, 235)",
+    "rgb(220, 38, 38)",
+    "rgb(124, 58, 237)",
+    "rgb(22, 163, 74)",
+    "rgb(202, 138, 4)",
+    "rgb(219, 39, 119)",
   ],
-  background: "rgb(255 255 255)",
-  foreground: "rgb(23 23 23)",
-  card: "rgb(255 255 255)",
-  cardForeground: "rgb(23 23 23)",
-  muted: "rgb(245 245 245)",
-  mutedForeground: "rgb(102 102 102)",
-  border: "rgb(229 229 229)",
-  input: "rgb(163 163 163)",
-  ring: "rgb(37 99 235)",
-  primary: "rgb(23 23 23)",
-  primaryForeground: "rgb(255 255 255)",
-  accent: "rgb(245 245 245)",
-  accentForeground: "rgb(23 23 23)",
-  destructive: "rgb(220 38 38)",
-  success: "rgb(22 163 74)",
-  warning: "rgb(180 83 9)",
-  answer: "rgb(234 179 8)",
-  highlight: "rgb(37 99 235)",
+  background: "rgb(255, 255, 255)",
+  foreground: "rgb(23, 23, 23)",
+  card: "rgb(255, 255, 255)",
+  cardForeground: "rgb(23, 23, 23)",
+  muted: "rgb(245, 245, 245)",
+  mutedForeground: "rgb(102, 102, 102)",
+  border: "rgb(229, 229, 229)",
+  input: "rgb(163, 163, 163)",
+  ring: "rgb(37, 99, 235)",
+  primary: "rgb(23, 23, 23)",
+  primaryForeground: "rgb(255, 255, 255)",
+  accent: "rgb(245, 245, 245)",
+  accentForeground: "rgb(23, 23, 23)",
+  destructive: "rgb(220, 38, 38)",
+  success: "rgb(22, 163, 74)",
+  warning: "rgb(180, 83, 9)",
+  answer: "rgb(234, 179, 8)",
+  highlight: "rgb(37, 99, 235)",
   fontSans: "system-ui, sans-serif",
   fontMono: "ui-monospace, monospace",
   radius: 10,
@@ -112,7 +112,7 @@ const FALLBACK: Tokens = {
 let probe: CanvasRenderingContext2D | null | undefined;
 
 /**
- * Any CSS colour (`oklch(…)`, `color-mix(…)`, a name) as `rgb(r g b)` or `rgb(r g b / a)`, the
+ * Any CSS colour (`oklch(…)`, `color-mix(…)`, a name) as `rgb(r, g, b)` or `rgba(r, g, b, a)`, the
  * form every drawing library parses, by painting it once on a 1×1 canvas and reading the pixel.
  * `undefined` for a value that isn't a colour.
  */
@@ -141,14 +141,16 @@ export function resolveColor(value: string): string | undefined {
     number,
     number,
   ];
+  // The comma form, which every canvas library parses: ECharts' colour parser reads no other, and a
+  // heat map interpolated between colours it can't read draws black.
   return a === 255
-    ? `rgb(${r} ${g} ${b})`
-    : `rgb(${r} ${g} ${b} / ${Math.round((a / 255) * 1000) / 1000})`;
+    ? `rgb(${r}, ${g}, ${b})`
+    : `rgba(${r}, ${g}, ${b}, ${Math.round((a / 255) * 1000) / 1000})`;
 }
 
 /** A colour as `[r, g, b, a]`, each 0 to 255: what deck.gl's layers take. */
 export function colorBytes(color: string): [number, number, number, number] {
-  const match = /^rgb\((\d+) (\d+) (\d+)(?: \/ ([\d.]+))?\)$/.exec(resolveColor(color) ?? color);
+  const match = /^rgba?\((\d+), (\d+), (\d+)(?:, ([\d.]+))?\)$/.exec(resolveColor(color) ?? color);
   if (!match) return [0, 0, 0, 255];
   return [
     Number(match[1]),

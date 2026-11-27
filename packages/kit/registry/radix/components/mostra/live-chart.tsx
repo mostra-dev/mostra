@@ -396,7 +396,13 @@ function PointsChart({
       created.setSize({ width: Math.max(1, element.clientWidth), height });
       // The points to draw depend on the plot's width.
       const state = columns.current;
-      if (state) created.setData(state.columns.drawn(Math.round(created.bbox.width)), true);
+      if (!state) return;
+      const data = state.columns.drawn(Math.round(created.bbox.width));
+      created.setData(data, true);
+      // Points that stopped arriving (or never moved) still name their newest values.
+      if (created.cursor.left === undefined || created.cursor.left < 0) {
+        created.setLegend({ idx: Math.max(0, (data[0]?.length ?? 1) - 1) });
+      }
     });
     resize.observe(element);
     return () => {
