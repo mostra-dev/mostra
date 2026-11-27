@@ -15,6 +15,8 @@ export default [
       "docs/**",
       "temp/**",
       "packages/*/temp/**",
+      // The browser suites' copies of fixtures, whose demos build there (WP-24).
+      "tests/e2e/.work/**",
     ],
   },
   {

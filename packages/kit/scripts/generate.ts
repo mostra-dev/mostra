@@ -165,6 +165,20 @@ const KIT_ITEMS = [
     description:
       "Who is here, their cursors, who has answered and who changed a shared field, from the team hooks.",
   },
+  {
+    name: "mostra-demo",
+    module: "demo",
+    title: "Web demo",
+    description:
+      "A front end the artifact builds into its version, shown in a phone, tablet or browser frame at that device's viewport, with a switcher between them.",
+  },
+  {
+    name: "mostra-action",
+    module: "action",
+    title: "Action button",
+    description:
+      "A button that runs an action, shows its run, and shows itself unavailable where no server runs it.",
+  },
 ] as const;
 
 /** The kit modules a module imports (`@mostra/kit/<module>`), as their registry items. */

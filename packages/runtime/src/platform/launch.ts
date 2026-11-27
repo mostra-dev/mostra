@@ -52,6 +52,11 @@ export interface LaunchSpec {
   readonly env: NodeJS.ProcessEnv;
   /** Node's IPC channel or a plain byte channel on descriptor 4, or nothing. */
   readonly extra?: "ipc" | "channel" | undefined;
+  /**
+   * Windows only: `args` is one argument, the rest of the command line as it stands
+   * (`programCommand`'s `cmd.exe /s /c "…"`), which the gate passes without quoting it.
+   */
+  readonly verbatim?: boolean | undefined;
 }
 
 /** A child started behind its gate. */
@@ -164,14 +169,18 @@ function launchWindows(spec: LaunchSpec): Launched {
   // closes its child's job. A gate a test makes miss its lifeline (MOSTRA_TEST_GATE, a hung gate's
   // stand-in) is started outside that job, or nothing would be left for the reaper to find.
   const hung = (spec.env["MOSTRA_TEST_GATE"] ?? "").split(",").includes("ignore-lifeline");
-  const child = spawn(helperPath(), ["gate", "--", spec.command, ...spec.args], {
-    cwd: spec.cwd,
-    env: spec.env,
-    windowsHide: true,
-    detached: hung,
-    stdio: stdioFor(spec.extra),
-    serialization: "json",
-  });
+  const child = spawn(
+    helperPath(),
+    ["gate", ...(spec.verbatim ? ["--verbatim"] : []), "--", spec.command, ...spec.args],
+    {
+      cwd: spec.cwd,
+      env: spec.env,
+      windowsHide: true,
+      detached: hung,
+      stdio: stdioFor(spec.extra),
+      serialization: "json",
+    },
+  );
   const lifeline = child.stdio[3] as (Readable & Writable) | null;
   lifeline?.on("error", () => {});
   const report = new Promise<{ pid: number; startTime: string } | undefined>((resolve, reject) => {

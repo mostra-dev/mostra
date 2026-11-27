@@ -67,6 +67,8 @@ const EXTENSIONS = [
   "test/integration/packs.test.ts",
   // WP-17: the app channel and the MCP App exporter, a bundled plugin (D175).
   "test/integration/mcp-apps.test.ts",
+  // WP-24: demos built through their spec, and the page's exports (D185), on plugin children too.
+  "test/integration/demos.test.ts",
 ];
 // Suites `core` has no room for on macOS and Linux, which `extensions` runs there (REPO_STANDARDS
 // §6: a group near its deadline is rebalanced). macOS `core` reached its 10 minutes on `main` (10 min

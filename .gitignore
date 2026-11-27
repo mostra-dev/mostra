@@ -11,6 +11,8 @@ target/
 /temp/
 packages/*/temp/
 test-results/
+# The browser suites' copies of fixtures whose demos build there (WP-24)
+tests/e2e/.work/
 playwright-report/
 *.tgz
 

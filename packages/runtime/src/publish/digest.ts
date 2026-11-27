@@ -37,6 +37,11 @@ export interface BuildEnvironment {
   readonly buildConfigDigest: string;
   /** The browser protocol revision the client runtime speaks, or `null` before WP-07 defines it. */
   readonly browserProtocolRevision: string | null;
+  /**
+   * SHA-256 of each demo's inputs (its source's content, command, settings and base, D185 item
+   * 4); absent for an artifact without demos, so its version keeps the ID it had before demos.
+   */
+  readonly demoDigest?: string;
 }
 
 /** SHA-256 as lowercase hex. */

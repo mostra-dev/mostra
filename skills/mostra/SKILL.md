@@ -76,6 +76,8 @@ Each step ends when its check holds. Don't hand a link out before step 4 passes.
 | Compare candidates and choose one | `ReviewSet`, `Candidate` from `@mostra/kit/review` | [review.md](references/review.md) |
 | Read the person's comments, with a picture of each place | `mostra review export <dir> --out ./review` | [review.md](references/review.md) |
 | A button that does something real (send, file, deploy) | a `"use server"` function, run with `useAction(fn, { key })` | [server.md](references/server.md) |
+| Your project's own front end, live in the page | `demos` in the manifest, `WebDemo` from `@mostra/kit/demo`, `mostra demo build` | [demos.md](references/demos.md) |
+| The page as files: a folder, one HTML file, a snapshot | `mostra export <dir> --as static` (or `html`, `snapshot`) | [sharing.md](references/sharing.md#sending-the-page-as-files) |
 | Secrets for that code | `mostra secret set NAME`, then `secret("NAME")` in server code | [server.md](references/server.md) |
 | Data that updates by itself | `defineLive` in `live.ts`, `useLive(key)` in the page, `mostra push` from you | [long-lived.md](references/long-lived.md) |
 | State everyone shares and you can edit | `useField(id, initial, { scope: "artifact" })`, `mostra state set` | [long-lived.md](references/long-lived.md) |
@@ -125,6 +127,7 @@ Read the one you need when you need it.
 | [references/server.md](references/server.md) | The page must do something real: actions, secrets, idempotency |
 | [references/long-lived.md](references/long-lived.md) | A page that lives for days: shared state, live data, `none` policy, always-on |
 | [references/sharing.md](references/sharing.md) | Someone other than the person at this machine opens it, or on another device |
+| [references/demos.md](references/demos.md) | The page shows your project's own front end (an app it builds), or you send the page as a file with one |
 | [references/review.md](references/review.md) | The person compares candidates and chooses one, or comments on the page, and you act on the comments |
 | [references/teams.md](references/teams.md) | Several people answer it or work on it together: personal links, waiting for everyone, who is here |
 | [references/libraries.md](references/libraries.md) | Showing data, diagrams, code, math, a map, 3D or a whiteboard, using motion or UI primitives, or an import fails |

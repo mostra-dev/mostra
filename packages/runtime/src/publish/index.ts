@@ -16,9 +16,10 @@ export { artifactMethods, canonicalRef } from "./methods.ts";
 export {
   createPublisher,
   defaultTitle,
+  type ExportableVersion,
   type Publisher,
   versionDamage,
   versionOutputDigest,
 } from "./publisher.ts";
 export { listSource, resolveSource } from "./source.ts";
-export { readTar } from "./tar.ts";
+export { readTar, TAR_END, tarFile } from "./tar.ts";

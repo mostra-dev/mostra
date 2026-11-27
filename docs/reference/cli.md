@@ -4,7 +4,7 @@
 
 Every command takes `--json`, which prints one envelope on stdout: `{ "ok": true, "result", "instance", "warnings" }` or `{ "ok": false, "error", "warnings" }`. Streaming commands print one envelope per line, the last one carrying `result` or `error`. Logs and progress go to stderr. Without a terminal, or with `--json`, no command asks a question.
 
-Commands: `add`, `daemon`, `dev`, `docs`, `doctor`, `export`, `gc`, `host`, `list`, `login`, `logout`, `mcp`, `new`, `open`, `pause`, `plugin`, `publish`, `push`, `results`, `resume`, `review`, `roster`, `run`, `secret`, `share`, `state`, `status`, `telemetry`, `theme`, `verify`, `wait`.
+Commands: `add`, `daemon`, `demo`, `dev`, `docs`, `doctor`, `export`, `gc`, `host`, `list`, `login`, `logout`, `mcp`, `new`, `open`, `pause`, `plugin`, `publish`, `push`, `results`, `resume`, `review`, `roster`, `run`, `secret`, `share`, `state`, `status`, `telemetry`, `theme`, `verify`, `wait`.
 
 ## mostra new
 
@@ -1044,7 +1044,7 @@ Example:
 ## mostra export
 
 ```text
-Write a published version out of the home, as a portable bundle another home can run.
+Write a published version out of the home: its page as files, one HTML file or a snapshot, or a bundle another home can run.
 
 Usage:
   mostra export <artifact> [flags]
@@ -1053,9 +1053,13 @@ Arguments:
   <artifact>                   The artifact: its source path or its ID.
 
 Flags:
-  --as <exporter>              What to write: `bundle`, the version's builds, manifest, lockfile and source; or the ID of an exporter a plugin of the artifact or the home contributes. Default: bundle.
+  --as <exporter>              What to write: `static`, the page as a folder that opens from disk and on any static host; `html`, the page as one file; `snapshot`, the page with its answers and state frozen; `bundle`, the version's builds, manifest, lockfile and source; or the ID of an exporter a plugin of the artifact or the home contributes. Default: bundle.
+  --base <path>                `static` and `snapshot`: the path the folder will be served from (`/my-repo/`); each demo is built again under it, so it works fully there.
+  --strict                     With --as static, html or snapshot: fail, writing nothing, when the export would lose anything its warnings name.
+  --submission <id>            `snapshot`: freeze this submission's answers and state instead of your own answers now.
+  --no-shared-state            `snapshot`: leave the artifact's shared state out, which may hold other people's answers.
   --option <name=value>        An option for a plugin's exporter; its value is read as JSON when it parses.
-  --out <path>                 Where: a new directory, or one archive when it ends in .tar.zst.
+  --out <path>                 Where: a new directory (a bundle or a snapshot: one archive when it ends in .tar.zst; `html`: one file).
   --version <number|id>        The version. Default: the latest.
 
 Global flags:
@@ -1075,7 +1079,42 @@ Exit codes:
   4  timeout (--timeout passed)
 
 Example:
-  mostra export ./sidebar-review --out ./sidebar-review.tar.zst
+  mostra export ./sidebar-review --as static --out ./sidebar-review-page
+```
+
+## mostra demo build
+
+```text
+Build an artifact's demos now, as verify and publish do, and report each build with its log when it fails.
+
+Usage:
+  mostra demo build [<path>] [flags]
+
+Arguments:
+  <path>                       The artifact: its source path or its ID. Default: the current directory.
+
+Flags:
+  --demo <name>                One demo, by its name in the manifest.
+  --force                      Build again even when an unchanged build is in the cache.
+
+Global flags:
+  --json                       Print one JSON envelope on stdout (NDJSON for streams).
+  --home <dir>                 Use this Mostra home instead of MOSTRA_HOME or the default.
+  --cwd <dir>                  Resolve relative paths from this directory.
+  --timeout <d>                Give up on the instance after this long (exit 4), such as 30s or 5m.
+  --help                       Show this command's help; with --json, its definition.
+
+Output: DemoBuildResult (mostra docs cli)
+
+Exit codes:
+  0  success
+  1  artifact failure (verify failed, publish refused, the artifact's state refused the request)
+  2  usage error
+  3  environment error (no runtime, browser or socket; the home; an unsupported platform)
+  4  timeout (--timeout passed)
+
+Example:
+  mostra demo build ./launch-review --demo app
 ```
 
 ## mostra run

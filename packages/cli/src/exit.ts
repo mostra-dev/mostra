@@ -70,6 +70,7 @@ const BY_AREA: Readonly<Record<DiagnosticArea, ExitCode>> = {
   LICENSE: EXIT.failure,
   // A comment or a review the artifact can't take (WP-20): the artifact's.
   REVIEW: EXIT.failure,
+  DEMO: EXIT.failure,
 };
 
 /** Codes whose exit code isn't their area's. */

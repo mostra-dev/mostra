@@ -8,7 +8,7 @@
 export const KIT_BASES: readonly ["base", "radix"];
 
 // @public
-export const KIT_MODULES: readonly ["questionnaire", "layout", "review", "tokens", "page-context", "live-chart", "charts", "echarts", "data-table", "mermaid", "flow", "code", "math", "map", "scene", "whiteboard", "team"];
+export const KIT_MODULES: readonly ["questionnaire", "layout", "review", "tokens", "page-context", "live-chart", "charts", "echarts", "data-table", "mermaid", "flow", "code", "math", "map", "scene", "whiteboard", "team", "demo", "action"];
 
 // @public
 export const KIT_ON_DEMAND_MODULES: readonly ["map", "scene", "whiteboard"];

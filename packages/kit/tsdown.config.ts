@@ -20,6 +20,8 @@ export default defineConfig({
     "src/scene.tsx",
     "src/whiteboard.tsx",
     "src/team.tsx",
+    "src/demo.tsx",
+    "src/action.tsx",
   ],
   // A kit module imports another by its name (`@mostra/kit/tokens`), as an artifact resolves it.
   deps: { neverBundle: [/^@mostra\/kit\//] },

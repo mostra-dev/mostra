@@ -101,6 +101,24 @@ mostra open ./x --revoke <tokenId>   # stop a link
 
 `--json` output carries each link's `tokenId`.
 
+## Sending the page as files
+
+An export writes the page's front end out of Mostra, for someone without a link, an archive or a static host:
+
+```sh
+mostra export ./x --as static --out ./x-page          # a folder: open index.html, or host it anywhere
+mostra export ./x --as static --base /repo/ --out ./x-page   # hosted at a subpath (GitHub Pages)
+mostra export ./x --as html --out ./x.html            # one file with everything inside
+mostra export ./x --as snapshot --out ./x-snapshot    # the page as it stands, answers and state frozen
+```
+
+- An export is the front end only: fields keep answers in the browser that opens it, and the page says what doesn't work there (Submit, actions, live data). Its server code, secrets and environment never go into it.
+- The result names each thing the export loses, and each address it needs a network for (`warnings`, and `report` with `--json`); `--strict` makes them an error and writes nothing. Export a snapshot to keep answers and state, or a bundle (below) to keep actions running.
+- A snapshot holds your own answers now, or a submission's with `--submission <id>`, and the shared state, which may hold other people's answers: the result says how many people it covers, and `--no-shared-state` leaves it out. Sensitive fields are left out.
+- Demos ([demos.md](demos.md)) go into every export. A folder opens them from disk, and works fully served at a host's root (`npx serve <folder>`) or at the subpath `--base` names; one HTML file holds the demos built as ES modules (Vite's are) and says in place of any other that it needs the folder version. A demo routed by browser history opens on its first page from disk, and moving between its pages there needs a web server, as the folder's README.txt says.
+
+*Done when* the result's warnings name only what you meant the export to lose.
+
 ## Moving a version to another machine
 
 A published version can move whole to another Mostra home, where it is the same version with the same IDs, and its actions run there:

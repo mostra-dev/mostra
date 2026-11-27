@@ -60,6 +60,7 @@ function Reply({ email, body }: { email: { id: string }; body: string }) {
 - **Without a `key`**, a second call while the first runs joins it, so a double click runs once.
 - **With a `key`**, the run happens at most once, ever: every click, tab, reload and viewer with that key joins the same run and sees its progress and result. A run that failed stays failed; a new attempt needs a new key (`reply-${email.id}-retry-1`).
 - The handle has `status` (`idle`, `queued`, `running`, `succeeded`, `failed`, `cancelled`), `isPending`, `data`, `error` (`{ code, message }`), `progress` (`{ fraction?, message? }`), `log`, `partial` (the items an async-iterable result yielded so far), `runId` and `cancel()`.
+- In an export of the page ([sharing.md](sharing.md#sending-the-page-as-files)) no server runs the action: `available` is `false` and `unavailable` says why in a few words, so show the control disabled with that reason. `ActionButton` from `@mostra/kit/action` does it for you: `<ActionButton action={send} args={[email.id, body]}>Send</ActionButton>`.
 - `run()` resolves with the result or rejects with a `MostraError` whose `code` says why (`MOSTRA_ACTION_THREW`, `MOSTRA_ACTION_CANCELLED`, `MOSTRA_ACTION_INTERRUPTED`, `MOSTRA_RUNTIME_WORKER_PARKED`).
 - A run keeps going when the tab closes. A page that loads later finds a keyed run again by its key.
 - Results list the runs started in the submitting view, so you can see what the person did.

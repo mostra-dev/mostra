@@ -45,7 +45,7 @@ const BUDGET = {
 } as const;
 
 /**
- * Two engines CI draws in software, below what the people who use them meet (M106: a limit of a
+ * Two engines CI draws in software, below what the people who use them meet (M111: a limit of a
  * test's engine that no person meets may be worked around for that engine):
  * - WebKit on Linux: the live page kept 27 frames a second against the paint control's 48 in one
  *   run, and 11.6 against 19.7 on a slower runner (the chart's own draw takes 0.7 ms; the rest is

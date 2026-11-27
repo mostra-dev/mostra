@@ -4,8 +4,8 @@
 
 ## How the sequence was built
 
-- **Scope.** 37 packages: 30 deliver v1 (D16, as amended by D116, D121, D122, D146 and D184), and the 7 under [After the first release](#after-the-first-release) deliver the `v1.1` follow-up: motion and decks and the evaluation suite (D184), homes an organization owns (D170) and the terminal modes (D122). Every v1 and v1.1 requirement has exactly one primary owner here, and [EVIDENCE_MATRIX.md](EVIDENCE_MATRIX.md) checks it. Other packages may *contribute* to a requirement (for example, adding a lint rule to `verify`), but only the owner closes it with evidence. Maintenance units (`MT-NN`: MT-01, MT-02 and MT-02b, D152 to D156, and MT-03 to MT-07 below) own no requirement: each is scoped by what it fixes or completes, and the checks it adds extend their owners' rows. The design unit UX-01 (every surface a person meets, from sign-in to answer) owns none either: it is scoped by the surfaces it designs, and its checks extend their owners' rows.
-- **Order.** Packages run in the order of this file (D125, D146): WP-01 to WP-12, then WP-W1 to WP-W3, then WP-13 to WP-15, then WP-28 to WP-31, then the maintenance unit MT-03, then the design unit UX-01, then WP-16 to WP-18 and WP-20, then WP-19 beside WP-24, then WP-25 beside WP-26 (D184), with the maintenance unit MT-04 after WP-16, beside the packages from WP-17 on (D174), the maintenance unit MT-05 (who signs in, and what an idle home writes) beside any of them, on the released `main` it starts from, and after it the maintenance unit MT-06 (signing out), beside any of them likewise, and the maintenance unit MT-07 (a plugin the Claude directory can list) after WP-18, beside WP-19 and WP-20; after the first release, WP-33 to WP-35 (organization homes, D170), WP-21 and WP-27 (D184), then WP-22 and WP-23. The numbers are identities, not positions: new packages took the next free numbers (D125), and the Windows packages carry their own W series (D146). The Windows packages follow the Rust crate and conformance kit, so every package after them is built and checked on macOS, Linux and Windows from its start. D17's interface priority explains the first part: the CLI, Skill and `verify` with the host protocol and Rust crate (WP-01 to WP-14, which together also give Jcode everything C03-B needs), then the local MCP server (WP-15). The remote server comes next (WP-28 to WP-30), because MCP Apps export (WP-17) persists through it in cloud chat hosts, and the team package (WP-31) needs its viewer identity. The remaining v1 features follow in dependency order. Two packages sit earlier than D17 alone would put them, because a prioritized interface depends on them:
+- **Scope.** 37 packages: 30 deliver v1 (D16, as amended by D116, D121, D122, D146 and D184), and the 7 under [After the first release](#after-the-first-release) deliver the `v1.1` follow-up: motion and decks and the evaluation suite (D184), homes an organization owns (D170) and the terminal modes (D122). Every v1 and v1.1 requirement has exactly one primary owner here, and [EVIDENCE_MATRIX.md](EVIDENCE_MATRIX.md) checks it. Other packages may *contribute* to a requirement (for example, adding a lint rule to `verify`), but only the owner closes it with evidence. Maintenance units (`MT-NN`: MT-01, MT-02 and MT-02b, D152 to D156, and MT-03 to MT-08 below) own no requirement: each is scoped by what it fixes or completes, and the checks it adds extend their owners' rows. The design unit UX-01 (every surface a person meets, from sign-in to answer) owns none either: it is scoped by the surfaces it designs, and its checks extend their owners' rows.
+- **Order.** Packages run in the order of this file (D125, D146): WP-01 to WP-12, then WP-W1 to WP-W3, then WP-13 to WP-15, then WP-28 to WP-31, then the maintenance unit MT-03, then the design unit UX-01, then WP-16 to WP-18 and WP-20, then WP-19 beside WP-24, then WP-25 beside WP-26 (D184), then the maintenance unit MT-08 (the fixes before the first release) after WP-25, beside WP-26, with the maintenance unit MT-04 after WP-16, beside the packages from WP-17 on (D174), the maintenance unit MT-05 (who signs in, and what an idle home writes) beside any of them, on the released `main` it starts from, and after it the maintenance unit MT-06 (signing out), beside any of them likewise, and the maintenance unit MT-07 (a plugin the Claude directory can list) after WP-18, beside WP-19 and WP-20; after the first release, WP-33 to WP-35 (organization homes, D170), WP-21 and WP-27 (D184), then WP-22 and WP-23. The numbers are identities, not positions: new packages took the next free numbers (D125), and the Windows packages carry their own W series (D146). The Windows packages follow the Rust crate and conformance kit, so every package after them is built and checked on macOS, Linux and Windows from its start. D17's interface priority explains the first part: the CLI, Skill and `verify` with the host protocol and Rust crate (WP-01 to WP-14, which together also give Jcode everything C03-B needs), then the local MCP server (WP-15). The remote server comes next (WP-28 to WP-30), because MCP Apps export (WP-17) persists through it in cloud chat hosts, and the team package (WP-31) needs its viewer identity. The remaining v1 features follow in dependency order. Two packages sit earlier than D17 alone would put them, because a prioritized interface depends on them:
   - WP-08 (actions) comes before `verify`, whose smoke test exercises action dry-runs;
   - WP-16 (extension contracts) comes before MCP Apps export, which ships as the first-party exporter plugin.
 - **Specification depth.** From WP-28 on, a specification fixes the outcome, the architecture at the surface, constraints, useful libraries and references, and the real options with a recommendation; the session settles finer details and records them as delegated decisions. Choices a specification leaves open are labelled *Deferred decision* with the package that owns them (D123).
@@ -522,18 +522,19 @@ Each entry lists the requirements the package owns, then what it builds, what it
 ### WP-24. Web demos and exports
 - **Owns:** TM-08, VR-07.
 - **Builds:**
-  - declared demos with the process lifecycle;
-  - the per-demo port proxy with HTTP and WebSocket passthrough and Host rewriting;
-  - framing headers stripped for that demo only;
-  - bridge injection and its opt-out;
-  - `<WebDemo>` with device frames and viewports;
-  - the `static`, `html` and `snapshot` export classes (the `bundle` class, `mostra run` and the `WorkerLauncher` documentation are WP-29's, D125).
+  - declared demos (D185: a demo is a built front end, never a running dev server) built from their source at `verify`, publish and on demand (`mostra demo build`), cached by the source's content, stored with the version and served from the artifact origin under `/_mostra/demos/<name>/` with an SPA fallback;
+  - bridge injection into a demo's documents and its opt-out;
+  - `useDemo` and `<WebDemo>` with device frames and viewports;
+  - the `static`, `html` and `snapshot` export classes, carrying demos, with `--base`, `--strict`, `--submission` and `--no-shared-state`, an export report naming what each loses, controls degrading in place, and no server code in any export (the `bundle` class, `mostra run` and the `WorkerLauncher` documentation are WP-29's, D125).
 
   Terminal exports wait for the terminal packages.
 - **Depends on:** WP-20.
 - **Evidence:**
-  - a Vite demo and a Next.js demo hot-reload inside the frame, and their screenshots are captured;
-  - exports open from disk, and actions show as unavailable in `static` and `snapshot`;
+  - a Vite app and a Next.js static-export app, each with client-side routing and mock data, build through the demo spec and pass `verify`, with their screenshots;
+  - both are fully interactive in `<WebDemo>` in Chromium, Firefox and WebKit, locally and through a share; a deep link to a client-side route works; a review comment inside a demo survives a reload;
+  - a broken build fails `verify` with its log;
+  - each export class opens the demo from disk in all three engines; a history-routed demo from disk shows its notice when it navigates in Chromium; a `static` export with `--base /sub/` serves a history-routed demo fully from `/sub/`;
+  - actions show as unavailable in `static` and `snapshot`, and an export of a page with actions, a live producer and a secret holds none of their server code or values;
   - VR-07's bundle case reuses WP-29's `bundle` class and `mostra run`.
 
 ### WP-25. First-party plugins
@@ -551,6 +552,21 @@ Each entry lists the requirements the package owns, then what it builds, what it
   - an SPA first-class review across the codebase.
 - **Depends on:** WP-24. It runs beside WP-25 and documents WP-25's plugins once WP-25 merges (D184).
 - **Evidence:** every template and example passes `verify` in CI with committed baselines; the docs site builds and deploys; Mirza's review of the gallery for "beautiful by default"; long-lived scenarios present in templates, conformance and gallery.
+
+### MT-08. The fixes before the first release
+- **Owns:** none.
+- **Builds:**
+  - `share --cloud` carries the artifact's shared state to the hosted copy and hands it back on stop, and never discards it (#232);
+  - a hosted home whose owner is connected but idle closes after its idle timeout, and `home.activeSeconds` counts work, not connected time (#251);
+  - the review layer's comments inside tabs and other hidden content: anchors that don't depend on generated ids, the right crop, no marker on unrelated content (#250), and a Comment button that stays readable and still until it's clicked (#257);
+  - the dependency updates open in Renovate merged, the two `hono` advisories first (#145, #146, #121, #122, #179, #180, #241), every remaining advisory explained in `osv-scanner.toml`, signed release tags, the release's provenance attached to the GitHub release, and the OpenSSF Scorecard re-run;
+  - two `useField` calls with one field ID share one value without a render loop, and every runtime error about a field names its ID (#233);
+  - the README's first paragraph and the release notes matched to what the first release ships, for people meeting Mostra for the first time;
+  - the Skill's guidance that a round of questions on a page is one-off (#254);
+  - access-control regression tests of the runtime's own checks, from an adversarial review's case list (design detail);
+  - the runtime-side findings of the adversarial review of a hosted deployment, added to this specification when the review ends.
+- **Depends on:** WP-25 (the `main` that includes it), beside WP-26. It changes the remote server (`packages/runtime/src/server/`), the shell's review overlay, the client runtime's field registry, the CLI's `share`, the Skill's references, the release workflow and the README; WP-26 changes the documentation site, the gallery and the templates, so the two meet only at the README's first paragraph, which MT-08 owns and WP-26 links to.
+- **Evidence:** one row per scope item, each closed through the real interface with a test that is red on the old code: #232's reproduction as an integration test through the CLI and a real `mostra-runtime server` (state equal before, during and after a share); an owner connected and idle for twice `homes.idleCloseMinutes` leaves its home closed and its `home.activeSeconds` at most one idle window; a Playwright test per browser that pins a comment inside a non-default tab, checks its crop and that no marker shows on another tab, and selects text and opens the comment box with one click; a page with two `useField` calls on one ID renders and verify passes with its shared-value hint; `osv-scanner` green against `osv-scanner.toml`; a release candidate built from the unit's merge with a verified signed tag and the provenance asset on its GitHub release; Scorecard's report linked from the progress report; each regression test named for the property it holds.
 
 ## After the first release
 

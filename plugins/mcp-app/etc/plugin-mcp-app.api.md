@@ -8,11 +8,35 @@ import { Exporter } from '@mostra/contract-exporter';
 import { McpAppResourceMeta } from '@mostra/protocol';
 
 // @public
+export interface BuiltinOptions {
+    readonly demos: readonly {
+        readonly name: string;
+        readonly routing: Routing;
+        readonly base: string;
+    }[];
+    readonly facts: Readonly<Record<string, unknown>>;
+    readonly snapshot?: Readonly<Record<string, unknown>>;
+}
+
+// @public
+export interface BuiltinReport {
+    readonly demos: readonly {
+        readonly name: string;
+        readonly routing: Routing;
+        readonly carried: "full" | "root" | "folder-only";
+    }[];
+    readonly notInlined: readonly string[];
+}
+
+// @public
 const exporter: Exporter;
 export default exporter;
 
 // @public
 export const EXPORTER_ID = "mcp-app";
+
+// @public
+export const htmlExporter: Exporter;
 
 // @public
 export interface McpAppDescription {
@@ -25,6 +49,12 @@ export interface McpAppDescription {
     readonly title: string;
     readonly uri: string;
 }
+
+// @public
+export type Routing = "history" | "hash";
+
+// @public
+export const staticExporter: Exporter;
 
 // (No @packageDocumentation comment for this package)
 

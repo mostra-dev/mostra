@@ -227,7 +227,7 @@ function CursorsView({
             />
           </svg>
           <span
-            // The name sits at the arrow's tail, close enough to read as the same person's (M107).
+            // The name sits at the arrow's tail, close enough to read as the same person's (M112).
             className="absolute top-3.5 left-2.5 rounded-full border-2 bg-card px-2 py-0.5 text-xs font-medium whitespace-nowrap text-foreground"
             style={{ borderColor: personColor(peer.key) }}
           >

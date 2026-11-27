@@ -7,6 +7,8 @@ import { realpathSync } from "node:fs";
 import { basename, dirname, join, resolve } from "node:path";
 import {
   ARTIFACT_PROGRESS,
+  type ArtifactExportParams,
+  type ArtifactExportResult,
   type ArtifactRef,
   artifactCreateMethod,
   artifactExportMethod,
@@ -15,7 +17,10 @@ import {
   artifactListMethod,
   artifactPublishMethod,
   artifactVerifyMethod,
+  createDiagnostic,
+  demoBuildMethod,
   depsAddMethod,
+  RpcError,
   type SourceRef,
 } from "@mostra/protocol";
 import { handler, type MethodHandler } from "../protocol-server/index.ts";
@@ -53,6 +58,11 @@ export function canonicalRef(ref: ArtifactRef): ArtifactRef {
 export function artifactMethods(options: {
   readonly registry: Registry;
   readonly publisher: () => Publisher;
+  /** `static`, `html` and `snapshot` (D185 items 7, 8): the instance's built-in exports. */
+  readonly exportFront?: (
+    params: ArtifactExportParams,
+    signal?: AbortSignal,
+  ) => Promise<ArtifactExportResult>;
   /**
    * The artifact's default capability link (D90, D97 item 3), added to every receipt, replays
    * included. Recorded receipts never hold it: the ledger keeps no link's secret.
@@ -95,8 +105,21 @@ export function artifactMethods(options: {
           : undefined;
       return options.publisher().verify(params, progress);
     }),
-    handler(artifactExportMethod, (params) =>
-      options.publisher().exportBundle({ ...params, artifact: canonicalRef(params.artifact) }),
+    handler(artifactExportMethod, (params, session) => {
+      const canonical = { ...params, artifact: canonicalRef(params.artifact) };
+      if (params.as === "bundle") return options.publisher().exportBundle(canonical);
+      if (!options.exportFront) {
+        throw new RpcError(
+          createDiagnostic("MOSTRA_HOST_METHOD_UNKNOWN", {
+            message: `This instance doesn't write ${params.as} exports.`,
+          }),
+        );
+      }
+      return options.exportFront(canonical, session.signal);
+    }),
+    // A client that goes away (Ctrl-C) ends the builds it started (review of WP-24, finding 10).
+    handler(demoBuildMethod, (params, session) =>
+      options.publisher().buildDemos(params, session.signal),
     ),
     handler(artifactImportMethod, async (params) => {
       const receipt = await options.publisher().importBundle(params);

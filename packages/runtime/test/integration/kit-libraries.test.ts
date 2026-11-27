@@ -1,5 +1,5 @@
 /**
- * The kit's on-demand libraries (WP-19, D65, M105): a page that imports `@mostra/kit/map`,
+ * The kit's on-demand libraries (WP-19, D65, M110): a page that imports `@mostra/kit/map`,
  * `/scene` or `/whiteboard` gets MapLibre and deck.gl, three.js and react-three-fiber, or Excalidraw
  * installed with it, at exactly the versions the kit pins, through Mostra's real install child
  * against a local mirror of this workspace's copies (no network); its type check reads those

@@ -173,7 +173,9 @@ export {
   cliDiagnosticCodes,
   consoleDiagnosticCodes,
   createDiagnostic,
+  type DemoDiagnosticCode,
   type DepDiagnosticCode,
+  demoDiagnosticCodes,
   depDiagnosticCodes,
   diagnosticCatalog,
   type EnvDiagnosticCode,
@@ -329,10 +331,16 @@ export {
   ArtifactLink,
   ArtifactManifest,
   DEFAULT_THEME_STACK,
+  DEMO_NAME,
+  DEMO_TIMEOUT_DEFAULT_MS,
+  DEMO_TIMEOUT_MAX_MS,
+  type DemoBuildSpec,
   type DemoSpec,
+  demoBase,
   HOSTED_OFFLINE_LIMIT_DEFAULT,
   HOSTED_OFFLINE_LIMIT_MAX_MS,
   HostedSettings,
+  isDemoBuild,
   manifestProblem,
   SubmissionPolicy,
   TALLY_CHOICES_MAX,
@@ -404,6 +412,8 @@ export {
   type ArtifactExportResult,
   artifactExportMethod,
   ExportClass,
+  type ExportedDemo,
+  type ExportReport,
 } from "./methods/artifact/export.ts";
 export {
   type ArtifactGetParams,
@@ -437,6 +447,12 @@ export {
   type ArtifactVerifyResult,
   artifactVerifyMethod,
 } from "./methods/artifact/verify.ts";
+export {
+  type DemoBuildOutcome,
+  type DemoBuildParams,
+  type DemoBuildResult,
+  demoBuildMethod,
+} from "./methods/demo/build.ts";
 export {
   AddedPackage,
   type DepsAddParams,

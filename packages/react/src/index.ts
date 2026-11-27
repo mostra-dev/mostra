@@ -31,6 +31,13 @@ export type {
   TallyValue,
 } from "@mostra/protocol";
 export {
+  type DemoHandle,
+  type DemoOptions,
+  type DemoRouting,
+  type DemoStatus,
+  useDemo,
+} from "./demo.ts";
+export {
   type ArtifactMode,
   type ChoiceCandidate,
   type FieldMeta,

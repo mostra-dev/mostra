@@ -4,12 +4,13 @@
  * the gateway the frame navigates in browser history, deep links open their page, and every page
  * is reported to the shell (comments record it, WP-20); the same build marked as a static export
  * routes by hash, and as an MCP App routes in memory. The static check serves a real published
- * build with the `mostra-target` marker the static exporter writes (WP-24 repeats it through that
- * exporter); the MCP App check serves the real MCP App exporter's output (WP-17).
+ * export the real static exporter writes (WP-24, D185), served as a static host serves it and
+ * opened from disk; the MCP App check serves the real MCP App exporter's output (WP-17).
  */
 import { readFileSync } from "node:fs";
 import { createServer, type Server } from "node:http";
 import { dirname, extname, join, posix } from "node:path";
+import { pathToFileURL } from "node:url";
 import { expect, test } from "@playwright/test";
 import { gotoShell, linkFor, openInShell, publishOwn, viewerName } from "../support/client.ts";
 import { Client, readRun } from "../support/mostra.ts";
@@ -26,12 +27,11 @@ const TYPES: Readonly<Record<string, string>> = {
 };
 
 /**
- * Serves a version's client build as a static host would, with its `index.html` marked for a
- * delivery target (D111), as the exporters write it. No SPA fallback: a static host has none.
+ * Serves a folder as a static host does: the file at the path, `index.html` at `/`, nothing else.
+ * No SPA fallback: a static host has none.
  */
-async function serveExport(
-  clientDir: string,
-  target: "static",
+async function serveFolder(
+  folder: string,
 ): Promise<{ readonly url: string; readonly server: Server }> {
   const server = createServer((request, response) => {
     // URL paths are `/`-separated on every platform (`normalize` would make them `\` on Windows).
@@ -40,12 +40,7 @@ async function serveExport(
     );
     const file = path === "/" ? "/index.html" : path;
     try {
-      let body: Buffer | string = readFileSync(join(clientDir, file));
-      if (file === "/index.html") {
-        body = body
-          .toString("utf8")
-          .replace("<head>", `<head>\n    <meta name="mostra-target" content="${target}" />`);
-      }
+      const body = readFileSync(join(folder, file));
       response.writeHead(200, {
         "content-type": TYPES[extname(file)] ?? "application/octet-stream",
       });
@@ -58,16 +53,6 @@ async function serveExport(
   const address = server.address();
   if (address === null || typeof address === "string") throw new Error("no address");
   return { url: `http://127.0.0.1:${address.port}/`, server };
-}
-
-/** The client build of an artifact's latest version, in the run's home. */
-async function clientDirOf(client: Client, artifactId: string): Promise<string> {
-  const detail = await client.call<{ versions: { id: string }[] }>("artifact/get", {
-    artifact: { artifactId },
-  });
-  const latest = detail.versions[0];
-  if (!latest) throw new Error("no version");
-  return join(run.home, "versions", latest.id, "client");
 }
 
 /** Serves one file at `/`, as a host serves an MCP App's single document. */
@@ -126,10 +111,26 @@ test.describe("pages/ in each delivery target (AU-09)", () => {
     }
   });
 
-  test("as a static export: hash routing, on a host with no fallback", async ({ page }, info) => {
+  test("as a static export: hash routing, on a host with no fallback and from disk", async ({
+    page,
+  }, info) => {
     const client = await Client.connect(run.socket);
     const own = await publishOwn(client, run.home, info, { fixture: "pages" });
-    const served = await serveExport(await clientDirOf(client, own.artifactId), "static");
+    // The real exporter's output (WP-24, D185 item 7): its `index.html` marked `static`.
+    const out = join(
+      dirname(run.home),
+      "exports",
+      `pages-static-${info.project.name}-${Date.now()}`,
+    );
+    await client.call("artifact/export", {
+      artifact: { artifactId: own.artifactId },
+      as: "static",
+      out,
+    });
+    expect(readFileSync(join(out, "index.html"), "utf8")).toContain(
+      '<meta name="mostra-target" content="static" />',
+    );
+    const served = await serveFolder(out);
     try {
       await gotoShell(page, served.url);
       await expect(page.getByTestId("page")).toHaveText("Home");
@@ -146,6 +147,11 @@ test.describe("pages/ in each delivery target (AU-09)", () => {
       await page.getByTestId("theme").fill("dark");
       await page.reload();
       await expect(page.getByTestId("theme")).toHaveValue("dark");
+      // The same export opened from disk routes by hash too.
+      await gotoShell(page, `${pathToFileURL(join(out, "index.html")).href}#/reports/4`);
+      await expect(page.getByTestId("page")).toHaveText("Report 4");
+      await page.getByTestId("to-settings").click();
+      await expect(page.getByTestId("page")).toHaveText("Settings");
     } finally {
       served.server.close();
       client.close();

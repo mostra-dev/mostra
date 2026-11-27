@@ -29,7 +29,7 @@ import {
   stat,
   writeFile,
 } from "node:fs/promises";
-import { basename, dirname, extname, join } from "node:path";
+import { basename, dirname, extname, isAbsolute, join, relative, resolve } from "node:path";
 import { Readable } from "node:stream";
 import { pipeline } from "node:stream/promises";
 import { createZstdCompress } from "node:zlib";
@@ -47,9 +47,13 @@ import {
   type ArtifactVerifyParams,
   BROWSER_PROTOCOL_REVISION,
   createDiagnostic,
+  type DemoBuildOutcome,
+  type DemoBuildParams,
+  type DemoBuildResult,
   type DepsAddParams,
   type DepsAddResult,
   type Diagnostic,
+  isDemoBuild,
   type PublishReceipt,
   RpcError,
   type SourceRef,
@@ -58,6 +62,14 @@ import {
   type VersionSummary,
 } from "@mostra/protocol";
 import type { RenderMode } from "../builder/index.ts";
+import {
+  type DemoInputs,
+  type Demos,
+  demoBuilds,
+  demoDigestOf,
+  demoProblems,
+  injectDemoAgent,
+} from "../demos/index.ts";
 import {
   type Dependencies,
   type DependencyTarget,
@@ -131,6 +143,8 @@ export interface PublisherOptions {
    * item 5), read at each publish and verify; absent, Studio.
    */
   readonly homeTheme?: () => string | readonly string[] | undefined;
+  /** Builds the page's demos (D185 item 4); absent, a page with demos fails to build. */
+  readonly demos?: Demos;
   /** The verifier, made on first use: publish's gate and `artifact/verify` (D41, D138). */
   readonly verifier: () => Verifier;
   /**
@@ -166,6 +180,9 @@ export interface Publisher {
   exportBundle(params: ArtifactExportParams): Promise<ArtifactExportResult>;
   /** `artifact/import`: makes a bundle a version of this home, with its identity (RM-01). */
   importBundle(params: ArtifactImportParams): Promise<PublishReceipt>;
+  /** `demo/build`: builds an artifact's demos into the cache now (D185 item 4). */
+  /** `demo/build`; `signal` ends a running build with everything it started (Ctrl-C). */
+  buildDemos(params: DemoBuildParams, signal?: AbortSignal): Promise<DemoBuildResult>;
   /** A published version, checked whole, as an export reads it (`artifact/export`, `plugin/export`). */
   exportable(params: {
     readonly artifact: ArtifactRef;
@@ -487,6 +504,34 @@ export function createPublisher(options: PublisherOptions): Publisher {
     return bound;
   };
 
+  /**
+   * The folders of the artifact that are a demo's (D185 item 4), relative to its root: a demo's
+   * project inside it, or its output when the project is the artifact's own folder. Read from the
+   * entry as it is on disk, before the snapshot; a manifest that doesn't parse names none.
+   */
+  const demoFolders = async (source: ResolvedSource): Promise<string[]> => {
+    if (source.kind === "file") return [];
+    let builds: ReturnType<typeof demoBuilds>;
+    try {
+      builds = demoBuilds(extractManifest(source.entry, await readEntry(source)).manifest?.demos);
+    } catch {
+      return [];
+    }
+    const inside = (path: string): string | undefined => {
+      const rel = relative(source.root, path).replaceAll("\\", "/");
+      return rel === "" || rel.startsWith("../") || rel === ".." || isAbsolute(rel)
+        ? undefined
+        : rel;
+    };
+    const folders: string[] = [];
+    for (const [, spec] of builds) {
+      const project = resolve(source.root, spec.source);
+      const folder = inside(project) ?? inside(resolve(project, spec.output));
+      if (folder !== undefined) folders.push(folder.normalize("NFC"));
+    }
+    return folders;
+  };
+
   /** What {@link prepare} read of a snapshot, besides the {@link PreparedSource}. */
   interface Staged {
     readonly prepared: PreparedSource;
@@ -495,6 +540,8 @@ export function createPublisher(options: PublisherOptions): Publisher {
     readonly entryHasDefault: boolean;
     readonly environment: BuildEnvironment;
     readonly deps: Resolution;
+    /** Each demo's inputs, or why it has none (D185 item 4). */
+    readonly demos: readonly (DemoInputs | Diagnostic)[];
   }
 
   /**
@@ -510,8 +557,9 @@ export function createPublisher(options: PublisherOptions): Publisher {
     staging: string,
     themeOverride?: string | readonly string[],
   ): Promise<Staged> => {
-    // 1. Snapshot, then read the manifest from the snapshot: what is built is what was read.
-    const files = await listSource(source);
+    // 1. Snapshot, then read the manifest from the snapshot: what is built is what was read. A
+    // demo's project or output inside the artifact is the demo's, never the page's (D185).
+    const files = await listSource(source, await demoFolders(source));
     const listed = await copySnapshot(files, join(staging, "source"));
     faults.at("publish:after-snapshot");
     const extracted = extractManifest(
@@ -566,7 +614,7 @@ export function createPublisher(options: PublisherOptions): Publisher {
         parseLock(deps.lock).plugins ?? [],
       ),
     });
-    const environment: BuildEnvironment = {
+    let environment: BuildEnvironment = {
       mostraVersion: options.runtimeVersion,
       kitVersion: kitVersionOf(deps.nodeModules),
       themeDigest: sha256Hex(
@@ -581,6 +629,26 @@ export function createPublisher(options: PublisherOptions): Publisher {
       // The browser protocol the version's client runtime speaks (VR-10, D106).
       browserProtocolRevision: BROWSER_PROTOCOL_REVISION,
     };
+    // Each demo's inputs (D185 item 4): what it is built from joins the version's identity.
+    const demos: (DemoInputs | Diagnostic)[] = [];
+    for (const [name, spec] of demoBuilds(manifest.demos)) {
+      if (!options.demos) {
+        demos.push(
+          createDiagnostic("MOSTRA_DEMO_BUILD_FAILED", {
+            message: `This runtime builds no demos, so the demo "${name}" can't be built here.`,
+          }),
+        );
+        continue;
+      }
+      try {
+        demos.push(await options.demos.inputs(name, spec, source.root));
+      } catch (error) {
+        if (!(error instanceof RpcError)) throw error;
+        demos.push(error.diagnostic);
+      }
+    }
+    const demoDigest = demoDigestOf(demos.filter((one): one is DemoInputs => "digest" in one));
+    if (demoDigest !== undefined) environment = { ...environment, demoDigest };
     const envDigest = environmentDigest(environment);
     const versionId = versionIdFor(artifactId, sourceDigest, envDigest);
     faults.at("publish:after-digests");
@@ -610,6 +678,7 @@ export function createPublisher(options: PublisherOptions): Publisher {
       entryHasDefault: extracted.hasDefaultExport,
       environment,
       deps,
+      demos,
     };
   };
 
@@ -630,7 +699,29 @@ export function createPublisher(options: PublisherOptions): Publisher {
       outDir: out,
       kit: prepared.kit,
     });
-    if (!built.ok) return { ok: false, diagnostics: built.diagnostics };
+    const unsupported = demoProblems(prepared.manifest.demos);
+    if (!built.ok) return { ok: false, diagnostics: [...built.diagnostics, ...unsupported] };
+    // The demos (D185 item 4): built, or found built, and kept with the version's client build.
+    const demoFailures: Diagnostic[] = [...unsupported];
+    for (const demo of staged.demos) {
+      if (!("digest" in demo)) {
+        demoFailures.push(demo);
+        continue;
+      }
+      // Copied into the version while the cache keeps the build (review of WP-24, finding 2).
+      const kept = join(out, "client", "_mostra", "demos", demo.name);
+      const outcome = await (options.demos as Demos).build(demo, { into: kept });
+      if (outcome.status === "failed") demoFailures.push(outcome.diagnostic);
+      else {
+        // Comments anchor inside the demo (D183 item 7), unless it turned the bridge off.
+        const agent = built.registry.reviewAgent;
+        if (demo.spec.bridge !== false && agent !== undefined) {
+          const code = await readFile(join(out, "client", agent), "utf8").catch(() => undefined);
+          if (code !== undefined) await injectDemoAgent(kept, code, agent);
+        }
+      }
+    }
+    if (demoFailures.length > 0) return { ok: false, diagnostics: demoFailures };
     faults.at("publish:after-build");
     await writeFile(join(out, "registry.json"), `${JSON.stringify(built.registry, null, 2)}\n`);
     await writeFile(join(out, "lock.yaml"), staged.deps.lock);
@@ -964,6 +1055,7 @@ export function createPublisher(options: PublisherOptions): Publisher {
     // gc removes files no kept version names: an export reads a version's files, and an import
     // writes them, so both hold the gate shared like a publish (D140 item 14).
     exportBundle: (params) => gated(() => exportBundle(params)),
+    buildDemos: (params, signal) => gated(() => buildDemos(params, signal)),
     importBundle: (params) =>
       gated(() => idempotent(requestKey("artifact/import", params), () => importBundle(params))),
     exportable: (params) => gated(() => exportable(params)),
@@ -1027,6 +1119,65 @@ export function createPublisher(options: PublisherOptions): Publisher {
       );
     }
     return { detail, summary, versionDir };
+  }
+
+  /** `demo/build` (D185 item 4): the source's demos, built or found built, one by one. */
+  async function buildDemos(
+    params: DemoBuildParams,
+    signal?: AbortSignal,
+  ): Promise<DemoBuildResult> {
+    const source = await resolveSource(pathOf(params.source));
+    const manifest = extractManifest(source.entry, await readEntry(source)).manifest;
+    const builds = demoBuilds(manifest?.demos);
+    if (params.demo !== undefined && manifest?.demos?.[params.demo] === undefined) {
+      throw new RpcError(
+        createDiagnostic("MOSTRA_DEMO_UNKNOWN", {
+          message: `The artifact declares no demo "${params.demo}" to build${builds.length > 0 ? `; it declares ${builds.map(([name]) => name).join(", ")}` : ""}.`,
+        }),
+      );
+    }
+    const outcomes: DemoBuildOutcome[] = [];
+    for (const [name, spec] of Object.entries(manifest?.demos ?? {})) {
+      if (isDemoBuild(spec) || (params.demo !== undefined && name !== params.demo)) continue;
+      outcomes.push({ name, status: "failed", diagnostics: demoProblems({ [name]: spec }) });
+    }
+    for (const [name, spec] of builds) {
+      if (params.demo !== undefined && name !== params.demo) continue;
+      if (!options.demos) {
+        outcomes.push({
+          name,
+          status: "failed",
+          diagnostics: [
+            createDiagnostic("MOSTRA_DEMO_BUILD_FAILED", {
+              message: `This runtime builds no demos, so the demo "${name}" can't be built here.`,
+            }),
+          ],
+        });
+        continue;
+      }
+      let inputs: DemoInputs;
+      try {
+        inputs = await options.demos.inputs(name, spec, source.root);
+      } catch (error) {
+        if (!(error instanceof RpcError)) throw error;
+        outcomes.push({ name, status: "failed", diagnostics: [error.diagnostic] });
+        continue;
+      }
+      const built = await options.demos.build(inputs, { force: params.force === true, signal });
+      outcomes.push(
+        built.status === "failed"
+          ? { name, status: "failed", digest: inputs.digest, diagnostics: [built.diagnostic] }
+          : {
+              name,
+              status: built.status,
+              digest: inputs.digest,
+              files: built.files,
+              ms: built.ms,
+              diagnostics: [],
+            },
+      );
+    }
+    return { demos: outcomes };
   }
 
   async function exportBundle(params: ArtifactExportParams): Promise<ArtifactExportResult> {

@@ -92,6 +92,8 @@ export interface LiveView {
   readonly error?: WireError;
   /** A hosted page's source whose producer can't refresh it while its owner is offline. */
   readonly ownerOffline?: boolean;
+  /** An export's value, as it was when the page was exported (D185 item 8): it never changes. */
+  readonly frozen?: boolean;
   /** Append mode: the values kept, oldest first, at most the largest window asked for. */
   readonly ring: readonly unknown[];
 }
@@ -176,6 +178,11 @@ interface TrackedLive {
 /** Options for {@link ServerClient}. */
 export interface ServerClientOptions {
   readonly transport?: Transport;
+  /**
+   * An export's live values (D185 item 8), as the gateway's `live` route answered them when the
+   * page was exported: shown, marked frozen, never read again.
+   */
+  readonly frozenLive?: readonly LiveState[];
   /** The page's view (D104), in live mode. */
   readonly viewId?: string;
   readonly timers?: {
@@ -587,6 +594,17 @@ export class ServerClient {
       this.#liveFlush = undefined;
       const shown = [...this.#live.values()].filter((tracked) => tracked.watchers.size > 0);
       if (shown.length === 0) return;
+      const frozen = this.#options.frozenLive;
+      if (frozen !== undefined) {
+        // An export: each source's value as it was, or none; nothing is read again.
+        for (const tracked of shown) {
+          const state = frozen.find((one) => one.key === tracked.view.key);
+          if (state) await this.#applyLiveState(state);
+          tracked.view = { ...tracked.view, loading: false, frozen: true };
+        }
+        this.#changed();
+        return;
+      }
       const refresh = this.#liveRefresh;
       this.#liveRefresh = new Set();
       let transport: Transport;

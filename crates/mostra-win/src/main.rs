@@ -87,12 +87,22 @@ mod windows {
         let rest = &arguments[1..];
         match command {
             "gate" => {
+                // `--verbatim`: the one argument after the program is the rest of the child's
+                // command line as it stands, for `cmd.exe /s /c "…"`, which reads its own quoting
+                // rather than the C runtime's (a demo's `.cmd` build, D185).
+                let verbatim = rest.first().and_then(text) == Some("--verbatim");
+                let rest = if verbatim { &rest[1..] } else { rest };
                 let start = usize::from(rest.first().and_then(text) == Some("--"));
                 let Some(program) = rest.get(start) else {
-                    eprintln!("usage: mostra-win gate -- <program> [arguments…]");
+                    eprintln!("usage: mostra-win gate [--verbatim] -- <program> [arguments…]");
                     return 126;
                 };
-                gate::run(program, &rest[start + 1..])
+                let arguments = &rest[start + 1..];
+                if verbatim && arguments.len() != 1 {
+                    eprintln!("usage: mostra-win gate --verbatim -- <program> <command line>");
+                    return 126;
+                }
+                gate::run(program, arguments, verbatim)
             }
             "pipe" => match rest.first().and_then(text) {
                 Some(name) if !name.is_empty() && !name.contains('\\') => pipe::run(name),

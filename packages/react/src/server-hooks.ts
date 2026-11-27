@@ -48,9 +48,19 @@ export interface ActionHandle<A extends unknown[], R> {
   cancel(): void;
   /** The run's `run_` ID, once it has one. */
   readonly runId?: string;
+  /**
+   * Whether the action can run here: `false` in an export, where no server runs it (D185 item
+   * 8). Show the control disabled, with `unavailable` beside it.
+   */
+  readonly available: boolean;
+  /** Why the action can't run here, in words for the viewer, when `available` is `false`. */
+  readonly unavailable?: string;
 }
 
 const NO_LOG: readonly string[] = [];
+
+/** What a control of an action says where no server runs it: an export (D185 item 8). */
+const UNAVAILABLE = "Runs only on the live page";
 
 /** What `useAction` knows of one function and key. */
 interface IdentityState {
@@ -166,6 +176,7 @@ export function useAction<A extends unknown[], R>(
     if (current && !isFinalRunStatus(current.status)) void server.cancel(runId).catch(() => {});
   }, [server, runId]);
 
+  const available = store.mode === "live";
   return useMemo(() => {
     const status: ActionHandle<A, Awaited<R>>["status"] = view?.status ?? "idle";
     const error =
@@ -188,8 +199,11 @@ export function useAction<A extends unknown[], R>(
       log: view?.log ?? NO_LOG,
       partial: (view?.partial ?? []) as ActionHandle<A, Awaited<R>>["partial"],
       ...(runId !== undefined ? { runId } : {}),
+      // An export runs nothing (D185 item 8): the control says so where it sits.
+      available,
+      ...(available ? {} : { unavailable: UNAVAILABLE }),
     };
-  }, [run, cancel, view, starting, startError, runId]);
+  }, [run, cancel, view, starting, startError, runId, available]);
 }
 
 // ── useLive ───────────────────────────────────────────────────────────────────────────────
@@ -256,6 +270,11 @@ export interface LiveResult<T> {
    * value: `data` is the last value, from `at` (D165 item 4).
    */
   readonly ownerOffline?: boolean;
+  /**
+   * In an export, `true`: `data` is the value as it was when the page was exported, from `at`, and
+   * never changes (D185 item 8).
+   */
+  readonly frozen?: boolean;
 }
 
 /** How long append mode keeps values without a `window`. */
@@ -313,6 +332,7 @@ export function useLive<K extends LiveKey>(
       ...(view?.revision !== undefined ? { revision: view.revision } : {}),
       ...(view?.at !== undefined ? { at: view.at } : {}),
       ...(view?.ownerOffline ? { ownerOffline: true } : {}),
+      ...(view?.frozen ? { frozen: true } : {}),
     };
   }, [view, append, window, refresh]);
 }

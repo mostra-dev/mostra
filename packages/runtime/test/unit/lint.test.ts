@@ -54,7 +54,7 @@ const RULES: readonly {
     rule: "React Flow",
     file: "index.tsx",
     before: `import Flow, { Background } from "reactflow";\nimport "reactflow/dist/style.css";\nexport const A = () => <Flow nodes={[]}><Background /></Flow>;\n`,
-    // React Flow 13's stylesheet path (M105: the kit is on 13).
+    // React Flow 13's stylesheet path (M110: the kit is on 13).
     after: `import { ReactFlow as Flow, Background } from "@xyflow/react";\nimport "@xyflow/react/style.css";\nexport const A = () => <Flow nodes={[]}><Background /></Flow>;\n`,
   },
   {

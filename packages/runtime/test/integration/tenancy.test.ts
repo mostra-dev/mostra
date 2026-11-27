@@ -7,6 +7,8 @@
  * route's label is never served again, even after its artifact ID is hosted anew; and a host an
  * operator gave one home never goes to another.
  */
+import { mkdirSync, writeFileSync } from "node:fs";
+import { join } from "node:path";
 import { fileURLToPath } from "node:url";
 import { MutationId } from "@mostra/protocol";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
@@ -238,6 +240,79 @@ describe("two accounts, one copied project (RM-03)", () => {
     expect((await send(port, adaLabel, "/_mostra/enter")).status).toBe(421);
     links.ada = again;
   }, 180_000);
+
+  it("serves a hosted page's demo from its label, deep links too, and withholds it under quarantine (TM-08, D185)", async () => {
+    // A page with one demo, built by a Node.js script for the path Mostra serves it at.
+    const dir = join(tempDir("tenancy-demo"), "hosted-demo");
+    mkdirSync(join(dir, "app"), { recursive: true });
+    writeFileSync(
+      join(dir, "app", "build.mjs"),
+      `import { mkdirSync, writeFileSync } from "node:fs";
+const base = process.env.MOSTRA_DEMO_BASE;
+mkdirSync("dist", { recursive: true });
+writeFileSync("dist/index.html", '<!doctype html><title>Hosted demo</title><script src="' + base + 'app.js"></script><h1>Hosted demo</h1>');
+writeFileSync("dist/app.js", "document.title = 'Hosted demo, running';");
+`,
+    );
+    writeFileSync(
+      join(dir, "index.tsx"),
+      `import { defineArtifact } from "@mostra/react";
+export const artifact = defineArtifact({
+  title: "Hosted demo",
+  demos: { app: { source: "./app", build: ["node", "build.mjs"], output: "dist" } },
+});
+export default function Page() {
+  return <main><h1>Hosted demo</h1></main>;
+}
+`,
+    );
+    const published = ok<{ artifactId: string; versionId: string }>(
+      await ada.client.call("artifact/publish", { source: { path: dir } }, 240_000),
+    );
+    const url = ok<{ url: string }>(
+      await ada.client.call(
+        "share/start",
+        { artifact: { artifactId: published.artifactId }, via: "remote" },
+        60_000,
+      ),
+    ).url;
+    const browser = new Browser();
+    const opened = await openLink(browser, url);
+    const demo = (path: string, document = false) =>
+      browser.ask({
+        url: `${opened.frameOrigin}/_mostra/demos/app/${path}`,
+        ...(document
+          ? { headers: { "sec-fetch-mode": "navigate", "sec-fetch-dest": "iframe" } }
+          : {}),
+      });
+    const index = await demo("");
+    expect(index.status, index.body).toBe(200);
+    expect(index.body).toContain("<h1>Hosted demo</h1>");
+    expect((await demo("app.js")).body).toContain("running");
+    // A deep link to a route of the demo gets its page (the SPA fallback), on the hosted label too.
+    const deep = await demo("items/2", true);
+    expect(deep.status, deep.body).toBe(200);
+    expect(deep.body).toContain("<h1>Hosted demo</h1>");
+
+    // Quarantined: the demo's files are withheld from the frame that entered before, as the page's are.
+    const route = routeOf(url);
+    expect(
+      (
+        await operator.handle(
+          "quarantine",
+          { routeId: route, versionId: published.versionId },
+          "Review",
+        )
+      ).status,
+    ).toBe(200);
+    const withheld = await demo("");
+    expect(withheld.status).toBe(403);
+    expect(withheld.body).toContain("MOSTRA_REMOTE_UNDER_REVIEW");
+    expect(
+      (await operator.handle("release", { routeId: route, versionId: published.versionId })).status,
+    ).toBe(200);
+    expect((await demo("")).status).toBe(200);
+  }, 300_000);
 
   it("never gives a host an operator gave one home to another", async () => {
     const homeOf = async (routeId: string) =>

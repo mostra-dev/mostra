@@ -1,0 +1,24 @@
+{
+  "$schema": "https://ui.shadcn.com/schema/registry-item.json",
+  "name": "mostra-demo",
+  "type": "registry:component",
+  "title": "Web demo",
+  "description": "A front end the artifact builds into its version, shown in a phone, tablet or browser frame at that device's viewport, with a switcher between them.",
+  "dependencies": [
+    "@mostra/react",
+    "cn"
+  ],
+  "registryDependencies": [
+    "mostra-demo"
+  ],
+  "files": [
+    {
+      "path": "components/mostra/demo.tsx",
+      "type": "registry:component",
+      "target": "components/mostra/demo.tsx"
+    }
+  ],
+  "mostra": {
+    "base": "base"
+  }
+}

@@ -316,6 +316,96 @@
       "fix": "Nothing is required."
     },
     {
+      "code": "MOSTRA_DEMO_BASE_MISMATCH",
+      "severity": "error",
+      "phase": "compile",
+      "title": "A demo loads files from outside its base",
+      "hint": "Build the demo with its base set to `process.env.MOSTRA_DEMO_BASE`.",
+      "explanation": "A page of the demo's build loads a file by a path outside the one the demo is served under, `/_mostra/demos/<name>/`, which Mostra gives the build as `MOSTRA_DEMO_BASE`. Served from the version, such a file would be missing.",
+      "fix": "Read the base from the environment: in Vite `base: process.env.MOSTRA_DEMO_BASE`, in Next.js `basePath: process.env.MOSTRA_DEMO_BASE?.replace(/\\/$/, \"\")`, and the same path as the router's basename."
+    },
+    {
+      "code": "MOSTRA_DEMO_BASE_NEEDED",
+      "severity": "warning",
+      "phase": "publish",
+      "title": "A demo works fully only at a host's root",
+      "hint": "To host the export at a subpath, export it again with `--base <path>`.",
+      "explanation": "A demo that moves between its pages by browser history was built for the path Mostra serves it under. In this export it works fully when the folder is served at a host's root (`npx serve <folder>`), and on its opening page when the folder is served from a subpath or opened from disk.",
+      "fix": "Export with the subpath the folder will be served from, such as `--base /my-repo/` for a GitHub Pages project site: Mostra rebuilds each demo under it."
+    },
+    {
+      "code": "MOSTRA_DEMO_BUILD_FAILED",
+      "severity": "error",
+      "phase": "compile",
+      "title": "A demo's build failed",
+      "hint": "Read the build's last lines in the message, fix the project, and verify again.",
+      "explanation": "The command a demo's `build` names ended with an error, or couldn't start. The message holds the build's last log lines. Nothing is published while a demo doesn't build.",
+      "fix": "Run the same command in the demo's folder to see the whole log, fix what it reports (a missing install, a type error, a wrong script name), then verify again."
+    },
+    {
+      "code": "MOSTRA_DEMO_BUILD_TIMEOUT",
+      "severity": "error",
+      "phase": "compile",
+      "title": "A demo's build ran past its time limit",
+      "hint": "Make the build faster, or give the demo a longer `timeout` (at most 60m).",
+      "explanation": "A demo's build was still running when its time limit passed (10 minutes unless the demo's `timeout` says otherwise), so Mostra ended it and everything it started.",
+      "fix": "Check that the build doesn't wait for input or watch files (a dev server never ends), then set a longer limit if it really needs one: `timeout: \"20m\"`."
+    },
+    {
+      "code": "MOSTRA_DEMO_NOT_IN_FILE",
+      "severity": "warning",
+      "phase": "publish",
+      "title": "A demo can't run inside a single file",
+      "hint": "Export the folder version instead: `mostra export <artifact> --as static`.",
+      "explanation": "The `html` export holds a page in one file, which can carry a demo only when its build is one graph of ES modules (Vite and most bundlers). This demo's build loads its scripts by URL (a Next.js export does), so the single file shows a note in its place, and the folder export carries it whole.",
+      "fix": "Send the `static` export for this page, which opens from disk and carries every demo."
+    },
+    {
+      "code": "MOSTRA_DEMO_NOT_REBUILT",
+      "severity": "warning",
+      "phase": "publish",
+      "title": "A demo couldn't be rebuilt for the export's base",
+      "hint": "Export from the machine that built the version, with the demo's source as it was, or export without `--base`.",
+      "explanation": "`--base` rebuilds each demo under the export's path, which needs the demo's source exactly as the version built it. This demo's source isn't there, or has changed since, so the export carries the demo as the version built it, which works fully at a host's root only.",
+      "fix": "Publish the artifact again with the demo's current source and export that version, or serve the export at a host's root."
+    },
+    {
+      "code": "MOSTRA_DEMO_OUTPUT_MISSING",
+      "severity": "error",
+      "phase": "compile",
+      "title": "A demo's build wrote no page",
+      "hint": "Set the demo's `output` to the folder its build writes, which holds its `index.html`.",
+      "explanation": "The demo's build succeeded, but the folder its `output` names holds no `index.html`, so there is nothing to show.",
+      "fix": "Name the folder the build writes (Vite's `dist`, a Next.js static export's `out`) and make sure the build emits static files (Next.js needs `output: \"export\"`)."
+    },
+    {
+      "code": "MOSTRA_DEMO_SOURCE_MISSING",
+      "severity": "error",
+      "phase": "compile",
+      "title": "A demo's source folder is missing",
+      "hint": "Point the demo's `source` at the folder of its project, relative to the artifact's directory.",
+      "explanation": "The folder a demo's `source` names, resolved against the artifact's directory, doesn't exist or isn't a folder, so its build can't run.",
+      "fix": "Fix the path in the manifest's `demos`, or move the project there."
+    },
+    {
+      "code": "MOSTRA_DEMO_UNKNOWN",
+      "severity": "error",
+      "phase": "runtime",
+      "title": "The page shows a demo its version doesn't declare",
+      "hint": "Declare the demo in the manifest's `demos`, or show one it declares.",
+      "explanation": "A `<WebDemo>` or `useDemo` names a demo that the version's manifest doesn't declare, so there is no build to show.",
+      "fix": "Add the demo to `defineArtifact({ demos: { … } })` under that name, or fix the name the page uses."
+    },
+    {
+      "code": "MOSTRA_DEMO_UNSUPPORTED",
+      "severity": "error",
+      "phase": "manifest",
+      "title": "A demo declared as a dev server",
+      "hint": "Declare the demo as a build: `{ source, build, output }`, the folder of its source, the command that builds it and the folder the build writes.",
+      "explanation": "A demo in the manifest names a command to run or a port to attach to: a running dev server. Mostra shows demos as built front ends only, stored with the version, so a demo works the same for every viewer wherever the page is seen and never depends on a process on the author's machine.",
+      "fix": "Replace the demo with its build: `demos: { app: { source: \"../web\", build: [\"pnpm\", \"build\"], output: \"dist\" } }`, and set the app's base to `process.env.MOSTRA_DEMO_BASE` (Vite's `base`, Next.js's `basePath` with `output: \"export\"`)."
+    },
+    {
       "code": "MOSTRA_DEP_INSTALL_FAILED",
       "severity": "error",
       "phase": "compile",
@@ -1817,6 +1907,42 @@
       "hint": "Make work that can take longer than 45 seconds an action run (useAction): a run outlives the call and reports its progress.",
       "explanation": "A page shown inline in a chat host (an MCP App) reaches its server functions through the host's tool calls, which a host ends after about a minute. A plain call of a server function that hadn't finished within 45 seconds was stopped, and its result is lost: the function was asked to stop through its abort signal.",
       "fix": "Call long work through useAction instead of calling the function directly: an action run is recorded before it starts, goes on after the call that started it, and the page follows its progress and result. In the full page, plain calls have no such limit."
+    },
+    {
+      "code": "MOSTRA_TARGET_EXPORT_STRICT",
+      "severity": "error",
+      "phase": "publish",
+      "title": "A strict export found what it would lose",
+      "hint": "Fix what the warnings name, or export without `--strict`.",
+      "explanation": "`--strict` makes every warning of an export an error: the export found something it would lose or couldn't carry, named in the warnings beside this error, and wrote nothing.",
+      "fix": "Read the warnings: export another class (`snapshot`, `bundle`, `static`), give the export what it needs (`--base`), or drop `--strict` to accept them."
+    },
+    {
+      "code": "MOSTRA_TARGET_NOT_INLINED",
+      "severity": "warning",
+      "phase": "publish",
+      "title": "An export needs a network for some files",
+      "hint": "Load these files from the artifact itself, or expect them to need a network where the export is opened.",
+      "explanation": "The export couldn't hold some files the page loads, because they come from another address (an external font, image or script): the message lists each. They load only where the export is opened with a network.",
+      "fix": "Put the files in the artifact (its `public/` folder, or imported from its source) so the export carries them."
+    },
+    {
+      "code": "MOSTRA_TARGET_SERVER_FEATURES",
+      "severity": "warning",
+      "phase": "publish",
+      "title": "An export loses the page's server features",
+      "hint": "Keep the answers and state with `--as snapshot`, or the actions running with `--as bundle` and `mostra run`.",
+      "explanation": "The export is the page's front end, and the page has server code: the actions, live producers and Submit the message names need Mostra's server, so in the export they show as unavailable where they sit and live values keep the value they had, marked as frozen. No server code, secret or server setting is in the export.",
+      "fix": "Nothing, when a readable record of the page is what you want. Export a `snapshot` to keep the answers and state as they are, or a `bundle` for another Mostra home to run the actions; add `--strict` to make this an error in scripts."
+    },
+    {
+      "code": "MOSTRA_TARGET_SHARED_STATE",
+      "severity": "warning",
+      "phase": "publish",
+      "title": "A snapshot holds other people's answers",
+      "hint": "Check that the snapshot may carry these answers, or leave the shared state out with `--no-shared-state`.",
+      "explanation": "A snapshot carries the artifact's shared state, which other people wrote (a roster's answers, votes, a shared list): the message says how many people's answers it holds. A snapshot is a file that travels, so they travel with it.",
+      "fix": "Pass `--no-shared-state` to leave the shared state out, or send the snapshot only to people who may read it."
     },
     {
       "code": "MOSTRA_TARGET_UNAVAILABLE",

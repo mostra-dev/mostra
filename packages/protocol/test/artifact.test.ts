@@ -7,6 +7,7 @@ import {
   createDiagnostic,
   diagnosticCatalog,
   hostMethods,
+  manifestProblem,
   PublishReceipt,
 } from "@mostra/protocol";
 import { describe, expect, it } from "vitest";
@@ -46,6 +47,21 @@ describe("ArtifactManifest (INTERFACES §2.2, AU-04)", () => {
       { title: "x", links: [{ rel: "follows" }] },
     ]) {
       expect(ArtifactManifest.safeParse(bad).success, JSON.stringify(bad)).toBe(false);
+    }
+  });
+
+  it("refuses a demo built into its source folder itself, which would publish the whole project (WP-24 review, finding 1)", () => {
+    const demo = (output: string) => ({
+      title: "x",
+      demos: { app: { source: "./web", build: ["pnpm", "build"], output } },
+    });
+    for (const output of [".", "./", "", "./."]) {
+      expect(manifestProblem(demo(output)), output).toEqual(
+        expect.objectContaining({ path: "demos.app.output" }),
+      );
+    }
+    for (const output of ["dist", "./out", "build/site"]) {
+      expect(manifestProblem(demo(output)), output).toBeUndefined();
     }
   });
 

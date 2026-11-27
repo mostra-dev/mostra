@@ -1,0 +1,649 @@
+/**
+ * Web demos (D185, TM-08): a demo is a front end an artifact builds from its own source and keeps
+ * in its version. This module builds them: one build at a time per demo folder, as a child of the
+ * process manager in its own group (a Job Object on Windows), ended with everything it started on
+ * its time limit or a cancel, in the user's own environment with `MOSTRA_DEMO_BASE`, the path the
+ * demo is served under; checks the output (a page, every file under the base); and keeps it in the
+ * home's cache by the digest of its inputs (its source's content, command, settings and base), so
+ * an unchanged demo is never built twice.
+ *
+ * ```ts
+ * const demos = createDemos({ home, processes, log, env });
+ * const inputs = await demos.inputs("app", spec, artifactDir);   // its digest joins envDigest
+ * const built = await demos.build(inputs);                        // { status, dir } or a failure
+ * ```
+ */
+import { createHash, randomBytes } from "node:crypto";
+import { createReadStream } from "node:fs";
+import { cp, mkdir, readdir, readFile, realpath, rm, stat, writeFile } from "node:fs/promises";
+import { join, relative, resolve } from "node:path";
+import {
+  canonicalJson,
+  createDiagnostic,
+  DEMO_TIMEOUT_DEFAULT_MS,
+  type DemoBuildSpec,
+  type DemoSpec,
+  type Diagnostic,
+  demoBase,
+  durationMs,
+  isDemoBuild,
+  RpcError,
+} from "@mostra/protocol";
+import ignore from "ignore";
+import type { Environment, Log } from "../log.ts";
+import { programCommand, removeTree, renamePath } from "../platform/index.ts";
+import { demoEnvironment, type ProcessManager } from "../processes/index.ts";
+
+/** SHA-256 as lowercase hex. */
+function sha256Hex(data: string | Uint8Array): string {
+  return createHash("sha256").update(data).digest("hex");
+}
+
+/**
+ * The SHA-256 of a folder's canonical listing, in the form DATA_MODEL §2 gives a source's: the
+ * JSON array of `[path, executable, sha256]` for every file, sorted by the path's UTF-8 bytes. Here
+ * rather than borrowed from `publish`, which builds demos and so depends on this module.
+ */
+function listingDigest(
+  files: readonly {
+    readonly path: string;
+    readonly executable: boolean;
+    readonly sha256: string;
+  }[],
+): string {
+  const sorted = [...files].sort((a, b) =>
+    Buffer.compare(Buffer.from(a.path, "utf8"), Buffer.from(b.path, "utf8")),
+  );
+  return sha256Hex(JSON.stringify(sorted.map((file) => [file.path, file.executable, file.sha256])));
+}
+
+/** Folders a demo's source digest never reads: installs, caches and build tools' own state. */
+const SKIPPED_DIRS = new Set([
+  "node_modules",
+  ".git",
+  ".mostra",
+  ".next",
+  ".turbo",
+  ".cache",
+  ".vite",
+  ".svelte-kit",
+  ".parcel-cache",
+  ".angular",
+]);
+/** Files a demo's source digest never reads: editors' and Finder's own. */
+const SKIPPED_FILE = /^(?:\.DS_Store|\.#.*|#.*#|.*~|.*\.sw[a-px])$/;
+/** `.env` files, which builds read even where `.gitignore` names them (Vite's `VITE_` values). */
+const ENV_FILE = /^\.env(?:\..+)?$/;
+/** How many lines of a build's log a failure shows. */
+const LOG_LINES = 30;
+/** How many lines of a build's log are kept while it runs. */
+const LOG_KEPT = 400;
+/** How many of a demo's builds the cache keeps, newest first. */
+const KEPT_BUILDS = 3;
+/** How long a stopped build gets before its group is killed. */
+const STOP_GRACE_MS = 3000;
+
+/** What a demo is built from, and the digest of all of it. */
+export interface DemoInputs {
+  readonly name: string;
+  readonly spec: DemoBuildSpec;
+  /** The demo's project folder, absolute. */
+  readonly sourceDir: string;
+  /** The folder its build writes, absolute. */
+  readonly outputDir: string;
+  /** The path it is built for (`MOSTRA_DEMO_BASE`). */
+  readonly base: string;
+  /** The digest of its source's listing ({@link demoSourceDigest}) when the inputs were read. */
+  readonly source: string;
+  /** SHA-256 of its source listing, command, settings and base. */
+  readonly digest: string;
+}
+
+/** A demo built, or found built. */
+export interface BuiltDemo {
+  readonly status: "built" | "cached";
+  /** The cached output: the folder the version's `client/_mostra/demos/<name>/` copies. */
+  readonly dir: string;
+  readonly files: number;
+  readonly ms: number;
+}
+
+/** A demo's build that failed: its diagnostic, with the build's last log lines. */
+export interface FailedDemo {
+  readonly status: "failed";
+  readonly diagnostic: Diagnostic;
+}
+
+/** Builds demos and keeps their output. */
+export interface Demos {
+  /** A demo's inputs as its source is now; throws `MOSTRA_DEMO_SOURCE_MISSING`. */
+  inputs(
+    name: string,
+    spec: DemoBuildSpec,
+    artifactDir: string,
+    base?: string,
+  ): Promise<DemoInputs>;
+  /**
+   * Builds a demo, or finds its build in the cache, and copies it into `into` (a folder that
+   * doesn't exist yet) while the cache keeps the build: no other build, `--force` or pruning
+   * removes it during the copy. A `signal` that aborts ends a running build with everything it
+   * started.
+   */
+  build(
+    inputs: DemoInputs,
+    options: {
+      readonly into?: string | undefined;
+      readonly force?: boolean;
+      readonly signal?: AbortSignal | undefined;
+    },
+  ): Promise<BuiltDemo | FailedDemo>;
+}
+
+/**
+ * `demoDigest` (DATA_MODEL §2): the SHA-256 of each demo's inputs' digest by name, or `undefined`
+ * for an artifact without demos, so its version keeps the ID it had before demos existed.
+ */
+export function demoDigestOf(inputs: readonly DemoInputs[]): string | undefined {
+  if (inputs.length === 0) return undefined;
+  return sha256Hex(canonicalJson(Object.fromEntries(inputs.map((one) => [one.name, one.digest]))));
+}
+
+/**
+ * What `verify` refuses of a manifest's demos before any build (D185 item 3): a demo declared as a
+ * dev server.
+ */
+export function demoProblems(demos: Readonly<Record<string, DemoSpec>> | undefined): Diagnostic[] {
+  const problems: Diagnostic[] = [];
+  for (const [name, spec] of Object.entries(demos ?? {})) {
+    if (isDemoBuild(spec)) continue;
+    problems.push(
+      createDiagnostic("MOSTRA_DEMO_UNSUPPORTED", {
+        message: `The demo "${name}" is declared as a dev server (${"attach" in spec ? "attach" : "command"}); Mostra shows demos as built front ends.`,
+      }),
+    );
+  }
+  return problems;
+}
+
+/** The demos a manifest declares as builds, in its order. */
+export function demoBuilds(
+  demos: Readonly<Record<string, DemoSpec>> | undefined,
+): [string, DemoBuildSpec][] {
+  return Object.entries(demos ?? {}).filter((entry): entry is [string, DemoBuildSpec] =>
+    isDemoBuild(entry[1]),
+  );
+}
+
+async function hashFile(path: string): Promise<string> {
+  const hash = createHash("sha256");
+  for await (const chunk of createReadStream(path)) hash.update(chunk as Buffer);
+  return hash.digest("hex");
+}
+
+/** Reads a file of ignore rules, or none. */
+async function rulesOf(path: string): Promise<string> {
+  try {
+    return await readFile(path, "utf8");
+  } catch {
+    return "";
+  }
+}
+
+/**
+ * The canonical listing digest of a demo's source (DATA_MODEL §2's form): every file under it but
+ * installs, build tools' caches, its own output and what its `.gitignore` and `.mostraignore`
+ * name, which are a project's generated and local files. `.env` files count whatever ignores
+ * them, since builds read them (Vite builds their `VITE_` values in). Symbolic links are
+ * followed, as the build follows them, and a link back into its own ancestry is skipped.
+ */
+export async function demoSourceDigest(sourceDir: string, outputDir: string): Promise<string> {
+  const git = ignore().add(await rulesOf(join(sourceDir, ".gitignore")));
+  const own = ignore().add(await rulesOf(join(sourceDir, ".mostraignore")));
+  const ignored = (path: string, name: string, dir: boolean): boolean =>
+    own.ignores(dir ? `${path}/` : path) ||
+    (git.ignores(dir ? `${path}/` : path) && (dir || !ENV_FILE.test(name)));
+  const output = relative(sourceDir, outputDir).replaceAll("\\", "/");
+  const files: { path: string; executable: boolean; sha256: string }[] = [];
+  const walk = async (dir: string, rel: string, ancestry: ReadonlySet<string>): Promise<void> => {
+    const entries = await readdir(dir, { withFileTypes: true });
+    for (const entry of entries) {
+      const path = (rel ? `${rel}/${entry.name}` : entry.name).normalize("NFC");
+      const absolute = join(dir, entry.name);
+      let kind: "dir" | "file" | undefined;
+      if (entry.isDirectory()) kind = "dir";
+      else if (entry.isFile()) kind = "file";
+      else if (entry.isSymbolicLink()) {
+        const target = await stat(absolute).catch(() => undefined);
+        kind = target?.isDirectory() ? "dir" : target?.isFile() ? "file" : undefined;
+      }
+      if (kind === "dir") {
+        if (SKIPPED_DIRS.has(entry.name) || path === output || ignored(path, entry.name, true))
+          continue;
+        const real = await realpath(absolute);
+        if (ancestry.has(real)) continue;
+        await walk(absolute, path, new Set([...ancestry, real]));
+      } else if (kind === "file") {
+        if (SKIPPED_FILE.test(entry.name) || ignored(path, entry.name, false)) continue;
+        const info = await stat(absolute);
+        files.push({
+          path,
+          executable: (info.mode & 0o111) !== 0,
+          sha256: await hashFile(absolute),
+        });
+      }
+    }
+  };
+  await walk(sourceDir, "", new Set([await realpath(sourceDir)]));
+  return listingDigest(files);
+}
+
+/** Every file under `dir`, as `/`-separated paths relative to it. */
+async function filesUnder(dir: string): Promise<string[]> {
+  const found: string[] = [];
+  const walk = async (at: string, rel: string): Promise<void> => {
+    for (const entry of await readdir(at, { withFileTypes: true })) {
+      const path = rel ? `${rel}/${entry.name}` : entry.name;
+      if (entry.isDirectory()) await walk(join(at, entry.name), path);
+      else if (entry.isFile()) found.push(path);
+    }
+  };
+  await walk(dir, "");
+  return found.sort();
+}
+
+/** The paths a document loads by `src` or `href`. */
+const DOCUMENT_URL = /\b(?:src|href)\s*=\s*(["'])([^"']*)\1/gi;
+
+/**
+ * Checks a demo's output (D185 item 4): its `index.html`, and every path its documents load from
+ * the site's root staying under `base`. `undefined` when it is sound.
+ */
+export async function checkDemoOutput(
+  name: string,
+  dir: string,
+  base: string,
+): Promise<Diagnostic | undefined> {
+  const files = await filesUnder(dir);
+  if (!files.includes("index.html")) {
+    return createDiagnostic("MOSTRA_DEMO_OUTPUT_MISSING", {
+      message: `The demo "${name}" built, but its output holds no index.html.`,
+    });
+  }
+  const outside = new Set<string>();
+  for (const file of files.filter((path) => /\.html?$/i.test(path))) {
+    const html = await readFile(join(dir, file), "utf8");
+    for (const match of html.matchAll(DOCUMENT_URL)) {
+      const url = match[2] as string;
+      if (!url.startsWith("/") || url.startsWith("//")) continue;
+      if (url.startsWith(base) || `${url}/` === base) continue;
+      outside.add(`${file}: ${url}`);
+    }
+  }
+  if (outside.size === 0) return undefined;
+  const shown = [...outside].slice(0, 5);
+  return createDiagnostic("MOSTRA_DEMO_BASE_MISMATCH", {
+    message: `The demo "${name}" loads files from outside ${base}: ${shown.join(", ")}${outside.size > shown.length ? ` and ${outside.size - shown.length} more` : ""}.`,
+  });
+}
+
+/**
+ * Writes the review agent into every HTML document of a demo the version keeps (D185 item 5,
+ * D183 item 7), so comments anchor inside it: inline, so it needs no path wherever the demo is
+ * served or exported, or by `agentPath` when its text would end an inline script early.
+ */
+export async function injectDemoAgent(
+  dir: string,
+  agent: string,
+  agentPath: string,
+): Promise<void> {
+  const tag = /<\/script|<!--/i.test(agent)
+    ? `<script src="/${agentPath}"></script>`
+    : `<script>${agent}</script>`;
+  for (const file of (await filesUnder(dir)).filter((path) => /\.html?$/i.test(path))) {
+    const html = await readFile(join(dir, file), "utf8");
+    await writeFile(join(dir, file), withHeadTag(html, tag));
+  }
+}
+
+/**
+ * `html` with `tag` written first in its head: after `<head>`, else after `<html>`, else after its
+ * doctype, never before the doctype, which would put the document in quirks mode.
+ */
+export function withHeadTag(html: string, tag: string): string {
+  const after =
+    /<head\b[^>]*>/i.exec(html) ?? /<html\b[^>]*>/i.exec(html) ?? /<!doctype\b[^>]*>/i.exec(html);
+  const at = after ? after.index + after[0].length : 0;
+  return `${html.slice(0, at)}${tag}${html.slice(at)}`;
+}
+
+/** Options for {@link createDemos}. */
+export interface DemosOptions {
+  /** The home: builds are kept under `cache/demos/`. */
+  readonly home: string;
+  readonly processes: ProcessManager;
+  readonly log: Log;
+  /** The supervisor's environment, from which a build's is made. */
+  readonly env: Environment;
+}
+
+/** Removes what a stopped instance left of builds being kept. */
+export async function recoverDemos(home: string): Promise<void> {
+  const dir = join(home, "cache", "demos");
+  let entries: string[];
+  try {
+    entries = await readdir(dir);
+  } catch {
+    return;
+  }
+  for (const entry of entries) {
+    if (entry.startsWith(".tmp-") || entry.startsWith(".old-")) {
+      await removeTree(join(dir, entry)).catch(() => undefined);
+    }
+  }
+}
+
+/** Creates the demo builder of one instance. */
+export function createDemos(options: DemosOptions): Demos {
+  const { log } = options;
+  const cacheDir = join(options.home, "cache", "demos");
+  /** One build at a time per demo folder: the build writes its output there. */
+  const turns = new Map<string, Promise<unknown>>();
+  const inTurn = <T>(key: string, task: () => Promise<T>): Promise<T> => {
+    const before = turns.get(key) ?? Promise.resolve();
+    const run = before.then(task, task);
+    const settled = run.catch(() => undefined);
+    turns.set(key, settled);
+    void settled.then(() => {
+      if (turns.get(key) === settled) turns.delete(key);
+    });
+    return run;
+  };
+
+  /** A cached build's marker, or none. */
+  const markerOf = async (
+    digest: string,
+  ): Promise<{ files?: number; usedAt?: string; [key: string]: unknown } | undefined> => {
+    try {
+      return JSON.parse(await readFile(join(cacheDir, digest, "demo.json"), "utf8")) as {
+        files?: number;
+      };
+    } catch {
+      return undefined;
+    }
+  };
+
+  /**
+   * Copies a cached build into `into` and marks it used now, so pruning keeps the builds in use;
+   * only within the digest's turn, where nothing removes the entry.
+   */
+  const copyOut = async (
+    digest: string,
+    marker: { files?: number; [key: string]: unknown },
+    into: string | undefined,
+  ): Promise<void> => {
+    if (into !== undefined)
+      await cp(join(cacheDir, digest, "out"), into, { recursive: true, errorOnExist: true });
+    await writeFile(
+      join(cacheDir, digest, "demo.json"),
+      `${JSON.stringify({ ...marker, usedAt: new Date().toISOString() }, null, 2)}\n`,
+    ).catch(() => undefined);
+  };
+
+  /** Runs `task` in a digest's turn: the cache entry's commit, copies out of it and removal. */
+  const inEntry = <T>(digest: string, task: () => Promise<T>): Promise<T> =>
+    inTurn(`digest\0${digest}`, task);
+
+  /**
+   * Keeps a demo's {@link KEPT_BUILDS} newest builds and removes the older ones, so the cache
+   * holds what the next verify of a recent source reuses and never grows without bound: a version
+   * keeps its own copy of its demos, so nothing needs an older build.
+   */
+  const prune = async (inputs: DemoInputs): Promise<void> => {
+    const mine: { digest: string; at: string }[] = [];
+    for (const entry of await readdir(cacheDir)) {
+      if (entry.startsWith(".")) continue;
+      const marker = await readFile(join(cacheDir, entry, "demo.json"), "utf8")
+        .then(
+          (text) =>
+            JSON.parse(text) as {
+              name?: string;
+              folder?: string;
+              builtAt?: string;
+              usedAt?: string;
+            },
+        )
+        .catch(() => undefined);
+      if (marker?.name !== inputs.name || marker.folder !== inputs.sourceDir) continue;
+      // The last time a build was made or copied into a version: one in use is the newest.
+      const at = [marker.builtAt ?? "", marker.usedAt ?? ""].sort().at(-1) ?? "";
+      mine.push({ digest: entry, at });
+    }
+    mine.sort((a, b) => (a.at < b.at ? 1 : a.at > b.at ? -1 : 0));
+    for (const old of mine.slice(KEPT_BUILDS)) {
+      if (old.digest === inputs.digest) continue;
+      await inEntry(old.digest, () =>
+        removeTree(join(cacheDir, old.digest)).catch(() => undefined),
+      );
+    }
+  };
+
+  const runBuild = async (
+    inputs: DemoInputs,
+    signal: AbortSignal | undefined,
+  ): Promise<{ ok: true; ms: number } | FailedDemo> => {
+    const { name, spec } = inputs;
+    const env = demoEnvironment(options.env, spec.env ?? {}, inputs.base);
+    const program = programCommand(spec.build, env, inputs.sourceDir);
+    if (program === undefined) {
+      return {
+        status: "failed",
+        diagnostic: createDiagnostic("MOSTRA_DEMO_BUILD_FAILED", {
+          message: `The demo "${name}"'s build couldn't start: no program ${spec.build[0] ?? ""} on PATH.`,
+        }),
+      };
+    }
+    const lines: string[] = [];
+    const keep = (line: string): void => {
+      lines.push(line);
+      if (lines.length > LOG_KEPT) lines.shift();
+    };
+    const limitMs = spec.timeout !== undefined ? durationMs(spec.timeout) : DEMO_TIMEOUT_DEFAULT_MS;
+    const started = Date.now();
+    log.info("demos.build_started", { name, source: inputs.sourceDir, digest: inputs.digest });
+    let child: Awaited<ReturnType<ProcessManager["spawn"]>>;
+    try {
+      child = await options.processes.spawn({
+        kind: "demo-build",
+        ownerRef: name,
+        command: program.command,
+        args: program.args,
+        ...(program.verbatim ? { verbatim: true as const } : {}),
+        cwd: inputs.sourceDir,
+        env,
+        onStdout: keep,
+        onStderr: keep,
+      });
+    } catch (error) {
+      return {
+        status: "failed",
+        diagnostic: createDiagnostic("MOSTRA_DEMO_BUILD_FAILED", {
+          message: `The demo "${name}"'s build couldn't start: ${(error as Error).message}`,
+        }),
+      };
+    }
+    let ended: "timeout" | "cancelled" | undefined;
+    const stop = (why: "timeout" | "cancelled"): void => {
+      if (ended !== undefined) return;
+      ended = why;
+      void child.stop(STOP_GRACE_MS).catch(() => undefined);
+    };
+    const timer = setTimeout(() => stop("timeout"), limitMs);
+    const onAbort = (): void => stop("cancelled");
+    signal?.addEventListener("abort", onAbort, { once: true });
+    if (signal?.aborted) onAbort();
+    const exit = await child.exited;
+    clearTimeout(timer);
+    signal?.removeEventListener("abort", onAbort);
+    const ms = Date.now() - started;
+    const tail = lines.slice(-LOG_LINES).join("\n");
+    if (ended === "timeout") {
+      log.warn("demos.build_timeout", { name, ms });
+      return {
+        status: "failed",
+        diagnostic: createDiagnostic("MOSTRA_DEMO_BUILD_TIMEOUT", {
+          message: `The demo "${name}"'s build ran past its ${spec.timeout ?? "10m"} limit and was ended with everything it started.${tail ? `\nIts last lines:\n${tail}` : ""}`,
+        }),
+      };
+    }
+    if (ended === "cancelled") {
+      return {
+        status: "failed",
+        diagnostic: createDiagnostic("MOSTRA_DEMO_BUILD_FAILED", {
+          message: `The demo "${name}"'s build was cancelled.`,
+        }),
+      };
+    }
+    if (exit.code !== 0) {
+      log.warn("demos.build_failed", { name, code: exit.code, signal: exit.signal, ms });
+      return {
+        status: "failed",
+        diagnostic: createDiagnostic("MOSTRA_DEMO_BUILD_FAILED", {
+          message: `The demo "${name}"'s build (${spec.build.join(" ")}) ended with ${exit.code !== null ? `exit code ${exit.code}` : `signal ${exit.signal}`}.${tail ? `\nIts last lines:\n${tail}` : ""}`,
+        }),
+      };
+    }
+    log.info("demos.build_finished", { name, ms });
+    return { ok: true, ms };
+  };
+
+  return {
+    async inputs(name, spec, artifactDir, base = demoBase(name)) {
+      const sourceDir = resolve(artifactDir, spec.source);
+      let info: import("node:fs").Stats | undefined;
+      try {
+        info = await stat(sourceDir);
+      } catch {
+        info = undefined;
+      }
+      if (!info?.isDirectory()) {
+        throw new RpcError(
+          createDiagnostic("MOSTRA_DEMO_SOURCE_MISSING", {
+            message: `The demo "${name}"'s source folder ${sourceDir} doesn't exist.`,
+          }),
+        );
+      }
+      const outputDir = resolve(sourceDir, spec.output);
+      // Built into its source folder itself, a demo would carry the whole project (its `.env`
+      // too): the manifest refuses such an output, and so does this, whatever spelling reached it.
+      if (outputDir === sourceDir) {
+        throw new RpcError(
+          createDiagnostic("MOSTRA_MANIFEST_INVALID", {
+            message: `The demo "${name}"'s output is its source folder itself; name the folder its build writes, such as "dist".`,
+          }),
+        );
+      }
+      const source = await demoSourceDigest(sourceDir, outputDir);
+      const digest = sha256Hex(
+        canonicalJson({
+          source,
+          build: spec.build,
+          output: spec.output.replaceAll("\\", "/"),
+          env: spec.env ?? {},
+          base,
+        }),
+      );
+      return { name, spec, sourceDir, outputDir, base, source, digest };
+    },
+
+    build(inputs, how) {
+      // One build per digest at a time: two folders holding the same source (a copy, a second
+      // checkout) build the same output, so the second waits and takes the first's from the cache.
+      // Then one build per folder at a time, since a build writes its output folder.
+      return inTurn(`digest-build\0${inputs.digest}`, () =>
+        inTurn(`${inputs.sourceDir}\0${inputs.outputDir}`, async () => {
+          if (!how.force) {
+            const found = await inEntry(inputs.digest, async () => {
+              const marker = await markerOf(inputs.digest);
+              if (!marker) return undefined;
+              await copyOut(inputs.digest, marker, how.into);
+              return {
+                status: "cached" as const,
+                dir: how.into ?? join(cacheDir, inputs.digest, "out"),
+                files: marker.files ?? 0,
+                ms: 0,
+              };
+            });
+            if (found) return found;
+          }
+          const ran = await runBuild(inputs, how.signal);
+          if (!("ok" in ran)) return ran;
+          // The output must be of the source the digest names: an edit made after the inputs were
+          // read, or while the build ran, would be kept under a digest that doesn't describe it.
+          const now = await demoSourceDigest(inputs.sourceDir, inputs.outputDir).catch(() => "");
+          if (now !== inputs.source) {
+            return {
+              status: "failed",
+              diagnostic: createDiagnostic("MOSTRA_DEMO_BUILD_FAILED", {
+                message: `The demo "${inputs.name}"'s source changed while it was being built, so its output can't be kept for the source this version names; build it again.`,
+              }),
+            };
+          }
+          let problem: Diagnostic | undefined;
+          try {
+            problem = await checkDemoOutput(inputs.name, inputs.outputDir, inputs.base);
+          } catch {
+            problem = createDiagnostic("MOSTRA_DEMO_OUTPUT_MISSING", {
+              message: `The demo "${inputs.name}" built, but its output folder ${inputs.outputDir} doesn't exist.`,
+            });
+          }
+          if (problem) return { status: "failed", diagnostic: problem };
+          // Kept whole or not at all: a scratch folder renamed into place.
+          await mkdir(cacheDir, { recursive: true });
+          const scratch = join(cacheDir, `.tmp-${randomBytes(6).toString("hex")}`);
+          await cp(inputs.outputDir, join(scratch, "out"), { recursive: true, dereference: true });
+          const files = (await filesUnder(join(scratch, "out"))).length;
+          await writeFile(
+            join(scratch, "demo.json"),
+            `${JSON.stringify({ name: inputs.name, folder: inputs.sourceDir, digest: inputs.digest, base: inputs.base, files, builtAt: new Date().toISOString() }, null, 2)}\n`,
+          );
+          const target = join(cacheDir, inputs.digest);
+          // One commit per digest at a time. Two folders with the same content build the same
+          // output, and a publish may be copying out of the entry now: an entry, once there, is never
+          // removed under a reader. The build that finds one already kept leaves its own; a forced
+          // build sets the old one aside first, so a reader holds either whole.
+          const committed = await inEntry(inputs.digest, async () => {
+            const there = await markerOf(inputs.digest);
+            if (there && !how.force) {
+              await rm(scratch, { recursive: true, force: true });
+              await copyOut(inputs.digest, there, how.into);
+              return {
+                status: "built" as const,
+                dir: how.into ?? join(target, "out"),
+                files: there.files ?? 0,
+                ms: ran.ms,
+              };
+            }
+            const aside = there
+              ? join(cacheDir, `.old-${randomBytes(6).toString("hex")}`)
+              : undefined;
+            if (aside !== undefined) await renamePath(target, aside);
+            await renamePath(scratch, target);
+            if (aside !== undefined) await rm(aside, { recursive: true, force: true });
+            await copyOut(inputs.digest, (await markerOf(inputs.digest)) ?? { files }, how.into);
+            return {
+              status: "built" as const,
+              dir: how.into ?? join(target, "out"),
+              files,
+              ms: ran.ms,
+            };
+          });
+          // Pruning takes each older build's own turn, after this one's is released.
+          await prune(inputs).catch((error: unknown) =>
+            log.warn("demos.prune_failed", { name: inputs.name, error }),
+          );
+          return committed;
+        }),
+      );
+    },
+  };
+}

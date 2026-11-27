@@ -15,6 +15,7 @@ import { artifactListMethod } from "./artifact/list.ts";
 import { artifactPauseMethod } from "./artifact/pause.ts";
 import { artifactPublishMethod } from "./artifact/publish.ts";
 import { artifactVerifyMethod } from "./artifact/verify.ts";
+import { demoBuildMethod } from "./demo/build.ts";
 import { depsAddMethod } from "./deps/add.ts";
 import { DEV_NOTIFY, DevNotifyParams, devStartMethod } from "./dev/start.ts";
 import { devStopMethod } from "./dev/stop.ts";
@@ -172,6 +173,7 @@ export const hostMethods: readonly AnyMethod[] = [
   reviewExportMethod,
   portReviewsMirrorMethod,
   portCaptureScreenshotMethod,
+  demoBuildMethod,
   // gen:methods
 ];
 

@@ -1,7 +1,7 @@
 {
   "name": "@mostra/kit",
   "version": "0.20.0",
-  "description": "Mostra's kit: shadcn components for the Base UI and Radix bases, shaped by the themes' tokens, the questionnaire and form parts that save as fields, and token-aware charts, tables, diagrams, code, math, maps, 3D and team parts.",
+  "description": "Mostra's kit: shadcn components for the Base UI and Radix bases, shaped by the themes' tokens, the questionnaire and form parts that save as fields, and token-aware charts, tables, diagrams, code, math, maps, 3D and team parts, web demos and action buttons.",
   "license": "Apache-2.0",
   "author": "The Mostra Authors",
   "homepage": "https://github.com/mostra-dev/mostra/tree/main/packages/kit#readme",
@@ -105,6 +105,16 @@
       "@mostra/source": "./src/team.tsx",
       "types": "./dist/team.d.ts",
       "default": "./dist/team.js"
+    },
+    "./demo": {
+      "@mostra/source": "./src/demo.tsx",
+      "types": "./dist/demo.d.ts",
+      "default": "./dist/demo.js"
+    },
+    "./action": {
+      "@mostra/source": "./src/action.tsx",
+      "types": "./dist/action.d.ts",
+      "default": "./dist/action.js"
     },
     "./css/*": "./css/*",
     "./registry/*": "./registry/*",
@@ -539,6 +549,32 @@
         "@mostra/kit/layout"
       ],
       "limit": "6 kB"
+    },
+    {
+      "name": "@mostra/kit/demo (React and the client runtime excluded)",
+      "path": "dist/demo.js",
+      "import": "*",
+      "ignore": [
+        "@mostra/react",
+        "cn",
+        "lucide-react",
+        "react",
+        "react-dom"
+      ],
+      "limit": "3 kB"
+    },
+    {
+      "name": "@mostra/kit/action (React and the client runtime excluded)",
+      "path": "dist/action.js",
+      "import": "*",
+      "ignore": [
+        "@mostra/react",
+        "cn",
+        "lucide-react",
+        "react",
+        "react-dom"
+      ],
+      "limit": "1 kB"
     }
   ]
 }

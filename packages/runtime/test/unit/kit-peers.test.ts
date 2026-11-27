@@ -1,5 +1,5 @@
 /**
- * `kitPeersPlugin` (WP-19, D185 item 3): a kit file's import of one of the kit's on-demand
+ * `kitPeersPlugin` (WP-19, D186 item 3): a kit file's import of one of the kit's on-demand
  * libraries resolves as the artifact's own root would import it, from the layout its lockfile
  * installed, never from wherever the kit itself sits (in this workspace the kit has its own copies
  * as dev dependencies; in the runtime bundle it has none), and never from a `node_modules` above

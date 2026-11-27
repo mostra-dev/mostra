@@ -1,5 +1,5 @@
 /**
- * `mostra dev`'s kit assets (WP-19, D185 item 5): the dev server serves exactly the files a build
+ * `mostra dev`'s kit assets (WP-19, D186 item 5): the dev server serves exactly the files a build
  * of the version carries at `/kit-assets/`, so a directory the kit leaves out (Excalidraw's CJK
  * face) is left out in dev too (Opus review of WP-19, finding 10), and nothing outside the asset's
  * directory, by `..` or by a link.

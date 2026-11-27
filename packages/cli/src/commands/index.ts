@@ -28,6 +28,7 @@ import {
 } from "./admin.ts";
 import {
   addCommand,
+  demoBuildCommand,
   exportCommand,
   newCommand,
   publishCommand,
@@ -89,6 +90,7 @@ export const COMMANDS: readonly CommandDef[] = [
   themeListCommand,
   themeShowCommand,
   exportCommand,
+  demoBuildCommand,
   runCommand,
   secretSetCommand,
   secretListCommand,
