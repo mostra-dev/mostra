@@ -2215,6 +2215,9 @@ export function createGateway(options: GatewayOptions): Gateway {
         return refuse(checks, refusal("MOSTRA_HYGIENE_NOT_SERVED", "No demo at this path."), meta);
       }
       const name = match[1] as string;
+      // A quarantined version's demos are withheld as its page's files are, even from an open frame.
+      const withheld = hosted?.blocked?.(artifactId, session.versionId);
+      if (withheld) return refuse(checks, withheld, meta);
       if (match[2] === undefined) {
         return new Response(null, {
           status: 308,

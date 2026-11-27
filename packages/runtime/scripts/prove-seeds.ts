@@ -9250,6 +9250,14 @@ const SEEDS: readonly Seed[] = [
     e2e: true,
   },
   {
+    requirement: "TM-08",
+    name: "WP-24 review: a quarantined hosted version's demo is still served to an open frame",
+    file: "src/gateway/index.ts",
+    from: "      const withheld = hosted?.blocked?.(artifactId, session.versionId);\n      if (withheld) return refuse(checks, withheld, meta);\n      if (match[2] === undefined) {",
+    to: "      if (match[2] === undefined) {",
+    check: integration("tenancy.test.ts", "hosted page's demo"),
+  },
+  {
     requirement: "VR-07",
     name: "WP-24: an export carries the version's server build",
     file: "src/exports/index.ts",
