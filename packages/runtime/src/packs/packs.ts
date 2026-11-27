@@ -26,6 +26,7 @@
 import { randomBytes } from "node:crypto";
 import { existsSync, readFileSync } from "node:fs";
 import { lstat, mkdir, readdir, readFile, rename, rm, writeFile } from "node:fs/promises";
+import { createRequire } from "node:module";
 import { basename, dirname, join, posix } from "node:path";
 import {
   checkArtifactPath,
@@ -93,6 +94,28 @@ export interface Packs {
     /** The caller's variables for reading the items, over the instance's (`packVariables`). */
     readonly environment?: Readonly<Record<string, string>>;
   }): Promise<PackAddResult>;
+}
+
+/**
+ * Whether a file carries anything shadcn's CLI rewrites as it installs an item (an icon
+ * placeholder, a `cn-*` style marker), so `shadcn-style.ts`, and the transformers it bundles, load
+ * only for one that does (#219).
+ */
+export function needsStyleTransform(code: string): boolean {
+  return /IconPlaceholder|icon-placeholder|\bcn-[a-z]/.test(code);
+}
+
+/**
+ * tailwind-merge's merge as the warm set's `cn` package has it, which a translucent menu's classes
+ * are merged with as shadcn merges them; loaded from the warm set only when a menu asks for it.
+ */
+function twMergeOf(warm: string): (a: string, b: string) => string {
+  return (a, b) => {
+    const cn = createRequire(join(warm, "package.json"))("cn") as {
+      twMerge: (a: string, b: string) => string;
+    };
+    return cn.twMerge(a, b);
+  };
 }
 
 /** The default aliases, as `npx shadcn init` writes them, with `@/` the artifact's root. */
@@ -423,11 +446,31 @@ export function createPacks(options: PacksOptions): Packs {
         });
       }
       for (const { read, index, path } of places) {
-        const file = (read.item.files ?? [])[index] as { type: string };
-        const content =
+        const file = (read.item.files ?? [])[index] as { type: string; path: string };
+        let content =
           file.type === "registry:file" || file.type === "registry:item"
             ? (read.contents[index] as string)
             : rewriteImports(read.contents[index] as string, aliases, placedByRegistryPath);
+        // An item of a shadcn style that marks icons and classes for its CLI to rewrite (`base-nova`,
+        // `radix-nova`): rewritten by the CLI's own code, as it would install it (#219).
+        if (
+          file.type !== "registry:file" &&
+          file.type !== "registry:item" &&
+          needsStyleTransform(content)
+        ) {
+          const { shadcnStyleTransform } = await import("./shadcn-style.ts");
+          content = shadcnStyleTransform(
+            content,
+            {
+              iconLibrary: components?.iconLibrary ?? "lucide",
+              menuColor: components?.menuColor ?? "default",
+              rtl: components?.rtl === true,
+              // Every theme Mostra builds defines `--font-heading` (@mostra/themes' kit layer).
+              fontHeading: true,
+            },
+            twMergeOf(options.dependencies.warm.nodeModules),
+          );
+        }
         const key = path.toLowerCase();
         const earlier = planned.get(key);
         if (earlier !== undefined && earlier.path !== path) {

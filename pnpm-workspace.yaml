@@ -81,6 +81,10 @@ catalog:
   # contains no code from pnpm's PolyForm-licensed pnpr/ directory. Never 11 or later.
   pnpm: 10.34.7
 
+  # shadcn's own transforms for items of its styles that carry icon placeholders and style
+  # markers (#219, WP-19): only for the test that holds Mostra's rewrite equal to them
+  '@shadcn/registry': 0.2.1
+
   # The builder child (WP-03): Vite 8 with React, MDX 3 and Tailwind 4 (VERIFIED_FACTS, WP-03)
   vite: 8.3.4
   '@vitejs/plugin-react': 6.1.2

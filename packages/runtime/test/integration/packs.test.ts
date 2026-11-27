@@ -37,6 +37,8 @@ import {
 } from "../support.ts";
 
 const SHADCN = fileURLToPath(new URL("../fixtures/shadcn/", import.meta.url));
+/** shadcn 4.23.0's base-nova and radix-nova items the kit pins, raw and as its CLI installed them. */
+const KIT_UPSTREAM = fileURLToPath(new URL("../../../kit/upstream/shadcn/", import.meta.url));
 const SHA = "0123456789abcdef0123456789abcdef01234567";
 /** shadcn's form for a header read from the environment, `${ACME_TOKEN}`, spelled out. */
 const ACME_TOKEN_REFERENCE = ["$", "{ACME_TOKEN}"].join("");
@@ -99,7 +101,11 @@ beforeAll(async () => {
     // shadcn's registry: /r/styles/<style>/<name>.json
     const item = /^\/r\/styles\/([^/]+)\/([^/]+)\.json$/.exec(url.pathname);
     if (item) {
-      const file = join(SHADCN, "styles", item[1] as string, `${item[2]}.json`);
+      // shadcn's own styles of the kit's pins (#219) as its registry serves them, then the fixtures.
+      const pinned = join(KIT_UPSTREAM, item[1] as string, `${item[2]}.json`);
+      const file = existsSync(pinned)
+        ? pinned
+        : join(SHADCN, "styles", item[1] as string, `${item[2]}.json`);
       if (!existsSync(file)) return void response.writeHead(404).end();
       return void response
         .writeHead(200, { "content-type": "application/json" })
@@ -314,6 +320,43 @@ describe("shadcn's own items, unchanged (EX-03)", () => {
     );
     expect(lock).toContain("class-variance-authority");
   });
+
+  it("rewrites a base-nova or radix-nova item's icons and style markers byte for byte as shadcn's CLI does (#219)", async () => {
+    const target = await start();
+    for (const style of ["base-nova", "radix-nova"]) {
+      const dir = artifact();
+      const result = ok<PackResult>(
+        await target.client.call("pack/add", {
+          artifact: { path: dir },
+          specs: [
+            `${base}/r/styles/${style}/accordion.json`,
+            `${base}/r/styles/${style}/dropdown-menu.json`,
+          ],
+        }),
+      );
+      expect(result.files.map((file) => file.path).sort()).toEqual([
+        "components/ui/accordion.tsx",
+        "components/ui/dropdown-menu.tsx",
+      ]);
+      for (const file of result.files) {
+        const written = readFileSync(join(dir, file.path), "utf8");
+        // No placeholder, no marker: what shadcn 4.23.0's CLI wrote for these items.
+        expect(written, file.path).not.toMatch(/IconPlaceholder|\bcn-(?!font-heading)[a-z]/);
+        expect(written, file.path).toBe(
+          readFileSync(
+            join(KIT_UPSTREAM, style, "installed", "ui", file.path.split("/").pop() as string),
+            "utf8",
+          ),
+        );
+      }
+      // The page builds with them, lucide's icons from the warm set.
+      writeFileSync(
+        join(dir, "index.tsx"),
+        'import { Accordion, AccordionContent, AccordionItem, AccordionTrigger } from "@/components/ui/accordion";\nexport default function Page() { return <Accordion><AccordionItem value="a"><AccordionTrigger>A</AccordionTrigger><AccordionContent>a</AccordionContent></AccordionItem></Accordion>; }\n',
+      );
+      ok(await target.client.call("artifact/publish", { source: { path: dir } }));
+    }
+  }, 240_000);
 
   it("puts a block's page in pages/ when the artifact has routes, importing its component where it landed", async () => {
     const target = await start();
