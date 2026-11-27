@@ -9267,6 +9267,14 @@ const SEEDS: readonly Seed[] = [
   },
   {
     requirement: "VR-07",
+    name: "WP-24 review: an export writes the page's data raw into its script element",
+    file: "../../plugins/mcp-app/src/builtin.ts",
+    from: '  return JSON.stringify(value).replaceAll("<", "\\\\u003c");',
+    to: "  return JSON.stringify(value);",
+    check: integration("demos.test.ts", "freezes the live value"),
+  },
+  {
+    requirement: "VR-07",
     name: "WP-24: an export carries the version's server build",
     file: "src/exports/index.ts",
     from: '        await writableTree(join(scratch, "client"));',

@@ -209,7 +209,11 @@ describe("an export carries the page's front end and nothing of its server (D185
     ok(
       await gateway.client.call("state/patch", {
         artifact: { artifactId: published.artifactId },
-        ops: [{ id: "notes.team", value: "Ship Friday" }],
+        ops: [
+          { id: "notes.team", value: "Ship Friday" },
+          // Text that would end the page's own script element if the export wrote it raw.
+          { id: "notes.markup", value: "</script><script>window.__hijacked = 1</script>" },
+        ],
         mutationId: "mut_01J00000000000000000000001",
         as: "agent",
       }),
@@ -296,6 +300,10 @@ describe("an export carries the page's front end and nothing of its server (D185
     const page = readFileSync(join(path, "index.html"), "utf8");
     expect(page).toContain('content="static"');
     expect(page).toContain("mostra-snapshot");
+    // An answer's markup stays text inside the page's data: it never ends its script element.
+    expect(frozen.state?.["notes.markup"]).toBe("</script><script>window.__hijacked = 1</script>");
+    expect(page).not.toContain("<script>window.__hijacked");
+    expect(page).toContain("\\u003c/script>\\u003cscript>window.__hijacked");
     const report = result["report"] as {
       snapshot: { answers: string; sharedState: { included: boolean }; live: string[] };
     };
