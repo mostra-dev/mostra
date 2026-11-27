@@ -2,8 +2,11 @@
  * `@mostra/kit`: Mostra's kit (D26, D27, D181). Its parts are files more than exports: the
  * per-base registry (`registry/base/`, `registry/radix/`) that `@/components/ui/<name>` resolves
  * into when the artifact has no copy of its own, and that `mostra add <name>` copies; Mostra's own
- * modules, `@mostra/kit/questionnaire`, `@mostra/kit/layout` and `@mostra/kit/review`, the same in either base; and
- * `kit.css`, the utilities every theme's stylesheet builds on. Themes are `@mostra/themes`.
+ * modules (`@mostra/kit/<module>`, each listed in {@link KIT_MODULES}), the same in either base:
+ * the questionnaire, the page's layout, review sets, the library parts (charts, the live chart,
+ * ECharts, tables, Mermaid, React Flow, code, math, maps, 3D scenes and whiteboards, WP-19) and the
+ * team's parts; and `kit.css`, the utilities every theme's stylesheet builds on. Themes are
+ * `@mostra/themes`.
  *
  * @packageDocumentation
  */
