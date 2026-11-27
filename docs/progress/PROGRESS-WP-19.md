@@ -1,6 +1,6 @@
 # WP-19 progress: Kit II, data, diagrams, code, math, maps and 3D
 
-**Status:** candidate, for Mirza's acceptance. Owns KT-01, AC-08 and KT-11 ([specification](../design/work-packages/WP-19.md)), with #148, #219 and #242 on its milestone.
+**Status:** accepted by Mirza on 2026-11-27 (M113: "You absolutely have my acceptance, including for the text!"), after the Claude Opus review's fixes and a green full run; to be merged through the merge queue and released. Owns KT-01, AC-08 and KT-11 ([specification](../design/work-packages/WP-19.md)), with #148, #219 and #242 on its milestone.
 
 ## Baseline
 
@@ -113,7 +113,7 @@ One independent review of `git diff 022d1bb3...2f817355` under D172 item 0: Clau
 - **Screen readers:** axe passes on every part; no VoiceOver pass.
 - **#148:** not reproduced; the measure is in place.
 
-## Agent-facing prose for review (D149)
+## Agent-facing prose (D149): accepted with the package (M113)
 
 - The Skill: `references/libraries.md` ("The kit's library parts", three samples, eight "write this, not that" rows, the preinstalled set), `references/teams.md` (the team's parts, a sample), `references/design.md` and `SKILL.md` (pointers), the specimen (both bases).
 - The lint's new messages (`MOSTRA_LINT_API_CHANGED`, `packages/runtime/src/verify/lint.ts`).
