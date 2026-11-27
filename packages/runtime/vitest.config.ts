@@ -67,9 +67,12 @@ const EXTENSIONS = [
   "test/integration/packs.test.ts",
   // WP-17: the app channel and the MCP App exporter, a bundled plugin (D175).
   "test/integration/mcp-apps.test.ts",
-  // WP-24: demos built through their spec, and the page's exports (D185), on plugin children too.
-  "test/integration/demos.test.ts",
 ];
+// WP-24: demos built through their spec, and the page's exports (D185), about two minutes. Not in
+// `extensions`, which reached its 10 minutes on macOS without it (nightly 46001082762) and took 485
+// of its 600 s with it (merge queue 46032373378): in `remote` (392 s there), and on Windows in
+// `windows-workers`, the lightest of its groups (212 s).
+const DEMOS = "test/integration/demos.test.ts";
 // Suites `core` has no room for on macOS and Linux, which `extensions` runs there (REPO_STANDARDS
 // §6: a group near its deadline is rebalanced). macOS `core` reached its 10 minutes on `main` (10 min
 // 7 s and 10 min 27 s in MT-05's merge queue, 44230190769 and 44224848051) and ran past it on WP-17's
@@ -82,10 +85,19 @@ const CORE_OVERFLOW = ["test/integration/deps.test.ts", KIT_PARTS];
 export const INTEGRATION_GROUPS: Record<string, { include: string[]; exclude: string[] }> = {
   core: {
     include: ["test/integration/**/*.test.ts"],
-    exclude: [VERIFY_SUITES, DEV, ...FAULTS, HEARTBEAT, ...REMOTE, ...EXTENSIONS, ...CORE_OVERFLOW],
+    exclude: [
+      VERIFY_SUITES,
+      DEV,
+      ...FAULTS,
+      HEARTBEAT,
+      ...REMOTE,
+      ...EXTENSIONS,
+      ...CORE_OVERFLOW,
+      DEMOS,
+    ],
   },
   extensions: { include: [...EXTENSIONS, ...CORE_OVERFLOW], exclude: [] },
-  remote: { include: [...REMOTE_HOSTING, HEARTBEAT], exclude: [] },
+  remote: { include: [...REMOTE_HOSTING, HEARTBEAT, DEMOS], exclude: [] },
   // `mostra dev`'s suite (66 to 106 s) runs beside remote-access's, the lightest group (350 s):
   // macOS `verify` took 508 and 562 of its 600 s with it once every build carried its theme, and
   // passed its deadline once (WP-18, CI run 44947318007).
@@ -162,6 +174,7 @@ export const INTEGRATION_GROUPS: Record<string, { include: string[]; exclude: st
       "test/integration/producers.test.ts",
       "test/integration/seams.test.ts",
       "test/integration/server-packages.test.ts",
+      DEMOS,
     ],
     exclude: [],
   },
