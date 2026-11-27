@@ -836,6 +836,15 @@ const SEEDS: readonly Seed[] = [
   },
   {
     requirement: "KT-01",
+    name: "ECharts is bundled into the page's own chunk, which a slow machine then waits for",
+    file: "../kit/registry/base/components/mostra/echarts.tsx",
+    from: 'import type * as Echarts from "echarts";',
+    to: 'import * as Echarts from "echarts";\nconsole.debug(Echarts.version);',
+    check: e2e("every warm library draws"),
+    e2e: true,
+  },
+  {
+    requirement: "KT-01",
     name: "WP-19 review 2: a whiteboard keeps the drawing it opened with when the field changes",
     file: "../kit/registry/base/components/mostra/whiteboard.tsx",
     from: "    if (api === null) return;",

@@ -80,6 +80,13 @@ test.describe("the kit's library wrappers (KT-01)", () => {
     const client = await Client.connect(run.socket);
     try {
       const own = await publishOwn(client, run.home, info, { fixture: "kit-libraries" });
+      // ECharts arrives in a chunk of its own after the page, so the page is ready without it.
+      const lazy: string[] = [];
+      page.on("request", (request) => {
+        if (/\/assets\/echarts-[^/]*\.js$/.test(new URL(request.url()).pathname)) {
+          lazy.push(request.url());
+        }
+      });
       const frame = await openInShell(
         page,
         await linkFor(client, own.artifactId, viewerName(info)),
@@ -124,6 +131,7 @@ test.describe("the kit's library wrappers (KT-01)", () => {
       for (const canvas of await echart.locator("canvas").all()) {
         expect(await blackShare(canvas), "an ECharts canvas painted black").toBeLessThan(0.1);
       }
+      expect(lazy.length, "ECharts' own chunk, loaded apart from the page").toBeGreaterThan(0);
 
       // TanStack Table: four rows, sorted by a header, searched.
       const table = frame.locator("[data-slot='data-table']");
