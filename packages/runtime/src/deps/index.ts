@@ -879,20 +879,39 @@ export function createDependencies(options: DependenciesOptions): Dependencies {
    * the artifact uses import: every kit file the artifact reaches (`@mostra/kit/<module>`, `@/…` it
    * has no copy of), and of their imports the kit's peers (WP-19).
    */
+  const kitSet = (): {
+    readonly pins: ReadonlyMap<string, string>;
+    readonly overrides: Readonly<Record<string, string>>;
+    /**
+     * The overrides a resolution of these packages takes: the kit's whenever one of them is of
+     * the kit's on-demand set, however the artifact reaches it (a kit module, its own copy of one,
+     * its own import), so the advisories they answer stay answered (Opus review of WP-19, 6).
+     */
+    overridesFor(names: Iterable<string>): Readonly<Record<string, string>>;
+  } => {
+    const kitDir = join(warm.nodeModules, "@mostra", "kit");
+    const pins = kitPeers(kitDir);
+    const overrides = kitOverrides(kitDir);
+    return {
+      pins,
+      overrides,
+      overridesFor: (names) => ([...names].some((name) => pins.has(name)) ? overrides : {}),
+    };
+  };
+
   const kitLibraries = async (
     sourceDir: string,
     base: "base" | "radix",
   ): Promise<{
     readonly needs: ReadonlyMap<string, string>;
     readonly pins: ReadonlyMap<string, string>;
-    readonly overrides: Readonly<Record<string, string>>;
+    overridesFor(names: Iterable<string>): Readonly<Record<string, string>>;
   }> => {
     const kitDir = join(warm.nodeModules, "@mostra", "kit");
-    const pins = kitPeers(kitDir);
-    const overrides = kitOverrides(kitDir);
+    const { pins, overridesFor } = kitSet();
     const needs = new Map<string, string>();
     const registry = join(kitDir, "registry", base);
-    if (pins.size === 0 || !existsSync(registry)) return { needs, pins, overrides };
+    if (pins.size === 0 || !existsSync(registry)) return { needs, pins, overridesFor };
     for (const file of kitFilesUsed(sourceDir, registry)) {
       for (const name of await scanFileImports(file)) {
         const pin = pins.get(name);
@@ -913,7 +932,7 @@ export function createDependencies(options: DependenciesOptions): Dependencies {
         if (pin !== undefined) needs.set(name, pin);
       }
     }
-    return { needs, pins, overrides };
+    return { needs, pins, overridesFor };
   };
 
   return {
@@ -940,14 +959,26 @@ export function createDependencies(options: DependenciesOptions): Dependencies {
           ]),
         ].sort();
         const pinned = working?.lock.packages ?? {};
-        const missing = needed.filter((name) => pinned[name] === undefined);
-        // An artifact using a kit module's on-demand libraries installs them with the kit's
-        // overrides (WP-19); any other keeps none.
-        const overrides = kitNeeds.needs.size > 0 ? kitNeeds.overrides : {};
+        // A library a kit module the artifact uses needs comes at the kit's pin, whatever pinned
+        // it before (a bare `mostra add` of it once took the newest): the module was built and
+        // checked with that version (Opus review of WP-19, finding 5).
+        const offPin = (name: string): boolean => {
+          const pin = kitNeeds.needs.get(name);
+          return pin !== undefined && pinned[name] !== undefined && pinned[name] !== pin;
+        };
+        const missing = needed.filter((name) => pinned[name] === undefined || offPin(name));
+        // Packages of the kit's on-demand set install with the kit's overrides (WP-19); others
+        // keep none.
+        const overrides = kitNeeds.overridesFor(needed);
         if (missing.length > 0 && options.policy() === "explicit") {
           const first = missing[0] as string;
           const site = imports.get(first);
-          const command = `mostra add ${missing.join(" ")} --artifact ${shellWord(target.artifactPath)}`;
+          // The command adds the kit's libraries at its pins (Opus review of WP-19, finding 5).
+          const specs = missing.map((name) => {
+            const pin = kitNeeds.pins.get(name);
+            return pin !== undefined ? `${name}@${pin}` : name;
+          });
+          const command = `mostra add ${specs.map(shellWord).join(" ")} --artifact ${shellWord(target.artifactPath)}`;
           throw new RpcError(
             createDiagnostic("MOSTRA_DEP_MISSING", {
               message: `${missing.join(", ")} ${missing.length === 1 ? "isn't" : "aren't"} in the warm set or the artifact's lockfile, and this home's dependency policy is explicit.`,
@@ -958,7 +989,7 @@ export function createDependencies(options: DependenciesOptions): Dependencies {
         }
         const pins = Object.fromEntries(
           needed
-            .filter((name) => pinned[name] !== undefined)
+            .filter((name) => pinned[name] !== undefined && !offPin(name))
             .map((name) => [name, pinned[name] as string]),
         );
         let lock: Lock;
@@ -1199,6 +1230,7 @@ export function createDependencies(options: DependenciesOptions): Dependencies {
     readonly names: string[];
     readonly working: WorkingLock | undefined;
   }> {
+    const kit = kitSet();
     const specs: PackageSpec[] = [];
     for (const text of add) {
       const spec = parseSpec(text);
@@ -1208,7 +1240,10 @@ export function createDependencies(options: DependenciesOptions): Dependencies {
           `"${text}" isn't a registry package spec (name, name@version, name@range or name@tag).`,
         );
       }
-      specs.push(spec);
+      // A bare name of the kit's on-demand set comes at the kit's pin, as a kit module needs it
+      // (Opus review of WP-19, finding 5); a version or range named is the caller's.
+      const pin = spec.range === undefined ? kit.pins.get(spec.name) : undefined;
+      specs.push((pin !== undefined ? parseSpec(`${spec.name}@${pin}`) : undefined) ?? spec);
     }
     for (const spec of specs) {
       const version = warm.packages[spec.name];
@@ -1253,8 +1288,8 @@ export function createDependencies(options: DependenciesOptions): Dependencies {
               pins,
               additions,
               previous: working?.lock.pnpm,
-              // A change keeps the overrides the working lockfile was resolved with (the kit's).
-              overrides: overridesOf(working?.lock.pnpm),
+              // The kit's overrides wherever its on-demand set is among the packages.
+              overrides: kit.overridesFor([...Object.keys(pins), ...additions.map((a) => a.name)]),
             });
     lock = withExtras(lock, working?.lock);
     const resolved = await settle(lock, target, scripts);

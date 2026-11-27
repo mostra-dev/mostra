@@ -392,3 +392,17 @@ export default function Page() {
     VERIFY_MS,
   );
 });
+
+describe("an artifact's copies of the kit's modules (Opus review of WP-19, finding 3)", () => {
+  it(
+    "builds the later kit's questionnaire beside a layout the artifact copied before it",
+    async () => {
+      const dir = join(tempDir("verify-kit-old-layout"), "older-layout");
+      cpSync(join(FIXTURES, "kit-old-layout"), dir, { recursive: true });
+      const verdict = await verify(dir);
+      expect(codes(verdict, "error")).toEqual([]);
+      expect(verdict.status).toBe("pass");
+    },
+    VERIFY_MS,
+  );
+});

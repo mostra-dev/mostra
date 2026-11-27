@@ -12,7 +12,7 @@
  * into the artifact for editing, where the copy then wins (D68, KT-10).
  */
 
-import { useInsidePage } from "@mostra/kit/layout";
+import { useInsidePage } from "@mostra/kit/page-context";
 import { useField } from "@mostra/react";
 import { cn } from "cn";
 import { ArrowDown, ArrowUp, Check, X } from "lucide-react";

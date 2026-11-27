@@ -5,6 +5,7 @@ export default defineConfig({
     "src/index.ts",
     "src/questionnaire.tsx",
     "src/layout.tsx",
+    "src/page-context.tsx",
     "src/review.tsx",
     "src/tokens.tsx",
     "src/live-chart.tsx",

@@ -572,10 +572,11 @@ describe("the kit's parts by name (D181 item 7, KT-03)", () => {
         specs: ["mostra-questionnaire", "fixture-engine@2.0.0"],
       }),
     );
-    // The questionnaire comes with the layout it reads (inside a Page it titles itself as a
-    // section, #242), as shadcn adds an item's registry dependencies.
+    // The questionnaire comes with the module it reads (inside a Page it titles itself as a
+    // section, #242), as shadcn adds an item's registry dependencies; never with the layout, whose
+    // copy in an artifact may predate it (Opus review of WP-19, finding 3).
     expect(result.items.map((item) => item.name)).toEqual([
-      "mostra-layout",
+      "mostra-page-context",
       "mostra-questionnaire",
     ]);
     expect(existsSync(join(dir, "components/mostra/questionnaire.tsx"))).toBe(true);

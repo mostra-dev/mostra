@@ -56,7 +56,15 @@ export function kitResolvePlugin(sourceDir: string, kit: KitBuild): Plugin {
  * build is the same from the runtime bundle as from this repository, and the version's lockfile
  * digest covers it. `buildRoot` is the build's root, whose `node_modules` is the artifact's layout.
  */
-export function kitPeersPlugin(buildRoot: string): Plugin {
+export function kitPeersPlugin(
+  buildRoot: string,
+  /**
+   * The real directories of the build's packages (the warm set and the artifact's lockfile): a
+   * peer found anywhere else, such as a `node_modules` above the home, is refused, as
+   * `confinePlugin` refuses the artifact's own imports (Opus review of WP-19, finding 1).
+   */
+  packageRoots: readonly string[],
+): Plugin {
   let kit: { readonly dir: string; readonly peers: ReadonlyMap<string, string> } | undefined;
   const load = (): typeof kit => {
     if (kit === undefined) {
@@ -78,8 +86,25 @@ export function kitPeersPlugin(buildRoot: string): Plugin {
       const from = importer.split("?")[0] ?? importer;
       const real = existsSync(from) ? realpathSync(from) : from;
       if (!isUnder(real, dir)) return null;
-      // As if the artifact's own root imported it: from the layout its lockfile installed.
-      return this.resolve(source, join(buildRoot, "index.html"), { ...options, skipSelf: true });
+      // As if the artifact's own root imported it: from the layout its lockfile installed, and
+      // from nowhere else (VR-01: every byte of a version is covered by its digests).
+      const resolved = await this.resolve(source, join(buildRoot, "index.html"), {
+        ...options,
+        skipSelf: true,
+      });
+      const id = resolved?.id.split("?")[0];
+      if (resolved && (resolved.external || id === undefined || id.startsWith("\0"))) {
+        return resolved;
+      }
+      if (resolved && id !== undefined && isAbsolute(id) && existsSync(id)) {
+        const file = realpathSync.native(id);
+        if (packageRoots.some((root) => isUnder(file, root))) return resolved;
+      }
+      const module = relative(dir, real).split("\\").join("/");
+      const pin = peers.get(name);
+      return this.error(
+        `Could not resolve "${source}" from the kit's ${module}: ${name} isn't in the artifact's lockfile, and a version is built only from the warm set and its lockfile's packages; add it with \`mostra add ${name}${pin ? `@${pin}` : ""}\`.`,
+      );
     },
   };
 }

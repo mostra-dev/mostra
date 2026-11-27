@@ -10,7 +10,7 @@
     "lucide-react"
   ],
   "registryDependencies": [
-    "mostra-layout"
+    "mostra-page-context"
   ],
   "files": [
     {

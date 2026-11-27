@@ -11,7 +11,7 @@
  */
 
 import "@excalidraw/excalidraw/index.css";
-import { Excalidraw, getSceneVersion } from "@excalidraw/excalidraw";
+import { CaptureUpdateAction, Excalidraw, hashElementsVersion } from "@excalidraw/excalidraw";
 import { useTokens } from "@mostra/kit/tokens";
 import { useField } from "@mostra/react";
 import { cn } from "cn";
@@ -55,6 +55,11 @@ export interface WhiteboardProps extends Omit<React.ComponentProps<"div">, "id" 
 
 const EMPTY: Drawing = { elements: [] };
 
+/** Excalidraw's imperative handle, as its `excalidrawAPI` prop hands it over. */
+type ExcalidrawAPI = Parameters<
+  NonNullable<React.ComponentProps<typeof Excalidraw>["excalidrawAPI"]>
+>[0];
+
 /**
  * A whiteboard whose drawing saves as a field.
  *
@@ -80,9 +85,26 @@ export function Whiteboard({
     validate: (value) =>
       required && value.elements.length === 0 ? "Draw something first." : undefined,
   });
-  // The drawing Excalidraw starts from: the saved one when the page loads, never reset after.
+  // The drawing Excalidraw starts from: the saved one when the page loads.
   const [start] = React.useState(drawing);
-  const version = React.useRef(getSceneVersion(drawing.elements as never));
+  // The drawing the board holds, by its elements' ids and versions: what it last wrote to the field
+  // or took from it. A field value that differs came from elsewhere (another tab, a conflict's
+  // "take theirs"), and the board shows it before the next stroke saves (Opus review of WP-19,
+  // finding 2).
+  const held = React.useRef(hashElementsVersion(drawing.elements as never));
+  const [api, setApi] = React.useState<ExcalidrawAPI | null>(null);
+  React.useEffect(() => {
+    if (api === null) return;
+    const incoming = hashElementsVersion(drawing.elements as never);
+    if (incoming === held.current) return;
+    held.current = incoming;
+    if (drawing.files) api.addFiles(Object.values(drawing.files) as never);
+    // Not the person's own step, so not one undo takes back.
+    api.updateScene({
+      elements: drawing.elements as never,
+      captureUpdate: CaptureUpdateAction.NEVER,
+    });
+  }, [api, drawing]);
   const write = React.useRef(setDrawing);
   React.useLayoutEffect(() => {
     write.current = setDrawing;
@@ -95,10 +117,10 @@ export function Whiteboard({
       _appState: unknown,
       files: Readonly<Record<string, unknown>>,
     ) => {
-      const next = getSceneVersion(elements);
-      if (next === version.current) return;
-      version.current = next;
       const kept = elements.filter((element) => !element.isDeleted);
+      const next = hashElementsVersion(kept);
+      if (next === held.current) return;
+      held.current = next;
       const used = new Set<string>(
         kept.flatMap((element) =>
           "fileId" in element && typeof element.fileId === "string" ? [element.fileId] : [],
@@ -185,6 +207,7 @@ export function Whiteboard({
             canvasActions: { loadScene: false, saveToActiveFile: false, export: false },
           }}
           onChange={onChange as never}
+          excalidrawAPI={setApi}
         />
       </fieldset>
       {meta.error !== undefined && (

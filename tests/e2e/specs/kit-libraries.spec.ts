@@ -224,31 +224,37 @@ test.describe("the kit's library wrappers (KT-01)", () => {
       // Its markers' names are in the page for screen readers.
       await expect(map.locator("li")).toHaveText([/^Berlin/, /^Paris/]);
 
-      // Excalidraw: a rectangle drawn is saved as the field and comes back after a reload.
-      const board = frame.locator("[data-slot='whiteboard']");
-      await expect(board.locator(".excalidraw")).toBeVisible({ timeout: 60_000 });
-      // Excalidraw's canvas sits under its own layers, so it is drawn on as a person does: the
-      // pointer at its place, the rectangle tool by its key.
-      const canvas = board.locator("canvas.interactive");
-      // The pointer acts where the viewport shows the board, so the board is brought into it.
-      await canvas.scrollIntoViewIfNeeded();
-      const box = await canvas.boundingBox();
-      expect(box).not.toBeNull();
-      const { x, y, width, height } = box ?? { x: 0, y: 0, width: 0, height: 0 };
-      // A click on the empty middle of the board gives it the keyboard, clear of its menus.
-      await page.mouse.click(x + width * 0.75, y + height * 0.55);
-      await page.keyboard.press("r");
-      const at = { x: x + width * 0.25, y: y + height * 0.35 };
-      await page.mouse.move(at.x, at.y);
-      await page.mouse.down();
-      await page.mouse.move(at.x + 160, at.y + 90, { steps: 8 });
-      await page.mouse.up();
+      // Excalidraw: a drawing is saved as the field and comes back after a reload. A second tab
+      // of the same viewer, open before the first draws, shows the first tab's rectangle, and its
+      // own stroke adds to it rather than saving over it (Opus review of WP-19, finding 2).
+      const second = await page.context().newPage();
+      const otherFrame = await openInShell(
+        second,
+        await linkFor(client, own.artifactId, viewerName(info)),
+        {
+          readyMs: HEAVY_READY_MS,
+        },
+      );
+      await expect(otherFrame.locator("[data-slot='whiteboard'] .excalidraw")).toBeVisible({
+        timeout: 60_000,
+      });
+      await draw(page, frame, "r");
       await saved(page);
-      // The trusted Submit sends the drawing the field holds.
-      await page.locator("#mostra-submit").click();
-      await expect(page.locator("#mostra-submit")).toHaveText("Submitted");
+      // The other tab's board takes the saved rectangle: its picture is no longer blank.
+      await expect
+        .poll(() => colours(otherFrame.locator("[data-slot='whiteboard'] canvas.static")), {
+          timeout: 30_000,
+        })
+        .toBeGreaterThan(1);
+      await draw(second, otherFrame, "o");
+      await saved(second);
+      // The trusted Submit sends the drawing the field holds: both shapes.
+      await second.locator("#mostra-submit").click();
+      await expect(second.locator("#mostra-submit")).toHaveText("Submitted");
+      await second.close();
       const sketch = JSON.stringify(await results(client, own.artifactId));
       expect(sketch).toContain('"type":"rectangle"');
+      expect(sketch).toContain('"type":"ellipse"');
       await reopenInShell(page, HEAVY_READY_MS);
       await expect(frame.locator("[data-slot='whiteboard'] .excalidraw")).toBeVisible({
         timeout: 60_000,
@@ -425,6 +431,29 @@ test.describe("the team's parts (KT-11)", () => {
   }
 });
 
+/**
+ * Draws one shape on a page's whiteboard as a person does: Excalidraw's canvas sits under its own
+ * layers, so the pointer acts at its place, and the tool is chosen by its key (`r` a rectangle,
+ * `o` an ellipse).
+ */
+async function draw(page: Page, frame: FrameLocator, tool: "r" | "o"): Promise<void> {
+  const canvas = frame.locator("[data-slot='whiteboard'] canvas.interactive");
+  // The pointer acts where the viewport shows the board, so the board is brought into it.
+  await canvas.scrollIntoViewIfNeeded();
+  const box = await canvas.boundingBox();
+  expect(box).not.toBeNull();
+  const { x, y, width, height } = box ?? { x: 0, y: 0, width: 0, height: 0 };
+  // A click on the empty right of the board gives it the keyboard, clear of its menus and of the
+  // shapes the other tool draws.
+  await page.mouse.click(x + width * 0.85, y + height * 0.85);
+  await page.keyboard.press(tool);
+  const at = { x: x + width * (tool === "r" ? 0.2 : 0.5), y: y + height * 0.35 };
+  await page.mouse.move(at.x, at.y);
+  await page.mouse.down();
+  await page.mouse.move(at.x + 120, at.y + 80, { steps: 8 });
+  await page.mouse.up();
+}
+
 test.describe("a questionnaire and a button inside a Page (#242)", () => {
   for (const theme of ["studio", "arcata"]) {
     test(`the questionnaire's title is a section's and the button keeps its width, in ${theme}`, async ({
@@ -467,6 +496,11 @@ test.describe("a questionnaire and a button inside a Page (#242)", () => {
         expect(button?.width ?? 0).toBeLessThan(column / 2);
         const questionnaire = await frame.locator("[data-slot='questionnaire']").boundingBox();
         expect(Math.round(questionnaire?.width ?? 0)).toBe(Math.round(column));
+        // A link placed in the page is a block of it, as before #242 (Opus review of WP-19, 8).
+        const card = await frame
+          .getByRole("link", { name: "Last quarter's answers" })
+          .boundingBox();
+        expect(Math.round(card?.width ?? 0)).toBe(Math.round(column));
         await info.attach(`page-${theme}.png`, {
           body: await page.screenshot({ fullPage: true }),
           contentType: "image/png",

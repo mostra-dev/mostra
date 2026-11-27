@@ -11,7 +11,7 @@ import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
 import { VerifyVerdict } from "@mostra/protocol";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
-import { kitPeers } from "../../src/builder/index.ts";
+import { kitOverrides, kitPeers } from "../../src/builder/index.ts";
 import { parseLock } from "../../src/deps/index.ts";
 import { overridesOf, pinnedPackages } from "../../src/deps/lock.ts";
 import { removeTree } from "../../src/platform/index.ts";
@@ -89,6 +89,36 @@ const errors = (verdict: VerifyVerdict): string[] =>
     .map((diagnostic) => `${diagnostic.code}: ${diagnostic.message}`);
 
 const PINS = kitPeers(KIT);
+const OVERRIDES = kitOverrides(KIT);
+
+/**
+ * A three.js newer than the kit's pin, which the mirror also serves: a resolution that took the
+ * newest release instead of the kit's pin would take it (Opus review of WP-19, finding 5).
+ */
+const NEWER_THREE = "0.999.0";
+
+/** The newer three.js, as a package directory the mirror packs. */
+function newerThree(): {
+  name: string;
+  version: string;
+  dir: string;
+  manifest: Record<string, unknown>;
+} {
+  const dir = join(tempDir("kitlib-newer-three"), "three");
+  const manifest = { name: "three", version: NEWER_THREE, type: "module", main: "index.js" };
+  mkdirSync(dir, { recursive: true });
+  writeFileSync(join(dir, "package.json"), JSON.stringify(manifest));
+  writeFileSync(join(dir, "index.js"), "export class Color {}\n");
+  return { name: "three", version: NEWER_THREE, dir, manifest };
+}
+
+/** The overrides a version's lockfile was resolved with. */
+function overridesIn(versionId: string): Readonly<Record<string, string>> {
+  return overridesOf(
+    parseLock(readFileSync(join(home.home, "versions", versionId, "lock.yaml"), "utf8"))
+      .pnpm as string,
+  );
+}
 
 beforeAll(async () => {
   // Every pinned library the kit installs for its own tests (deck.gl's other layers are pinned
@@ -96,7 +126,7 @@ beforeAll(async () => {
   const installed = [...PINS.keys()].filter((name) =>
     existsSync(join(KIT, "node_modules", name, "package.json")),
   );
-  mirror = await startMirror(installedClosure(KIT, installed));
+  mirror = await startMirror([...installedClosure(KIT, installed), newerThree()]);
   home = verifiedHome();
   // The registry is the mirror's (the variable wins over any user's `.npmrc`); the user's home
   // stays, since verify's browser is found there.
@@ -266,6 +296,81 @@ export default function Page() {
     const { versionId } = await publish(dir);
     expect(pinned(versionId)["three"]).toBe(PINS.get("three"));
     expect(existsSync(join(home.home, "versions", versionId, "client", "index.html"))).toBe(true);
+    // The kit's overrides come with its libraries however the artifact reaches them: its own
+    // import here, a copy of a kit module elsewhere (Opus review of WP-19, finding 6).
+    expect(overridesIn(versionId)).toEqual(OVERRIDES);
+  }, 900_000);
+
+  it("names a kit module's libraries at the kit's pins under the explicit policy, and mostra add takes a bare name at its pin (Opus review of WP-19, finding 5)", async () => {
+    const dir = artifact("explicit-scene", {
+      "index.tsx": `import { Scene } from "@mostra/kit/scene";
+import { defineArtifact } from "@mostra/react";
+
+export const artifact = defineArtifact({ title: "A cube" });
+
+export default function Page() {
+  return (
+    <main>
+      <h1>A cube</h1>
+      <Scene title="A cube" height={240}>
+        <mesh>
+          <boxGeometry args={[1, 1, 1]} />
+          <meshStandardMaterial color="orange" />
+        </mesh>
+      </Scene>
+    </main>
+  );
+}
+`,
+    });
+    const host = await connectTo(daemon.status.socket as string);
+    try {
+      result(
+        await host.call(
+          "mostra/initialize",
+          initializeParams({ home: { dependencies: "explicit" } }),
+        ),
+      );
+      const refused = await client.call("artifact/publish", { source: { path: dir } }, VERIFY_MS);
+      expect(refused.error?.data.code).toBe("MOSTRA_DEP_MISSING");
+      const command = refused.error?.data.fix?.command as string;
+      for (const name of ["three", "@react-three/fiber", "@react-three/drei"]) {
+        expect(command).toContain(` ${name}@${PINS.get(name)}`);
+      }
+      // A bare name, as an agent writes it from habit, comes at the kit's pin all the same.
+      const added = result(
+        await client.call(
+          "deps/add",
+          {
+            artifact: { path: dir },
+            packages: ["three", "@react-three/fiber", "@react-three/drei"],
+          },
+          VERIFY_MS,
+        ),
+      ) as { packages: { name: string; version: string }[] };
+      expect(added.packages).toEqual(
+        ["three", "@react-three/fiber", "@react-three/drei"].map((name) => ({
+          name,
+          version: PINS.get(name),
+          warm: false,
+        })),
+      );
+      const { versionId } = await publish(dir);
+      expect(pinned(versionId)["three"]).toBe(PINS.get("three"));
+      expect(overridesIn(versionId)).toEqual(OVERRIDES);
+    } finally {
+      host.close();
+      // The home's policy back to automatic, for the suite's other pages: a connection of its own,
+      // since each initializes once.
+      const restore = await connectTo(daemon.status.socket as string);
+      result(
+        await restore.call(
+          "mostra/initialize",
+          initializeParams({ home: { dependencies: "auto" } }),
+        ),
+      );
+      restore.close();
+    }
   }, 900_000);
 
   it("type-checks, builds and renders the Skill's samples of the on-demand parts (WP-14's check)", async () => {

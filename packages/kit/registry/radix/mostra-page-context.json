@@ -1,0 +1,18 @@
+{
+  "$schema": "https://ui.shadcn.com/schema/registry-item.json",
+  "name": "mostra-page-context",
+  "type": "registry:component",
+  "title": "Inside a page",
+  "description": "Whether a part sits inside the kit's Page, so a questionnaire there titles itself as a section.",
+  "dependencies": [],
+  "files": [
+    {
+      "path": "components/mostra/page-context.tsx",
+      "type": "registry:component",
+      "target": "components/mostra/page-context.tsx"
+    }
+  ],
+  "mostra": {
+    "base": "radix"
+  }
+}

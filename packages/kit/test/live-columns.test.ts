@@ -4,7 +4,7 @@
  * point of each series, so the line looks as it would through all of them.
  */
 import { describe, expect, it } from "vitest";
-import { Columns } from "../src/live-chart.tsx";
+import { Columns, newPointsFrom } from "../src/live-chart.tsx";
 
 describe("the live chart's columns", () => {
   it("keeps the newest window of points, in order, across the buffer's moves", () => {
@@ -40,5 +40,30 @@ describe("the live chart's columns", () => {
     const all = Array.from({ length: 10_000 }, (_, i) => Math.cos(i / 70));
     expect(Math.max(...b)).toBe(Math.max(...all));
     expect(Math.min(...b)).toBe(Math.min(...all));
+  });
+});
+
+describe("the points a live chart takes from each list (Opus review of WP-19, finding 4)", () => {
+  const point = (t: number) => ({ t, v: t });
+  const range = (from: number, to: number) =>
+    Array.from({ length: to - from + 1 }, (_, i) => point(from + i));
+
+  it("takes what was appended, the oldest dropped past the window", () => {
+    const held = range(0, 9);
+    const list = [...held.slice(3), point(10), point(11), point(12)];
+    expect(newPointsFrom(held, list)).toBe(7);
+    expect(newPointsFrom(held, held)).toBe(10);
+    expect(newPointsFrom([], held)).toBe(0);
+  });
+
+  it("starts over when a gap was read again: the older points decoded afresh, the newer kept", () => {
+    // Point 500 never arrived; 501 was drawn; 502 to 505 arrived while the source was read again.
+    const held = [...range(490, 499), point(501), ...range(502, 505)];
+    const recovered = [...range(490, 501), ...held.slice(-4)];
+    expect(newPointsFrom(held, recovered)).toBeUndefined();
+  });
+
+  it("starts over on a list that doesn't hold the last point drawn", () => {
+    expect(newPointsFrom(range(0, 4), range(10, 14))).toBeUndefined();
   });
 });

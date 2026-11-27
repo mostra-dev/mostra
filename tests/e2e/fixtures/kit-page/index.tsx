@@ -8,7 +8,10 @@ export const artifact = defineArtifact({
   kit: { theme: "studio" },
 });
 
-/** #242: a questionnaire with a title inside a Page, and a lone button in the Page's column. */
+/**
+ * #242: a questionnaire with a title inside a Page, and a lone button in the Page's column; a link
+ * card there still spans it (Opus review of WP-19, finding 8).
+ */
 export default function Questions() {
   return (
     <Page title="Quarterly review" description="Three questions, then send the summary.">
@@ -23,6 +26,9 @@ export default function Questions() {
         </Question>
       </Questionnaire>
       <Button variant="outline">Send the summary</Button>
+      <a href="#last-quarter" className="block rounded-(--radius) border border-border p-4">
+        Last quarter's answers
+      </a>
     </Page>
   );
 }

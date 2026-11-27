@@ -31,6 +31,11 @@
       "types": "./dist/layout.d.ts",
       "default": "./dist/layout.js"
     },
+    "./page-context": {
+      "@mostra/source": "./src/page-context.tsx",
+      "types": "./dist/page-context.d.ts",
+      "default": "./dist/page-context.js"
+    },
     "./review": {
       "@mostra/source": "./src/review.tsx",
       "types": "./dist/review.d.ts",
@@ -299,6 +304,16 @@
         "react-dom"
       ],
       "limit": "2.5 kB"
+    },
+    {
+      "name": "@mostra/kit/page-context (React excluded)",
+      "path": "dist/page-context.js",
+      "import": "*",
+      "ignore": [
+        "react",
+        "react-dom"
+      ],
+      "limit": "0.5 kB"
     },
     {
       "name": "@mostra/kit/tokens (React, the client runtime, the kit's other modules excluded)",

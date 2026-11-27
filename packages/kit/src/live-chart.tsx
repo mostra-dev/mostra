@@ -243,6 +243,27 @@ const windowOf = (window: number | undefined): number =>
   Math.max(1, Math.min(MAX_WINDOW, Math.floor(window ?? DEFAULT_WINDOW)));
 
 /** A chart of a live source's values, read in append mode. */
+/**
+ * Where the new points of `list` begin, given the list the chart drew last (`held`), or `undefined`
+ * when `list` isn't `held` with points appended (and the oldest dropped past the window), so the
+ * chart draws it afresh. Points are kept by reference: the last one held marks where the new ones
+ * begin, and the oldest point both lists hold must be the same one, since a list read again after
+ * a gap decodes every point it holds afresh (only those newer than the read keep theirs), and a
+ * point the gap had left out must then be drawn in its place (Opus review of WP-19, finding 4).
+ *
+ * @internal
+ */
+export function newPointsFrom(
+  held: readonly LivePoint[],
+  list: readonly LivePoint[],
+): number | undefined {
+  if (held.length === 0) return 0;
+  const at = list.lastIndexOf(held[held.length - 1] as LivePoint);
+  if (at === -1) return undefined;
+  const overlap = Math.min(at + 1, held.length);
+  return list[at + 1 - overlap] === held[held.length - overlap] ? at + 1 : undefined;
+}
+
 function SourceChart({
   source,
   ...props
@@ -276,7 +297,11 @@ function PointsChart({
   const plot = React.useRef<uPlot | null>(null);
   // How long a draw takes, smoothed (milliseconds), for whoever measures the chart (AC-08).
   const drawMs = React.useRef(0);
-  const columns = React.useRef<{ columns: Columns; last: unknown; key: string } | null>(null);
+  const columns = React.useRef<{
+    columns: Columns;
+    list: readonly LivePoint[];
+    key: string;
+  } | null>(null);
   const titleId = React.useId();
   const formatRef = React.useRef(format);
   React.useLayoutEffect(() => {
@@ -297,15 +322,14 @@ function PointsChart({
       let state = columns.current;
       let from = 0;
       if (state === null || state.key !== key) {
-        state = { columns: new Columns(window, series.length), last: undefined, key };
+        state = { columns: new Columns(window, series.length), list: [], key };
         columns.current = state;
-      } else if (state.last !== undefined) {
-        // Points are kept by reference, so the last one taken marks where the new ones begin.
-        const at = list.lastIndexOf(state.last as LivePoint);
-        if (at === -1) {
-          state = { columns: new Columns(window, series.length), last: undefined, key };
+      } else {
+        const next = newPointsFrom(state.list, list);
+        if (next === undefined) {
+          state = { columns: new Columns(window, series.length), list, key };
           columns.current = state;
-        } else from = at + 1;
+        } else from = next;
       }
       for (let index = from; index < list.length; index++) {
         const point = list[index] as LivePoint;
@@ -320,7 +344,7 @@ function PointsChart({
         );
         state.columns.push(timeAxis ? xValue / 1000 : xValue, ys);
       }
-      if (list.length > 0) state.last = list[list.length - 1];
+      state.list = list;
     },
     [seriesKey, series, x, window, timeAxis],
   );

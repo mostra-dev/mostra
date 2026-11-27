@@ -7,6 +7,9 @@
   "dependencies": [
     "cn"
   ],
+  "registryDependencies": [
+    "mostra-page-context"
+  ],
   "files": [
     {
       "path": "components/mostra/layout.tsx",

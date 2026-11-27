@@ -192,6 +192,8 @@ export function diagnose(error: unknown, sourceDir: string): Diagnostic {
 export function baseConfig(
   request: Pick<BuildRequest, "stagingDir" | "kit">,
   sourceDir: string,
+  /** The real directories of the build's packages (`BuildInputs.packageRoots`). */
+  packages: readonly string[],
   plugins: PluginOption[],
   /** Plugins that watch every import as written, so they run before the kit's resolution. */
   observers: PluginOption[] = [],
@@ -227,7 +229,7 @@ export function baseConfig(
     plugins: [
       ...observers,
       kitResolvePlugin(sourceDir, request.kit),
-      kitPeersPlugin(request.stagingDir),
+      kitPeersPlugin(request.stagingDir, packages),
       kitAssetsPlugin(request.stagingDir),
       ...plugins,
     ],
@@ -348,6 +350,7 @@ export async function buildSpa(input: BuildRequest): Promise<BuildResponse> {
       ...baseConfig(
         request,
         sourceDir,
+        inputs.packageRoots,
         [
           confinePlugin(inputs),
           mdxPlugin(),
@@ -393,7 +396,11 @@ export async function buildSpa(input: BuildRequest): Promise<BuildResponse> {
     await writeFile(join(generated, "server-entry.js"), serverEntry(scan));
     try {
       await build({
-        ...baseConfig(request, sourceDir, [confinePlugin(inputs), mdxPlugin(), react()]),
+        ...baseConfig(request, sourceDir, inputs.packageRoots, [
+          confinePlugin(inputs),
+          mdxPlugin(),
+          react(),
+        ]),
         publicDir: false,
         // Packages stay external (Vite's default for a server build, D135): the worker resolves
         // them from the layout this build resolved them in (the warm set's, or the lockfile's,

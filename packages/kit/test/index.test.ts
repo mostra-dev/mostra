@@ -20,7 +20,10 @@ describe("@mostra/kit", () => {
       .map((name) => readFileSync(new URL(name, references), "utf8"))
       .join("\n");
     const unnamed = KIT_MODULES.filter((module) => !text.includes(`@mostra/kit/${module}`));
-    // `tokens` is shown through the parts that re-export it (`useTokens` from `@mostra/kit/scene`).
-    expect(unnamed.filter((module) => module !== "tokens")).toEqual([]);
+    // `tokens` is shown through the parts that re-export it (`useTokens` from `@mostra/kit/scene`);
+    // `page-context` is the kit's own, read by the questionnaire and the layout.
+    expect(unnamed.filter((module) => module !== "tokens" && module !== "page-context")).toEqual(
+      [],
+    );
   });
 });

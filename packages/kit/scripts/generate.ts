@@ -70,6 +70,13 @@ const KIT_ITEMS = [
       "Candidates to compare, comment on and choose between: a gallery, one at a time, or two to four side by side with their difference.",
   },
   {
+    name: "mostra-page-context",
+    module: "page-context",
+    title: "Inside a page",
+    description:
+      "Whether a part sits inside the kit's Page, so a questionnaire there titles itself as a section.",
+  },
+  {
     name: "mostra-tokens",
     module: "tokens",
     title: "Theme tokens",
