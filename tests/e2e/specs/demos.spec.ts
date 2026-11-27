@@ -299,18 +299,31 @@ test.describe("exports carry the page and its demos (VR-07)", () => {
       }
 
       // From disk, a history-routed demo moving to another page: Chromium and WebKit refuse it,
-      // and the demo's frame says why, once, in place; Firefox moves.
+      // and the demo's frame says why, once, in place. Firefox moves where the new path stays a
+      // file of the same disk; on Windows (a drive letter in the address) it can refuse too, and
+      // then says why the same way. Nothing happens silently anywhere (M106).
       await gotoShell(page, pathToFileURL(join(staticExport.out, "index.html")).href);
       const vite = demo(page, "vite");
       await expect(vite.locator("#title")).toHaveText("Inventory", { timeout: 15_000 });
       await vite.locator("#item-2").click();
+      const notice = vite.locator("[data-mostra-demo-notice]");
       if (browserName === "firefox") {
-        await expect(vite.locator("#title")).toHaveText("Linen lamp");
-        await expect(vite.locator("[data-mostra-demo-notice]")).toHaveCount(0);
+        await expect
+          .poll(async () =>
+            (await notice.count()) > 0
+              ? "notice"
+              : (await vite.locator("#title").textContent()) === "Linen lamp"
+                ? "moved"
+                : "silent",
+          )
+          .not.toBe("silent");
+        if ((await notice.count()) === 0) {
+          await expect(vite.locator("#title")).toHaveText("Linen lamp");
+        } else {
+          await expect(notice).toContainText("needs this export to be opened through a web server");
+        }
       } else {
-        await expect(vite.locator("[data-mostra-demo-notice]")).toContainText(
-          "needs this export to be opened through a web server",
-        );
+        await expect(notice).toContainText("needs this export to be opened through a web server");
         await expect(vite.locator("#title")).toHaveText("Inventory");
       }
     } finally {
