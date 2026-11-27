@@ -15,6 +15,7 @@
  * point's x and a draw's smoothed time), which the test reads, so it measures what the page draws through the chart's own
  * public mark; the summary screen readers read follows a few times a second.
  */
+import { appendFileSync } from "node:fs";
 import { expect, type Page, test } from "@playwright/test";
 import { linkFor, openInShell, publishOwn } from "../support/client.ts";
 import { Client, readRun } from "../support/mostra.ts";
@@ -207,6 +208,10 @@ test.describe("high-rate live data stays smooth (AC-08)", () => {
       };
       info.annotations.push({ type: "AC-08", description: JSON.stringify(report) });
       console.log(`AC-08 ${JSON.stringify(report)}`);
+      // A passing run keeps its numbers too: the job's summary, which CI shows whatever the suite's
+      // output (the check prints that only for a failure).
+      const summary = process.env["GITHUB_STEP_SUMMARY"];
+      if (summary) appendFileSync(summary, `AC-08 \`${JSON.stringify(report)}\`\n\n`);
 
       expect(
         result.pointsPerSecond,
