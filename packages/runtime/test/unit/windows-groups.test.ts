@@ -45,6 +45,8 @@ describe("the macOS and Linux integration groups (MT-01)", () => {
       "verify-failures",
       "extensions",
       "kit",
+      // The kit through verify, beside the conformance kit's reference host (WP-19).
+      "conformance",
     ].map((name) => [name, INTEGRATION_GROUPS[name]] as const);
     const member = (group: { include: string[]; exclude: string[] }, file: string): boolean =>
       group.include.some((glob) => matchesGlob(file, glob)) &&
