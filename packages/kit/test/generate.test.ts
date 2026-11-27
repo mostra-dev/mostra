@@ -4,7 +4,7 @@
  * can't make a part quietly ignore the theme (Opus review of WP-18, finding 11).
  */
 import { spawnSync } from "node:child_process";
-import { cpSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
+import { cpSync, mkdtempSync, readFileSync, rmSync, symlinkSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { fileURLToPath } from "node:url";
@@ -32,6 +32,8 @@ function copyWith(edit: (studio: string) => string): string {
   for (const dir of ["scripts", "src", "upstream", "parts", "css", "registry", "package.json"]) {
     cpSync(join(KIT, dir), join(root, dir), { recursive: true });
   }
+  // The generator reads the on-demand libraries' own manifests (their peers) from the kit's packages.
+  symlinkSync(join(KIT, "node_modules"), join(root, "node_modules"), "junction");
   const studio = join(root, "scripts/studio.ts");
   const before = readFileSync(studio, "utf8");
   const after = edit(before);

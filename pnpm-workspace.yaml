@@ -31,6 +31,12 @@ permissions:
   '@tanstack/react-table':
     skills: false
 
+# Excalidraw's Mermaid parser (through langium 3 and chevrotain 11.0.3) pins lodash-es 4.17.21, which
+# has a high-severity code injection advisory in `_.template` (GitHub's dependency review); the workspace takes 4.18.1,
+# its fix, as the rest of the tree does (WP-19).
+overrides:
+  lodash-es@4.17.21: 4.18.1
+
 # dependency-cruiser loads TypeScript's compiler API but doesn't declare it, so pnpm would hand it
 # the hoisted TypeScript 7, which has no such API. Declaring the peer makes it resolve tools/ts6's.
 packageExtensions:
