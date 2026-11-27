@@ -134,20 +134,28 @@ function splitDocument(html: string): {
   ].map((match) => match[1] as string);
   const stylesheets = linked.filter((href) => !elsewhere(href));
   const external = linked.filter(elsewhere);
-  const own = (tag: string): string => {
+  const own = (tag: string): boolean => {
     const href = /\b(?:href|src)="([^"]+)"/i.exec(tag)?.[1] ?? "";
-    return elsewhere(href) ? tag : "";
+    return !elsewhere(href);
   };
-  // The tags go until none is left: a removal that joins two halves into a new tag removes that
-  // one too, so the document never loads a file the export inlined.
-  let rest = html;
-  for (let before = ""; before !== rest; ) {
-    before = rest;
-    rest = rest
-      .replace(/<script\b[^>]*\btype="module"[^>]*\bsrc="[^"]+"[^>]*><\/script>\s*/gi, own)
-      .replace(/<link\b[^>]*\brel="(?:stylesheet|modulepreload)"[^>]*>\s*/gi, own);
+  // The build's own tags are cut out where they stand in the document, each place left as a line
+  // break: what is left beside a cut never joins into a tag of its own.
+  const cuts = [
+    ...html.matchAll(/<script\b[^>]*\btype="module"[^>]*\bsrc="[^"]+"[^>]*><\/script>/gi),
+    ...html.matchAll(/<link\b[^>]*\brel="(?:stylesheet|modulepreload)"[^>]*>/gi),
+  ]
+    .filter((match) => own(match[0]))
+    .map((match) => ({ from: match.index, to: match.index + match[0].length }))
+    .sort((a, b) => a.from - b.from);
+  const kept: string[] = [];
+  let at = 0;
+  for (const cut of cuts) {
+    if (cut.from < at) continue;
+    kept.push(html.slice(at, cut.from));
+    at = cut.to;
   }
-  return { entry, stylesheets, external, rest };
+  kept.push(html.slice(at));
+  return { entry, stylesheets, external, rest: kept.join("\n") };
 }
 
 /** `html` with `head` written right after its `<head>`, and `body` right before its `</body>`. */

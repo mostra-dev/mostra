@@ -53,6 +53,11 @@ tellParent.textContent = "Tell the page's window";
 tellParent.addEventListener("click", () => parent.postMessage({ "demo/told": "oak" }, "*"));
 document.body.append(greeting, tell, tellParent);
 addEventListener("message", (event) => {
+  // Only the page around it: its own origin live, an opaque one (`null`, or WebKit's `file://`) from
+  // disk or inside one file. (Not `event.source`: WebKit names the receiver for a same-origin
+  // module script's message.)
+  const page = [location.origin, "null", "file://"];
+  if (!page.includes(event.origin)) return;
   const values = event.data?.["mostra/demo.values"];
   if (event.ports[0]) channel = event.ports[0];
   if (values) greeting.textContent = values.greeting;

@@ -64,7 +64,7 @@ Taken inside the package: the built-in exporters live in the carried `@mostra/pl
 - **A sealed version couldn't be edited for `--base`**: the export's scratch copy is made writable first.
 - **A single file's demo documents**: a `srcdoc` frame resolved a demo's `#` links against the page around it, so they are `blob:` addresses, with a script for Chromium's refusal of fragment navigation in them (VERIFIED_FACTS, WP-24).
 - **`publish` and `demos` imported each other** (dependency-cruiser): the demos module keeps its own digest helpers.
-- **CodeQL**: two time-of-check reads in a test helper, and the removal of the build's own tags from a document, now repeated until none is left.
+- **CodeQL**: two time-of-check reads in a test helper; the removal of the build's own tags from a document (alerts 98 and 103), now cut out by position, each place left as a line break, so nothing beside a cut joins into a tag; and the e2e fixture demo's message handler, which now checks the sender's origin (alert 104).
 
 ## Review
 
