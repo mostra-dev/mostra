@@ -140,13 +140,19 @@ test.describe("the kit's library wrappers (KT-01)", () => {
       await expect(frame.locator("[data-slot='formula'] .katex")).toHaveCount(2);
       await expect(frame.locator("[data-slot='formula'] math").first()).toBeAttached();
 
-      // The editor saves its text as a field, which comes back after a reload and arrives in
-      // results under its label.
+      // The editor saves its text as a field: the trusted Submit sends what it shows, the text
+      // arrives in results under its label, and the page shows it again after a reload.
       const editor = frame.locator("[data-slot='code-editor'] .cm-content");
       await editor.click();
       await page.keyboard.press("End");
       await page.keyboard.type("  # edited");
+      await expect(editor).toContainText("print('hi')  # edited");
       await saved(page);
+      await page.locator("#mostra-submit").click();
+      await expect(page.locator("#mostra-submit")).toHaveText("Submitted");
+      const submitted = JSON.stringify(await results(client, own.artifactId));
+      expect(submitted).toContain("print('hi')  # edited");
+      expect(submitted).toContain("Your snippet");
       await reopenInShell(page);
       await expect(frame.locator("[data-slot='code-editor'] .cm-content")).toContainText(
         "print('hi')  # edited",
@@ -211,10 +217,10 @@ test.describe("the kit's library wrappers (KT-01)", () => {
       await page.mouse.move(at.x + 160, at.y + 90, { steps: 8 });
       await page.mouse.up();
       await saved(page);
-      const answers = (await results(client, own.artifactId)) as {
-        draft?: { fields?: Record<string, { value?: { elements?: { type: string }[] } }> };
-      };
-      const sketch = JSON.stringify(answers);
+      // The trusted Submit sends the drawing the field holds.
+      await page.locator("#mostra-submit").click();
+      await expect(page.locator("#mostra-submit")).toHaveText("Submitted");
+      const sketch = JSON.stringify(await results(client, own.artifactId));
       expect(sketch).toContain('"type":"rectangle"');
       await reopenInShell(page, HEAVY_READY_MS);
       await expect(frame.locator("[data-slot='whiteboard'] .excalidraw")).toBeVisible({

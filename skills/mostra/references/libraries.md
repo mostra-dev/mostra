@@ -91,7 +91,7 @@ function Pipeline() {
 }
 ```
 
-- A chart names every series in its legend and colours them `--chart-1` onward, in order; a series' `color` overrides that. Give it a `title`, and put the numbers that matter in text beside it too.
+- A chart names every series in its legend and colours them `var(--chart-1)` onward, in order; a series' `color` overrides that. Give it a `title`, and put the numbers that matter in text beside it too.
 - `LiveChart source="latency" window={10000}` reads `useLive("latency", { mode: "append", window })` itself and draws each new point as it arrives, many a second ([long-lived.md](long-lived.md)). Points are objects (`{ t, ms }`, `x="t"`) or arrays (`[t, ms]`, series by index); an `x` in milliseconds since 1970 shows as time.
 - `DataTable`'s columns default to every key of the first row; a number column sorts largest first.
 
