@@ -276,26 +276,42 @@ async function parts(page: Page, frame: FrameLocator): Promise<{ slot: string; p
     style.textContent = "html, body { background: rgb(128, 128, 128) !important; }";
     document.head.append(style);
   });
-  const boxes = await frame.locator("[data-slot]").evaluateAll((elements) =>
-    elements.flatMap((element) => {
-      const box = element.getBoundingClientRect();
-      // A visually hidden element (`sr-only`, one pixel square, clipped) is no visible part.
-      if (!(box.width > 1 && box.height > 1 && element.checkVisibility())) return [];
-      return [
-        {
-          slot: element.getAttribute("data-slot") ?? "",
-          x: box.x,
-          y: box.y,
-          width: box.width,
-          height: box.height,
-        },
-      ];
-    }),
-  );
+  const measure = () =>
+    frame.locator("[data-slot]").evaluateAll((elements) =>
+      elements.flatMap((element) => {
+        const box = element.getBoundingClientRect();
+        // A visually hidden element (`sr-only`, one pixel square, clipped) is no visible part.
+        if (!(box.width > 1 && box.height > 1 && element.checkVisibility())) return [];
+        return [
+          {
+            slot: element.getAttribute("data-slot") ?? "",
+            x: box.x,
+            y: box.y,
+            width: box.width,
+            height: box.height,
+          },
+        ];
+      }),
+    );
+  // Measured on both sides of the screenshot until the page held still across it: a part drawn
+  // late (a diagram, a chart loaded on its own) moves what is below it (kit.spec.ts's restyle).
+  let boxes = await measure();
+  let taken: PNG | undefined;
+  for (let attempt = 0; attempt < 10; attempt++) {
+    const candidate = PNG.sync.read(
+      await page.screenshot({ animations: "disabled", caret: "hide", scale: "css" }),
+    );
+    const again = await measure();
+    if (JSON.stringify(again) === JSON.stringify(boxes)) {
+      taken = candidate;
+      break;
+    }
+    boxes = again;
+    await page.waitForTimeout(500);
+  }
+  expect(taken, "the page held still for a screenshot").toBeDefined();
+  const shot = taken as PNG;
   const origin = await page.locator("iframe").first().boundingBox();
-  const shot = PNG.sync.read(
-    await page.screenshot({ animations: "disabled", caret: "hide", scale: "css" }),
-  );
   return boxes.map((box) => {
     const x = Math.round((origin?.x ?? 0) + box.x);
     const y = Math.round((origin?.y ?? 0) + box.y);

@@ -15,7 +15,7 @@ import {
 } from "@mostra/protocol";
 import { describe, expect, it } from "vitest";
 import { MostraError } from "../src/runtime/errors.ts";
-import { ServerClient } from "../src/runtime/server-client.ts";
+import { RENEW_MS, ServerClient } from "../src/runtime/server-client.ts";
 import { NetworkError, type Transport } from "../src/runtime/transport.ts";
 
 const VIEW = "vw_01J00000000000000000000000";
@@ -455,6 +455,35 @@ describe("live sources (D56)", () => {
     });
     stopA();
     stopB();
+  });
+
+  it("renews its interest a lease's renewal after it read, however long the answer takes to apply", async () => {
+    const server = new FakeServer();
+    server.live.set("cpu", await state("cpu", 1, 1));
+    // The read is answered only later; a slow page applies an answer behind every update before it.
+    let answer: () => void = () => {};
+    server.liveGate = new Promise((resolve) => {
+      answer = resolve;
+    });
+    const armed: { ms: number; fn: () => void }[] = [];
+    const page = new ServerClient({
+      transport: server.transport(),
+      viewId: VIEW,
+      timers: {
+        setTimeout: (fn, ms) => armed.push({ fn, ms }),
+        clearTimeout: () => {},
+      },
+    });
+    const stop = page.watchLive("cpu", 10);
+    await new Promise((resolve) => setTimeout(resolve, 10));
+    expect(server.liveRequests).toHaveLength(1);
+    // The renewal is due a renewal after the read went out, while its answer is still on its way.
+    expect(armed.map((timer) => timer.ms)).toEqual([RENEW_MS]);
+    armed[0]?.fn();
+    await new Promise((resolve) => setTimeout(resolve, 10));
+    expect(server.liveRequests).toHaveLength(2);
+    answer();
+    stop();
   });
 
   it("keeps an append window and asks for the ring", async () => {

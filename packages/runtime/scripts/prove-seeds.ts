@@ -761,6 +761,15 @@ const SEEDS: readonly Seed[] = [
     e2e: true,
   },
   {
+    requirement: "AC-08",
+    name: "a page renews its live sources' lease only once their answer is applied",
+    file: "../react/src/runtime/server-client.ts",
+    from: "      this.#renewSoon();\n      try {\n        const { sources } = await",
+    to: "      try {\n        const { sources } = await",
+    check: ["test/server-client.test.ts"],
+    cwd: "../react",
+  },
+  {
     requirement: "KT-11",
     name: "the presence avatars drop the className a page gives them",
     file: "../kit/registry/base/components/mostra/team.tsx",

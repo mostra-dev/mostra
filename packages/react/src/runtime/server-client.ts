@@ -622,6 +622,11 @@ export class ServerClient {
         this.#changed();
         return;
       }
+      // The lease this read renews starts now, so the next renewal is due from now, never from
+      // when the answer is applied: applying it waits behind every update already arriving for the
+      // source, and on a slow device a burst of 10,000 points held it there past the lease's
+      // minute, so the producer stopped (PR #255's Windows arm64 run 46105189914).
+      this.#renewSoon();
       try {
         const { sources } = await (transport.live as NonNullable<Transport["live"]>)({
           viewId: this.#viewId,
@@ -647,7 +652,6 @@ export class ServerClient {
         }
         this.#changed();
       }
-      this.#renewSoon();
     });
   }
 
