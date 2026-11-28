@@ -173,6 +173,22 @@ interface TrackedLive {
   applying: Promise<void>;
   /** The newest value in latest mode still waiting its turn; a newer one replaces it. */
   pending?: LiveUpdate;
+  /**
+   * Append mode: the window the page last read the source's ring at, while it has held every
+   * value since (no gap, no reconnect). A renewal then reads only the latest value, not the ring
+   * again: a 10,000-point ring read every 20 s is 10,000 values to decode each time, which a slow
+   * device can't keep up with (AC-08). `undefined` until the ring is read, and after a gap.
+   */
+  held?: number;
+  /** The window the page's latest read of the ring asked for. */
+  asked?: number;
+  /** The newest revision the page's stream brought, as it arrived, before it applies. */
+  received: number;
+  /**
+   * A revision a read answered without its ring that the stream hadn't brought yet: on its way,
+   * or lost. Still missing at the next renewal, the ring is read again.
+   */
+  expected?: number;
 }
 
 /** Options for {@link ServerClient}. */
@@ -201,6 +217,8 @@ export class ServerClient {
   #nextWatcher = 1;
   #renewTimer: unknown;
   #liveFlush: Promise<void> | undefined;
+  /** When the page last read its live sources, which renews their lease (`Date.now()`). */
+  #readAt: number | undefined;
   #liveRefresh = new Set<string>();
   #notifyScheduled = false;
   /** Plain calls whose value hasn't arrived yet. */
@@ -562,6 +580,7 @@ export class ServerClient {
         newest: 0,
         ring: new LiveRing(),
         applying: Promise.resolve(),
+        received: 0,
       };
       this.#live.set(key, tracked);
     }
@@ -626,15 +645,23 @@ export class ServerClient {
       // when the answer is applied: applying it waits behind every update already arriving for the
       // source, and on a slow device a burst of 10,000 points held it there past the lease's
       // minute, so the producer stopped (PR #255's Windows arm64 run 46105189914).
+      this.#readAt = Date.now();
       this.#renewSoon();
       try {
         const { sources } = await (transport.live as NonNullable<Transport["live"]>)({
           viewId: this.#viewId,
           keys: shown.map((tracked) => {
             const window = this.#windowOf(tracked);
+            // The ring only when the page doesn't hold it whole (D130's read, AC-08).
+            const ring =
+              window !== undefined &&
+              (tracked.held === undefined ||
+                window > tracked.held ||
+                (tracked.expected !== undefined && tracked.received < tracked.expected));
+            if (ring) tracked.asked = window;
             return {
               key: tracked.view.key,
-              ...(window !== undefined ? { window } : {}),
+              ...(ring ? { window } : {}),
               ...(refresh.has(tracked.view.key) ? { refresh: true } : {}),
             };
           }),
@@ -706,8 +733,22 @@ export class ServerClient {
         [...revisions, ...kept.map((entry) => entry.revision)],
         this.#windowOf(tracked),
       );
+      // Held whole at the window it was asked for, which a page showing it larger asks again.
+      if (tracked.asked !== undefined) tracked.held = tracked.asked;
+      delete tracked.expected;
+    } else if (this.#windowOf(tracked) !== undefined && state.value) {
+      // A renewal of a ring the page holds: its values come on the stream, in order. A revision the
+      // stream hasn't brought yet is waited for, never taken here, or the values before it would
+      // be skipped as old.
+      if (revision > tracked.received) {
+        tracked.expected = Math.max(tracked.expected ?? 0, revision);
+      }
     }
-    if (state.value && revision >= tracked.newest) {
+    if (
+      state.value &&
+      revision >= tracked.newest &&
+      (state.ring || this.#windowOf(tracked) === undefined)
+    ) {
       tracked.newest = revision;
       const data = await decode(state.value);
       if (revision < tracked.newest) return;
@@ -755,6 +796,7 @@ export class ServerClient {
     // A value skipped (a dropped message): read the source again, ring included.
     const skipped =
       tracked.newest > 0 && revision > tracked.newest + 1 && this.#windowOf(tracked) !== undefined;
+    if (skipped) delete tracked.held;
     tracked.newest = revision;
     const data = await decode(update.value);
     const window = this.#windowOf(tracked);
@@ -785,7 +827,13 @@ export class ServerClient {
       if (!this.#merge(tracked, message.run))
         void this.attach({ runIds: [message.run.runId] }).catch(() => {});
     } else if (message.kind === "live") {
+      const tracked = this.#live.get(message.live.key);
+      const revision = Number(message.live.revision ?? 0);
+      if (tracked && revision > tracked.received) tracked.received = revision;
       void this.#applyLiveUpdate(message.live);
+      // A page busy taking in a burst may run its timers late, past the lease's minute (a slow
+      // device, AC-08): the stream's own messages renew it once a renewal is due.
+      if (this.#readAt !== undefined && Date.now() - this.#readAt >= RENEW_MS) this.#renewNow();
     }
     // Other kinds (the roster and presence, D168) are the team client's; a kind a newer gateway
     // adds is none of this client's either.
@@ -807,6 +855,13 @@ export class ServerClient {
 
   /** The stream came back after a gap: read again what may have been missed. */
   resync(): void {
+    // Updates sent while the stream was down are gone: every ring is read again.
+    for (const tracked of this.#live.values()) delete tracked.held;
+    this.#renewNow();
+  }
+
+  /** Renews interest in open runs and shown sources now, holding what the page has. */
+  #renewNow(): void {
     const open = [...this.#runs.values()].filter(
       (tracked) => !isFinalRunStatus(tracked.view.status),
     );
@@ -826,7 +881,7 @@ export class ServerClient {
       );
       const shown = [...this.#live.values()].some((tracked) => tracked.watchers.size > 0);
       if (open.length > 0 || shown) {
-        this.resync();
+        this.#renewNow();
         this.#renewSoon();
       }
     }, RENEW_MS);
