@@ -80,6 +80,12 @@ export const BARE_NAME: RegExp = /^[a-z0-9][a-z0-9._-]*$/i;
 /** The parts of a `components.json` Mostra reads. */
 export interface ComponentsJson {
   readonly style?: string;
+  /** The icon library shadcn's icon placeholders become (`lucide` by default, WP-19). */
+  readonly iconLibrary?: string;
+  /** A menu's colour (`default`, `inverted`, `default-translucent`, `inverted-translucent`). */
+  readonly menuColor?: string;
+  /** Whether the project writes right to left (shadcn's `rtl`). */
+  readonly rtl?: boolean;
   readonly tailwind?: { readonly css?: string };
   readonly aliases?: Readonly<Record<string, string>>;
   readonly registries?: Readonly<
@@ -134,7 +140,8 @@ function isInside(outer: string, inner: string): boolean {
 }
 
 const SHADCN_REGISTRY = "https://ui.shadcn.com/r";
-const DEFAULT_STYLE = "new-york-v4";
+/** The style shadcn assumes for a project without a `components.json`. */
+export const DEFAULT_STYLE = "new-york-v4";
 
 const fail = (code: Parameters<typeof createDiagnostic>[0], message: string): RpcError =>
   new RpcError(createDiagnostic(code, { message }));

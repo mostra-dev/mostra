@@ -228,6 +228,13 @@ The kit surface is in [rounds/ROUND-3.md](rounds/ROUND-3.md) §1 to §5 (D65): c
 - **CLI.** `mostra theme list [--artifact]`, `mostra theme show [theme…] [--artifact] [--css]`, `mostra verify --theme <stack> --fix` (`--fix` writes every replace fix inside the artifact, up to three rounds, and the result gains `fixed: [{ file, fixes }]`).
 - **Diagnostics.** The area `KIT` (`THEME_UNKNOWN`, `THEME_FILE_MISSING`, `THEME_CONFLICT`, `THEME_CONTRAST`, `WRONG_BASE`, `CSS_UNPROCESSED`) and `MOSTRA_LINT_API_CHANGED`.
 
+**What WP-19 built** (D186), every change additive:
+- **The library parts**, each `@mostra/kit/<module>` and the registry item `mostra-<module>` in both bases: `charts` (`BarChart`, `LineChart`, `AreaChart`, `DonutChart`), `live-chart` (`LiveChart`: `source` and `window` read a live source in append mode through `useLive`, or `values` the page holds), `echarts` (`EChart`, `echartsTheme`), `data-table` (`DataTable`), `mermaid` (`Mermaid`), `flow` (`Flow`), `code` (`Code`, `CodeEditor`), `math` (`Formula`), `map` (`MapView`, `mapStyle`), `scene` (`Scene`), `whiteboard` (`Whiteboard`), `team` (`PresenceAvatars`, `LiveCursors`, `RespondentTracker`, `Attribution`, `personColor`) and `tokens` (`useTokens`, `readTokens`, `resolveColor`, `seriesColor`). `CodeEditor` and `Whiteboard` take `id`, `label` and `required` and bind through `useField`; the field scan reads their ids. Each team part takes its hook's value as a prop or reads the hook.
+- **On-demand libraries.** The kit's `package.json` names them as optional peers at exact versions, with `mostra-kit.pins`, `mostra-kit.overrides` and `mostra-kit.assets`; an artifact that uses `map`, `scene` or `whiteboard` installs them on demand at those versions and overrides (`deps`), recorded in its lockfile, and its build serves the assets from its own origin under `/kit-assets/`.
+- **The live chart's mark.** `LiveChart`'s plot element carries `data-drawn="<draws> <newest x> <draw ms>"` for whoever measures it.
+- **Verify.** A control inside `[data-mostra-transient]` is page state the smoke test doesn't judge as an answer; `MOSTRA_LINT_API_CHANGED` covers React Flow 12's habits, Shiki's `getHighlighter`, CodeMirror 5's stylesheet, `mapbox-gl`, `react-map-gl` and react-three-fiber's and drei's old names.
+- **`mostra add`** of a shadcn `base-nova` or `radix-nova` item rewrites its icon placeholders and style markers as shadcn's CLI does (#219).
+
 ## 4. Browser protocol (client runtime ↔ gateway)
 
 Internal to Mostra, but immutable versions embed the client runtime, so this is a dated, additive protocol. A gateway serves every revision it ever shipped (FAILURE_MODEL §7). All paths sit under `/_mostra/` on the artifact origin.

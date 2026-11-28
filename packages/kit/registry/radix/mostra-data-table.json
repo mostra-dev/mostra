@@ -1,0 +1,22 @@
+{
+  "$schema": "https://ui.shadcn.com/schema/registry-item.json",
+  "name": "mostra-data-table",
+  "type": "registry:component",
+  "title": "Data table",
+  "description": "A table of rows on TanStack Table, sortable by every column, with a search and pages when asked.",
+  "dependencies": [
+    "@tanstack/react-table",
+    "cn",
+    "lucide-react"
+  ],
+  "files": [
+    {
+      "path": "components/mostra/data-table.tsx",
+      "type": "registry:component",
+      "target": "components/mostra/data-table.tsx"
+    }
+  ],
+  "mostra": {
+    "base": "radix"
+  }
+}

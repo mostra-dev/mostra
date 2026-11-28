@@ -70,6 +70,102 @@ const KIT_ITEMS = [
       "Candidates to compare, comment on and choose between: a gallery, one at a time, or two to four side by side with their difference.",
   },
   {
+    name: "mostra-page-context",
+    module: "page-context",
+    title: "Inside a page",
+    description:
+      "Whether a part sits inside the kit's Page, so a questionnaire there titles itself as a section.",
+  },
+  {
+    name: "mostra-tokens",
+    module: "tokens",
+    title: "Theme tokens",
+    description:
+      "The page's theme as values a canvas or WebGL library can take: every colour resolved, the faces and the radius, kept current as the theme or its light or dark changes.",
+  },
+  {
+    name: "mostra-live-chart",
+    module: "live-chart",
+    title: "Live chart",
+    description:
+      "A chart of points that keep arriving, many a second, from a live source in append mode or from the page: uPlot on a canvas in the theme's series colours.",
+  },
+  {
+    name: "mostra-charts",
+    module: "charts",
+    title: "Charts",
+    description:
+      "Bar, line, area and donut charts on Recharts in the theme's series colours, every series named in a legend.",
+  },
+  {
+    name: "mostra-echarts",
+    module: "echarts",
+    title: "ECharts",
+    description:
+      "Any ECharts chart (heat maps, Sankey, treemaps, candlesticks, graphs) from its option, in a theme made from the page's tokens.",
+  },
+  {
+    name: "mostra-data-table",
+    module: "data-table",
+    title: "Data table",
+    description:
+      "A table of rows on TanStack Table, sortable by every column, with a search and pages when asked.",
+  },
+  {
+    name: "mostra-mermaid",
+    module: "mermaid",
+    title: "Mermaid diagram",
+    description:
+      "A diagram written as Mermaid text (flowcharts, sequences, states, Gantt charts), drawn in the page's theme.",
+  },
+  {
+    name: "mostra-flow",
+    module: "flow",
+    title: "Flow graph",
+    description:
+      "Nodes and edges on React Flow's pannable canvas, the nodes the theme's cards and the edges its rules.",
+  },
+  {
+    name: "mostra-code",
+    module: "code",
+    title: "Code",
+    description:
+      "Code highlighted by Shiki, and a CodeMirror editor whose text saves as a field, both coloured from the theme.",
+  },
+  {
+    name: "mostra-math",
+    module: "math",
+    title: "Formula",
+    description: "TeX typeset by KaTeX, inline in a sentence or on its own line.",
+  },
+  {
+    name: "mostra-map",
+    module: "map",
+    title: "Map",
+    description:
+      "A map on MapLibre with deck.gl layers and markers, on a world outline in the theme that needs no tile server.",
+  },
+  {
+    name: "mostra-scene",
+    module: "scene",
+    title: "3D scene",
+    description:
+      "A three.js scene on react-three-fiber with light, orbit controls and a floor grid in the theme.",
+  },
+  {
+    name: "mostra-whiteboard",
+    module: "whiteboard",
+    title: "Whiteboard",
+    description: "An Excalidraw whiteboard whose drawing saves as a field.",
+  },
+  {
+    name: "mostra-team",
+    module: "team",
+    title: "Team",
+    description:
+      "Who is here, their cursors, who has answered and who changed a shared field, from the team hooks.",
+  },
+  {
     name: "mostra-demo",
     module: "demo",
     title: "Web demo",
@@ -85,17 +181,66 @@ const KIT_ITEMS = [
   },
 ] as const;
 
+/** The kit modules a module imports (`@mostra/kit/<module>`), as their registry items. */
+function kitItemsOf(content: string): string[] {
+  const names = new Set<string>();
+  for (const match of content.matchAll(/from "@mostra\/kit\/([a-z][a-z0-9-]*)"/g)) {
+    names.add(`mostra-${match[1] as string}`);
+  }
+  return [...names].sort();
+}
+
 /** The packages a file imports, by package name, without React. */
 function packagesOf(content: string): string[] {
   const names = new Set<string>();
   for (const match of content.matchAll(/from "([^".][^"]*)"/g)) {
     const specifier = match[1] as string;
-    if (specifier.startsWith("@/")) continue;
+    if (specifier.startsWith("@/") || specifier.startsWith("@mostra/kit/")) continue;
     const parts = specifier.split("/");
     names.add(specifier.startsWith("@") ? parts.slice(0, 2).join("/") : (parts[0] as string));
   }
-  return [...names].filter((name) => name !== "react" && name !== "react-dom").sort();
+  // An on-demand library's own peers that are on-demand libraries too come with it at the kit's pins
+  // (react-three-fiber's three.js, a deck.gl layer package's core), so no install picks another
+  // version of them for it.
+  const pending = [...names].filter((name) => ON_DEMAND[name] !== undefined);
+  while (pending.length > 0) {
+    const name = pending.pop() as string;
+    const manifest = join(ROOT, "node_modules", name, "package.json");
+    const { peerDependencies = {}, peerDependenciesMeta = {} } = JSON.parse(
+      readFileSync(manifest, "utf8"),
+    ) as {
+      peerDependencies?: Record<string, string>;
+      peerDependenciesMeta?: Record<string, { optional?: boolean }>;
+    };
+    for (const peer of Object.keys(peerDependencies)) {
+      if (ON_DEMAND[peer] === undefined || names.has(peer)) continue;
+      if (peerDependenciesMeta[peer]?.optional === true) continue;
+      names.add(peer);
+      pending.push(peer);
+    }
+  }
+  return [...names]
+    .filter((name) => name !== "react" && name !== "react-dom")
+    .sort()
+    .map((name) => {
+      // An on-demand library comes at the kit's pin, as the kit's own module gets it (WP-19).
+      const pin = ON_DEMAND[name];
+      return pin === undefined ? name : `${name}@${pin}`;
+    });
 }
+
+/** The kit's on-demand libraries and their pins: its optional peers. */
+const ON_DEMAND: Readonly<Record<string, string>> = (() => {
+  const manifest = JSON.parse(readFileSync(join(ROOT, "package.json"), "utf8")) as {
+    peerDependencies?: Record<string, string>;
+    peerDependenciesMeta?: Record<string, { optional?: boolean }>;
+  };
+  return Object.fromEntries(
+    Object.entries(manifest.peerDependencies ?? {}).filter(
+      ([name]) => manifest.peerDependenciesMeta?.[name]?.optional === true,
+    ),
+  );
+})();
 
 /** Where the vendored project holds each folder (`src/components/ui` was copied as `ui`). */
 const INSTALLED: Record<string, string> = { "components/ui": "ui", lib: "lib", hooks: "hooks" };
@@ -214,6 +359,7 @@ for (const [base, style] of Object.entries(BASES) as [Base, string][]) {
       title: own.title,
       description: own.description,
       dependencies: packagesOf(content),
+      ...(kitItemsOf(content).length > 0 ? { registryDependencies: kitItemsOf(content) } : {}),
       files: [{ path, type: "registry:component", target: path }],
       mostra: { base },
     };

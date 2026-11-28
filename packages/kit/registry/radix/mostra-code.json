@@ -1,0 +1,34 @@
+{
+  "$schema": "https://ui.shadcn.com/schema/registry-item.json",
+  "name": "mostra-code",
+  "type": "registry:component",
+  "title": "Code",
+  "description": "Code highlighted by Shiki, and a CodeMirror editor whose text saves as a field, both coloured from the theme.",
+  "dependencies": [
+    "@codemirror/autocomplete",
+    "@codemirror/commands",
+    "@codemirror/lang-css",
+    "@codemirror/lang-html",
+    "@codemirror/lang-javascript",
+    "@codemirror/lang-json",
+    "@codemirror/lang-markdown",
+    "@codemirror/lang-python",
+    "@codemirror/language",
+    "@codemirror/state",
+    "@codemirror/view",
+    "@lezer/highlight",
+    "@mostra/react",
+    "cn",
+    "shiki"
+  ],
+  "files": [
+    {
+      "path": "components/mostra/code.tsx",
+      "type": "registry:component",
+      "target": "components/mostra/code.tsx"
+    }
+  ],
+  "mostra": {
+    "base": "radix"
+  }
+}

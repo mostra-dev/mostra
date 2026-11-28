@@ -1,0 +1,26 @@
+{
+  "$schema": "https://ui.shadcn.com/schema/registry-item.json",
+  "name": "mostra-scene",
+  "type": "registry:component",
+  "title": "3D scene",
+  "description": "A three.js scene on react-three-fiber with light, orbit controls and a floor grid in the theme.",
+  "dependencies": [
+    "@react-three/drei@10.7.9",
+    "@react-three/fiber@9.8.2",
+    "cn",
+    "three@0.187.0"
+  ],
+  "registryDependencies": [
+    "mostra-tokens"
+  ],
+  "files": [
+    {
+      "path": "components/mostra/scene.tsx",
+      "type": "registry:component",
+      "target": "components/mostra/scene.tsx"
+    }
+  ],
+  "mostra": {
+    "base": "radix"
+  }
+}

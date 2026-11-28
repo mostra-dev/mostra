@@ -13,9 +13,9 @@ import {
   serializeAll,
   ValueWriter,
 } from "@mostra/protocol";
-import { describe, expect, it } from "vitest";
+import { describe, expect, it, vi } from "vitest";
 import { MostraError } from "../src/runtime/errors.ts";
-import { ServerClient } from "../src/runtime/server-client.ts";
+import { RENEW_MS, ServerClient } from "../src/runtime/server-client.ts";
 import { NetworkError, type Transport } from "../src/runtime/transport.ts";
 
 const VIEW = "vw_01J00000000000000000000000";
@@ -455,6 +455,161 @@ describe("live sources (D56)", () => {
     });
     stopA();
     stopB();
+  });
+
+  it("renews its interest a lease's renewal after it read, however long the answer takes to apply", async () => {
+    const server = new FakeServer();
+    server.live.set("cpu", await state("cpu", 1, 1));
+    // The read is answered only later; a slow page applies an answer behind every update before it.
+    let answer: () => void = () => {};
+    server.liveGate = new Promise((resolve) => {
+      answer = resolve;
+    });
+    const armed: { ms: number; fn: () => void }[] = [];
+    const page = new ServerClient({
+      transport: server.transport(),
+      viewId: VIEW,
+      timers: {
+        setTimeout: (fn, ms) => armed.push({ fn, ms }),
+        clearTimeout: () => {},
+      },
+    });
+    const stop = page.watchLive("cpu", 10);
+    await new Promise((resolve) => setTimeout(resolve, 10));
+    expect(server.liveRequests).toHaveLength(1);
+    // The renewal is due a renewal after the read went out, while its answer is still on its way.
+    expect(armed.map((timer) => timer.ms)).toEqual([RENEW_MS]);
+    armed[0]?.fn();
+    await new Promise((resolve) => setTimeout(resolve, 10));
+    expect(server.liveRequests).toHaveLength(2);
+    answer();
+    stop();
+  });
+
+  it("renews a ring it holds whole without reading it again, and reads it after a gap, a reconnect or a value the stream never brought (AC-08)", async () => {
+    const server = new FakeServer();
+    const entry = async (n: number) => ({
+      revision: String(n),
+      at: "",
+      value: await serializeAll(n, { mode: "argument" }),
+    });
+    const set = async (revision: number, ring: number[]) =>
+      server.live.set("cpu", {
+        ...(await state("cpu", revision, revision)),
+        ring: await Promise.all(ring.map(entry)),
+      });
+    const update = async (n: number) =>
+      page.receive({
+        kind: "live",
+        live: {
+          key: "cpu",
+          revision: String(n),
+          value: await serializeAll(n, { mode: "argument" }),
+        },
+      });
+    const armed: (() => void)[] = [];
+    const page = new ServerClient({
+      transport: server.transport(),
+      viewId: VIEW,
+      timers: { setTimeout: (fn) => armed.push(fn), clearTimeout: () => {} },
+    });
+    const settle = () => new Promise((resolve) => setTimeout(resolve, 10));
+    const renew = async () => {
+      armed.at(-1)?.();
+      await settle();
+    };
+    const asked = () => server.liveRequests.at(-1);
+    await set(3, [1, 2, 3]);
+    page.watchLive("cpu", 3);
+    await settle();
+    expect(asked()).toEqual([{ key: "cpu", window: 3 }]);
+    await update(4);
+    await settle();
+    expect(page.liveView("cpu")?.ring).toEqual([2, 3, 4]);
+    // Held whole: the renewal reads the latest value alone, and the ring stays as the stream made it.
+    await set(4, [2, 3, 4]);
+    await renew();
+    expect(asked()).toEqual([{ key: "cpu", window: 1 }]);
+    expect(page.liveView("cpu")?.ring).toEqual([2, 3, 4]);
+    // A value the stream skipped: the ring is read again.
+    await set(6, [4, 5, 6]);
+    await update(6);
+    await settle();
+    expect(asked()).toEqual([{ key: "cpu", window: 3 }]);
+    expect(page.liveView("cpu")?.ring).toEqual([4, 5, 6]);
+    // A read answers a value the stream hasn't brought: waited for, never taken from the read, and
+    // still missing at the next renewal, the ring is read again.
+    await set(9, [7, 8, 9]);
+    await renew();
+    expect(asked()).toEqual([{ key: "cpu", window: 1 }]);
+    expect(page.liveView("cpu")?.ring).toEqual([4, 5, 6]);
+    await renew();
+    expect(asked()).toEqual([{ key: "cpu", window: 3 }]);
+    expect(page.liveView("cpu")?.ring).toEqual([7, 8, 9]);
+    // A reconnect may have lost updates: the ring is read again.
+    page.resync();
+    await settle();
+    expect(asked()).toEqual([{ key: "cpu", window: 3 }]);
+  });
+
+  it("renews its lease from the stream's own messages when its timers run late", async () => {
+    const server = new FakeServer();
+    server.live.set("cpu", await state("cpu", 1, 1));
+    // Timers that never run: a page busy taking in a burst.
+    const page = new ServerClient({
+      transport: server.transport(),
+      viewId: VIEW,
+      timers: { setTimeout: () => undefined, clearTimeout: () => {} },
+    });
+    const start = Date.now();
+    let now = start;
+    const clock = vi.spyOn(Date, "now").mockImplementation(() => now);
+    try {
+      page.watchLive("cpu", 10);
+      await new Promise((resolve) => setTimeout(resolve, 10));
+      expect(server.liveRequests).toHaveLength(1);
+      const update = async (n: number) =>
+        page.receive({
+          kind: "live",
+          live: {
+            key: "cpu",
+            revision: String(n),
+            value: await serializeAll(n, { mode: "argument" }),
+          },
+        });
+      now = start + RENEW_MS - 1;
+      await update(2);
+      await new Promise((resolve) => setTimeout(resolve, 10));
+      expect(server.liveRequests).toHaveLength(1);
+      now = start + RENEW_MS;
+      await update(3);
+      await new Promise((resolve) => setTimeout(resolve, 10));
+      expect(server.liveRequests).toHaveLength(2);
+    } finally {
+      clock.mockRestore();
+    }
+  });
+
+  it("gives the page's event loop turns while it applies a burst that arrived at once (AC-08)", async () => {
+    const server = new FakeServer();
+    server.live.set("cpu", await state("cpu", 0, 0));
+    const page = client(server);
+    page.watchLive("cpu", 5000);
+    await new Promise((resolve) => setTimeout(resolve, 10));
+    const values = await Promise.all(
+      Array.from({ length: 3000 }, (_, index) => serializeAll(index + 1, { mode: "argument" })),
+    );
+    // One chunk of the stream: every value received in one task.
+    for (const [index, value] of values.entries()) {
+      page.receive({ kind: "live", live: { key: "cpu", revision: String(index + 1), value } });
+    }
+    // A timer due at once runs before the burst is applied: the page took turns.
+    const applied = await new Promise<number>((resolve) => {
+      setTimeout(() => resolve(page.liveView("cpu")?.ring.length ?? 0), 0);
+    });
+    expect(applied).toBeLessThan(3000);
+    await expect.poll(() => page.liveView("cpu")?.ring.length, { timeout: 30_000 }).toBe(3000);
+    expect(page.liveView("cpu")?.ring.at(-1)).toBe(3000);
   });
 
   it("keeps an append window and asks for the ring", async () => {

@@ -112,6 +112,7 @@ const OTHER_HOOKS: Readonly<Record<string, string>> = {
   useReactTable: "TanStack Table 8's, named as what not to write",
   useReducedMotion: "Motion's",
   useFieldArray: "react-hook-form's",
+  useTokens: "the kit's (`@mostra/kit/tokens`, re-exported by `@mostra/kit/scene`)",
 };
 
 /** The names of Mostra's MCP tools this release serves (D164). */

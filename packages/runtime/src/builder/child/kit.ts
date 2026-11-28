@@ -3,39 +3,30 @@
  * first and the kit's registry for its base next, and the stylesheet the client entry imports,
  * which puts the theme stack inside the build's one Tailwind run.
  */
-import { existsSync, readdirSync, readFileSync, statSync } from "node:fs";
-import { extname, isAbsolute, join, relative } from "node:path";
+import {
+  closeSync,
+  constants,
+  existsSync,
+  fstatSync,
+  openSync,
+  readdirSync,
+  readFileSync,
+  realpathSync,
+} from "node:fs";
+import { isAbsolute, join, relative } from "node:path";
 import { HOST_TOKENS } from "@mostra/themes";
 import type { Plugin } from "vite";
 import { isUnder, pathKey } from "../../platform/index.ts";
+import {
+  findUnder,
+  kitFilesUsed,
+  kitModulePath,
+  kitPeers,
+  packageOfSpecifier,
+} from "../kit-files.ts";
 import type { KitBuild } from "../types.ts";
 
-/** The extensions `@/…` tries, in the order Vite tries them for a relative import. */
-const EXTENSIONS = ["", ".tsx", ".ts", ".jsx", ".js", ".mjs", ".mts", ".json"];
-
-/** The file `@/<rest>` names inside `root`, as a bundler finds it, or `undefined`. */
-export function findUnder(root: string, rest: string): string | undefined {
-  const base = join(root, rest);
-  if (!isUnder(base, root)) return undefined;
-  for (const extension of EXTENSIONS) {
-    const candidate = `${base}${extension}`;
-    if (existsSync(candidate) && statSync(candidate).isFile()) return candidate;
-  }
-  for (const extension of EXTENSIONS.slice(1)) {
-    const candidate = join(base, `index${extension}`);
-    if (existsSync(candidate) && statSync(candidate).isFile()) return candidate;
-  }
-  return undefined;
-}
-
-/**
- * The kit module a specifier names (`@mostra/kit/questionnaire`), as the path its file has in an
- * artifact and in the kit's registry (`components/mostra/questionnaire`), or `undefined`.
- */
-export function kitModulePath(source: string): string | undefined {
-  const match = /^@mostra\/kit\/([a-z][a-z0-9-]*)$/.exec(source.split("?")[0] ?? "");
-  return match ? `components/mostra/${match[1] as string}` : undefined;
-}
+export { findUnder, kitFilesUsed, kitModulePath };
 
 /**
  * `@/…` as an artifact means it (ROUND-3 §1.1): the artifact's own file when it has one, else the
@@ -68,6 +59,212 @@ export function kitResolvePlugin(sourceDir: string, kit: KitBuild): Plugin {
 }
 
 /**
+ * The kit's on-demand libraries as the artifact has them (D65, WP-19): a kit module that imports
+ * MapLibre or three.js takes the copy the artifact's lockfile installed (the dependency module
+ * adds the kit's pin to it when the artifact uses the module), never one beside the kit, so the
+ * build is the same from the runtime bundle as from this repository, and the version's lockfile
+ * digest covers it. `buildRoot` is the build's root, whose `node_modules` is the artifact's layout.
+ */
+export function kitPeersPlugin(
+  buildRoot: string,
+  /**
+   * The real directories of the build's packages (the warm set and the artifact's lockfile): a
+   * peer found anywhere else, such as a `node_modules` above the home, is refused, as
+   * `confinePlugin` refuses the artifact's own imports (Opus review of WP-19, finding 1).
+   */
+  packageRoots: readonly string[],
+): Plugin {
+  let kit: { readonly dir: string; readonly peers: ReadonlyMap<string, string> } | undefined;
+  const load = (): typeof kit => {
+    if (kit === undefined) {
+      const link = join(buildRoot, "node_modules", "@mostra", "kit");
+      const dir = existsSync(link) ? realpathSync(link) : "";
+      kit = { dir, peers: dir === "" ? new Map() : kitPeers(dir) };
+    }
+    return kit;
+  };
+  return {
+    name: "mostra:kit-peers",
+    enforce: "pre",
+    async resolveId(source, importer, options) {
+      if (importer === undefined || source.startsWith("\0")) return null;
+      const name = packageOfSpecifier(source);
+      if (name === undefined) return null;
+      const { dir, peers } = load() ?? { dir: "", peers: new Map() };
+      if (dir === "" || !peers.has(name)) return null;
+      const from = importer.split("?")[0] ?? importer;
+      const real = existsSync(from) ? realpathSync(from) : from;
+      if (!isUnder(real, dir)) return null;
+      // As if the artifact's own root imported it: from the layout its lockfile installed, and
+      // from nowhere else (VR-01: every byte of a version is covered by its digests).
+      const resolved = await this.resolve(source, join(buildRoot, "index.html"), {
+        ...options,
+        skipSelf: true,
+      });
+      const id = resolved?.id.split("?")[0];
+      if (resolved && (resolved.external || id === undefined || id.startsWith("\0"))) {
+        return resolved;
+      }
+      if (resolved && id !== undefined && isAbsolute(id) && existsSync(id)) {
+        const file = realpathSync.native(id);
+        if (packageRoots.some((root) => isUnder(file, root))) return resolved;
+      }
+      const module = relative(dir, real).split("\\").join("/");
+      const pin = peers.get(name);
+      return this.error(
+        `Could not resolve "${source}" from the kit's ${module}: ${name} isn't in the artifact's lockfile, and a version is built only from the warm set and its lockfile's packages; add it with \`mostra add ${name}${pin ? `@${pin}` : ""}\`.`,
+      );
+    },
+  };
+}
+
+/** One set of files a kit peer loads at run time from the page's origin (`mostra-kit.assets`). */
+export interface KitAsset {
+  /** The package whose files they are (`@excalidraw/excalidraw`). */
+  readonly package: string;
+  /** Their directory in the package (`dist/prod/fonts`). */
+  readonly from: string;
+  /** Where the page finds them, under `/kit-assets/` (`excalidraw/fonts`). */
+  readonly to: string;
+  /** Directories under `from` left out. */
+  readonly skip?: readonly string[];
+}
+
+/** The files of one asset set, by their path under it. */
+function assetFiles(dir: string, skip: ReadonlySet<string>, prefix = ""): string[] {
+  const files: string[] = [];
+  for (const entry of readdirSync(dir, { withFileTypes: true })) {
+    const path = prefix === "" ? entry.name : `${prefix}/${entry.name}`;
+    if (entry.isDirectory()) {
+      if (!skip.has(path)) files.push(...assetFiles(join(dir, entry.name), skip, path));
+    } else if (entry.isFile()) files.push(path);
+  }
+  return files.sort();
+}
+
+/**
+ * The file `mostra dev` serves for a request's `/kit-assets/…` path: exactly a file the build would
+ * carry (`assetFiles`), so the directories the kit leaves out (`skip`, Excalidraw's CJK face) are
+ * left out in dev too (Opus review of WP-19, finding 10), and only a file whose real path is inside
+ * its set's directory (no `..`, no link out of it). Its real path, or `undefined`.
+ */
+export function devAssetFile(
+  sets: readonly { readonly asset: KitAsset; readonly dir: string }[],
+  url: string,
+): string | undefined {
+  let path: string;
+  try {
+    path = decodeURIComponent(url.split("?")[0] ?? "");
+  } catch {
+    return undefined;
+  }
+  for (const { asset, dir } of sets) {
+    const prefix = `/kit-assets/${asset.to}/`;
+    if (!path.startsWith(prefix)) continue;
+    const rest = path.slice(prefix.length);
+    const parts = rest.split("/");
+    const skip = new Set(asset.skip ?? []);
+    for (let count = 1; count < parts.length; count++) {
+      if (skip.has(parts.slice(0, count).join("/"))) return undefined;
+    }
+    const file = join(dir, rest);
+    if (!isUnder(file, dir)) return undefined;
+    try {
+      const real = realpathSync(file);
+      return isUnder(real, realpathSync(dir)) ? real : undefined;
+    } catch {
+      return undefined;
+    }
+  }
+  return undefined;
+}
+
+/**
+ * A file's bytes, read through one descriptor that also says it is a regular file, so nothing can
+ * change between the check and the read (CodeQL's file-system race); a link put in its place isn't
+ * followed where the platform can refuse it. `undefined` for anything else.
+ */
+function readRegularFile(real: string): Buffer | undefined {
+  let descriptor: number;
+  try {
+    descriptor = openSync(real, constants.O_RDONLY | (constants.O_NOFOLLOW ?? 0));
+  } catch {
+    return undefined;
+  }
+  try {
+    return fstatSync(descriptor).isFile() ? readFileSync(descriptor) : undefined;
+  } finally {
+    closeSync(descriptor);
+  }
+}
+
+/**
+ * The files a kit peer fetches at run time from the page's own origin (WP-19): Excalidraw's fonts,
+ * say, which it loads by URL rather than through the bundler. The kit names them in its
+ * `package.json` (`mostra-kit.assets`); a build whose graph includes that package carries them at
+ * `/kit-assets/<to>/`, byte for byte, so the version's output digest covers them and the page
+ * needs no CDN; `mostra dev` serves them from the package. A build that doesn't use the package
+ * carries nothing.
+ */
+export function kitAssetsPlugin(buildRoot: string): Plugin {
+  let sets: { readonly asset: KitAsset; readonly root: string; readonly dir: string }[] | undefined;
+  const load = (): NonNullable<typeof sets> => {
+    if (sets !== undefined) return sets;
+    sets = [];
+    const link = join(buildRoot, "node_modules", "@mostra", "kit");
+    if (!existsSync(link)) return sets;
+    let declared: readonly KitAsset[] = [];
+    try {
+      const manifest = JSON.parse(
+        readFileSync(join(realpathSync(link), "package.json"), "utf8"),
+      ) as {
+        readonly "mostra-kit"?: { readonly assets?: readonly KitAsset[] };
+      };
+      declared = manifest["mostra-kit"]?.assets ?? [];
+    } catch {
+      declared = [];
+    }
+    for (const asset of declared) {
+      const packageDir = join(buildRoot, "node_modules", asset.package);
+      if (!existsSync(packageDir)) continue;
+      const root = realpathSync(packageDir);
+      const dir = join(root, asset.from);
+      if (existsSync(dir)) sets.push({ asset, root, dir });
+    }
+    return sets;
+  };
+  return {
+    name: "mostra:kit-assets",
+    generateBundle() {
+      const ids = [...this.getModuleIds()].map((id) => id.split("?")[0] ?? id);
+      for (const { asset, root, dir } of load()) {
+        if (!ids.some((id) => isAbsolute(id) && isUnder(id, root))) continue;
+        for (const file of assetFiles(dir, new Set(asset.skip ?? []))) {
+          this.emitFile({
+            type: "asset",
+            fileName: `kit-assets/${asset.to}/${file}`,
+            source: readFileSync(join(dir, file)),
+          });
+        }
+      }
+    },
+    configureServer(server) {
+      server.middlewares.use((request, response, next) => {
+        if (!(request.url ?? "").startsWith("/kit-assets/")) return next();
+        const real = devAssetFile(load(), request.url ?? "");
+        const body = real === undefined ? undefined : readRegularFile(real);
+        if (real === undefined || body === undefined) return next();
+        response.setHeader(
+          "content-type",
+          real.endsWith(".woff2") ? "font/woff2" : "application/octet-stream",
+        );
+        response.end(body);
+      });
+    },
+  };
+}
+
+/**
  * The artifact-relative path an import names under `@/…`: written so (`@/components/ui/button`),
  * as a kit module (`@mostra/kit/questionnaire`), or as the `@/` alias rewrote it, an absolute path
  * in the artifact's root (the alias is there for stylesheets, whose `@import` and `url()` Vite
@@ -88,50 +285,6 @@ const importPath = (from: string, to: string): string => {
   const path = relative(from, to).split("\\").join("/");
   return path.startsWith(".") ? path : `./${path}`;
 };
-
-/** The files whose imports can name `@/…`. */
-const CODE = new Set([".ts", ".tsx", ".js", ".jsx", ".mjs", ".mts", ".mdx"]);
-/** `@/…` or a kit module (`@mostra/kit/<name>`) in an import or export, static or dynamic. */
-const KIT_IMPORT = /(?:from|import)\s*\(?\s*["'](@\/[^"'\s]+|@mostra\/kit\/[a-z][a-z0-9-]*)["']/g;
-
-function codeFiles(dir: string): string[] {
-  const found: string[] = [];
-  for (const entry of readdirSync(dir, { withFileTypes: true })) {
-    if (entry.name === "node_modules" || entry.name.startsWith(".")) continue;
-    const path = join(dir, entry.name);
-    if (entry.isDirectory()) found.push(...codeFiles(path));
-    else if (CODE.has(extname(entry.name))) found.push(path);
-  }
-  return found;
-}
-
-/**
- * The kit's files a page uses: every `@/…` the artifact's code names that the artifact has no
- * copy of, and in turn the kit files those name. Only their classes are generated, so a page
- * carries the CSS of the parts it uses, never the whole registry's.
- */
-export function kitFilesUsed(sourceDir: string, registry: string): string[] {
-  const used = new Set<string>();
-  const visit = (file: string): void => {
-    let text: string;
-    try {
-      text = readFileSync(file, "utf8");
-    } catch {
-      return;
-    }
-    for (const match of text.matchAll(KIT_IMPORT)) {
-      const specifier = match[1] as string;
-      const rest = kitModulePath(specifier) ?? specifier.slice(2);
-      if (findUnder(sourceDir, rest) !== undefined) continue;
-      const kitFile = findUnder(registry, rest);
-      if (kitFile === undefined || used.has(kitFile)) continue;
-      used.add(kitFile);
-      visit(kitFile);
-    }
-  };
-  for (const file of codeFiles(sourceDir)) visit(file);
-  return [...used].sort();
-}
 
 /**
  * The stylesheet every client entry imports: Tailwind over the artifact's source and the kit's

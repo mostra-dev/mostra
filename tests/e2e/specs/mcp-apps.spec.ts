@@ -49,6 +49,13 @@ interface Opened {
 }
 
 /** Calls artifact_open through the host's client and shows its result as the host would. */
+/**
+ * A page's first showing inline, given room on a loaded machine: the loader, the page's bundle and
+ * the app's handshake through two frames, beside the heavier suites a machine runs at once (Linux
+ * WebKit took longer than 5 s once beside the live chart's suite, PR #255's run 46105189914).
+ */
+const SHOWN = { timeout: 30_000 } as const;
+
 async function openInline(
   page: Page,
   artifactId: string,
@@ -130,9 +137,7 @@ test.describe("an artifact inline in an MCP Apps host (MC-02)", () => {
       const second = await publishOwn(client, run.home, info, { fixture: "inline" });
       // The first page's save never reaches the server: its answer waits in the journal.
       const a = await openInline(page, first.artifactId, { refuseFields: true });
-      // Each page's first showing, given room on a loaded machine.
-      const shown = { timeout: 30_000 };
-      await expect(a.view.getByTestId("mode")).toHaveText("mcp-app", shown);
+      await expect(a.view.getByTestId("mode")).toHaveText("mcp-app", SHOWN);
       await a.view.getByTestId("name").fill("Only the first's");
       await a.view.getByTestId("name").blur();
       await expect(bar(a.view).getByText("Not saved yet")).toBeVisible();
@@ -141,13 +146,13 @@ test.describe("an artifact inline in an MCP Apps host (MC-02)", () => {
       // adopts what gone tabs left in its journal, and nothing of the first artifact's.
       const b = await openInline(await page.context().newPage(), second.artifactId);
       // Its required name is still missing: had it adopted the first's answer, nothing would be.
-      await expect(bar(b.view).getByText("1 answer needed")).toBeVisible(shown);
-      await expect.poll(() => b.calls.some((call) => call.name === "app_events"), shown).toBe(true);
+      await expect(bar(b.view).getByText("1 answer needed")).toBeVisible(SHOWN);
+      await expect.poll(() => b.calls.some((call) => call.name === "app_events"), SHOWN).toBe(true);
       await expect(b.view.getByTestId("name")).toHaveValue("");
       expect(JSON.stringify(b.calls)).not.toContain("Only the first's");
       // The first artifact's own page, opened again, finds its answer and sends it.
       const again = await openInline(await page.context().newPage(), first.artifactId);
-      await expect(again.view.getByTestId("name")).toHaveValue("Only the first's", shown);
+      await expect(again.view.getByTestId("name")).toHaveValue("Only the first's", SHOWN);
       await expect
         .poll(
           () =>
@@ -156,7 +161,7 @@ test.describe("an artifact inline in an MCP Apps host (MC-02)", () => {
                 call.name === "app_fields" &&
                 JSON.stringify(call.arguments).includes("Only the first's"),
             ),
-          shown,
+          SHOWN,
         )
         .toBe(true);
     } finally {
@@ -171,7 +176,7 @@ test.describe("an artifact inline in an MCP Apps host (MC-02)", () => {
     try {
       const own = await publishOwn(client, run.home, info, { fixture: "inline" });
       const { view } = await openInline(page, own.artifactId);
-      await expect(view.getByTestId("mode")).toHaveText("mcp-app");
+      await expect(view.getByTestId("mode")).toHaveText("mcp-app", SHOWN);
       // The draft is saved through app_fields, Submit waits on the required answer.
       await expect(bar(view).getByText("1 answer needed")).toBeVisible();
       await view.getByTestId("name").fill("Ada");
@@ -219,7 +224,7 @@ test.describe("an artifact inline in an MCP Apps host (MC-02)", () => {
       expect(declared.text).toContain('<meta name="mostra-target" content="mcp-app" />');
       // Mostra's tokens read the host's variables where the stack names "host"; the host sets light
       // or dark (D175 item 6, D181 item 5).
-      await expect(view.getByTestId("mode")).toHaveText("mcp-app");
+      await expect(view.getByTestId("mode")).toHaveText("mcp-app", SHOWN);
       const look = await view.locator("html").evaluate((element) => {
         const style = getComputedStyle(element);
         return {
@@ -286,7 +291,7 @@ test.describe("what a chat host's frame lacks says so (MC-03)", () => {
     try {
       const own = await publishOwn(client, run.home, info, { fixture: "inline" });
       const { view } = await openInline(page, own.artifactId);
-      await expect(view.getByTestId("mode")).toHaveText("mcp-app");
+      await expect(view.getByTestId("mode")).toHaveText("mcp-app", SHOWN);
       // Presence needs ten updates a second, which a host's tool calls don't carry.
       await expect(view.getByTestId("presence")).toHaveText("unavailable");
       await expect(bar(view).getByText("Who else is here shows on the full page.")).toBeVisible();
@@ -327,7 +332,7 @@ test.describe("what a chat host's frame lacks says so (MC-03)", () => {
     try {
       const published = await publishOwn(own, daemon.home, info, { fixture: "inline" });
       const { view } = await openInline(page, published.artifactId, { mcp: ownMcp });
-      await expect(view.getByTestId("mode")).toHaveText("mcp-app");
+      await expect(view.getByTestId("mode")).toHaveText("mcp-app", SHOWN);
       await expect(bar(view).getByText("Submit from the full page.")).toBeVisible();
       await expect(bar(view).getByText("Choosing is done on the full page.")).toBeVisible();
       await expect(bar(view).getByRole("button", { name: "Submit" })).toBeHidden();

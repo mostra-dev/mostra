@@ -30,6 +30,15 @@ import { NetworkError, type Transport } from "./transport.ts";
 /** How often a page renews its interest in the runs and sources it shows (the lease is a minute). */
 export const RENEW_MS = 20_000;
 
+/** A read's answer for a ring the page holds: how far the source is, without its ring. */
+function withoutRing(state: LiveState): LiveState {
+  const { ring: _ring, ...rest } = state;
+  return rest;
+}
+
+/** How long applying live values may hold the page's event loop before it gives it a turn. */
+const TURN_MS = 8;
+
 /** How many times a run's start is retried after the network failed, with the same client key. */
 const START_ATTEMPTS = 6;
 /** How many runs' early updates a page keeps, and how many updates of each (see `#keepEarly`). */
@@ -98,12 +107,74 @@ export interface LiveView {
   readonly ring: readonly unknown[];
 }
 
+/**
+ * Append mode's values and their revisions, oldest first (AC-08): a value is appended in constant
+ * time, however many are kept, and the array a page reads is made at most once per change it sees
+ * (`snapshot()`), so a source sending a burst of values, or hundreds a second, costs the page one
+ * copy a frame rather than one per value.
+ */
+export class LiveRing {
+  #values: unknown[] = [];
+  #revisions: number[] = [];
+  #start = 0;
+  #snapshot: readonly unknown[] | undefined = [];
+
+  /** How many values are kept. */
+  get length(): number {
+    return this.#values.length - this.#start;
+  }
+
+  /** The revisions kept, oldest first. */
+  revisions(): readonly number[] {
+    return this.#revisions.slice(this.#start);
+  }
+
+  /** Appends one value, keeping at most `window` (every value when `undefined`). */
+  push(value: unknown, revision: number, window: number | undefined): void {
+    this.#values.push(value);
+    this.#revisions.push(revision);
+    this.#trim(window);
+    this.#snapshot = undefined;
+  }
+
+  /** Replaces what is kept (a read of the source's ring), keeping at most `window`. */
+  replace(
+    values: readonly unknown[],
+    revisions: readonly number[],
+    window: number | undefined,
+  ): void {
+    this.#values = [...values];
+    this.#revisions = [...revisions];
+    this.#start = 0;
+    this.#trim(window);
+    this.#snapshot = undefined;
+  }
+
+  /** The values kept, oldest first: the same array until the next change. */
+  snapshot(): readonly unknown[] {
+    this.#snapshot ??= this.#values.slice(this.#start);
+    return this.#snapshot;
+  }
+
+  #trim(window: number | undefined): void {
+    if (window === undefined) return;
+    if (this.length > window) this.#start = this.#values.length - window;
+    // The dropped values are let go once they are as many as those kept: amortized constant time.
+    if (this.#start > 0 && this.#start >= this.#values.length - this.#start) {
+      this.#values = this.#values.slice(this.#start);
+      this.#revisions = this.#revisions.slice(this.#start);
+      this.#start = 0;
+    }
+  }
+}
+
 interface TrackedLive {
   view: LiveView;
   watchers: Map<number, number | undefined>;
   /** Revision numbers decoded or decoding, so an older value never replaces a newer one. */
   newest: number;
-  ringRevisions: number[];
+  /** Append mode's values; `view.ring` is its snapshot, taken when the page reads the view. */
+  ring: LiveRing;
   /**
    * Every read and update of this source applies in the order it arrived, one at a time: values
    * decode asynchronously, and two in flight must never land out of order.
@@ -111,6 +182,22 @@ interface TrackedLive {
   applying: Promise<void>;
   /** The newest value in latest mode still waiting its turn; a newer one replaces it. */
   pending?: LiveUpdate;
+  /**
+   * Append mode: the window the page last read the source's ring at, while it has held every
+   * value since (no gap, no reconnect). A renewal then reads only the latest value, not the ring
+   * again: a 10,000-point ring read every 20 s is 10,000 values to decode each time, which a slow
+   * device can't keep up with (AC-08). `undefined` until the ring is read, and after a gap.
+   */
+  held?: number;
+  /** The window the page's latest read of the ring asked for. */
+  asked?: number;
+  /** The newest revision the page's stream brought, as it arrived, before it applies. */
+  received: number;
+  /**
+   * A revision a read answered without its ring that the stream hadn't brought yet: on its way,
+   * or lost. Still missing at the next renewal, the ring is read again.
+   */
+  expected?: number;
 }
 
 /** Options for {@link ServerClient}. */
@@ -139,6 +226,10 @@ export class ServerClient {
   #nextWatcher = 1;
   #renewTimer: unknown;
   #liveFlush: Promise<void> | undefined;
+  /** When the page last read its live sources, which renews their lease (`Date.now()`). */
+  #readAt: number | undefined;
+  /** When applying live values last gave the event loop a turn (`performance.now()`). */
+  #turnAt = 0;
   #liveRefresh = new Set<string>();
   #notifyScheduled = false;
   /** Plain calls whose value hasn't arrived yet. */
@@ -480,7 +571,11 @@ export class ServerClient {
 
   /** What the page knows of a live source. */
   liveView(key: string): LiveView | undefined {
-    return this.#live.get(key)?.view;
+    const tracked = this.#live.get(key);
+    if (!tracked) return undefined;
+    const ring = tracked.ring.snapshot();
+    if (tracked.view.ring !== ring) tracked.view = { ...tracked.view, ring };
+    return tracked.view;
   }
 
   /**
@@ -494,8 +589,9 @@ export class ServerClient {
         view: { key, loading: true, ring: [] },
         watchers: new Map(),
         newest: 0,
-        ringRevisions: [],
+        ring: new LiveRing(),
         applying: Promise.resolve(),
+        received: 0,
       };
       this.#live.set(key, tracked);
     }
@@ -556,19 +652,39 @@ export class ServerClient {
         this.#changed();
         return;
       }
+      // The lease this read renews starts now, so the next renewal is due from now, never from
+      // when the answer is applied: applying it waits behind every update already arriving for the
+      // source, and on a slow device a burst of 10,000 points held it there past the lease's
+      // minute, so the producer stopped (PR #255's Windows arm64 run 46105189914).
+      this.#readAt = Date.now();
+      this.#renewSoon();
       try {
+        // Sources whose ring this read renews without reading it: their answer's one ring entry
+        // only says how far the source is.
+        const renewing = new Set<string>();
         const { sources } = await (transport.live as NonNullable<Transport["live"]>)({
           viewId: this.#viewId,
           keys: shown.map((tracked) => {
             const window = this.#windowOf(tracked);
+            // The ring only when the page doesn't hold it whole (D130's read, AC-08).
+            const ring =
+              window !== undefined &&
+              (tracked.held === undefined ||
+                window > tracked.held ||
+                (tracked.expected !== undefined && tracked.received < tracked.expected));
+            if (ring) tracked.asked = window;
+            // A ring held whole is renewed with a window of one: the gateway keeps the view in
+            // append mode (it coalesces only a latest-mode reader's values, D130) and answers the
+            // newest value alone.
+            else if (window !== undefined) renewing.add(tracked.view.key);
             return {
               key: tracked.view.key,
-              ...(window !== undefined ? { window } : {}),
+              ...(ring ? { window } : window !== undefined ? { window: 1 } : {}),
               ...(refresh.has(tracked.view.key) ? { refresh: true } : {}),
             };
           }),
         });
-        for (const source of sources) await this.#applyLiveState(source);
+        for (const source of sources) await this.#applyLiveState(source, renewing.has(source.key));
       } catch (error) {
         for (const tracked of shown) {
           if (tracked.view.revision !== undefined) continue;
@@ -581,7 +697,6 @@ export class ServerClient {
         }
         this.#changed();
       }
-      this.#renewSoon();
     });
   }
 
@@ -589,13 +704,36 @@ export class ServerClient {
   #inOrder(key: string, apply: (tracked: TrackedLive) => Promise<void>): Promise<void> {
     const tracked = this.#live.get(key);
     if (!tracked) return Promise.resolve();
-    const next = tracked.applying.then(() => apply(tracked)).catch(() => {});
+    const next = tracked.applying
+      .then(() => this.#yieldIfBusy())
+      .then(() => apply(tracked))
+      .catch(() => {});
     tracked.applying = next;
     return next;
   }
 
-  #applyLiveState(state: LiveState): Promise<void> {
-    return this.#inOrder(state.key, (tracked) => this.#applyLiveStateNow(tracked, state));
+  /**
+   * Gives the page's event loop a turn when applying has held it for a while (AC-08). A burst of
+   * values can reach the page in one chunk of its stream, each value a step of the chain above, all
+   * microtasks: without a turn, nothing else runs until the last is applied, neither the page's
+   * frames nor its timers, nor the renewal of the sources' lease, which a slow device let lapse
+   * while it took in 10,000 points for over a minute (Windows arm64, run 46141792466). Each turn
+   * also renews the lease once a renewal is due.
+   */
+  async #yieldIfBusy(): Promise<void> {
+    const now = performance.now();
+    if (now - this.#turnAt < TURN_MS) return;
+    await new Promise<void>((resolve) => {
+      setTimeout(resolve, 0);
+    });
+    this.#turnAt = performance.now();
+    if (this.#readAt !== undefined && Date.now() - this.#readAt >= RENEW_MS) this.#renewNow();
+  }
+
+  #applyLiveState(state: LiveState, renewal = false): Promise<void> {
+    return this.#inOrder(state.key, (tracked) =>
+      this.#applyLiveStateNow(tracked, renewal ? withoutRing(state) : state),
+    );
   }
 
   #applyLiveUpdate(update: LiveUpdate): Promise<void> {
@@ -626,20 +764,32 @@ export class ServerClient {
       const revisions = state.ring.map((entry) => Number(entry.revision));
       // A read answered after newer updates arrived keeps them: the ring only moves forward.
       const last = revisions.at(-1) ?? 0;
-      const kept = tracked.ringRevisions.flatMap((held, index) =>
-        held > last ? [{ revision: held, value: tracked.view.ring[index] }] : [],
+      const held = tracked.ring.revisions();
+      const heldValues = tracked.ring.snapshot();
+      const kept = held.flatMap((revision, index) =>
+        revision > last ? [{ revision, value: heldValues[index] }] : [],
       );
-      const window = this.#windowOf(tracked);
-      const merged = [...values, ...kept.map((entry) => entry.value)];
-      const mergedRevisions = [...revisions, ...kept.map((entry) => entry.revision)];
-      tracked.ringRevisions =
-        window === undefined ? mergedRevisions : mergedRevisions.slice(-window);
-      tracked.view = {
-        ...tracked.view,
-        ring: window === undefined ? merged : merged.slice(-window),
-      };
+      tracked.ring.replace(
+        [...values, ...kept.map((entry) => entry.value)],
+        [...revisions, ...kept.map((entry) => entry.revision)],
+        this.#windowOf(tracked),
+      );
+      // Held whole at the window it was asked for, which a page showing it larger asks again.
+      if (tracked.asked !== undefined) tracked.held = tracked.asked;
+      delete tracked.expected;
+    } else if (this.#windowOf(tracked) !== undefined && state.value) {
+      // A renewal of a ring the page holds: its values come on the stream, in order. A revision the
+      // stream hasn't brought yet is waited for, never taken here, or the values before it would
+      // be skipped as old.
+      if (revision > tracked.received) {
+        tracked.expected = Math.max(tracked.expected ?? 0, revision);
+      }
     }
-    if (state.value && revision >= tracked.newest) {
+    if (
+      state.value &&
+      revision >= tracked.newest &&
+      (state.ring || this.#windowOf(tracked) === undefined)
+    ) {
       tracked.newest = revision;
       const data = await decode(state.value);
       if (revision < tracked.newest) return;
@@ -687,20 +837,17 @@ export class ServerClient {
     // A value skipped (a dropped message): read the source again, ring included.
     const skipped =
       tracked.newest > 0 && revision > tracked.newest + 1 && this.#windowOf(tracked) !== undefined;
+    if (skipped) delete tracked.held;
     tracked.newest = revision;
     const data = await decode(update.value);
     const window = this.#windowOf(tracked);
-    const ring =
-      window === undefined ? tracked.view.ring : [...tracked.view.ring, data].slice(-window);
-    if (window !== undefined)
-      tracked.ringRevisions = [...tracked.ringRevisions, revision].slice(-window);
+    if (window !== undefined) tracked.ring.push(data, revision, window);
     // A new value came from its producer, so its owner is back.
     const { error: _cleared, ownerOffline: _back, ...rest } = tracked.view;
     tracked.view = {
       ...rest,
       loading: false,
       data,
-      ring,
       revision: String(revision),
       ...(update.at !== undefined ? { at: update.at } : {}),
     };
@@ -721,7 +868,13 @@ export class ServerClient {
       if (!this.#merge(tracked, message.run))
         void this.attach({ runIds: [message.run.runId] }).catch(() => {});
     } else if (message.kind === "live") {
+      const tracked = this.#live.get(message.live.key);
+      const revision = Number(message.live.revision ?? 0);
+      if (tracked && revision > tracked.received) tracked.received = revision;
       void this.#applyLiveUpdate(message.live);
+      // A page busy taking in a burst may run its timers late, past the lease's minute (a slow
+      // device, AC-08): the stream's own messages renew it once a renewal is due.
+      if (this.#readAt !== undefined && Date.now() - this.#readAt >= RENEW_MS) this.#renewNow();
     }
     // Other kinds (the roster and presence, D168) are the team client's; a kind a newer gateway
     // adds is none of this client's either.
@@ -743,6 +896,13 @@ export class ServerClient {
 
   /** The stream came back after a gap: read again what may have been missed. */
   resync(): void {
+    // Updates sent while the stream was down are gone: every ring is read again.
+    for (const tracked of this.#live.values()) delete tracked.held;
+    this.#renewNow();
+  }
+
+  /** Renews interest in open runs and shown sources now, holding what the page has. */
+  #renewNow(): void {
     const open = [...this.#runs.values()].filter(
       (tracked) => !isFinalRunStatus(tracked.view.status),
     );
@@ -762,7 +922,7 @@ export class ServerClient {
       );
       const shown = [...this.#live.values()].some((tracked) => tracked.watchers.size > 0);
       if (open.length > 0 || shown) {
-        this.resync();
+        this.#renewNow();
         this.#renewSoon();
       }
     }, RENEW_MS);

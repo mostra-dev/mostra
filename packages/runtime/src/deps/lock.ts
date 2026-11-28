@@ -114,6 +114,22 @@ export function lockDigest(text: string): string {
 }
 
 /** Every package, direct or transitive, an installer lockfile pins: `{ name, version }`. */
+/**
+ * The overrides an installer lockfile was resolved with (pnpm's top-level `overrides:`), which
+ * the layout's `package.json` must name again for a frozen install from it (WP-19).
+ */
+export function overridesOf(pnpm: string | undefined): Readonly<Record<string, string>> {
+  if (pnpm === undefined) return {};
+  const parsed = parse(pnpm) as { overrides?: Record<string, unknown> } | null;
+  const overrides = parsed?.overrides;
+  if (overrides === undefined || overrides === null || typeof overrides !== "object") return {};
+  return Object.fromEntries(
+    Object.entries(overrides)
+      .filter((entry): entry is [string, string] => typeof entry[1] === "string")
+      .sort(([a], [b]) => (a < b ? -1 : 1)),
+  );
+}
+
 export function pinnedPackages(pnpm: string): { name: string; version: string }[] {
   const data = (parse(pnpm) ?? {}) as { packages?: Record<string, unknown> | null };
   const result: { name: string; version: string }[] = [];

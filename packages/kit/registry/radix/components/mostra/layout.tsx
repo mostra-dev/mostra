@@ -1,3 +1,5 @@
+"use client";
+
 /**
  * The page's frame (KT-10's "a beautiful result without design skill"): the page with its title,
  * its sections and a row of figures, each drawn from the theme's tokens (`--page-width`,
@@ -7,6 +9,7 @@
  * artifact for editing, where the copy then wins (D68).
  */
 
+import { InsidePage } from "@mostra/kit/page-context";
 import { cn } from "cn";
 import type * as React from "react";
 
@@ -52,6 +55,9 @@ export function Page({
       data-slot="page"
       className={cn(
         "mx-auto flex w-full flex-col gap-(--stack-gap) px-5 py-(--page-pad) sm:px-8",
+        // Blocks span the column, links among them; a button keeps its own width (#242, and the
+        // Opus review of WP-19, finding 8: a link card placed in the page still spans it).
+        "[&>:is(button,[data-slot=button],[data-slot=button-group])]:self-start",
         WIDTHS[width],
         className,
       )}
@@ -60,7 +66,7 @@ export function Page({
       {(title !== undefined || description !== undefined || meta !== undefined) && (
         <PageHeader title={title} description={description} meta={meta} />
       )}
-      {children}
+      <InsidePage.Provider value={true}>{children}</InsidePage.Provider>
     </main>
   );
 }

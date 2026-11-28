@@ -1,0 +1,25 @@
+{
+  "$schema": "https://ui.shadcn.com/schema/registry-item.json",
+  "name": "mostra-live-chart",
+  "type": "registry:component",
+  "title": "Live chart",
+  "description": "A chart of points that keep arriving, many a second, from a live source in append mode or from the page: uPlot on a canvas in the theme's series colours.",
+  "dependencies": [
+    "@mostra/react",
+    "cn",
+    "uplot"
+  ],
+  "registryDependencies": [
+    "mostra-tokens"
+  ],
+  "files": [
+    {
+      "path": "components/mostra/live-chart.tsx",
+      "type": "registry:component",
+      "target": "components/mostra/live-chart.tsx"
+    }
+  ],
+  "mostra": {
+    "base": "radix"
+  }
+}

@@ -5,9 +5,11 @@
   "title": "Web demo",
   "description": "A front end the artifact builds into its version, shown in a phone, tablet or browser frame at that device's viewport, with a switcher between them.",
   "dependencies": [
-    "@mostra/kit",
     "@mostra/react",
     "cn"
+  ],
+  "registryDependencies": [
+    "mostra-demo"
   ],
   "files": [
     {

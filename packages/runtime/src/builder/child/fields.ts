@@ -37,13 +37,26 @@ export const KIT_FIELD_MODULES: ReadonlySet<string> = new Set([
   "@/components/mostra/questionnaire",
   "@mostra/kit/review",
   "@/components/mostra/review",
+  // WP-19: the code editor and the whiteboard, each a field of its own `id`.
+  "@mostra/kit/code",
+  "@/components/mostra/code",
+  "@mostra/kit/whiteboard",
+  "@/components/mostra/whiteboard",
 ]);
 const QUESTIONNAIRE_MODULES = KIT_FIELD_MODULES;
 /**
  * The kit's parts whose `id`s name fields: a questionnaire and its questions, and a review set,
  * whose choice is `review.<id>.choice` (WP-20, D109).
  */
-const QUESTIONNAIRE_PARTS = new Set(["Questionnaire", "Question", "ReviewSet"]);
+const QUESTIONNAIRE_PARTS = new Set([
+  "Questionnaire",
+  "Question",
+  "ReviewSet",
+  "CodeEditor",
+  "Whiteboard",
+]);
+/** The kit's parts that are one field each, named by their `id` (WP-19). */
+const FIELD_PARTS = new Set(["CodeEditor", "Whiteboard"]);
 
 /** The fields a question's answer may be: the answer, its comment and an answer of its own. */
 const QUESTION_SUFFIXES = ["", ".comment", ".other"];
@@ -240,6 +253,9 @@ class FieldScan {
         if (part === "ReviewSet") {
           this.reviewSet(node, at(node));
         }
+        if (part !== undefined && FIELD_PARTS.has(part)) {
+          this.fieldPart(node, part, at(node));
+        }
         if (part === "Question") {
           if (questionnaire === undefined) {
             // Its questionnaire's ID is somewhere the scan doesn't follow (another component).
@@ -393,6 +409,24 @@ class FieldScan {
         location,
       });
     }
+  }
+
+  /** A kit part that is one field, its `id` (`<CodeEditor id="query">`, `<Whiteboard>`). */
+  fieldPart(element: Node, part: string, location: FieldLocation): void {
+    const id = this.jsxId(element, location);
+    if (id === undefined) {
+      this.open(`a <${part}> whose id isn't a string literal`, location);
+      return;
+    }
+    const label = this.jsxLiteral(element, "label");
+    const required = this.jsxLiteral(element, "required");
+    this.entries.push({
+      ...(id.length === 1 ? { id: id[0] as string } : { template: id }),
+      hook: "useField",
+      ...(typeof label === "string" ? { label } : {}),
+      ...(required === true ? { required: true } : {}),
+      location,
+    });
   }
 
   /** A `<ReviewSet>`: its choice, `review.<id>.choice`, whether or not it asks for Choose. */

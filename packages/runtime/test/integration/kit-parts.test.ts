@@ -263,7 +263,10 @@ export default function Page() {
       // version's coverage is open and says why, never exact without them.
       for (const name of ["lazy", "registry"]) {
         expect(coverage[name]?.open, name).toBe(true);
-        expect(coverage[name]?.reasons.join("\n"), name).toMatch(/the kit's questionnaire/);
+        // The reason names the kit module (WP-19: the code editor and whiteboard are such modules).
+        expect(coverage[name]?.reasons.join("\n"), name).toMatch(
+          /uses @mostra\/kit\/questionnaire where the field scan can't see its ids/,
+        );
       }
     },
     VERIFY_MS,
@@ -385,6 +388,20 @@ export default function Page() {
       } finally {
         expect((await configure({})).error).toBeUndefined();
       }
+    },
+    VERIFY_MS,
+  );
+});
+
+describe("an artifact's copies of the kit's modules (Opus review of WP-19, finding 3)", () => {
+  it(
+    "builds the later kit's questionnaire beside a layout the artifact copied before it",
+    async () => {
+      const dir = join(tempDir("verify-kit-old-layout"), "older-layout");
+      cpSync(join(FIXTURES, "kit-old-layout"), dir, { recursive: true });
+      const verdict = await verify(dir);
+      expect(codes(verdict, "error")).toEqual([]);
+      expect(verdict.status).toBe("pass");
     },
     VERIFY_MS,
   );

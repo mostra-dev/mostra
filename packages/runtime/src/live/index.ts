@@ -196,6 +196,9 @@ function tooLarge(key: string): RpcError {
   );
 }
 
+/** The most producers' values the live module stores in one transaction. */
+const WRITE_BATCH = 500;
+
 /** Creates the live module. */
 export function createLive(options: LiveOptions): Live {
   const { ledger, log, bus, pool } = options;
@@ -226,6 +229,67 @@ export function createLive(options: LiveOptions): Live {
   let stopped = false;
   /** A worker is starting only to say which of its version's sources are `always`. */
   let discovering = false;
+
+  /**
+   * Producers' values not yet stored, in the order they came. They are stored together, in
+   * transactions of at most `WRITE_BATCH`, a turn of the event loop after they came (AC-08): one
+   * transaction a value made a burst of 10,000 values 10,000 synced commits, which on Windows'
+   * disks held the supervisor's event loop for over a minute, so nothing else it served (a page's
+   * renewal of its lease included) ran until the last (Windows arm64, run 46146596775). Each value
+   * is still stored, under its own revision, before it is published.
+   */
+  const queued: {
+    readonly artifactId: string;
+    readonly key: string;
+    readonly value: Batches;
+    readonly versionId: string;
+    readonly ring: number | undefined;
+  }[] = [];
+  let turnScheduled = false;
+  /** Stores every queued value now. */
+  const drainQueued = (): void => {
+    while (queued.length > 0) writeQueued();
+  };
+  /** Stores the queued values a turn after they came, a transaction a turn. */
+  const onTurn = (): void => {
+    turnScheduled = false;
+    writeQueued();
+    if (queued.length > 0) {
+      turnScheduled = true;
+      setImmediate(onTurn);
+    }
+  };
+  /** Stores the oldest queued values, at most `WRITE_BATCH`, in one transaction. */
+  const writeQueued = (): void => {
+    const batch = queued.splice(0, WRITE_BATCH);
+    if (batch.length === 0) return;
+    const write = (entries: typeof batch) =>
+      ledger.write((db) =>
+        entries.map((entry) =>
+          store(db, entry.artifactId, entry.key, entry.value, entry.versionId, entry.ring),
+        ),
+      );
+    let stored: ({ revision: number; at: string } | undefined)[];
+    try {
+      stored = write(batch);
+    } catch {
+      // One value's failure costs only that value: each is stored alone again.
+      stored = batch.map((entry) => {
+        try {
+          return write([entry])[0];
+        } catch (error) {
+          log.error("live.store_failed", { key: entry.key, error });
+          return undefined;
+        }
+      });
+    }
+    batch.forEach((entry, index) => {
+      const done = stored[index];
+      if (done === undefined) return;
+      failures.delete(keyOf(entry.artifactId, entry.key));
+      publishValue(entry.artifactId, entry.key, done.revision, done.at, entry.value);
+    });
+  };
 
   const ringOf = (key: string, versionId: string | undefined): number | undefined => {
     if (!versionId) return undefined;
@@ -625,6 +689,8 @@ export function createLive(options: LiveOptions): Live {
       });
       // Built only for a hosted artifact's value, so a local producer pays nothing for it.
       if (options.forward?.(worker.artifactId, worker.versionId, outgoing)) return;
+      // A failure follows the values that came before it, as they were stored.
+      if (parsed.data.error) drainQueued();
       if (parsed.data.error) {
         fail(worker.artifactId, key, parsed.data.error);
         return;
@@ -632,25 +698,29 @@ export function createLive(options: LiveOptions): Live {
       const value = parsed.data.value as Batches | undefined;
       if (!value) return;
       if (JSON.stringify(value).length > LIVE_VALUE_MAX) {
+        drainQueued();
         fail(worker.artifactId, key, {
           code: "MOSTRA_LIVE_TOO_LARGE",
           message: tooLarge(key).diagnostic.message,
         });
         return;
       }
-      const ring = ringOf(key, worker.versionId);
-      try {
-        const stored = ledger.write((db) =>
-          store(db, worker.artifactId, key, value as Frame[][], worker.versionId, ring),
-        );
-        failures.delete(keyOf(worker.artifactId, key));
-        publishValue(worker.artifactId, key, stored.revision, stored.at, value);
-      } catch (error) {
-        log.error("live.store_failed", { key, error });
+      queued.push({
+        artifactId: worker.artifactId,
+        key,
+        value,
+        versionId: worker.versionId,
+        ring: ringOf(key, worker.versionId),
+      });
+      if (queued.length >= WRITE_BATCH) writeQueued();
+      else if (!turnScheduled) {
+        turnScheduled = true;
+        setImmediate(onTurn);
       }
     },
 
     crashed(crash) {
+      drainQueued();
       const ended = new Set(crash.liveKeys);
       for (const [id, producer] of running) {
         if (producer.versionId !== crash.versionId) continue;
@@ -740,6 +810,8 @@ export function createLive(options: LiveOptions): Live {
 
     stop() {
       stopped = true;
+      // Values that came before the stop are stored, as each was before (AC-08's batching).
+      drainQueued();
       if (timer !== undefined) clearInterval(timer);
       stopTallies?.();
       stopTallies = undefined;

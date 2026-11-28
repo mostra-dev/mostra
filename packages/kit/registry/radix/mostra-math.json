@@ -1,0 +1,21 @@
+{
+  "$schema": "https://ui.shadcn.com/schema/registry-item.json",
+  "name": "mostra-math",
+  "type": "registry:component",
+  "title": "Formula",
+  "description": "TeX typeset by KaTeX, inline in a sentence or on its own line.",
+  "dependencies": [
+    "cn",
+    "katex"
+  ],
+  "files": [
+    {
+      "path": "components/mostra/math.tsx",
+      "type": "registry:component",
+      "target": "components/mostra/math.tsx"
+    }
+  ],
+  "mostra": {
+    "base": "radix"
+  }
+}

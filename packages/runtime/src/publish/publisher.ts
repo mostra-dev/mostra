@@ -584,6 +584,7 @@ export function createPublisher(options: PublisherOptions): Publisher {
       sourceDir: join(staging, "source"),
       artifactDir: source.root,
       artifactPath: path,
+      kitBase: manifest.kit?.base ?? "base",
     });
     // A lockfile that names plugins passed the plugin gate inside `resolve` (D172 item 5): its
     // ranges, conflicts and licenses, then its entries, so no version records plugins this release

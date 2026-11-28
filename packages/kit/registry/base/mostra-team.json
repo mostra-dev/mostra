@@ -1,0 +1,21 @@
+{
+  "$schema": "https://ui.shadcn.com/schema/registry-item.json",
+  "name": "mostra-team",
+  "type": "registry:component",
+  "title": "Team",
+  "description": "Who is here, their cursors, who has answered and who changed a shared field, from the team hooks.",
+  "dependencies": [
+    "@mostra/react",
+    "cn"
+  ],
+  "files": [
+    {
+      "path": "components/mostra/team.tsx",
+      "type": "registry:component",
+      "target": "components/mostra/team.tsx"
+    }
+  ],
+  "mostra": {
+    "base": "base"
+  }
+}

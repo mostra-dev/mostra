@@ -1,0 +1,383 @@
+/**
+ * The kit's on-demand libraries (WP-19, D65, M110): a page that imports `@mostra/kit/map`,
+ * `/scene` or `/whiteboard` gets MapLibre and deck.gl, three.js and react-three-fiber, or Excalidraw
+ * installed with it, at exactly the versions the kit pins, through Mostra's real install child
+ * against a local mirror of this workspace's copies (no network); its type check reads those
+ * libraries' own types; the map's worker and the whiteboard's fonts are served from the page's own
+ * origin; and the editor's and the whiteboard's fields are in the version's coverage.
+ */
+import { existsSync, mkdirSync, readdirSync, readFileSync, writeFileSync } from "node:fs";
+import { dirname, join } from "node:path";
+import { fileURLToPath } from "node:url";
+import { VerifyVerdict } from "@mostra/protocol";
+import { afterAll, beforeAll, describe, expect, it } from "vitest";
+import { kitOverrides, kitPeers } from "../../src/builder/index.ts";
+import { parseLock } from "../../src/deps/index.ts";
+import { overridesOf, pinnedPackages } from "../../src/deps/lock.ts";
+import { removeTree } from "../../src/platform/index.ts";
+import { installedClosure, type Mirror, startMirror } from "../mirror.ts";
+import { skillSampleArtifact } from "../skill-samples.ts";
+import {
+  connectTo,
+  type DaemonStatus,
+  initializeParams,
+  type LineClient,
+  type Message,
+  type RuntimeProcess,
+  startDaemon,
+  type TestHome,
+  tempDir,
+  verifiedHome,
+} from "../support.ts";
+
+const KIT = fileURLToPath(new URL("../../../kit/", import.meta.url));
+const VERIFY_MS = 420_000;
+
+let mirror: Mirror;
+let home: TestHome;
+let daemon: RuntimeProcess & { status: DaemonStatus };
+let client: LineClient;
+
+const result = (message: Message): unknown => {
+  if (message.error) throw new Error(`${message.error.data.code}: ${message.error.data.message}`);
+  return message.result;
+};
+
+function artifact(name: string, files: Record<string, string>): string {
+  const dir = join(tempDir(`kitlib-${name}`), name);
+  for (const [path, text] of Object.entries(files)) {
+    mkdirSync(dirname(join(dir, path)), { recursive: true });
+    writeFileSync(join(dir, path), text);
+  }
+  return dir;
+}
+
+async function verify(path: string): Promise<VerifyVerdict> {
+  const message = await client.call("artifact/verify", { source: { path } }, VERIFY_MS);
+  return VerifyVerdict.parse(result(message));
+}
+
+async function publish(path: string): Promise<{ versionId: string }> {
+  return result(await client.call("artifact/publish", { source: { path } }, VERIFY_MS)) as {
+    versionId: string;
+  };
+}
+
+/** The exact versions a version's lockfile pins, by package. */
+function pinned(versionId: string): Readonly<Record<string, string>> {
+  return parseLock(readFileSync(join(home.home, "versions", versionId, "lock.yaml"), "utf8"))
+    .packages;
+}
+
+/** Every file of a version's client build, relative to `client/`. */
+function clientFiles(versionId: string): string[] {
+  const root = join(home.home, "versions", versionId, "client");
+  const out: string[] = [];
+  const walk = (dir: string, prefix: string): void => {
+    for (const entry of readdirSync(dir, { withFileTypes: true })) {
+      if (entry.isDirectory()) walk(join(dir, entry.name), `${prefix}${entry.name}/`);
+      else out.push(`${prefix}${entry.name}`);
+    }
+  };
+  walk(root, "");
+  return out;
+}
+
+const errors = (verdict: VerifyVerdict): string[] =>
+  verdict.diagnostics
+    .filter((diagnostic) => diagnostic.severity === "error")
+    .map((diagnostic) => `${diagnostic.code}: ${diagnostic.message}`);
+
+const PINS = kitPeers(KIT);
+const OVERRIDES = kitOverrides(KIT);
+
+/**
+ * A three.js newer than the kit's pin, which the mirror also serves: a resolution that took the
+ * newest release instead of the kit's pin would take it (Opus review of WP-19, finding 5).
+ */
+const NEWER_THREE = "0.999.0";
+
+/** The newer three.js, as a package directory the mirror packs. */
+function newerThree(): {
+  name: string;
+  version: string;
+  dir: string;
+  manifest: Record<string, unknown>;
+} {
+  const dir = join(tempDir("kitlib-newer-three"), "three");
+  const manifest = { name: "three", version: NEWER_THREE, type: "module", main: "index.js" };
+  mkdirSync(dir, { recursive: true });
+  writeFileSync(join(dir, "package.json"), JSON.stringify(manifest));
+  writeFileSync(join(dir, "index.js"), "export class Color {}\n");
+  return { name: "three", version: NEWER_THREE, dir, manifest };
+}
+
+/** The overrides a version's lockfile was resolved with. */
+function overridesIn(versionId: string): Readonly<Record<string, string>> {
+  return overridesOf(
+    parseLock(readFileSync(join(home.home, "versions", versionId, "lock.yaml"), "utf8"))
+      .pnpm as string,
+  );
+}
+
+beforeAll(async () => {
+  // Every pinned library the kit installs for its own tests (deck.gl's other layers are pinned
+  // without being installed, so a page that adds one gets the version its map needs).
+  const installed = [...PINS.keys()].filter((name) =>
+    existsSync(join(KIT, "node_modules", name, "package.json")),
+  );
+  mirror = await startMirror([...installedClosure(KIT, installed), newerThree()]);
+  home = verifiedHome();
+  // The registry is the mirror's (the variable wins over any user's `.npmrc`); the user's home
+  // stays, since verify's browser is found there.
+  daemon = await startDaemon(home, { env: { ...home.env, npm_config_registry: mirror.url } });
+  client = await connectTo(daemon.status.socket as string);
+  result(await client.call("mostra/initialize", initializeParams()));
+}, 120_000);
+
+afterAll(async () => {
+  await client?.call("mostra/shutdown", {});
+  await daemon?.exited;
+  await mirror?.close();
+  // The installed libraries are tens of thousands of files, which Windows arm64 removes in more
+  // than the minute the shared clean-up has: they go here, with a time of their own, first.
+  // A file still held is left to the shared clean-up, which names it.
+  if (home !== undefined) await removeTree(join(home.home, "deps")).catch(() => {});
+}, 600_000);
+
+describe("the kit's on-demand libraries (WP-19, D65)", () => {
+  it("installs three.js, react-three-fiber and drei at the kit's pins for a scene, whose elements are typed", async () => {
+    const dir = artifact("scene", {
+      "index.tsx": `import { Scene, useTokens } from "@mostra/kit/scene";
+import { defineArtifact } from "@mostra/react";
+
+export const artifact = defineArtifact({ title: "A knot" });
+
+function Knot() {
+  const tokens = useTokens();
+  return (
+    <mesh rotation={[0.4, 0.2, 0]}>
+      <torusKnotGeometry args={[0.8, 0.25, 96, 12]} />
+      <meshStandardMaterial color={tokens.chart[0]} />
+    </mesh>
+  );
+}
+
+export default function Page() {
+  return (
+    <main>
+      <h1>A knot</h1>
+      <Scene title="The knot">
+        <Knot />
+      </Scene>
+    </main>
+  );
+}
+`,
+    });
+    const verdict = await verify(dir);
+    // A three.js element the page draws is checked against react-three-fiber's own JSX types:
+    // without them, <mesh> would be no intrinsic element at all (TS2339).
+    expect(errors(verdict)).toEqual([]);
+    expect(verdict.status).toBe("pass");
+    const { versionId } = await publish(dir);
+    const pins = pinned(versionId);
+    for (const name of ["three", "@react-three/fiber", "@react-three/drei"]) {
+      expect(pins[name], name).toBe(PINS.get(name));
+    }
+  }, 900_000);
+
+  it("installs MapLibre and every deck.gl package at one pinned version, and serves the map's worker itself", async () => {
+    const dir = artifact("map", {
+      "index.tsx": `import { MapView } from "@mostra/kit/map";
+import { defineArtifact } from "@mostra/react";
+
+export const artifact = defineArtifact({ title: "Offices" });
+
+export default function Page() {
+  return (
+    <main>
+      <h1>Offices</h1>
+      <MapView title="Offices" center={[8, 48]} zoom={3} markers={[{ position: [13.4, 52.5], label: "Berlin" }]} />
+    </main>
+  );
+}
+`,
+    });
+    const verdict = await verify(dir);
+    expect(errors(verdict)).toEqual([]);
+    // No tile server: the world outline is the kit's, so nothing is asked of another origin.
+    expect(
+      verdict.diagnostics.filter((d) => d.code.startsWith("MOSTRA_NETWORK")).map((d) => d.message),
+    ).toEqual([]);
+    const { versionId } = await publish(dir);
+    const pins = pinned(versionId);
+    expect(pins["maplibre-gl"]).toBe(PINS.get("maplibre-gl"));
+    for (const name of ["@deck.gl/core", "@deck.gl/layers", "@deck.gl/mapbox"]) {
+      expect(pins[name], name).toBe(PINS.get(name));
+    }
+    expect(clientFiles(versionId).some((file) => /maplibre-gl-worker.*\.m?js$/.test(file))).toBe(
+      true,
+    );
+  }, 900_000);
+
+  it("serves Excalidraw's fonts from the page's origin, but the CJK face, and saves the drawing as a field", async () => {
+    const dir = artifact("whiteboard", {
+      "index.tsx": `import { Whiteboard } from "@mostra/kit/whiteboard";
+import { defineArtifact } from "@mostra/react";
+
+export const artifact = defineArtifact({ title: "Sketch" });
+
+export default function Page() {
+  return (
+    <main>
+      <h1>Sketch</h1>
+      <Whiteboard id="sketch" label="Sketch the layout" height={320} />
+    </main>
+  );
+}
+`,
+    });
+    const verdict = await verify(dir);
+    expect(errors(verdict)).toEqual([]);
+    const { versionId } = await publish(dir);
+    expect(pinned(versionId)["@excalidraw/excalidraw"]).toBe(PINS.get("@excalidraw/excalidraw"));
+    // With the kit's overrides: the lodash-es its Mermaid parser pins exactly, and the nanoid it
+    // pins itself, have advisories, so the version installs the fixed releases the kit was checked
+    // with.
+    const lock = parseLock(
+      readFileSync(join(home.home, "versions", versionId, "lock.yaml"), "utf8"),
+    ).pnpm as string;
+    expect(overridesOf(lock)).toEqual({
+      "lodash-es@4.17.21": "4.18.1",
+      "nanoid@3.3.3": "3.3.20",
+      "nanoid@4.0.2": "5.1.16",
+    });
+    expect(pinnedPackages(lock).filter((pkg) => pkg.name === "lodash-es")).toEqual([
+      { name: "lodash-es", version: "4.18.1" },
+    ]);
+    expect(
+      pinnedPackages(lock)
+        .filter((pkg) => pkg.name === "nanoid")
+        .map((pkg) => pkg.version)
+        .sort(),
+    ).toEqual(["3.3.20", "5.1.16"]);
+    const fonts = clientFiles(versionId).filter((file) =>
+      file.startsWith("kit-assets/excalidraw/fonts/"),
+    );
+    expect(fonts.some((file) => file.includes("/Excalifont/"))).toBe(true);
+    expect(fonts.some((file) => file.includes("/Xiaolai/"))).toBe(false);
+    const registry = JSON.parse(
+      readFileSync(join(home.home, "versions", versionId, "registry.json"), "utf8"),
+    ) as { fields: { open: boolean; entries: { id?: string; label?: string }[] } };
+    expect(registry.fields.open).toBe(false);
+    expect(registry.fields.entries).toContainEqual(
+      expect.objectContaining({ id: "sketch", label: "Sketch the layout" }),
+    );
+  }, 900_000);
+
+  it("pins a kit library an artifact imports itself to the kit's version", async () => {
+    const dir = artifact("own-three", {
+      "index.tsx": `import { defineArtifact } from "@mostra/react";
+import { Color } from "three";
+
+export const artifact = defineArtifact({ title: "A colour" });
+
+export default function Page() {
+  return (
+    <main>
+      <h1>A colour</h1>
+      <p>{new Color("#ff0000").getHexString()}</p>
+    </main>
+  );
+}
+`,
+    });
+    const { versionId } = await publish(dir);
+    expect(pinned(versionId)["three"]).toBe(PINS.get("three"));
+    expect(existsSync(join(home.home, "versions", versionId, "client", "index.html"))).toBe(true);
+    // The kit's overrides come with its libraries however the artifact reaches them: its own
+    // import here, a copy of a kit module elsewhere (Opus review of WP-19, finding 6).
+    expect(overridesIn(versionId)).toEqual(OVERRIDES);
+  }, 900_000);
+
+  it("names a kit module's libraries at the kit's pins under the explicit policy, and mostra add takes a bare name at its pin (Opus review of WP-19, finding 5)", async () => {
+    const dir = artifact("explicit-scene", {
+      "index.tsx": `import { Scene } from "@mostra/kit/scene";
+import { defineArtifact } from "@mostra/react";
+
+export const artifact = defineArtifact({ title: "A cube" });
+
+export default function Page() {
+  return (
+    <main>
+      <h1>A cube</h1>
+      <Scene title="A cube" height={240}>
+        <mesh>
+          <boxGeometry args={[1, 1, 1]} />
+          <meshStandardMaterial color="orange" />
+        </mesh>
+      </Scene>
+    </main>
+  );
+}
+`,
+    });
+    const host = await connectTo(daemon.status.socket as string);
+    try {
+      result(
+        await host.call(
+          "mostra/initialize",
+          initializeParams({ home: { dependencies: "explicit" } }),
+        ),
+      );
+      const refused = await client.call("artifact/publish", { source: { path: dir } }, VERIFY_MS);
+      expect(refused.error?.data.code).toBe("MOSTRA_DEP_MISSING");
+      const command = refused.error?.data.fix?.command as string;
+      for (const name of ["three", "@react-three/fiber", "@react-three/drei"]) {
+        expect(command).toContain(` ${name}@${PINS.get(name)}`);
+      }
+      // A bare name, as an agent writes it from habit, comes at the kit's pin all the same.
+      const added = result(
+        await client.call(
+          "deps/add",
+          {
+            artifact: { path: dir },
+            packages: ["three", "@react-three/fiber", "@react-three/drei"],
+          },
+          VERIFY_MS,
+        ),
+      ) as { packages: { name: string; version: string }[] };
+      expect(added.packages).toEqual(
+        ["three", "@react-three/fiber", "@react-three/drei"].map((name) => ({
+          name,
+          version: PINS.get(name),
+          warm: false,
+        })),
+      );
+      const { versionId } = await publish(dir);
+      expect(pinned(versionId)["three"]).toBe(PINS.get("three"));
+      expect(overridesIn(versionId)).toEqual(OVERRIDES);
+    } finally {
+      host.close();
+      // The home's policy back to automatic, for the suite's other pages: a connection of its own,
+      // since each initializes once.
+      const restore = await connectTo(daemon.status.socket as string);
+      result(
+        await restore.call(
+          "mostra/initialize",
+          initializeParams({ home: { dependencies: "auto" } }),
+        ),
+      );
+      restore.close();
+    }
+  }, 900_000);
+
+  it("type-checks, builds and renders the Skill's samples of the on-demand parts (WP-14's check)", async () => {
+    // The samples of `references/libraries.md` that import a map, a scene or a whiteboard: the
+    // warm ones are verify.test.ts's; these need the packages only this suite's mirror serves.
+    const verdict = await verify(artifact("skill-on-demand", skillSampleArtifact("on-demand")));
+    expect(errors(verdict)).toEqual([]);
+    expect(verdict.status).not.toBe("fail");
+  }, 900_000);
+});

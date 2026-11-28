@@ -134,16 +134,17 @@ export function fieldHookUsePlugin(
         const where = inside(edge.importer, roots.sourceDir)
           ? relative(roots.sourceDir, edge.importer).replaceAll("\\", "/")
           : edge.importer;
+        const kitModule = `@mostra/kit/${(edge.target.split("/").pop() ?? "").replace(/\.[a-z]+$/, "")}`;
         const how =
           edge.kind === "dynamic-import"
             ? "imports it with import()"
             : KIT_FIELD_MODULES.has(specifierOf(edge.source))
               ? "isn't one of the artifact's own files"
-              : `imports it as "${specifierOf(edge.source)}", not as @mostra/kit/questionnaire`;
+              : `imports it as "${specifierOf(edge.source)}", not as ${kitModule}`;
         if (!uses.some((use) => use.reason !== undefined && use.importer === edge.importer)) {
           uses.push({
             importer: edge.importer,
-            reason: `${where} uses the kit's questionnaire where the field scan can't see its ids (it ${how})`,
+            reason: `${where} uses ${kitModule} where the field scan can't see its ids (it ${how})`,
           });
         }
       }

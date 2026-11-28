@@ -83,12 +83,30 @@ const EXTENSIONS = [
 // WP-18: the kit through verify (KT-03 to KT-10), which `core` has no room for either (macOS `core`
 // reached its deadline with it on WP-18's `ci:full` run 44793555343).
 const KIT_PARTS = "test/integration/kit-parts.test.ts";
-const CORE_OVERFLOW = ["test/integration/deps.test.ts", KIT_PARTS];
+// WP-19: the kit's on-demand libraries, each a real install of hundreds of packages from a local
+// mirror and a verify of a page with WebGL: a group of its own on every platform. On macOS and
+// Linux the kit's parts left `extensions`, which reached its 10 minutes on macOS with WP-19's
+// review fixes (PR #255's run 46032095129, after 522 s in the run before), and then `kit`, which
+// reached them with them on a slow macOS runner (run 46074797989: the kit's parts alone 297 s):
+// they run in `conformance`, the lightest group (171 s on macOS, 174 s on Linux).
+const KIT_LIBRARIES = "test/integration/kit-libraries.test.ts";
+const CORE_OVERFLOW = ["test/integration/deps.test.ts"];
 export const INTEGRATION_GROUPS: Record<string, { include: string[]; exclude: string[] }> = {
   core: {
     include: ["test/integration/**/*.test.ts"],
-    exclude: [VERIFY_SUITES, DEV, ...FAULTS, HEARTBEAT, ...REMOTE, ...EXTENSIONS, ...CORE_OVERFLOW],
+    exclude: [
+      VERIFY_SUITES,
+      DEV,
+      ...FAULTS,
+      HEARTBEAT,
+      ...REMOTE,
+      ...EXTENSIONS,
+      ...CORE_OVERFLOW,
+      KIT_PARTS,
+      KIT_LIBRARIES,
+    ],
   },
+  kit: { include: [KIT_LIBRARIES], exclude: [] },
   extensions: { include: [...EXTENSIONS, ...CORE_OVERFLOW], exclude: [DEMOS] },
   remote: { include: [...REMOTE_HOSTING, HEARTBEAT, DEMOS], exclude: [] },
   // `mostra dev`'s suite (66 to 106 s) runs beside remote-access's, the lightest group (350 s):
@@ -100,7 +118,7 @@ export const INTEGRATION_GROUPS: Record<string, { include: string[]; exclude: st
   clients: { include: [], exclude: [] },
   // The conformance kit's TypeScript reference host (packages/conformance/vitest.config.ts): about
   // 460 s on macOS, which beside the CLI's suites ran `clients` past its deadline (WP-18).
-  conformance: { include: [], exclude: [] },
+  conformance: { include: [KIT_PARTS], exclude: [] },
   // Its other modes (standalone, unscripted, broken), apart since WP-20's review ports.
   "conformance-adapters": { include: [], exclude: [] },
   // The Windows legs (WP-W1, WP-W2, D146): every suite, in groups one machine each (Windows arm64
@@ -178,6 +196,7 @@ export const INTEGRATION_GROUPS: Record<string, { include: string[]; exclude: st
   "windows-verify": { include: ["test/integration/verify.test.ts"], exclude: [] },
   // WP-18: the kit through verify, a suite of its own, in the lighter of the verify groups.
   "windows-verify-failures": { include: [VERIFY_FAILURES, KIT_PARTS], exclude: [] },
+  "windows-kit": { include: [KIT_LIBRARIES], exclude: [] },
   "windows-extensions": {
     include: [...EXTENSIONS.filter((file) => file !== DEMOS), DEV, ANONYMOUS_VOLUME],
     exclude: [],

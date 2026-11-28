@@ -264,3 +264,23 @@ export async function scanImports(sourceDir: string): Promise<Map<string, Import
   }
   return new Map([...found].sort(([a], [b]) => (a < b ? -1 : 1)));
 }
+
+/** The npm packages one script file imports, by name (a kit file the artifact uses, WP-19). */
+export async function scanFileImports(file: string): Promise<string[]> {
+  let text: string;
+  try {
+    text = await readFile(file, "utf8");
+  } catch {
+    return [];
+  }
+  const names = new Set<string>();
+  try {
+    for (const { specifier } of scriptImports(file, text)) {
+      const name = packageOf(specifier);
+      if (name !== undefined) names.add(name);
+    }
+  } catch {
+    // A file that doesn't parse is the build's to report.
+  }
+  return [...names].sort();
+}

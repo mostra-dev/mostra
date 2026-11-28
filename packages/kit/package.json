@@ -1,7 +1,7 @@
 {
   "name": "@mostra/kit",
   "version": "0.21.0",
-  "description": "Mostra's kit: shadcn components for the Base UI and Radix bases, shaped by the themes' tokens, and the questionnaire and form parts that save as fields.",
+  "description": "Mostra's kit: shadcn components for the Base UI and Radix bases, shaped by the themes' tokens, the questionnaire and form parts that save as fields, and token-aware charts, tables, diagrams, code, math, maps, 3D and team parts, web demos and action buttons.",
   "license": "Apache-2.0",
   "author": "The Mostra Authors",
   "homepage": "https://github.com/mostra-dev/mostra/tree/main/packages/kit#readme",
@@ -31,10 +31,80 @@
       "types": "./dist/layout.d.ts",
       "default": "./dist/layout.js"
     },
+    "./page-context": {
+      "@mostra/source": "./src/page-context.tsx",
+      "types": "./dist/page-context.d.ts",
+      "default": "./dist/page-context.js"
+    },
     "./review": {
       "@mostra/source": "./src/review.tsx",
       "types": "./dist/review.d.ts",
       "default": "./dist/review.js"
+    },
+    "./tokens": {
+      "@mostra/source": "./src/tokens.tsx",
+      "types": "./dist/tokens.d.ts",
+      "default": "./dist/tokens.js"
+    },
+    "./live-chart": {
+      "@mostra/source": "./src/live-chart.tsx",
+      "types": "./dist/live-chart.d.ts",
+      "default": "./dist/live-chart.js"
+    },
+    "./charts": {
+      "@mostra/source": "./src/charts.tsx",
+      "types": "./dist/charts.d.ts",
+      "default": "./dist/charts.js"
+    },
+    "./echarts": {
+      "@mostra/source": "./src/echarts.tsx",
+      "types": "./dist/echarts.d.ts",
+      "default": "./dist/echarts.js"
+    },
+    "./data-table": {
+      "@mostra/source": "./src/data-table.tsx",
+      "types": "./dist/data-table.d.ts",
+      "default": "./dist/data-table.js"
+    },
+    "./mermaid": {
+      "@mostra/source": "./src/mermaid.tsx",
+      "types": "./dist/mermaid.d.ts",
+      "default": "./dist/mermaid.js"
+    },
+    "./flow": {
+      "@mostra/source": "./src/flow.tsx",
+      "types": "./dist/flow.d.ts",
+      "default": "./dist/flow.js"
+    },
+    "./code": {
+      "@mostra/source": "./src/code.tsx",
+      "types": "./dist/code.d.ts",
+      "default": "./dist/code.js"
+    },
+    "./math": {
+      "@mostra/source": "./src/math.tsx",
+      "types": "./dist/math.d.ts",
+      "default": "./dist/math.js"
+    },
+    "./map": {
+      "@mostra/source": "./src/map.tsx",
+      "types": "./dist/map.d.ts",
+      "default": "./dist/map.js"
+    },
+    "./scene": {
+      "@mostra/source": "./src/scene.tsx",
+      "types": "./dist/scene.d.ts",
+      "default": "./dist/scene.js"
+    },
+    "./whiteboard": {
+      "@mostra/source": "./src/whiteboard.tsx",
+      "types": "./dist/whiteboard.d.ts",
+      "default": "./dist/whiteboard.js"
+    },
+    "./team": {
+      "@mostra/source": "./src/team.tsx",
+      "types": "./dist/team.d.ts",
+      "default": "./dist/team.js"
     },
     "./demo": {
       "@mostra/source": "./src/demo.tsx",
@@ -74,14 +144,31 @@
   },
   "dependencies": {
     "@base-ui/react": "catalog:",
+    "@codemirror/autocomplete": "catalog:",
+    "@codemirror/commands": "catalog:",
+    "@codemirror/lang-css": "catalog:",
+    "@codemirror/lang-html": "catalog:",
+    "@codemirror/lang-javascript": "catalog:",
+    "@codemirror/lang-json": "catalog:",
+    "@codemirror/lang-markdown": "catalog:",
+    "@codemirror/lang-python": "catalog:",
+    "@codemirror/language": "catalog:",
+    "@codemirror/state": "catalog:",
+    "@codemirror/view": "catalog:",
+    "@lezer/highlight": "catalog:",
     "@mostra/react": "workspace:*",
     "@shadcn/react": "catalog:",
+    "@tanstack/react-table": "catalog:",
+    "@xyflow/react": "catalog:",
     "class-variance-authority": "catalog:",
     "cmdk": "catalog:",
     "cn": "catalog:",
+    "echarts": "catalog:",
     "embla-carousel-react": "catalog:",
     "input-otp": "catalog:",
+    "katex": "catalog:",
     "lucide-react": "catalog:",
+    "mermaid": "catalog:",
     "radix-ui": "catalog:",
     "react-day-picker": "catalog:",
     "react-resizable-panels": "catalog:",
@@ -89,23 +176,103 @@
     "shiki": "catalog:",
     "sonner": "catalog:",
     "tw-animate-css": "catalog:",
+    "uplot": "catalog:",
     "vaul": "catalog:"
   },
   "peerDependencies": {
-    "react": "^19"
+    "@deck.gl/core": "9.4.1",
+    "@deck.gl/layers": "9.4.1",
+    "@deck.gl/mapbox": "9.4.1",
+    "@excalidraw/excalidraw": "0.18.1",
+    "@react-three/drei": "10.7.9",
+    "@react-three/fiber": "9.8.2",
+    "@types/three": "0.187.0",
+    "maplibre-gl": "6.19.0",
+    "react": "^19",
+    "three": "0.187.0",
+    "topojson-client": "3.1.0",
+    "world-atlas": "2.0.2"
+  },
+  "peerDependenciesMeta": {
+    "@deck.gl/core": {
+      "optional": true
+    },
+    "@deck.gl/layers": {
+      "optional": true
+    },
+    "@deck.gl/mapbox": {
+      "optional": true
+    },
+    "@excalidraw/excalidraw": {
+      "optional": true
+    },
+    "@react-three/drei": {
+      "optional": true
+    },
+    "@react-three/fiber": {
+      "optional": true
+    },
+    "@types/three": {
+      "optional": true
+    },
+    "maplibre-gl": {
+      "optional": true
+    },
+    "three": {
+      "optional": true
+    },
+    "topojson-client": {
+      "optional": true
+    },
+    "world-atlas": {
+      "optional": true
+    }
   },
   "devDependencies": {
+    "@deck.gl/core": "catalog:",
+    "@deck.gl/layers": "catalog:",
+    "@deck.gl/mapbox": "catalog:",
+    "@excalidraw/excalidraw": "catalog:",
     "@mostra/tools": "workspace:*",
+    "@react-three/drei": "catalog:",
+    "@react-three/fiber": "catalog:",
     "@size-limit/preset-small-lib": "catalog:",
     "@types/node": "catalog:",
     "@types/react": "catalog:",
     "@types/react-dom": "catalog:",
+    "@types/three": "catalog:",
+    "@types/topojson-client": "catalog:",
+    "maplibre-gl": "catalog:",
     "react": "catalog:",
     "react-dom": "catalog:",
     "size-limit": "catalog:",
+    "three": "catalog:",
+    "topojson-client": "catalog:",
     "tsdown": "catalog:",
     "typescript": "catalog:",
-    "vitest": "catalog:"
+    "vitest": "catalog:",
+    "world-atlas": "catalog:"
+  },
+  "mostra-kit": {
+    "assets": [
+      {
+        "package": "@excalidraw/excalidraw",
+        "from": "dist/prod/fonts",
+        "to": "excalidraw/fonts",
+        "skip": [
+          "Xiaolai"
+        ]
+      }
+    ],
+    "pins": {
+      "@deck.gl/aggregation-layers": "9.4.1",
+      "@deck.gl/geo-layers": "9.4.1"
+    },
+    "overrides": {
+      "lodash-es@4.17.21": "4.18.1",
+      "nanoid@3.3.3": "3.3.20",
+      "nanoid@4.0.2": "5.1.16"
+    }
   },
   "size-limit": [
     {
@@ -117,7 +284,8 @@
         "react-dom",
         "@mostra/react",
         "lucide-react",
-        "cn"
+        "cn",
+        "@mostra/kit/layout"
       ],
       "limit": "5 kB"
     },
@@ -146,6 +314,241 @@
         "react-dom"
       ],
       "limit": "2.5 kB"
+    },
+    {
+      "name": "@mostra/kit/page-context (React excluded)",
+      "path": "dist/page-context.js",
+      "import": "*",
+      "ignore": [
+        "react",
+        "react-dom"
+      ],
+      "limit": "0.5 kB"
+    },
+    {
+      "name": "@mostra/kit/tokens (React, the client runtime, the kit's other modules excluded)",
+      "path": "dist/tokens.js",
+      "import": "*",
+      "ignore": [
+        "react",
+        "react-dom",
+        "@mostra/react",
+        "cn",
+        "lucide-react",
+        "@mostra/kit/layout"
+      ],
+      "limit": "2 kB"
+    },
+    {
+      "name": "@mostra/kit/live-chart (React, the client runtime, the kit's other modules and the library it wraps excluded)",
+      "path": "dist/live-chart.js",
+      "import": "*",
+      "ignore": [
+        "react",
+        "react-dom",
+        "@mostra/react",
+        "cn",
+        "lucide-react",
+        "@mostra/kit/tokens",
+        "@mostra/kit/layout",
+        "uplot"
+      ],
+      "limit": "3 kB"
+    },
+    {
+      "name": "@mostra/kit/charts (React, the client runtime, the kit's other modules and the library it wraps excluded)",
+      "path": "dist/charts.js",
+      "import": "*",
+      "ignore": [
+        "react",
+        "react-dom",
+        "@mostra/react",
+        "cn",
+        "lucide-react",
+        "@mostra/kit/tokens",
+        "@mostra/kit/layout",
+        "recharts"
+      ],
+      "limit": "2 kB"
+    },
+    {
+      "name": "@mostra/kit/echarts (React, the client runtime, the kit's other modules and the library it wraps excluded)",
+      "path": "dist/echarts.js",
+      "import": "*",
+      "ignore": [
+        "react",
+        "react-dom",
+        "@mostra/react",
+        "cn",
+        "lucide-react",
+        "@mostra/kit/tokens",
+        "@mostra/kit/layout",
+        "echarts"
+      ],
+      "limit": "1.5 kB"
+    },
+    {
+      "name": "@mostra/kit/data-table (React, the client runtime, the kit's other modules and the library it wraps excluded)",
+      "path": "dist/data-table.js",
+      "import": "*",
+      "ignore": [
+        "react",
+        "react-dom",
+        "@mostra/react",
+        "cn",
+        "lucide-react",
+        "@mostra/kit/tokens",
+        "@mostra/kit/layout",
+        "@tanstack/react-table"
+      ],
+      "limit": "2 kB"
+    },
+    {
+      "name": "@mostra/kit/mermaid (React, the client runtime, the kit's other modules and the library it wraps excluded)",
+      "path": "dist/mermaid.js",
+      "import": "*",
+      "ignore": [
+        "react",
+        "react-dom",
+        "@mostra/react",
+        "cn",
+        "lucide-react",
+        "@mostra/kit/tokens",
+        "@mostra/kit/layout",
+        "mermaid"
+      ],
+      "limit": "1.5 kB"
+    },
+    {
+      "name": "@mostra/kit/flow (React, the client runtime, the kit's other modules and the library it wraps excluded)",
+      "path": "dist/flow.js",
+      "import": "*",
+      "ignore": [
+        "react",
+        "react-dom",
+        "@mostra/react",
+        "cn",
+        "lucide-react",
+        "@mostra/kit/tokens",
+        "@mostra/kit/layout",
+        "@xyflow/react"
+      ],
+      "limit": "1.5 kB"
+    },
+    {
+      "name": "@mostra/kit/code (React, the client runtime, the kit's other modules and the library it wraps excluded)",
+      "path": "dist/code.js",
+      "import": "*",
+      "ignore": [
+        "react",
+        "react-dom",
+        "@mostra/react",
+        "cn",
+        "lucide-react",
+        "@mostra/kit/tokens",
+        "@mostra/kit/layout",
+        "shiki",
+        "codemirror",
+        "@codemirror/state",
+        "@codemirror/view",
+        "@codemirror/commands",
+        "@codemirror/language",
+        "@codemirror/autocomplete",
+        "@codemirror/lang-javascript",
+        "@codemirror/lang-json",
+        "@codemirror/lang-markdown",
+        "@codemirror/lang-css",
+        "@codemirror/lang-html",
+        "@codemirror/lang-python",
+        "@lezer/highlight"
+      ],
+      "limit": "3.5 kB"
+    },
+    {
+      "name": "@mostra/kit/math (React, the client runtime, the kit's other modules and the library it wraps excluded)",
+      "path": "dist/math.js",
+      "import": "*",
+      "ignore": [
+        "react",
+        "react-dom",
+        "@mostra/react",
+        "cn",
+        "lucide-react",
+        "@mostra/kit/tokens",
+        "@mostra/kit/layout",
+        "katex"
+      ],
+      "limit": "1 kB"
+    },
+    {
+      "name": "@mostra/kit/map (React, the client runtime, the kit's other modules and the library it wraps excluded)",
+      "path": "dist/map.js",
+      "import": "*",
+      "ignore": [
+        "react",
+        "react-dom",
+        "@mostra/react",
+        "cn",
+        "lucide-react",
+        "@mostra/kit/tokens",
+        "@mostra/kit/layout",
+        "maplibre-gl",
+        "@deck.gl/core",
+        "@deck.gl/layers",
+        "@deck.gl/mapbox",
+        "world-atlas",
+        "topojson-client"
+      ],
+      "limit": "2 kB"
+    },
+    {
+      "name": "@mostra/kit/scene (React, the client runtime, the kit's other modules and the library it wraps excluded)",
+      "path": "dist/scene.js",
+      "import": "*",
+      "ignore": [
+        "react",
+        "react-dom",
+        "@mostra/react",
+        "cn",
+        "lucide-react",
+        "@mostra/kit/tokens",
+        "@mostra/kit/layout",
+        "three",
+        "@react-three/fiber",
+        "@react-three/drei"
+      ],
+      "limit": "1 kB"
+    },
+    {
+      "name": "@mostra/kit/whiteboard (React, the client runtime, the kit's other modules and the library it wraps excluded)",
+      "path": "dist/whiteboard.js",
+      "import": "*",
+      "ignore": [
+        "react",
+        "react-dom",
+        "@mostra/react",
+        "cn",
+        "lucide-react",
+        "@mostra/kit/tokens",
+        "@mostra/kit/layout",
+        "@excalidraw/excalidraw"
+      ],
+      "limit": "1.5 kB"
+    },
+    {
+      "name": "@mostra/kit/team (React, the client runtime, the kit's other modules excluded)",
+      "path": "dist/team.js",
+      "import": "*",
+      "ignore": [
+        "react",
+        "react-dom",
+        "@mostra/react",
+        "cn",
+        "lucide-react",
+        "@mostra/kit/tokens",
+        "@mostra/kit/layout"
+      ],
+      "limit": "6 kB"
     },
     {
       "name": "@mostra/kit/demo (React and the client runtime excluded)",

@@ -1,10 +1,11 @@
 # Libraries: what's preinstalled, and what changed in them
 
-Every artifact can import these without any install; they share one React. Anything else on npm installs on demand ([page.md](page.md#packages)).
+Every artifact can import these without any install; they share one React. Anything else on npm installs on demand ([page.md](page.md#packages)). The kit wraps the charts, tables, diagrams, code, math, maps, 3D and whiteboards in the page's theme: start from [its parts](#the-kits-library-parts), and import a library itself for what a part doesn't cover.
 
 ## Contents
 
 - The preinstalled set
+- The kit's library parts
 - Write this, not that
 - UI primitives: Base UI
 - Tables: TanStack Table 9
@@ -25,13 +26,143 @@ Every artifact can import these without any install; they share one React. Anyth
 | Charts | `recharts` 3, `echarts` 6, `uplot` 1 | see [Charts](#charts) |
 | Tables | `@tanstack/react-table` 9 | see [Tables](#tables-tanstack-table-9) |
 | Motion | `motion` 14 | `import { motion, AnimatePresence } from "motion/react"` |
-| Diagrams | `mermaid` 12, `@xyflow/react` 12 | |
+| Diagrams | `mermaid` 12, `@xyflow/react` 13 | |
 | Code | `shiki` 4 (display), `codemirror` 6 and `@codemirror/*` (editing) | |
 | Math | `katex` | |
 | Terminal output | `@xterm/xterm` and its addons | |
 | Smaller pieces | `sonner` (toasts), `vaul` (drawers), `cmdk` (command menu), `embla-carousel-react`, `react-day-picker`, `input-otp`, `react-resizable-panels` | |
 
-Maps, 3D and whiteboards (MapLibre, deck.gl, react-three-fiber, Excalidraw) install on demand when imported.
+Maps, 3D and whiteboards (MapLibre with deck.gl, three.js with react-three-fiber and drei, Excalidraw) install on demand when imported, the kit's own parts bringing them at the versions it was built with.
+
+## The kit's library parts
+
+Each part draws one library in the page's theme (its series colours, faces, radius and light or dark), so the theme you name restyles it with the rest of the page. Each takes `className`, and `mostra add mostra-<module>` copies it into `components/mostra/` for editing.
+
+| Import | Parts | Library | Saved as a field |
+|---|---|---|---|
+| `@mostra/kit/charts` | `BarChart`, `LineChart`, `AreaChart`, `DonutChart` | Recharts | |
+| `@mostra/kit/live-chart` | `LiveChart`: thousands of points, many a second, from `source` (a live source, in append mode) or `values` | uPlot | |
+| `@mostra/kit/echarts` | `EChart`: any ECharts `option` (heat maps, Sankey, treemaps, candlesticks, graphs) | ECharts | |
+| `@mostra/kit/data-table` | `DataTable`: rows sortable by every column, `search`, `pageSize` | TanStack Table | |
+| `@mostra/kit/mermaid` | `Mermaid`: a diagram written as text | Mermaid | |
+| `@mostra/kit/flow` | `Flow`: nodes and edges on a canvas to pan, `editable` to move them | React Flow | |
+| `@mostra/kit/code` | `Code` (highlighted), `CodeEditor` | Shiki, CodeMirror | `CodeEditor`, by `id` |
+| `@mostra/kit/math` | `Formula`: TeX, inline or `display` | KaTeX | |
+| `@mostra/kit/map` | `MapView`: markers and deck.gl layers on a world outline in the theme, or any `basemap` style URL | MapLibre, deck.gl | |
+| `@mostra/kit/scene` | `Scene`: three.js children with light, orbit controls and a floor grid | react-three-fiber, drei | |
+| `@mostra/kit/whiteboard` | `Whiteboard` | Excalidraw | `Whiteboard`, by `id` |
+| `@mostra/kit/team` | `PresenceAvatars`, `LiveCursors`, `RespondentTracker`, `Attribution` ([teams.md](teams.md#show-the-team-on-the-page)) | the team hooks | |
+
+```tsx
+import { BarChart, LineChart } from "@mostra/kit/charts";
+import { DataTable } from "@mostra/kit/data-table";
+import { LiveChart } from "@mostra/kit/live-chart";
+
+const weeks = [
+  { week: "W1", won: 12, lost: 4 },
+  { week: "W2", won: 15, lost: 6 },
+  { week: "W3", won: 11, lost: 3 },
+];
+const deals = [
+  { customer: "Acme", stage: "Won", amount: 42000 },
+  { customer: "Globex", stage: "Open", amount: 18000 },
+];
+const euros = new Intl.NumberFormat("en", { style: "currency", currency: "EUR", maximumFractionDigits: 0 });
+const trace = Array.from({ length: 600 }, (_, i) => ({ t: i, ms: 40 + Math.sin(i / 20) * 8 }));
+
+function Pipeline() {
+  return (
+    <div className="grid gap-6">
+      <BarChart title="Deals by week" data={weeks} x="week" series={[{ key: "won", label: "Won" }, { key: "lost", label: "Lost" }]} />
+      <LineChart title="Won" data={weeks} x="week" series={["won"]} />
+      <DataTable
+        caption="Open deals"
+        data={deals}
+        columns={[
+          { key: "customer", header: "Customer" },
+          { key: "stage", header: "Stage" },
+          { key: "amount", header: "Amount", align: "right", cell: (value) => euros.format(Number(value)) },
+        ]}
+        search
+      />
+      <LiveChart title="Latency (ms)" values={trace} x="t" series={[{ key: "ms", label: "p50" }]} window={600} />
+    </div>
+  );
+}
+```
+
+- A chart names every series in its legend and colours them `var(--chart-1)` onward, in order; a series' `color` overrides that. Give it a `title`, and put the numbers that matter in text beside it too.
+- `LiveChart source="latency" window={10000}` reads `useLive("latency", { mode: "append", window })` itself and draws each new point as it arrives, many a second ([long-lived.md](long-lived.md)). Points are objects (`{ t, ms }`, `x="t"`) or arrays (`[t, ms]`, series by index); an `x` in milliseconds since 1970 shows as time.
+- `DataTable`'s columns default to every key of the first row; a number column sorts largest first.
+
+```tsx
+import { Code, CodeEditor } from "@mostra/kit/code";
+import { Flow } from "@mostra/kit/flow";
+import { Formula } from "@mostra/kit/math";
+import { Mermaid } from "@mostra/kit/mermaid";
+
+function HowItWorks() {
+  return (
+    <div className="grid gap-6">
+      <Mermaid title="Release" chart={"flowchart LR\n  Draft --> Review --> Ship"} />
+      <Flow
+        title="Services"
+        height={240}
+        nodes={[
+          { id: "web", position: { x: 0, y: 0 }, data: { label: "Web" } },
+          { id: "api", position: { x: 200, y: 80 }, data: { label: "API" } },
+        ]}
+        edges={[{ id: "web-api", source: "web", target: "api" }]}
+      />
+      <Code lang="ts" code={"const retries = 3;\nexport default retries;"} />
+      <CodeEditor id="query" label="Your query" lang="python" initial={"print('hi')"} />
+      <p>
+        Each step costs <Formula tex="O(n \log n)" />, so the total is
+      </p>
+      <Formula display tex="\sum_{i=1}^{k} n_i \log n_i" />
+    </div>
+  );
+}
+```
+
+- `CodeEditor` saves its text as the field `id`, under its `label`, like any answer; `Code` only shows code.
+- `Flow` is read-only unless `editable`; a node's `type` names a component in `nodeTypes`.
+- `EChart` takes ECharts' own `option` and wears the theme: `<EChart option={{ xAxis: { type: "category", data: days }, yAxis: {}, series: [{ type: "line", data: values }] }} />`.
+
+```tsx
+import { MapView } from "@mostra/kit/map";
+import { Scene, useTokens } from "@mostra/kit/scene";
+import { Whiteboard } from "@mostra/kit/whiteboard";
+
+function Places() {
+  const { chart } = useTokens();
+  return (
+    <div className="grid gap-6">
+      <MapView
+        title="Offices"
+        center={[8, 50]}
+        zoom={3}
+        markers={[
+          { position: [13.4, 52.52], label: "Berlin" },
+          { position: [2.35, 48.86], label: "Paris" },
+        ]}
+      />
+      <Scene title="Part" height={280}>
+        <mesh>
+          <torusKnotGeometry args={[1, 0.3, 128, 16]} />
+          <meshStandardMaterial color={chart[0]} />
+        </mesh>
+      </Scene>
+      <Whiteboard id="layout-sketch" label="Sketch the layout" height={320} />
+    </div>
+  );
+}
+```
+
+- `useTokens()` gives the theme's values a canvas or WebGL library takes (each colour resolved, `chart` in series order, the faces), current as the theme or its light or dark changes.
+- These three install their libraries the first time a page imports them, which takes a minute; later builds reuse them.
+- The map draws on a world outline in the theme, which needs no tile server and works offline and inline in chat hosts; `basemap` takes any MapLibre style URL (one with streets comes with its provider's terms, often a key), and `layers` takes deck.gl layers.
+- `Whiteboard` saves the drawing as the field `id`. Without WebGL 2, the map and the scene say so in words.
 
 ## Write this, not that
 
@@ -57,6 +188,13 @@ Several of these had a major release recently, so older habits break the build o
 | `function Input({ ref, ...props })` | `forwardRef(...)` | React 19 passes `ref` as a prop |
 | `useTable({ features, columns, data })` | `useReactTable({ getCoreRowModel: getCoreRowModel(), … })` | TanStack Table 9 |
 | `import { ReactFlow } from "@xyflow/react"` | `import ReactFlow from "reactflow"` | React Flow is `@xyflow/react` since version 12 |
+| `onNodesChange={(changes) => setNodes((nodes) => changes.applyTo(nodes))}` | `applyNodeChanges(changes, nodes)` | React Flow 13 hands the handler a changeset |
+| nothing, or `forceColorMode="dark"` | `colorMode="dark"` | React Flow 13 follows the page's light or dark |
+| `import "@xyflow/react/style.css"` | `"reactflow/dist/style.css"` | React Flow 13's stylesheet |
+| `createHighlighter({ themes, langs })` | `getHighlighter(…)` | Shiki 3 renamed it |
+| an `EditorView` from `codemirror` (or the kit's `CodeEditor`) | `import "codemirror/lib/codemirror.css"` | CodeMirror 6 styles itself |
+| `import maplibregl from "maplibre-gl"` | `mapbox-gl` | The kit's maps are MapLibre, which needs no access token |
+| `import { Canvas } from "@react-three/fiber"` | `"react-three-fiber"`, `"drei"` | The packages are `@react-three/fiber` and `@react-three/drei` |
 | `mermaid.run()`, `await mermaid.render(id, text)` | `mermaid.init()`, `mermaid.mermaidAPI.render(…)` | Mermaid 12 deprecates them |
 | `import { cn } from "cn"` | `lib/utils.ts` with `clsx` and `tailwind-merge` | shadcn's components import the `cn` package |
 
@@ -139,6 +277,8 @@ function Invoices({ data }: { data: Invoice[] }) {
 Filtering, pagination and selection are features too (`columnFilteringFeature` with `createFilteredRowModel()`, and so on). Code written for version 8 runs through `useLegacyTable`, but new code uses `useTable`. A plain `<table>` over an array is often enough.
 
 ## Charts
+
+The kit's parts above cover most charts. For one they don't:
 
 - **Recharts** for most charts. Wrap in `<ResponsiveContainer width="100%" height="100%">` inside a parent with a fixed height (`h-56`), and color series with the theme's chart colors: `fill="var(--chart-1)"`, `stroke="var(--border)"` for gridlines.
 - **uPlot** for thousands of points updating several times a second (a live latency trace from `useLive(key, { mode: "append" })`).

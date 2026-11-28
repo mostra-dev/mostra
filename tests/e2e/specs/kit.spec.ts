@@ -140,22 +140,44 @@ test.describe("a token change restyles every kit visual (KT-04, KT-10)", () => {
           style.textContent = "html, body { background: rgb(128, 128, 128) !important; }";
           document.head.append(style);
         });
-        // Each visible part, in document order (the same parts in both builds), and its box.
-        const boxes = await frame.locator("[data-slot]").evaluateAll((elements) =>
-          elements.flatMap((element) => {
-            const box = element.getBoundingClientRect();
-            if (!(box.width >= 1 && box.height >= 1 && element.checkVisibility())) return [];
-            return [
-              {
-                slot: element.getAttribute("data-slot") ?? "",
-                x: box.x,
-                y: box.y,
-                width: box.width,
-                height: box.height,
-              },
-            ];
-          }),
-        );
+        // Each visible part, in document order (the same parts in both builds), and its box: a
+        // part for screen readers only (a 1 px box, the live chart's summary) shows nothing.
+        const measure = () =>
+          frame.locator("[data-slot]").evaluateAll((elements) =>
+            elements.flatMap((element) => {
+              const box = element.getBoundingClientRect();
+              if (!(box.width > 1 && box.height > 1 && element.checkVisibility())) return [];
+              return [
+                {
+                  slot: element.getAttribute("data-slot") ?? "",
+                  x: box.x,
+                  y: box.y,
+                  width: box.width,
+                  height: box.height,
+                },
+              ];
+            }),
+          );
+        // The parts drawn after the page came up (a diagram, a chart loaded on its own) move what
+        // is below them, so the boxes are measured on both sides of the screenshot, and taken again
+        // until the page held still across it: a part cut from where it no longer is would show the
+        // same ground in both builds (Linux Firefox, PR #255's run 46105189914: the questionnaire's
+        // scale steps, below the specimen's data and diagrams).
+        let boxes = await measure();
+        let shot: PNG | undefined;
+        for (let attempt = 0; attempt < 10; attempt++) {
+          const taken = PNG.sync.read(
+            await page.screenshot({ animations: "disabled", caret: "hide", scale: "css" }),
+          );
+          const again = await measure();
+          if (JSON.stringify(again) === JSON.stringify(boxes)) {
+            shot = taken;
+            break;
+          }
+          boxes = again;
+          await page.waitForTimeout(500);
+        }
+        expect(shot, "the specimen held still for a screenshot").toBeDefined();
         const origin = await page.locator("iframe").first().boundingBox();
         expect(origin).not.toBeNull();
         // The frame shows its whole page at this height, so no part is cut off below its edge.
@@ -166,13 +188,10 @@ test.describe("a token change restyles every kit visual (KT-04, KT-10)", () => {
         expect(view.scroll, "the specimen is taller than its frame").toBeLessThanOrEqual(
           view.inner,
         );
-        const shot = PNG.sync.read(
-          await page.screenshot({ animations: "disabled", caret: "hide", scale: "css" }),
-        );
         await context.close();
         return boxes.map((box) => ({
           slot: box.slot,
-          png: crop(shot, {
+          png: crop(shot as PNG, {
             x: Math.round((origin?.x ?? 0) + box.x),
             y: Math.round((origin?.y ?? 0) + box.y),
             width: Math.round(box.width),

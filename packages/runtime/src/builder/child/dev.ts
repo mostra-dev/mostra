@@ -149,7 +149,7 @@ export async function startDev(
       await writeFile(join(generated, "server-entry.js"), serverEntry(scan));
       try {
         await build({
-          ...baseConfig({ stagingDir: root, kit: request.kit }, sourceDir, [
+          ...baseConfig({ stagingDir: root, kit: request.kit }, sourceDir, inputs.packageRoots, [
             confinePlugin(inputs),
             mdxPlugin(),
             react(),
@@ -199,7 +199,7 @@ export async function startDev(
   // only upgrades that carry the secret.
   const hmrServer = createHttpServer();
   const vite: ViteDevServer = await createServer({
-    ...baseConfig({ stagingDir: root, kit: request.kit }, sourceDir, [
+    ...baseConfig({ stagingDir: root, kit: request.kit }, sourceDir, inputs.packageRoots, [
       confinePlugin(inputs),
       mdxPlugin(),
       serverClientStubPlugin(serverModules, sourceDir),
