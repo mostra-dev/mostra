@@ -53,6 +53,7 @@ Taken inside the package: the built-in exporters live in the carried `@mostra/pl
 - **A Next.js demo inside a single HTML file**: its runtime loads classic chunks by address, so one file can't hold it; the file names it and the folder export carries it (D185 item 7).
 - **A real static host at a subpath** (GitHub Pages): proven with a local server with no fallback at `/sub/`.
 - **Real Safari and a phone**: WebKit only.
+- **The released CLI's verify on this Mac** (external): with the internal disk nearly full, the bundle cache had to sit on the external volume, where `verify` of a fresh page answers `MOSTRA_RUNTIME_NOT_READY` for 0.21.0 and 0.20.0 alike (#106, reopened with the evidence); the release's own smoke tests ran new, verify, publish and a submission through each bundle's browser on all six platforms (run 46088644747).
 - **A demo build on a machine without the project's tools**: the build runs with the user's `PATH`; a missing tool fails the build with its own words (`MOSTRA_DEMO_BUILD_FAILED`), proven with a failing script, not a missing toolchain.
 
 ## Found while building
@@ -98,4 +99,37 @@ Taken inside the package: the built-in exporters live in the carried `@mostra/pl
 - **The second** (45922733884, `caa7c987`, `ci:full`): green on every job and leg, Windows arm64 and the six-platform release rehearsal included.
 - **After the review's fixes** (45989822156, `aeb2b8bc`): every job green but two browser tests outside this package, each at a step it doesn't touch (`kit.spec.ts`'s className test, its page load past 30 s on Linux WebKit; `surfaces.spec.ts`'s dark pass, a checkbox click on macOS Chromium); the Windows seeds of finding 9 on `windows-latest` (45989850569), each red when planted and green restored.
 - **The final head** (45999914332, `3367999f`, `ci:full`): green on every job and leg, Windows arm64 and the six-platform release rehearsal included.
+- **The merge queue** (#253): its first run (46024656696) met macOS `core`'s 10-minute deadline with every suite that ran passing, a slow runner (the same group took about 6 minutes on the pull request's run): #197, reopened with the evidence; its second run (46032373378) green on every leg.
+
+## Deviations
+
+- **A demo is a built front end, not a proxied dev server** (D185, M105): the dev-server proxy, its WebSocket passthrough, Host rewriting and framing-header stripping that the first specification named are out of v1; the specification, TM-08, VR-07, ARCHITECTURE §9, INTERFACES and the evidence were amended before building.
+- **History-routed demos from disk** (M106): Chromium and WebKit refuse moving between paths in a page opened from disk, so such a demo says why in place; it moves fully on any web server, and hash-routed demos move everywhere.
+- **A Next.js demo in a single HTML file** (M107): not carried; the page names it and the folder export holds it.
+- **Size budgets**: `@mostra/react` 70 to 72 kB with Zod and 47 to 49 kB without (the demo hook, the export notice and the frozen live values).
+- **The demos suite runs in `remote` and `windows-workers`**, not `extensions`, which neared its deadline on macOS (#262).
+
+## Issues at the closeout
+
+| Issue | State | What was done |
+|---|---|---|
+| #197 | Reopened, no milestone | macOS `core` met its deadline once more in #253's first queue run; evidence on the issue |
+| #106 | Reopened, no milestone | A bundle on a volume without owners fails verify (0.20.0 and 0.21.0 alike); evidence on the issue |
+| #95 | Open, no milestone | Windows arm64's emulated Chromium met `ERR_NO_BUFFER_SPACE` twice in a row in `client.spec.ts` on `main`'s run by hand (46069141633); evidence on the issue |
+| #227 | Open, no milestone | The gc property test timed out under local load in the pre-push hook, never in CI; evidence on the issue |
+| #263 | Filed, no milestone | J14's presence cursor missed its 10 s on Linux WebKit once (#262's run 46053090131) |
+
+The `WP-24` milestone held no issue. None of these is in code this package changed; each stays on no milestone for the next package that touches its code (D155 item 7).
+
+## Commits and publication
+
+- **Range:** `022d1bb3..d313abc8` on `main`: the branch `wp/24-demos-exports` (27 signed-off commits, the last `f19e0ad5`) and its merge commit `d313abc8` (#253); then `c0b6e308` (#262, the demos suite's CI groups) and the version pull request #264 (`68f34295`).
+- **CI:** #253's final head green on every job and leg (45999914332, `ci:full`); its merge-queue run 46032373378 green; #264's run 46069425699 and queue run 46083095823 green; `main`'s full run by hand (46069141633) green on its second attempt, after the #95 sighting.
+- **Publication:** Mostra 0.21.0 by the `Release` workflow (run 46088644747 on `68f34295`, all 23 jobs green, 2026-11-28): the immutable GitHub release `v0.21.0` with the six bundles, their records, `SHA256SUMS` and attestations (13 assets); every package of the release group on npm at 0.21.0 with provenance (`npm view @mostra/cli@0.21.0` names an SLSA provenance attestation); the crate `mostra-host` 0.21.0 on crates.io; the harness plugin's tag `v0.21.0` in `mostra-dev/mostra-plugin`; the server image. The docs site arrives with WP-26.
+- **From outside** (2026-11-28, this Mac, a scratch home, `npx -y @mostra/cli@0.21.0`): `--version` says 0.21.0; `mostra new`, `mostra demo build` (no demos: `{ demos: [] }`), `mostra export --as html`, `--as static` (its `index.html` marked `static`) and `--as snapshot` (`index.html`, `assets/`, `snapshot.json`) each answer `ok`; `mostra docs guide/demos` prints the Skill's demos reference. Verify there is the #106 boundary above.
+- **Remaining dirty paths:** none in the repository. Outside it: the session's scratch on the external disk (`/Volumes/Active/wp24-scratch`: the demo prototypes, homes, the review text and the outside check). Mostra HQ was not written to (D127).
+
+## Next
+
+WP-25, First-party plugins (`docs/design/work-packages/WP-25.md`), beside WP-26, Templates, gallery and documentation site, which depends on this package and documents demos and exports (D184); WP-19 runs on its own branch. Each in a fresh session from `docs/design/work-packages/PROMPT.md` with its `WORK PACKAGE` line.
 
