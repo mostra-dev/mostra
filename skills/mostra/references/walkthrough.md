@@ -29,7 +29,7 @@ They hold for every step.
 
 Take the first way that fits where you run. The steps after it are the same for all three.
 
-- **A shell** (a coding agent, a terminal): run `mostra`, or `npx -y @mostra/cli@0.20.0 <command>` wherever this guide says `mostra`. The first run downloads Mostra's runtime and its browser, two or three minutes (longer on Windows on Arm); nothing else needs installing. Read the guide first: [SKILL.md](../SKILL.md), or `mostra docs guide`.
+- **A shell** (a coding agent, a terminal): run `mostra`, or `npx -y @mostra/cli@0.21.0 <command>` wherever this guide says `mostra`. The first run downloads Mostra's runtime and its browser, two or three minutes (longer on Windows on Arm); nothing else needs installing. Read the guide first: [SKILL.md](../SKILL.md), or `mostra docs guide`.
 - **A coding agent's plugin:** with the Mostra plugin installed, the Skill and the commands are already there. Without it, the shell way works as it is, or the person installs the plugin from `https://github.com/mostra-dev/mostra-plugin` (its README names the command for each agent).
 - **A chat app with connectors:** with Mostra's tools in your list (`artifact_create`, `artifact_verify` and the rest), use them for each step, as [mcp.md](mcp.md) maps them. A Mostra server connects them to the person's own computer, where the page is built and verified, so that computer must be on with Mostra running and signed in to the server. The links you get open anywhere.
 

@@ -1,6 +1,6 @@
 {
   "name": "@mostra/kit",
-  "version": "0.20.0",
+  "version": "0.21.0",
   "description": "Mostra's kit: shadcn components for the Base UI and Radix bases, shaped by the themes' tokens, the questionnaire and form parts that save as fields, and token-aware charts, tables, diagrams, code, math, maps, 3D and team parts, web demos and action buttons.",
   "license": "Apache-2.0",
   "author": "The Mostra Authors",

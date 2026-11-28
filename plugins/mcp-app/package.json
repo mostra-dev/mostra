@@ -1,6 +1,6 @@
 {
   "name": "@mostra/plugin-mcp-app",
-  "version": "0.20.0",
+  "version": "0.21.0",
   "description": "Mostra's MCP App exporter: one published artifact version as a single-file ui:// resource that chat hosts show inline.",
   "license": "Apache-2.0",
   "author": "The Mostra Authors",
