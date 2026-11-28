@@ -806,6 +806,14 @@ const SEEDS: readonly Seed[] = [
     cwd: "../react",
   },
   {
+    requirement: "AC-08",
+    name: "a producer's burst of values is stored one transaction a value",
+    file: "src/live/index.ts",
+    from: "const WRITE_BATCH = 500;",
+    to: "const WRITE_BATCH = 1;",
+    check: ["test/unit/live-batch.test.ts"],
+  },
+  {
     requirement: "KT-11",
     name: "the presence avatars drop the className a page gives them",
     file: "../kit/registry/base/components/mostra/team.tsx",
