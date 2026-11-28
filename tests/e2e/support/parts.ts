@@ -27,7 +27,11 @@ export const SPEC_SECONDS: Readonly<Record<string, number>> = {
   "hosted.spec.ts": 56,
   "gateway.spec.ts": 45,
   "kit.spec.ts": 44,
-  "live-chart.spec.ts": 60,
+  // WP-19: a minute on a laptop, but its three measurements wait out the source's 10,000 points
+  // and a second sample where the first misses, far longer on emulated Chromium: Windows arm64's
+  // part with it ran 920 s of tests against 650 to 740 s for the others (PR #255's queue run
+  // 46096069544), so it weighs what it costs there.
+  "live-chart.spec.ts": 200,
   "kit-libraries.spec.ts": 420,
   "actions.spec.ts": 35,
   "worker-mode.spec.ts": 18,
