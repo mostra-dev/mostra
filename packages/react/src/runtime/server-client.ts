@@ -30,6 +30,15 @@ import { NetworkError, type Transport } from "./transport.ts";
 /** How often a page renews its interest in the runs and sources it shows (the lease is a minute). */
 export const RENEW_MS = 20_000;
 
+/** A read's answer for a ring the page holds: how far the source is, without its ring. */
+function withoutRing(state: LiveState): LiveState {
+  const { ring: _ring, ...rest } = state;
+  return rest;
+}
+
+/** How long applying live values may hold the page's event loop before it gives it a turn. */
+const TURN_MS = 8;
+
 /** How many times a run's start is retried after the network failed, with the same client key. */
 const START_ATTEMPTS = 6;
 /** How many runs' early updates a page keeps, and how many updates of each (see `#keepEarly`). */
@@ -219,6 +228,8 @@ export class ServerClient {
   #liveFlush: Promise<void> | undefined;
   /** When the page last read its live sources, which renews their lease (`Date.now()`). */
   #readAt: number | undefined;
+  /** When applying live values last gave the event loop a turn (`performance.now()`). */
+  #turnAt = 0;
   #liveRefresh = new Set<string>();
   #notifyScheduled = false;
   /** Plain calls whose value hasn't arrived yet. */
@@ -648,6 +659,9 @@ export class ServerClient {
       this.#readAt = Date.now();
       this.#renewSoon();
       try {
+        // Sources whose ring this read renews without reading it: their answer's one ring entry
+        // only says how far the source is.
+        const renewing = new Set<string>();
         const { sources } = await (transport.live as NonNullable<Transport["live"]>)({
           viewId: this.#viewId,
           keys: shown.map((tracked) => {
@@ -659,14 +673,18 @@ export class ServerClient {
                 window > tracked.held ||
                 (tracked.expected !== undefined && tracked.received < tracked.expected));
             if (ring) tracked.asked = window;
+            // A ring held whole is renewed with a window of one: the gateway keeps the view in
+            // append mode (it coalesces only a latest-mode reader's values, D130) and answers the
+            // newest value alone.
+            else if (window !== undefined) renewing.add(tracked.view.key);
             return {
               key: tracked.view.key,
-              ...(ring ? { window } : {}),
+              ...(ring ? { window } : window !== undefined ? { window: 1 } : {}),
               ...(refresh.has(tracked.view.key) ? { refresh: true } : {}),
             };
           }),
         });
-        for (const source of sources) await this.#applyLiveState(source);
+        for (const source of sources) await this.#applyLiveState(source, renewing.has(source.key));
       } catch (error) {
         for (const tracked of shown) {
           if (tracked.view.revision !== undefined) continue;
@@ -686,13 +704,36 @@ export class ServerClient {
   #inOrder(key: string, apply: (tracked: TrackedLive) => Promise<void>): Promise<void> {
     const tracked = this.#live.get(key);
     if (!tracked) return Promise.resolve();
-    const next = tracked.applying.then(() => apply(tracked)).catch(() => {});
+    const next = tracked.applying
+      .then(() => this.#yieldIfBusy())
+      .then(() => apply(tracked))
+      .catch(() => {});
     tracked.applying = next;
     return next;
   }
 
-  #applyLiveState(state: LiveState): Promise<void> {
-    return this.#inOrder(state.key, (tracked) => this.#applyLiveStateNow(tracked, state));
+  /**
+   * Gives the page's event loop a turn when applying has held it for a while (AC-08). A burst of
+   * values can reach the page in one chunk of its stream, each value a step of the chain above, all
+   * microtasks: without a turn, nothing else runs until the last is applied, neither the page's
+   * frames nor its timers, nor the renewal of the sources' lease, which a slow device let lapse
+   * while it took in 10,000 points for over a minute (Windows arm64, run 46141792466). Each turn
+   * also renews the lease once a renewal is due.
+   */
+  async #yieldIfBusy(): Promise<void> {
+    const now = performance.now();
+    if (now - this.#turnAt < TURN_MS) return;
+    await new Promise<void>((resolve) => {
+      setTimeout(resolve, 0);
+    });
+    this.#turnAt = performance.now();
+    if (this.#readAt !== undefined && Date.now() - this.#readAt >= RENEW_MS) this.#renewNow();
+  }
+
+  #applyLiveState(state: LiveState, renewal = false): Promise<void> {
+    return this.#inOrder(state.key, (tracked) =>
+      this.#applyLiveStateNow(tracked, renewal ? withoutRing(state) : state),
+    );
   }
 
   #applyLiveUpdate(update: LiveUpdate): Promise<void> {

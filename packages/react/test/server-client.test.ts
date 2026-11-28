@@ -529,7 +529,7 @@ describe("live sources (D56)", () => {
     // Held whole: the renewal reads the latest value alone, and the ring stays as the stream made it.
     await set(4, [2, 3, 4]);
     await renew();
-    expect(asked()).toEqual([{ key: "cpu" }]);
+    expect(asked()).toEqual([{ key: "cpu", window: 1 }]);
     expect(page.liveView("cpu")?.ring).toEqual([2, 3, 4]);
     // A value the stream skipped: the ring is read again.
     await set(6, [4, 5, 6]);
@@ -541,7 +541,7 @@ describe("live sources (D56)", () => {
     // still missing at the next renewal, the ring is read again.
     await set(9, [7, 8, 9]);
     await renew();
-    expect(asked()).toEqual([{ key: "cpu" }]);
+    expect(asked()).toEqual([{ key: "cpu", window: 1 }]);
     expect(page.liveView("cpu")?.ring).toEqual([4, 5, 6]);
     await renew();
     expect(asked()).toEqual([{ key: "cpu", window: 3 }]);
@@ -588,6 +588,28 @@ describe("live sources (D56)", () => {
     } finally {
       clock.mockRestore();
     }
+  });
+
+  it("gives the page's event loop turns while it applies a burst that arrived at once (AC-08)", async () => {
+    const server = new FakeServer();
+    server.live.set("cpu", await state("cpu", 0, 0));
+    const page = client(server);
+    page.watchLive("cpu", 5000);
+    await new Promise((resolve) => setTimeout(resolve, 10));
+    const values = await Promise.all(
+      Array.from({ length: 3000 }, (_, index) => serializeAll(index + 1, { mode: "argument" })),
+    );
+    // One chunk of the stream: every value received in one task.
+    for (const [index, value] of values.entries()) {
+      page.receive({ kind: "live", live: { key: "cpu", revision: String(index + 1), value } });
+    }
+    // A timer due at once runs before the burst is applied: the page took turns.
+    const applied = await new Promise<number>((resolve) => {
+      setTimeout(() => resolve(page.liveView("cpu")?.ring.length ?? 0), 0);
+    });
+    expect(applied).toBeLessThan(3000);
+    await expect.poll(() => page.liveView("cpu")?.ring.length, { timeout: 30_000 }).toBe(3000);
+    expect(page.liveView("cpu")?.ring.at(-1)).toBe(3000);
   });
 
   it("keeps an append window and asks for the ring", async () => {
